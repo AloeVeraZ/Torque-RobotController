@@ -78,10 +78,13 @@ test('the driver turns game signals into joint values: turret, deploy, hood, fly
     {id:'h',type:'revolute',axis:[0,1,0],states:{rest:0,shoot:20},speed:40,drive:{signal:'hood',of:'shooter:0'}},{id:'f',type:'continuous',axis:[0,1,0],drive:{signal:'flywheel',of:'shooter:0'}},{id:'i',type:'continuous',axis:[1,0,0],rpm:30,drive:{signal:'roller',of:'intake:0'}}]});
   const d=new K.Driver(m);d.tick(1/60,{turrets:[30],kick:[.5],spin:true,flywheel:1,rpm:3000,intake:true});const v=d.values();
   near(v.t,120,1e-9,'turret at 30° from the front; the CAD has it facing right (−90°), so it turns 120°');near(v.r,30,1e-9,'half way down');
-  near(v.h,40/60,1e-4,'hood moving to its shooting position at 40°/s');near(v.f,K.SHOW_SPIN/60,1e-4,'flywheel drawn at the capped speed');near(v.i,30*6/60,1e-4,'30 rpm roller');
+  near(v.h,40/60,1e-4,'hood moving to its shooting position at 40°/s');near(v.f,K.shownRate(3000)/60,1e-4,'flywheel drawn slower than it turns, still faster than a slower one');assert.ok(K.shownRate(3000)<K.shownRate(6000)&&K.shownRate(6000)<=K.SHOW_SPIN&&K.shownRate(30)<K.shownRate(300),'each speed looks different, and none strobes');near(K.shownRate(300),1800,1e-9,'up to 300 rpm as it is');near(v.i,30*6/60,1e-4,'30 rpm roller');
   for(let k=0;k<60;k++)d.tick(1/60,{turrets:[30],kick:[1],spin:true});near(d.values().h,20,1e-9,'hood reached its shooting position');near(d.values().r,60,1e-9);
   for(let k=0;k<60;k++)d.tick(1/60,{turrets:[30],kick:[0]});near(d.values().h,0,1e-9,'and goes back to rest when the shooter stops');
 });
+test('a shaft that follows a spinning one never jumps, however many turns go by',()=>{
+  const m=model({joints:[{id:'f',type:'continuous',axis:[1,0,0],rpm:300,drive:{signal:'feeder',of:'any'}},{id:'g',type:'continuous',axis:[1,0,0]}],couplings:[{kind:'gear',from:'f',to:'g',ratio:.444}]});
+  const d=new K.Driver(m);let last=0;for(let k=0;k<600;k++){d.tick(1/60,{feed:true});const now=K.resolve(m,d.values()).g[0];assert.ok(Math.abs(now-last-1800*.444/60)<1e-6,'one step a tick, tick '+k);last=now;}});
 test('actions run steps together, in sequence and after delays; the timeline agrees with the ticking driver',()=>{
   const m=model({joints:[{id:'lift',type:'prismatic',axis:[0,0,1],lower:0,upper:20},{id:'claw',type:'revolute',axis:[1,0,0]}],
     actuators:[{id:'lm',joint:'lift',kind:'dcmotor',speed:10,accel:20,states:{down:0,up:15}},{id:'cs',joint:'claw',kind:'servo',speed:180,states:{open:45,closed:0}}],

@@ -5,7 +5,7 @@
   // speed changes, freeze frames and transitions, and Export draws it picture by picture into an MP4 or WebM file
   // (sim-encode.js). The preview and the export draw the same pictures, so what plays here is what is saved.
   const E=window.DeckEdit,K=window.DeckCameras,N=window.DeckEncode,V=window.DeckSimVideo;
-  // Every video ends on this card: "Edited with Torque" fades in over its last END_CARD seconds.
+  // A video ends on this card unless it is removed (Words on the video): "Edited with Torque" fades in over its last END_CARD seconds.
   const BRAND='Torque',END_CARD=2.5;
   const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
   const OVERLAYS={match:'Period, clock & points',velocity:'Speed & what the robot is doing',path:'Field map in the corner',camera:'Camera name',position:'Position & heading',timestamp:'Run time'};
@@ -24,7 +24,7 @@
   function create(opts){
     const host=opts.host;
     host.innerHTML=`<div class="studio-head">
-        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><span id="studio-meta" class="hint"></span></div>
+        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><label class="studio-part" id="studio-part-box" title="A full match can be edited whole, or just its autonomous or teleop; each keeps its own edit" hidden>Part<select id="studio-part"></select></label><span id="studio-meta" class="hint"></span></div>
         <div class="studio-head-actions">
           <button type="button" class="secondary" id="studio-undo" title="Undo (Ctrl+Z)">Undo</button><button type="button" class="secondary" id="studio-redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
           <button type="button" class="secondary" id="studio-discard" title="Throw away this recording">Discard</button>
@@ -166,7 +166,7 @@
       ctx.globalAlpha=1;if(lead)drawOverlays(ctx,W,H,lead,doc.overlays);if(crash)drawCrash(ctx,W,H,crash,time);
       if(r.black>0){ctx.fillStyle=`rgb(0 0 0 / ${clamp(r.black,0,1)})`;ctx.fillRect(0,0,W,H);}
       for(const ti of r.titles)drawTitle(ctx,W,H,ti.clip,ti.alpha);
-      const left=E.exportRange(doc).out-time;if(left<END_CARD)drawEndCard(ctx,W,H,clamp((END_CARD-left)/.6,0,1));
+      const left=E.exportRange(doc).out-time;if(doc.endCard!==false&&left<END_CARD)drawEndCard(ctx,W,H,clamp((END_CARD-left)/.6,0,1));
       ctx.restore();
     }
     function drawEndCard(ctx,W,H,alpha){const s=H/720,font=(w,px)=>`${w} ${Math.round(px*s)}px Inter, "Segoe UI", system-ui, sans-serif`;ctx.save();ctx.globalAlpha=alpha;
@@ -362,7 +362,8 @@
     }
     function lookPane(){
       const p=pane('look');if(!editor){p.innerHTML='';return;}const o=editor.doc.overlays;
-      p.innerHTML=`<p class="hint">Shown on top of the picture. To add your own words, use + Text under the video.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}`;
+      p.innerHTML=`<p class="hint">Shown on top of the picture. To add your own words, use + Text under the video.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
+      p.querySelector('#studio-end-card').onclick=()=>{const on=editor.doc.endCard===false;editor.change(on?'Add end card':'Remove end card',d=>{d.endCard=on;});lookPane();requestDraw();};
       for(const input of p.querySelectorAll('[data-overlay]'))input.onchange=()=>editor.change(input.checked?'Show overlay':'Hide overlay',d=>{d.overlays[input.dataset.overlay]=input.checked;});
     }
 
@@ -427,13 +428,28 @@
     // ------------------------------------------------------------ the recording
     // next: {frames, ctx (the cameras' view of the robot), state (what the 3D field shows), name, view, seconds}.
     // The cameras also get the field's solid parts from the field info, to keep out of them.
+    // A full match (a run with an autonomous and a teleop) can be edited whole or one period at a time; a period
+    // is the frames of that part alone, with the contacts in it, and each part keeps its edit while another is open.
+    let run=null,parts=null,part='all',partDocs={};
     async function load(next){
-      pause();const F=next.frames;if(!F?.length)return;
+      if(!next.frames?.length)return;
+      const s=V.sections(next.frames);run=next;parts=s.auto&&s.teleop?s:null;part='all';partDocs={};
+      $('#studio-part-box').hidden=!parts;if(parts)$('#studio-part').innerHTML=options({all:'Whole match',auto:V.SECTIONS.auto,teleop:V.SECTIONS.teleop},'all');
+      await open(next);
+    }
+    function openPart(key){
+      partDocs[part]=editor.doc;part=key;const [a,b]=parts[key],F=run.frames.slice(a,b+1),off=F[0].time-run.frames[0].time,span=F.at(-1).time-F[0].time;
+      const crashes=(run.crashes||[]).filter(c=>c.at>=off&&c.at<=off+span).map(c=>({...c,at:c.at-off}));
+      return open({...run,frames:F,crashes,name:key==='all'?run.name:`${run.name||'Run video'} - ${V.SECTIONS[key]}`},partDocs[key]);
+    }
+    $('#studio-part').onchange=e=>{if(!take||exporting){e.target.value=part;return;}void openPart(e.target.value);};
+    async function open(next,kept){
+      pause();const F=next.frames;
       take={...next,t0:F[0].time,duration:Math.max(E.MIN,F.at(-1).time-F[0].time),ctx:{...next.ctx,rig:K.rig(next.ctx),field:K.field(next.state?.info)}};
-      const doc=E.create({recording:{id:'take',duration:take.duration},name:next.name||'Run video'});if(next.view==='2d')doc.clips[0].camera='top';
-      Object.assign(doc.overlays,{match:true,velocity:true,path:next.view!=='2d'});
+      const doc=kept||E.create({recording:{id:'take',duration:take.duration},name:next.name||'Run video'});
       // Where the robot touched a wall, a field structure or a no-go zone, the video stops and zooms in on it.
-      take.crashes=(next.crashes||[]).filter(c=>Number.isFinite(c?.at)&&c.at<take.duration);E.addCrashes(doc,take.crashes);
+      take.crashes=(next.crashes||[]).filter(c=>Number.isFinite(c?.at)&&c.at<take.duration);
+      if(!kept){if(next.view==='2d')doc.clips[0].camera='top';Object.assign(doc.overlays,{match:true,velocity:true,path:next.view!=='2d'});E.addCrashes(doc,take.crashes);}
       editor=new E.Editor(doc,{onChange:changed});paths={};pathKeys={};warmPaths();trail=buildTrail(F);events=E.events(F);selected.clear();t=0;
       $('#studio-name').value=doc.name;$('#studio-meta').textContent=`${E.timecode(take.duration).replace(/\.\d+$/,'')} long`;
       say(take.crashes.length?`The robot touched something ${take.crashes.length===1?'once':`${take.crashes.length} times`}: the video stops and zooms in on each one (red on the timeline). Press Play to watch it.`:'Press Play to watch it. Save video keeps it; changing it first is optional.');
@@ -442,7 +458,7 @@
       try{cam=await opts.camera();$('#studio-loading').hidden=true;}catch(e){$('#studio-loading').textContent=e.message||'The cameras could not load.';}
       requestDraw();
     }
-    function clear(){pause();exporting?.abort();take=null;editor=null;paths={};pathKeys={};trail=null;events=[];selected.clear();pctx.clearRect(0,0,canvas.width,canvas.height);tracks.innerHTML='';for(const k of ['cameras','clip','look','export'])pane(k).innerHTML='';say('');}
+    function clear(){pause();exporting?.abort();run=null;parts=null;partDocs={};$('#studio-part-box').hidden=true;take=null;editor=null;paths={};pathKeys={};trail=null;events=[];selected.clear();pctx.clearRect(0,0,canvas.width,canvas.height);tracks.innerHTML='';for(const k of ['cameras','clip','look','export'])pane(k).innerHTML='';say('');}
     // The tab is on screen (or not): playing stops when it is hidden.
     function show(on){shown=!!on;if(!shown){pause();return;}if(take){requestAnimationFrame(()=>{if(pps===40)fitZoom();else timeline();requestDraw();});}}
     return {load,show,clear,has:()=>!!take,busy:()=>!!exporting};

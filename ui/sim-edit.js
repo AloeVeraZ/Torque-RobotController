@@ -32,7 +32,7 @@
     const duration=recording?.duration||0;
     const doc={kind:'deck-video-edit',version:VERSION,id:uid('p'),name:String(name||recording?.name||'Run video').slice(0,80),recording:recording?.id||null,duration,
       settings:{width:1920,height:1080,fps:30},tracks:clone(TRACKS).map(t=>({...t,muted:false,hidden:false,locked:false})),clips:[],markers:[],range:null,
-      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false},cameras:{},audio:[]};
+      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false},endCard:true,cameras:{},audio:[]};
     if(duration>0)doc.clips.push(videoClip({track:'V1',start:0,in:0,out:duration,camera:'main'}));
     return doc;
   }
@@ -50,6 +50,7 @@
     const s=raw.settings||{};doc.settings={width:[1280,1920,2560,3840,720,1080].includes(s.width)?s.width:1920,height:[720,1080,1440,2160,1280,1920].includes(s.height)?s.height:1080,fps:[24,30,60].includes(s.fps)?s.fps:30};
     if(Array.isArray(raw.tracks))doc.tracks=doc.tracks.map(t=>{const r=raw.tracks.find(x=>x?.id===t.id)||{};return {...t,muted:!!r.muted,hidden:!!r.hidden,locked:!!r.locked};});
     for(const k of Object.keys(doc.overlays))if(typeof raw.overlays?.[k]==='boolean')doc.overlays[k]=raw.overlays[k];
+    if(raw.endCard===false)doc.endCard=false;
     doc.cameras=raw.cameras&&typeof raw.cameras==='object'?clone(raw.cameras):{};
     doc.audio=Array.isArray(raw.audio)?raw.audio.filter(a=>a&&typeof a.id==='string').slice(0,16).map(a=>({id:a.id.slice(0,60),name:String(a.name||'Audio').slice(0,120),duration:num(a.duration,0,0,36000)})):[];
     const assets=new Set(doc.audio.map(a=>a.id)),ids=new Set();
@@ -176,11 +177,13 @@
   function exportRange(doc){const d=duration(doc);if(doc.range){const a=clamp(doc.range.in,0,d),b=clamp(doc.range.out,0,d);if(b-a>=MIN)return {in:a,out:b};}return {in:0,out:d};}
   // ---------------------------------------------------------------- what happened in the run
   // Moments in the recording worth a camera: intake on and off, a ramp going down, shots, the turret swinging,
-  // strafing, driving off and stopping. {t (seconds from the start), kind, label, camera}.
+  // strafing, driving off and stopping, and each new period of a full match. {t (seconds from the start), kind, label, camera}.
+  const PERIODS={transition:'Transition',teleop:'Teleop starts'};
   function events(frames){
     const out=[];if(!frames?.length)return out;const t0=frames[0].time,push=(f,kind,label,camera)=>out.push({t:+(f.time-t0).toFixed(3),kind,label,camera});
-    let intake=false,ramp=false,launched=null,picked=null,moving=false,strafing=false,swing=false,still=0,lastT=t0;
+    let intake=false,ramp=false,launched=null,picked=null,moving=false,strafing=false,swing=false,still=0,lastT=t0,period=null;
     frames.forEach((f,i)=>{const m=f.mechanisms,c=m?.command||{},tr=f.truth||{},dt=i?f.time-lastT:0;lastT=f.time;
+      const p=f.practice?.phase;if(p&&p!==period){if(period&&PERIODS[p])push(f,'period',PERIODS[p],'main');period=p;}
       if(m){if(!!c.intake!==intake){intake=!!c.intake;push(f,intake?'intake-on':'intake-off',intake?'Intake on':'Intake off','intake');}
         const r=(m.ramps||[]).some(v=>v>.5);if(r!==ramp){ramp=r;push(f,r?'ramp-down':'ramp-up',r?'Ramp down':'Ramp up','mech');}
         if(launched!==null&&m.launched>launched)push(f,'shot',`Shot ${m.launched}`,'turret');launched=m.launched??launched;

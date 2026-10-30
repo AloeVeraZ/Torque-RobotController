@@ -1,5 +1,5 @@
 # Torque one-line installer for Windows x64 (PowerShell):
-#   irm https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.ps1 | iex
 # Downloads the latest stable Setup from GitHub, checks its SHA-256, installs it for this user
 # (no administrator account), and opens the app. $env:DECK_DOWNLOAD_ONLY='1' stops after the verified download.
 & {
@@ -7,7 +7,7 @@
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'   # Windows PowerShell downloads far faster without the progress bar
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-  $repo = 'AloeVeraZ/SteamDeck-RobotController'
+  $repo = 'AloeVeraZ/Torque-RobotController'
   Write-Host 'Finding the latest Main release ...'
   $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers @{ 'User-Agent' = 'DeckDriverStation-Installer' } -TimeoutSec 30
   if ($release.draft -or $release.prerelease -or $release.tag_name -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+)$') { throw 'No valid Main release was found. Testing builds are not installed by this command.' }

@@ -43,7 +43,7 @@ desktops, stacked on narrow windows like the phone app.
 
 | Area | What it does |
 | --- | --- |
-| Top bar | Driver Station name (`9999-C-DS` for robot network `9999-C-RC`), **Robot Connected** banner, Network, Ping, signal, User 1 / User 2 gamepads, ••• menu |
+| Top bar | Driver Station name (`9999-C-DS` for robot network `9999-C-RC`), **Robot Connected** banner, Network, Ping, signal, User 1 / User 2 gamepads, Close robot, fullscreen, ⋯ menu |
 | Practice Timer | 2:30 match clock with ▶: start at Autonomous (3 s lead-in), the Auto → TeleOp transition (8 s), TeleOp (2:00), or Endgame (last 30 s). Beeps mark each change. It runs independently of op modes |
 | Config tile | The robot's active configuration, or `<No Config Set>` |
 | ▼ Select Op Mode ▼ | Left ▼ lists Autonomous op modes, right ▼ lists TeleOp, grouped like the FTC Driver Station |
@@ -108,7 +108,7 @@ robot does not have goes into a new configuration: Deck scans the hubs (`CMD_SCA
 the hub's own OnBot Java server on port 8080, and Drive selects the new autonomous the next time
 the robot is opened. It never starts the autonomous.
 
-The **Calibrate** tab (beside Simulate) has the same Send to robot panel, then the **Guided check**,
+**Calibrate** (step 3 of the Setup & Calibrate tab) has the same Send to robot panel, then the **Guided check**,
 a list of what the check measures for the setup, the on-robot checklist, and gamepad stick
 calibration. The guided check runs the check TeleOp: INIT and START as a Driver Station,
 each question shown with buttons that press gamepad 1 on the robot (Controller 1 answers too), STOP

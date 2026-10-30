@@ -14,7 +14,7 @@ function Invoke-RestMethod { param($Uri, $Headers, $TimeoutSec)
   @{ tag_name = $global:DeckBootstrap_tag; prerelease = $global:DeckBootstrap_tag.StartsWith('testing-'); draft = $false }
 }
 function Invoke-WebRequest { param([switch]$UseBasicParsing, $Uri, $OutFile)
-  if ($Uri -notlike 'https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/download/v9.8.7/DeckDriverStation-9.8.7-Windows-Setup.exe*') { throw 'Unexpected asset URL' }
+  if ($Uri -notlike 'https://github.com/AloeVeraZ/Torque-RobotController/releases/download/v9.8.7/DeckDriverStation-9.8.7-Windows-Setup.exe*') { throw 'Unexpected asset URL' }
   if ($Uri.EndsWith('.sha256')) { [IO.File]::WriteAllText($OutFile, "$global:DeckBootstrap_hash  DeckDriverStation-9.8.7-Windows-Setup.exe`r`n") }
   elseif ($global:DeckBootstrap_corrupt) { [IO.File]::WriteAllText($OutFile, 'corrupt') }
   else { [IO.File]::WriteAllBytes($OutFile, $global:DeckBootstrap_bytes) }

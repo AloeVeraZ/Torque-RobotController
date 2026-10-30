@@ -1,0 +1,13 @@
+name = "torque-bug-reports"
+main = "worker.mjs"
+compatibility_date = "2026-01-01"
+
+[vars]
+REPO = "AloeVeraZ/Torque-bug-reports"
+
+# Optional, recommended: makes the limits hold across the whole service.
+#   npx wrangler kv namespace create LIMITS
+# then uncomment with the id it prints:
+# [[kv_namespaces]]
+# binding = "LIMITS"
+# id = "..."

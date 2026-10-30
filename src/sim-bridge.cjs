@@ -88,16 +88,13 @@ class SimulationHost{
     // Licensed CAD (FIRST field models, vendor chassis) is only present in personal local builds;
     // public releases leave it out and the window falls back to drawings and plain shapes.
     if(action==='assets'){const ui=path.join(__dirname,'../ui'),has=rel=>fs.existsSync(path.join(ui,rel));
-      return {robots:[...['strafer','swechanum'].filter(id=>has(`assets/robots/${id}.glb.gz`)),...['revduo'].filter(id=>has(`assets/robots/${id}.deck.gz`))],fields:{decode:has('vendor/models/decode/field.glb'),biobuzz:has('vendor/models/biobuzz/field.glb')&&has('vendor/models/biobuzz/elements.glb')}};}
+      return {robots:['strafer','swechanum'].filter(id=>has(`assets/robots/${id}.glb.gz`)),fields:{decode:has('vendor/models/decode/field.glb'),biobuzz:has('vendor/models/biobuzz/field.glb')&&has('vendor/models/biobuzz/elements.glb')}};}
     if(action==='builtin-model'){if(!['strafer','swechanum'].includes(data))throw Error('Unknown bundled robot.');const dir=path.join(__dirname,'../ui/assets/robots'),catalog=JSON.parse(fs.readFileSync(path.join(dir,'catalog.json'),'utf8'));return {bytes:new Uint8Array(require('node:zlib').gunzipSync(fs.readFileSync(path.join(dir,data+'.glb.gz')))),meta:catalog[data]};}
     // The Test setup's robot, generated from FTC parts (ui/sim-test-robot.js, original geometry, in every build) and shaped
     // like a STEP import by the import's own functions, so the window stores, discovers and rigs it as a team's own CAD.
     if(action==='test-robot')return require('../ui/sim-test-robot.js').result(require('./sim-model.cjs'));
-    // A preset robot's CAD (ui/sim-preset-robots.js), made the same way, or its prepared vendor CAD (asset: the build has
-    // it; ui/assets/robots/<asset>.deck.gz, an import tools/simulation/prepare-*.cjs made).
-    if(action==='preset-robot'){const P=require('../ui/sim-preset-robots.js'),SM=require('./sim-model.cjs'),id=typeof data==='string'?data:data?.id;if(!P.has(id))throw Error('Unknown preset robot.');
-      const asset=data?.asset&&P.ROBOTS[id].asset,file=asset&&path.join(__dirname,'../ui/assets/robots',asset+'.deck.gz');
-      if(file&&fs.existsSync(file))return {...SM.decodeImport(require('node:zlib').gunzipSync(fs.readFileSync(file))),kind:'step'};return P.result(id,SM);}
+    // A preset robot's CAD (ui/sim-preset-robots.js), made the same way.
+    if(action==='preset-robot'){const P=require('../ui/sim-preset-robots.js'),SM=require('./sim-model.cjs'),id=typeof data==='string'?data:data?.id;if(!P.has(id))throw Error('Unknown preset robot.');return P.result(id,SM);}
     const models=path.join(this.dataDir,'simulation','models');
     const open=async(title,filters,limit)=>{const r=await dialog.showOpenDialog(win,{title,properties:['openFile'],filters});if(r.canceled||!r.filePaths[0])return null;const file=r.filePaths[0];if(fs.statSync(file).size>limit)throw Error(`${path.basename(file)} is larger than ${Math.round(limit/1048576)} MB.`);return file;};
     if(action==='project-save'){

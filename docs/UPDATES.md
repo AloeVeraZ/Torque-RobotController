@@ -69,7 +69,10 @@ checkouts are protected from replacement. Apple Silicon updates are ad-hoc signe
 
 ## Publishing later
 
-The remote is `https://github.com/AloeVeraZ/SteamDeck-RobotController.git`.
+The remote is `https://github.com/AloeVeraZ/Torque-RobotController.git`.
+The repository used to be `AloeVeraZ/SteamDeck-RobotController`. Installs from before the rename only accept
+download URLs with the old name, so the channel manifests keep it and GitHub redirects them. Never create a new
+repository with the old name: that would end the redirects and strand those installs.
 Main and Testing are published branches; Main publishes stable releases (v2.4.22 and later). New work
 continues on Testing until promotion is requested. Initial install commands always
 read `main/install.sh` or `main/install.ps1` and resolve the newest stable release,

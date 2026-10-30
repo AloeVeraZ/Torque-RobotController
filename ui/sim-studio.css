@@ -5,6 +5,9 @@
 .studio-name{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
 .studio-name input{flex:0 1 320px;min-width:120px;height:34px;min-height:34px;font:700 15px var(--font);padding:4px 9px}
 .studio-name .hint{margin:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.studio-part{display:flex;align-items:center;gap:6px;flex:none;margin:0;font-size:12px;color:var(--muted)}
+.studio-part[hidden]{display:none}
+.studio-part select{width:auto;height:34px;min-height:34px;padding:4px 9px}
 .studio-head-actions{display:flex;gap:6px;flex:none}
 #sim-panel-video button{min-height:32px;margin:0;padding:4px 11px;font-size:12px;white-space:nowrap}
 #sim-panel-video button.danger{border-color:var(--danger);color:var(--danger)}

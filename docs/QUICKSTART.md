@@ -3,8 +3,8 @@
 Download the **Main** installer directly from the [GitHub README](../README.md#%EF%B8%8F-download),
 or paste one line into a terminal:
 
-- Steam Deck / Linux and Mac: `curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.sh | bash`
-- Windows (PowerShell): `irm https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.ps1 | iex`
+- Steam Deck / Linux and Mac: `curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.sh | bash`
+- Windows (PowerShell): `irm https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.ps1 | iex`
 
 The sections below describe the downloadable packages and manual setup.
 All initial installs use the latest stable Main release. After installing, open
@@ -94,11 +94,13 @@ HTTP authentication challenges open a username/password prompt. Robot passwords
 are not saved in the address list. The browser's robot-specific cookie storage
 can retain website sessions; HTTP authentication may ask again after reopening.
 
-### Calibrate
+### Setup & Calibrate
 
-**Calibrate** has the saved-setup bar on top (pick, make, open and save setups there too) and two tabs.
+One tab, three steps. **1 Setup** picks the robot control system, checks the connection over USB-C or Wi-Fi, and **Scan** shows what is connected, as Configure Robot's Scan does on a Driver Hub. **Available configurations** lists the ones on the robot, to edit, activate, delete or make new. **2 Configure** edits one, port by port on each hub, with only the parts a Control Hub allows. **3 Calibrate** works on the real robot. Over USB-C this needs ADB, which the REV Hardware Client installs.
+
+**Calibrate** has a **Debug** tab with **Live debug**, and a **Calibrate** tab with two more.
 **Electronics** reads the Control Hub (Set up from the Control Hub over USB-C), shows every motor, servo and
-sensor with its model and port, and has **Live debug**: put Deck Debug on the robot once, start it, and every
+sensor with its port, and runs the guided check. In **Live debug**, put Torque Debug on the robot once, start it, and every
 port reads live while motors and continuous servos run only while you hold their slider. **Mechanisms** unlocks
 once the hub is read and walks each mechanism through the steps its sensors allow (confirm it, its direction,
 units, zero, range, feedforward, feedback, sensor thresholds, commit). Put the robot on blocks first.

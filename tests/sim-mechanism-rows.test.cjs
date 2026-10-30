@@ -1,0 +1,67 @@
+'use strict';
+// Mechanisms' device rows and what they light up on the model, the second turret device and gear train, and their export.
+const test=require('node:test'),assert=require('node:assert/strict');
+const H=require('../ui/sim-hardware.js'),W=require('../ui/sim-wiring.js'),M=require('../ui/sim-mechanisms.js'),F=require('../ui/sim-ftc.js');
+const mech=extra=>M.sanitize({enabled:true,intakes:[{kind:'ramp',sides:['front'],...extra?.intake}],shooters:[{type:'turret',pieces:'pollen',mount:'back',parts:['POLLEN V2','turret final'],...extra?.shooter},{type:'turret',pieces:'nectar',mount:'front',parts:['NECTAR V2','turret final']}],turret:{kind:'servo',...extra?.turret}});
+const project=(m,wiring,kinematics)=>({controller:'ftc',robot:{drivetrain:'mecanum',...(wiring?{wiring}:{})},sensors:{},mechanisms:m,kinematics:kinematics||{joints:[],actuators:[]},model:{parts:[{name:'POLLEN V2',key:'a/POLLEN V2'},{name:'NECTAR V2',key:'a/NECTAR V2'},{name:'turret final',key:'a/turret final'}]}});
+
+test('a device row is its type, model, port, power and sensor, with no sentences',()=>{
+  const st=W.state(project(mech())),row=st.rows.find(r=>r.key==='intakes.0.motor'),html=W.mechRowHtml(row,st);
+  for(const want of ['data-wire-kind','data-wire-model','data-wire-port','data-wire-sensor-pick'])assert.ok(html.includes(want),want);
+  for(const gone of ['sim-wire-explain','sim-wire-why','<code','data-wire-ratio','data-wire-spm'])assert.ok(!html.includes(gone),gone);
+  assert.match(html,/<option value="">No sensor<\/option>/);assert.doesNotMatch(html,/tells/i);
+});
+
+test('a port left unset says nothing; two devices put on one port do',()=>{
+  const st=W.state(project(mech()));assert.doesNotMatch(st.rows.filter(r=>r.key.startsWith('intakes')).map(r=>W.mechRowHtml(r,st)).join(''),/sim-wire-problem/);
+  const base=W.state(project(mech())).wiring,w=W.setPort(W.setPort(base,'intakes.0.motor','control:0','motor'),'shooters.0.motor','control:0','motor'),two=W.state(project(mech(),w));
+  assert.match(W.mechRowHtml(two.rows.find(r=>r.key==='intakes.0.motor'),two),/sim-wire-problem/);
+});
+
+test('the game limit is not repeated on every device',()=>{
+  const m=mech({shooter:{turretMotor2:'turretb'}}),st=W.state(project(m));for(const r of st.rows.filter(x=>x.key.includes('turret')))assert.doesNotMatch(W.mechRowHtml(r,st),/R503/);
+});
+
+test('one sensor at a time, and a port for it',()=>{
+  const st=W.state(project(mech())),row=st.rows.find(r=>r.key==='intakes.0.servo');let w=W.setMechSensor(st.wiring,row,'rev-touch');let on=H.wiringOf({wiring:w}).sensors.filter(s=>s.for===row.key);assert.equal(on.length,1);assert.equal(on[0].model,'rev-touch');
+  w=W.setMechSensor(w,row,'axon-feedback');on=H.wiringOf({wiring:w}).sensors.filter(s=>s.for===row.key);assert.equal(on.length,1,'replaced');assert.equal(on[0].model,'axon-feedback');
+  const shown=W.state(project(mech(),w));assert.match(W.mechRowHtml(shown.rows.find(r=>r.key===row.key),shown),/Sensor plugged into/);
+  assert.equal(H.wiringOf({wiring:W.setMechSensor(w,row,'')}).sensors.filter(s=>s.for===row.key).length,0);
+});
+
+test('a shooter lights up its own assembly, not the turret it rides; a turret device lights up its gear train',()=>{
+  const joints=[{id:'turret1',type:'continuous',parts:['plate'],drive:{signal:'turret',of:'shooter:0'}},{id:'turret1gear1',type:'continuous',parts:['pinion','spur'],parent:undefined},{id:'turret1gear2',type:'continuous',parts:['100t','hub']},{id:'flywheel1',type:'continuous',parts:['wheel'],parent:'turret1',drive:{signal:'flywheel',of:'shooter:0'}}];
+  const p=project(mech(),null,{joints,actuators:[]}),shooter=W.focusRefs(p,'shooter:0'),turret=W.focusRefs(p,'shooters.0.turretMotor');
+  assert.ok(shooter.includes('a/POLLEN V2'));assert.ok(shooter.includes('wheel'));assert.ok(!shooter.includes('a/turret final'),'not the whole turret assembly');assert.ok(!shooter.includes('plate'),'not the plate');
+  assert.deepEqual(turret.sort(),['100t','hub','pinion','spur'],'the gears, not the plate or the shooter');
+});
+
+test('a part of an intake is a wheel, a claw or its body',()=>{
+  for(const n of ['48mm Gecko Wheel - 15A (GB)','Intake Roller Wheel','104mm Mecanum Wheel'])assert.equal(M.partKindOf(n),'wheel',n);for(const n of ['Claw left','Parallel Gripper','Finger 2'])assert.equal(M.partKindOf(n),'claw',n);for(const n of ['FRONT RAMP','SIDE WALL','Part 1','Servo Hub (GB)'])assert.equal(M.partKindOf(n),'body',n);
+});
+
+test('an intake’s box holds every assembly on its edge, out to its outermost point, centred on the robot',()=>{
+  const part=(name,x1,y0,y1,z1,x0=5)=>({name,role:'intake',box:{x0,x1,y0,y1,z0:1,z1}});
+  const out=M.fromCad([{name:'frame',role:'chassis',box:{x0:-8,x1:8,y0:-8,y1:8,z0:0,z1:6}},part('rollers',9,-6,6,5),part('FRONT RAMP',11.1,-7,9.2,11.1)]),i=out.intakes[0];
+  assert.equal(i.reach,3.25,'to the ramp, the furthest of the two, and never short of it');assert.equal(i.width,18.5,'wider than the chassis, and centred');assert.equal(i.height,11.25,'from the floor to its top');
+});
+
+test('a ramp runs on a DC motor, or a servo of three types',()=>{
+  assert.deepEqual(W.TYPES.ramp.map(t=>t[0]),['servo','linear','crservo','dcmotor']);
+  const motor=W.state(project(mech({intake:{rampKind:'dcmotor'}}))).rows.find(r=>r.key==='intakes.0.servo');assert.equal(motor.kind,'dcmotor');assert.equal(motor.family,'motor');
+  const cr=W.state(project(mech({intake:{rampKind:'crservo'}}))).rows.find(r=>r.key==='intakes.0.servo');assert.equal(cr.kind,'crservo');
+  assert.equal(M.sanitize({enabled:true,intakes:[{kind:'ramp',sides:['front'],rampKind:'nonsense'}]}).intakes[0].rampKind,undefined);
+});
+
+test('a second turret device and a gear train are kept, counted and sensible',()=>{
+  const m=mech({shooter:{turretMotor2:'turretb'},turret:{gears:[[100,24],[20,83],['x',-1]]}});assert.equal(m.shooters[0].turretMotor2,'turretb');assert.deepEqual(m.turret.gears[0],[100,24]);assert.ok(m.turret.gears.every(g=>g.every(t=>t>=1)));
+  const rows=W.state(project(m)).rows;assert.ok(rows.some(r=>r.key==='shooters.0.turretMotor2'&&r.role==='turret'&&r.kind==='servo'));assert.ok(H.parseKey('shooters.0.turretMotor2'));
+});
+
+test('exported code moves both turret servos together, and says so when it cannot run what was picked',()=>{
+  const m=mech({shooter:{turretMotor2:'turretb'}}),src=F.mechanismsSource({packageName:'p'},m,{x:72,y:72},{length:17,width:17});
+  assert.match(src,/turret1b = map\.get\(Servo\.class, TURRET_1B\)/);assert.match(src,/public static final String TURRET_1B = "turretb";/);assert.match(src,/private Servo turret1b;/);
+  const moves=src.match(/turret1b\.setPosition\(Math\.max\(0, Math\.min\(1, position\)\)\);/g)||[];assert.equal(moves.length,1,'it follows the first servo');
+  assert.throws(()=>F.mechanismsSource({packageName:'p'},mech({intake:{rampKind:'dcmotor'}}),{x:72,y:72},{length:17,width:17}),/runs a ramp or kicker on a servo/);
+  assert.throws(()=>F.mechanismsSource({packageName:'p'},mech({shooter:{turretMotor2:'turretb'},turret:{kind:'motor'}}),{x:72,y:72},{length:17,width:17}),/second turret device/);
+});

@@ -10,7 +10,7 @@
   const MOTORS={frontLeft:{name:'front_left',mount:-1},frontRight:{name:'front_right',mount:1},backLeft:{name:'back_left',mount:-1},backRight:{name:'back_right',mount:1}};
   // Tank, 6- and 8-wheel and tracked robots: the same four motor names, two per side; a two-wheel
   // differential robot has one motor per side.
-  const TANK=new Set(['tank','tank2','tank6','tank8','tracks']),DIFF={left:{name:'left_drive',mount:-1},right:{name:'right_drive',mount:1}};
+  const TANK=new Set(['tank','tank2']),DIFF={left:{name:'left_drive',mount:-1},right:{name:'right_drive',mount:1}};
   const sides=motors=>Object.entries(motors).reduce((o,[k,m])=>{o[/left/i.test(k)?'left':'right'].push(m.name);return o;},{left:[],right:[]});
   const PODS={
     odometry:[{name:'par',axis:'forward',x:0,y:4},{name:'perp',axis:'strafe',x:-3,y:0}],
@@ -21,7 +21,7 @@
   function hardware(robot,localization){
     if(!SUPPORTED[localization])throw Error('Autonomous on a Control Hub needs position sensing: drive encoders, odometry pods, Pinpoint or OTOS. IMU-only setups export timed commands.');
     const drivetrain=robot.drivetrain||'mecanum',tank=TANK.has(drivetrain);
-    if(!tank&&drivetrain!=='mecanum')throw Error('Autonomous on a Control Hub is exported for mecanum and tank-style drivetrains (tank, differential, 6- and 8-wheel, tracks). Swerve, X-drive, Kiwi, H-drive and butterfly export timed commands or route geometry for your own drivetrain code.');
+    if(!tank&&drivetrain!=='mecanum')throw Error('Autonomous on a Control Hub is exported for mecanum and tank drivetrains. Swerve, X-drive, Kiwi and butterfly export timed commands or route geometry for your own drivetrain code.');
     const rpm=robot.driveRpm||312,inches=Math.PI*(robot.wheelDiameterMm||WHEEL_MM)/25.4;
     const mount=(globalThis.DeckSimConfig||require('./sim-config.js')).hubMounting(robot);
     // The robot's own names for these devices (Setup → Robot controller, or picked from its configuration), and drive
@@ -53,7 +53,7 @@
   // to a configuration.
   function robotNeeds(robot,localization,mechanisms){
     const slots=deviceSlots(robot,localization).map(s=>({name:s.name,need:s.kind,device:s.kind,label:s.label,setting:{robot:s.key}}));
-    const mech=mechanisms?.enabled?mechanismDevices(mechanisms,robot).map(x=>({name:x.name,need:x.device==='servo'?'servo':x.role==='turret'&&x.device==='crservo'?'crservo':x.role==='flywheel'||x.role==='turret'?'motor':'motorOrCr',device:x.device,label:x.label,setting:x.setting})):[];
+    const mech=mechanisms?.enabled?mechanismDevices(mechanisms,robot).map(x=>({name:x.name,need:x.device==='servo'?'servo':(x.role==='turret'||x.role==='turret2')&&x.device==='crservo'?'crservo':x.role==='flywheel'||x.role==='turret'||x.role==='turret2'?'motor':'motorOrCr',device:x.device,label:x.label,setting:x.setting})):[];
     return [...slots,...mech];
   }
   // Java double literals: Java numeric literals retain a decimal point for generated calibration constants.
@@ -576,7 +576,7 @@ ${list.map(a=>`
       if(i.kind!=='kicker'){const device=i.device==='crservo'?'crservo':'motor';
         out.push({...base,role:'roller',field:`intake${no}`,constant:`INTAKE_${no}`,name:i.motor,device,reversed:!!i.reversed,power:i.power,label:`Intake ${no} roller`,setting:{list:'intakes',index:k,field:'motor'}});
         if(i.motor2)out.push({...base,role:'roller',field:`intake${no}b`,constant:`INTAKE_${no}B`,name:i.motor2,device,reversed:!!i.reversed2,power:i.power,label:`Intake ${no} second roller`,setting:{list:'intakes',index:k,field:'motor2'}});}
-      if(Mech.deploys(i.kind))out.push({...base,role:i.kind,field:`${i.kind}${no}`,constant:`${i.kind.toUpperCase()}_${no}`,name:i.servo,device:'servo',down:i.downPos,up:i.upPos,label:`Intake ${no} ${i.kind} servo`,setting:{list:'intakes',index:k,field:'servo'}});
+      if(Mech.deploys(i.kind))out.push({...base,role:i.kind,field:`${i.kind}${no}`,constant:`${i.kind.toUpperCase()}_${no}`,name:i.servo,device:i.rampKind==='dcmotor'?'motor':i.rampKind==='crservo'?'crservo':'servo',down:i.downPos,up:i.upPos,label:`Intake ${no} ${i.kind}`,setting:{list:'intakes',index:k,field:'servo'}});
     });
     m.shooters.forEach((s,k)=>{const no=k+1,base={part:'shooter',index:k};
       out.push({...base,role:'flywheel',field:`flywheel${no}`,constant:`FLYWHEEL_${no}`,name:s.motor,device:'motor',reversed:!!s.reversed,label:`Shooter ${no} flywheel`,setting:{list:'shooters',index:k,field:'motor'}});
@@ -584,6 +584,7 @@ ${list.map(a=>`
       const kind=s.indexerKind;
       out.push({...base,role:'feeder',field:`feeder${no}`,constant:`FEEDER_${no}`,name:s.indexer,device:kind==='motor'||kind==='crservo'?kind:'servo',feeder:kind,reversed:!!s.indexerReversed,feed:s.feedPos,rest:s.restPos,label:`Shooter ${no} feeder`,setting:{list:'shooters',index:k,field:'indexer'}});
       if(s.type==='turret'&&!s.sharesTurret)out.push({...base,role:'turret',field:`turret${no}`,constant:`TURRET_${no}`,name:s.turretMotor,device:m.turret.kind==='servo'||m.turret.kind==='crservo'?m.turret.kind:'motor',reversed:!!s.turretReversed,offset:Mech.mountOffset(s.mount,robot),label:`Shooter ${no} turret`,setting:{list:'shooters',index:k,field:'turretMotor'}});
+      if(s.type==='turret'&&!s.sharesTurret&&s.turretMotor2)out.push({...base,role:'turret2',field:`turret${no}b`,constant:`TURRET_${no}B`,name:s.turretMotor2,device:m.turret.kind==='servo'||m.turret.kind==='crservo'?m.turret.kind:'motor',reversed:!!s.turretReversed,label:`Shooter ${no} turret, second ${m.turret.kind==='motor'?'motor':'servo'}`,setting:{list:'shooters',index:k,field:'turretMotor2'}});
       if(s.hood)out.push({...base,role:'hood',field:`hood${no}`,constant:`HOOD_${no}`,name:s.hood,device:'servo',...hoodPositions(m,k,robot,kin),label:`Shooter ${no} hood`,setting:{list:'shooters',index:k,field:'hood'}});
     });
     return out;
@@ -792,6 +793,8 @@ ${stops.filter(Boolean).join('\n')}
   function mechanismsSource(options,m,target,robot={}){
     const Mech=globalThis.DeckMechanisms||require('./sim-mechanisms.js'),d=mechanismDevices(m,robot,options.kinematics),specs=options.sensorSpecs||[],of=role=>d.filter(x=>x.role===role),velocity=m.shooter.control!=='power';
     const rollers=of('roller'),swings=d.filter(x=>x.role==='kicker'||x.role==='ramp'),flywheels=of('flywheel'),feeders=of('feeder'),turrets=of('turret');
+    if(swings.some(x=>x.device!=='servo'))throw Error('Exported code runs a ramp or kicker on a servo. Set its Runs on to a servo to export this robot.');
+    if(of('turret2').some(x=>x.device!=='servo'))throw Error('Exported code runs a second turret device only when the turret is on set-position servos.');
     const motorTurrets=turrets.filter(x=>x.device==='motor'),servoTurrets=turrets.filter(x=>x.device==='servo'),crTurrets=turrets.filter(x=>x.device==='crservo').map(x=>({x,s:positionSensor(specs,`shooters.${x.index}.turretMotor`)})),pushers=feeders.filter(x=>x.feeder==='pusher'),hoods=of('hood');
     // A ramp with a position sensor (an Axon's feedback wire, a potentiometer) is down or up once the sensor says so.
     const deployJoint=k=>(options.kinematics?.joints||[]).find(j=>j.drive?.signal==='deploy'&&j.drive.of==='intake:'+k);
@@ -821,6 +824,7 @@ ${stops.filter(Boolean).join('\n')}
       const t=mine.find(x=>x.role==='turret');
       const hd=mine.find(x=>x.role==='hood');
       if(hd)C.push(`    /** Hood servo: SHOOT tilts it to the shooting angle for Spin up and Shoot; REST holds it where the CAD has it. */`,`    public static final String ${hd.constant} = ${javaString(hd.name)};`,`    public static final double ${hd.constant}_SHOOT = ${n(hd.shoot)}, ${hd.constant}_REST = ${n(hd.rest)};`);
+      for(const b of mine.filter(x=>x.role==='turret2'))C.push(`    /** Second turret servo, on the same gear train: it goes where the first goes. */`,`    public static final String ${b.constant} = ${javaString(b.name)};`);
       if(t)C.push(`    /** Turret: a ${{servo:'servo',crservo:'continuous servo, steered by its feedback wire'}[t.device]||'motor with an encoder'}. It aims from where it turns on the robot, inches forward and left of the center. */`,`    public static final String ${t.constant} = ${javaString(t.name)};`,`    public static final boolean ${t.constant}_REVERSED = ${t.reversed};`,`    public static final double ${t.constant}_X = ${n(t.offset[0])}, ${t.constant}_Y = ${n(t.offset[1])};`);
       C.push('');});
     if(m.shooters.length){
@@ -849,7 +853,7 @@ ${stops.filter(Boolean).join('\n')}
           ...crTurrets.map(({x,s:sensor})=>`    public static final String ${x.constant}_SENSOR = ${javaString(sensor?.name||x.name+'Position')};\n    public static final double ${x.constant}_VOLTS_PER_DEGREE = ${(sensor?.voltsPerUnit||-3.3/360).toPrecision(6)};`)]:[]));
     }
     // Device fields and setup.
-    const type=x=>x.device==='servo'?'Servo':x.device==='crservo'&&x.role==='turret'?'CRServo':x.role==='flywheel'||x.role==='turret'?'DcMotorEx':'DcMotorSimple';
+    const type=x=>x.device==='servo'?'Servo':x.device==='crservo'&&(x.role==='turret'||x.role==='turret2')?'CRServo':x.role==='flywheel'||x.role==='turret'||x.role==='turret2'?'DcMotorEx':'DcMotorSimple';
     const fields=[...d.map(x=>`    private ${type(x)} ${x.field};`),...sensed.map(({x})=>`    private AnalogInput ${x.field}Sensor;`),...crTurrets.map(({x})=>`    private AnalogInput ${x.field}Sensor;\n    private double ${x.field}Degrees = 0, ${x.field}Volts = 0, ${x.field}Zero = 0, ${x.field}Wraps = 0;`)];
     const init=[];
     for(const x of d){
@@ -858,6 +862,7 @@ ${stops.filter(Boolean).join('\n')}
       else if(x.role==='flywheel')init.push(`        ${x.field} = flywheel(map, ${x.constant}, ${x.constant}_REVERSED);`);
       else if(x.role==='feeder')init.push(...(Mech.servoFeeder(x.feeder)?[`        ${x.field} = map.get(Servo.class, ${x.constant});`,`        ${x.field}.setPosition(${x.constant}_REST);`]:[`        ${x.field} = map.get(DcMotorSimple.class, ${x.constant});`,`        ${x.field}.setDirection(direction(${x.constant}_REVERSED));`]));
       else if(x.role==='hood')init.push(`        ${x.field} = map.get(Servo.class, ${x.constant});`,`        ${x.field}.setPosition(${x.constant}_REST);`);
+      else if(x.role==='turret2')init.push(`        ${x.field} = map.get(Servo.class, ${x.constant});`,`        ${x.field}.setPosition(TURRET_SERVO_CENTER);`);
       else if(x.role==='turret')init.push(...(x.device==='servo'?[`        ${x.field} = map.get(Servo.class, ${x.constant});`,`        ${x.field}.setPosition(TURRET_SERVO_CENTER);`]:x.device==='crservo'?[`        ${x.field} = map.get(CRServo.class, ${x.constant});`,`        ${x.field}Sensor = map.get(AnalogInput.class, ${x.constant}_SENSOR);`,`        ${x.field}Zero = ${x.field}Volts = ${x.field}Sensor.getVoltage();`]:[`        ${x.field} = turretMotor(map, ${x.constant}, ${x.constant}_REVERSED);`]));
     }
     for(const {x} of sensed)init.push(`        ${x.field}Sensor = map.get(AnalogInput.class, ${x.constant}_SENSOR);`);
@@ -880,7 +885,8 @@ ${stops.filter(Boolean).join('\n')}
         trackServoTurrets();
         ${x.field}Degrees = degrees;
         double position = TURRET_SERVO_CENTER + (${x.constant}_REVERSED ? -degrees : degrees) / TURRET_SERVO_DEGREES;
-        ${x.field}.setPosition(Math.max(0, Math.min(1, position)));
+        ${x.field}.setPosition(Math.max(0, Math.min(1, position)));${of('turret2').filter(y=>y.index===x.index).map(y=>`
+        ${y.field}.setPosition(Math.max(0, Math.min(1, position)));`).join('')}
     }`:`
     /** Turret ${x.index+1} to an angle (degrees from the robot's front, counterclockwise), within its range. */
     private void ${name}(double degrees) {

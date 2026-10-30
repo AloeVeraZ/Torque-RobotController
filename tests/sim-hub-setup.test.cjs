@@ -55,3 +55,9 @@ test('Calibrate shows ports only as the Control Hub reported them: its read-out,
   const off=W.deviceHtml(row('robot.frontRight'),st,{sensors:true,read});
   assert.match(off,/data-wire-read="off">Not on the Control Hub</);assert.doesNotMatch(off,/data-wire-port|Deck picks|motor port \d/);
 });
+
+test('a moving part takes motor or servo from the robot: a ramp set as continuous runs as the set-position servo the configuration has',()=>{
+  const project=C.defaults?C.defaults():T.setup();project.controller='ftc';project.kinematics=require('../ui/sim-kinematics.js').sanitize({joints:[{id:'ramp',name:'Deployable ramp',type:'revolute',lower:0,upper:90,states:{up:0,down:90}}],actuators:[{id:'rampServo',name:'Deployable ramp',joint:'ramp',kind:'crservo',device:'ramp',speed:90}]});
+  const config=RC.parse(`<?xml version='1.0'?><Robot type="FirstInspires-FTC"><LynxUsbDevice name="Control Hub Portal" serialNumber="(embedded)" parentModuleAddress="173"><LynxModule name="Control Hub" port="173"><Servo name="ramp" port="2" /></LynxModule></LynxUsbDevice></Robot>`);
+  const next=HS.apply(project,HS.plan(project,config));assert.equal(next.kinematics.actuators.find(a=>a.id==='rampServo').kind,'servo');
+});

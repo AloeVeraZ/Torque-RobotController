@@ -1,5 +1,3 @@
-package org.firstinspires.ftc.teamcode;
-
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
@@ -21,10 +19,16 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -38,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -53,9 +58,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * connection closed, every motor and continuous servo stops and servos that are not latched go limp. STOP on the Driver Station
  * stops everything too. Hub reads follow gm0: one bulk read per hub per loop; motor current and I2C sensors, which each
  * cost a transaction of their own, one device a loop in turn.
+ *
+ * No package: Sinister, in some Robot Controller builds, crashes the app on any OnBot Java class in one, by asking for it by a name with slashes
+ * ("Invalid name: org/firstinspires/ftc/teamcode/TorqueDebug", seen on FTC SDK 12.0).
  */
-@TeleOp(name = "Deck Debug", group = "Deck")
-public class DeckDebug extends LinearOpMode {
+@TeleOp(name = "TorqueDebug", group = "Torque")
+public class TorqueDebug extends LinearOpMode {
     public static final int PORT = 20886;
     static final long WATCHDOG_MS = 300, FRAME_MS = 20;
     /** A motor drawing more than this for STALL_MS is cut until it is commanded again (a 312 RPM goBILDA stalls at 9.2 A). */
@@ -81,11 +89,17 @@ public class DeckDebug extends LinearOpMode {
     String[] i2cLast;
     long[] i2cAt;
     /** A loop Deck runs on the robot (a step test): one actuator, one sensor, gains in the sensor's raw units. */
-    static final class Loop {
-        String actuator, sensor, mode; boolean cr; int index, sensorIndex; boolean analog;
-        double target, kP, kI, kD, kF, kS, kG, tol, wrap, integral, last = Double.NaN, out, error;
-    }
-    Loop loop;
+    TorqueDebugLoop loop;
+
+    // ---- the first webcam in the configuration, if there is one: its picture goes to the Driver Station's Camera Stream
+    final List<WebcamName> webcams = new ArrayList<>();
+    final List<String> webcamNames = new ArrayList<>();
+    final ConcurrentLinkedQueue<String[]> cameraCommands = new ConcurrentLinkedQueue<>();
+    VisionPortal portal;
+    AprilTagProcessor aprilTag;
+    volatile String cameraError, cameraRange = "null", camLast;
+    volatile double camExposure = Double.NaN, camGain = Double.NaN, camDecimation = 3;
+    long camAt;
 
     final ConcurrentLinkedQueue<String> commands = new ConcurrentLinkedQueue<>();
     final AtomicReference<String> latest = new AtomicReference<>();
@@ -116,6 +130,7 @@ public class DeckDebug extends LinearOpMode {
         for (NormalizedColorSensor c : hardwareMap.getAll(NormalizedColorSensor.class)) addI2c(c, "color");
         // A colour sensor is a distance sensor too: it is one device, read once.
         for (DistanceSensor d : hardwareMap.getAll(DistanceSensor.class)) if (!(d instanceof NormalizedColorSensor)) addI2c(d, "distance");
+        for (WebcamName w : hardwareMap.getAll(WebcamName.class)) { webcams.add(w); webcamNames.add(nameOf(w)); }
         List<VoltageSensor> volts = hardwareMap.getAll(VoltageSensor.class);
         battery = volts.isEmpty() ? null : volts.get(0);
 
@@ -126,9 +141,10 @@ public class DeckDebug extends LinearOpMode {
         for (int i = 0; i < servos.size(); i++) { servoPos[i] = Double.NaN; if (servos.get(i) instanceof PwmControl) ((PwmControl) servos.get(i)).setPwmDisable(); }
         manifest = manifest();
 
-        Thread serve = new Thread(this::serve, "Deck Debug server"), send = new Thread(this::send, "Deck Debug sender");
+        startCamera();
+        Thread serve = new Thread(this::serve, "Torque Debug server"), send = new Thread(this::send, "Torque Debug sender");
         serve.setDaemon(true); send.setDaemon(true); serve.start(); send.start();
-        telemetry.addLine("Deck Debug: press START, then connect from Torque (Calibrate → Electronics → Live debug).");
+        telemetry.addLine("Torque Debug: press START, then connect from Torque (Calibrate → Electronics → Live debug).");
         telemetry.addData("Devices", "%d motors, %d servos, %d CR servos, %d digital, %d analog, %d I2C", motors.size(), servos.size(), crservos.size(), digitals.size() + touches.size(), analogs.size(), i2c.size());
         telemetry.update();
         waitForStart();
@@ -161,12 +177,13 @@ public class DeckDebug extends LinearOpMode {
                 long t = System.nanoTime();
                 if (loops % 20 == 0) { loopMs = (t - loopStart) / 20e6; loopStart = t; }
                 if (connected && now - lastFrame >= FRAME_MS) { lastFrame = now; latest.set(frame((t - start) / 1e6, loopMs, volts12, now)); synchronized (wake) { wake.notifyAll(); } }
-                if (turn % 10 == 0) { telemetry.addData("Deck Debug", connected ? "Torque connected" : "Waiting for Torque on port " + PORT); telemetry.addData("Loop", "%.1f ms", loopMs); telemetry.update(); }
+                if (turn % 10 == 0) { telemetry.addData("Torque Debug", connected ? "Torque connected" : "Waiting for Torque on port " + PORT); telemetry.addData("Loop", "%.1f ms", loopMs); telemetry.update(); }
             }
         } finally {
             running = false; stopOutputs(true);
             for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(0);
             for (CRServo s : crservos) s.setPower(0);
+            if (portal != null) portal.close();
             close();
         }
     }
@@ -185,6 +202,8 @@ public class DeckDebug extends LinearOpMode {
     //                             shortest way round a circle of that many units; gains in power per raw unit
     //   T target                  move the running loop's target
     //   X                         stop: every output off, loops ended, servos limp unless latched
+    //   V auto | V ms gain        the camera's exposure: automatic, or manual with a gain
+    //   D decimation              how far the AprilTag processor reads against how fast
     void apply(String line) {
         String[] f = line.split("\t", -1);
         if (f.length == 0 || f[0].isEmpty()) return;
@@ -200,13 +219,14 @@ public class DeckDebug extends LinearOpMode {
                 case "Q": startLoop(f); break;
                 case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; } break;
                 case "X": stopOutputs(false); break;
+                case "V": case "D": cameraCommands.add(f); break;
                 default: break;
             }
         } catch (RuntimeException ignored) { }
     }
 
     void startLoop(String[] f) {
-        Loop l = new Loop();
+        TorqueDebugLoop l = new TorqueDebugLoop();
         l.actuator = f[1]; l.sensor = f[2]; l.mode = f[3];
         l.index = motorNames.indexOf(f[1]);
         if (l.index < 0) { l.index = crNames.indexOf(f[1]); l.cr = true; }
@@ -222,7 +242,7 @@ public class DeckDebug extends LinearOpMode {
 
     /** The loop Deck asked for, one step: PID on the sensor's raw reading, plus feedforward (kF for speed, kS against friction, kG against gravity). */
     void runLoop() {
-        Loop l = loop;
+        TorqueDebugLoop l = loop;
         if (l == null) return;
         boolean vel = "vel".equals(l.mode);
         double measured = l.analog ? analogs.get(l.sensorIndex).getVoltage() : vel ? motors.get(l.sensorIndex).getVelocity() : motors.get(l.sensorIndex).getCurrentPosition();
@@ -295,14 +315,64 @@ public class DeckDebug extends LinearOpMode {
         b.append("],\"i\":[");
         for (int i = 0; i < i2c.size(); i++) { if (i > 0) b.append(','); b.append("{\"age\":").append(i2cLast[i] == null ? "null" : String.valueOf(now - i2cAt[i])).append(",\"v\":").append(i2cLast[i] == null ? "null" : i2cLast[i]).append('}'); }
         b.append(']');
-        Loop l = loop;
+        TorqueDebugLoop l = loop;
         if (l != null) b.append(",\"q\":{\"actuator\":").append(str(l.actuator)).append(",\"target\":").append(num(l.target)).append(",\"error\":").append(num(l.error)).append(",\"out\":").append(num(l.out)).append('}');
+        if (!webcams.isEmpty()) { if (camLast == null || now - camAt >= 100) { camLast = cameraJson(); camAt = now; } b.append(",\"cam\":").append(camLast); }
         return b.append('}').toString();
+    }
+
+    // ---- the camera. Its controls can take a moment and need a streaming camera, so a thread of its own sets them.
+    void startCamera() {
+        if (webcams.isEmpty()) return;
+        try {
+            aprilTag = new AprilTagProcessor.Builder().build();
+            portal = new VisionPortal.Builder().setCamera(webcams.get(0)).addProcessor(aprilTag).build();
+            Thread t = new Thread(this::cameraThread, "Torque Debug camera"); t.setDaemon(true); t.start();
+        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); portal = null; aprilTag = null; }
+    }
+    void cameraThread() {
+        try {
+            while (running && portal.getCameraState() != VisionPortal.CameraState.STREAMING) Thread.sleep(50);
+            if (!running) return;
+            ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
+            GainControl gain = portal.getCameraControl(GainControl.class);
+            cameraRange = "[" + exposure.getMinExposure(TimeUnit.MILLISECONDS) + "," + exposure.getMaxExposure(TimeUnit.MILLISECONDS) + "," + gain.getMinGain() + "," + gain.getMaxGain() + "]";
+            while (running) {
+                String[] f = cameraCommands.poll();
+                if (f == null) { Thread.sleep(20); continue; }
+                try {
+                    if ("D".equals(f[0])) { camDecimation = Double.parseDouble(f[1]); aprilTag.setDecimation((float) camDecimation); }
+                    else if ("auto".equals(f[1])) { exposure.setMode(ExposureControl.Mode.Auto); camExposure = Double.NaN; camGain = Double.NaN; }
+                    else {
+                        if (exposure.getMode() != ExposureControl.Mode.Manual) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); }
+                        long ms = Long.parseLong(f[1]); int g = Integer.parseInt(f[2]);
+                        exposure.setExposure(ms, TimeUnit.MILLISECONDS); Thread.sleep(20); gain.setGain(g); camExposure = ms; camGain = g;
+                    }
+                } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+            }
+        } catch (InterruptedException ignored) {
+        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+    }
+    String cameraJson() {
+        StringBuilder b = new StringBuilder("{\"state\":");
+        if (portal == null) b.append("\"ERROR\"");
+        else b.append(str(String.valueOf(portal.getCameraState()))).append(",\"fps\":").append(num(portal.getFps()));
+        b.append(",\"range\":").append(cameraRange).append(",\"exp\":").append(num(camExposure)).append(",\"gain\":").append(num(camGain)).append(",\"dec\":").append(num(camDecimation));
+        if (cameraError != null) b.append(",\"error\":").append(str(cameraError));
+        b.append(",\"tags\":[");
+        if (aprilTag != null) { boolean first = true; for (AprilTagDetection d : aprilTag.getDetections()) {
+            if (!first) b.append(','); first = false;
+            b.append("{\"id\":").append(d.id).append(",\"m\":").append(num(d.decisionMargin));
+            if (d.metadata != null) b.append(",\"name\":").append(str(d.metadata.name));
+            if (d.ftcPose != null) b.append(",\"r\":").append(num(d.ftcPose.range)).append(",\"b\":").append(num(d.ftcPose.bearing)).append(",\"y\":").append(num(d.ftcPose.yaw));
+            b.append('}');
+        } }
+        return b.append("]}").toString();
     }
 
     String manifest() {
         StringBuilder b = new StringBuilder("{\"deck\":\"debug\",\"version\":1");
-        list(b, "motors", motorNames); list(b, "servos", servoNames); list(b, "crservos", crNames); list(b, "digital", digitalNames); list(b, "touch", touchNames);
+        list(b, "motors", motorNames); list(b, "servos", servoNames); list(b, "crservos", crNames); list(b, "digital", digitalNames); list(b, "touch", touchNames); list(b, "cameras", webcamNames);
         b.append(",\"analog\":[");
         for (int i = 0; i < analogs.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(analogNames.get(i))).append(",\"max\":").append(num(analogs.get(i).getMaxVoltage())).append('}'); }
         b.append("],\"i2c\":[");
@@ -333,7 +403,7 @@ public class DeckDebug extends LinearOpMode {
                 synchronized (this) { closeClient(); client = s; }
                 heard = System.currentTimeMillis(); connected = true; latest.set(null);
                 synchronized (wake) { wake.notifyAll(); }
-                Thread read = new Thread(() -> read(s), "Deck Debug reader"); read.setDaemon(true); read.start();
+                Thread read = new Thread(() -> read(s), "Torque Debug reader"); read.setDaemon(true); read.start();
             }
         } catch (IOException ignored) { }
     }
@@ -360,4 +430,10 @@ public class DeckDebug extends LinearOpMode {
     }
     synchronized void closeClient() { if (client != null) { try { client.close(); } catch (IOException ignored) { } client = null; } }
     void close() { synchronized (this) { closeClient(); } try { if (server != null) server.close(); } catch (IOException ignored) { } }
+}
+
+/** A closed loop on one actuator (the Q command). */
+final class TorqueDebugLoop {
+    String actuator, sensor, mode; boolean cr; int index, sensorIndex; boolean analog;
+    double target, kP, kI, kD, kF, kS, kG, tol, wrap, integral, last = Double.NaN, out, error;
 }

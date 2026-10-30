@@ -131,6 +131,8 @@ jobs:
       # GitHub's 60-per-hour API allowance. Sizes and digests come from the release itself.
       # The new release comes first; up to five earlier ones of the channel follow, so a device a
       # partial release skips can still find the newest release with its download.
+      # Installs from before the repository's rename only accept download URLs with its old name,
+      # so the manifest keeps that name. GitHub redirects it, and newer installs accept both.
       - name: Update the channel manifest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -141,7 +143,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RUNNER_TEMP/newest.json"
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" > "$RUNNER_TEMP/recent.json" || echo '[]' > "$RUNNER_TEMP/recent.json"
           jq -s --arg channel "$channel" --arg tag "$TAG" --arg pattern "$pattern" '
-            def slim: {tag_name,prerelease,draft,body:((.body//"")[:8000]),assets:[.assets[]|{name,size,digest,state,browser_download_url}]};
+            def slim: {tag_name,prerelease,draft,body:((.body//"")[:8000]),assets:[.assets[]|{name,size,digest,state,browser_download_url:(.browser_download_url|sub("/AloeVeraZ/Torque-RobotController/";"/AloeVeraZ/SteamDeck-RobotController/"))}]};
             {schema:1,channel:$channel,releases:([.[0]|slim]+[(.[1]|if type=="array" then .[] else empty end)|select(.tag_name!=$tag and (.draft|not) and (.tag_name|test($pattern)))|slim][:5])}' "$RUNNER_TEMP/newest.json" "$RUNNER_TEMP/recent.json" > channel.json
           jq -e --arg tag "$TAG" '.releases[0].tag_name==$tag and (.releases[0].assets|length)>0 and all(.releases[0].assets[];.digest!=null and .size>0)' channel.json
           if ! gh release view "$channel-channel" >/dev/null 2>&1; then

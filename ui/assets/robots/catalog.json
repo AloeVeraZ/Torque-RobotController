@@ -18,15 +18,5 @@
     "stepSha256": "12b4faa90bb6c012cac9e4c7e0de99e7291e4020786f1eefa0197bcfe36d88d6",
     "orientation": "Source +Y is front and -Z is up, as requested. The full chassis is inverted to put the swerve wheels on the floor.",
     "assetSha256": "ca430001dd07f485a81303a22e8d744c49247ff47cc6c648d0193858b75e62c7"
-  },
-  "revduo": {
-    "id": "revduo",
-    "name": "REV DUO FTC Starter Bot (2026-27)",
-    "credit": "CAD: REV Robotics · 2026-2027 REV DUO FTC Starter Bot. Moving parts filed for animation; visual model only.",
-    "source": "https://docs.revrobotics.com/ftc-kickoff-concepts/home/2026-27-rev-duo-ftc-preview-starter-bot",
-    "stepUrl": "https://cad.onshape.com/documents/9cb9eb90e973fd37d10ee178/w/b9c02b0f4e09998f08becbd2/e/a55c018c62564f3ea8812a47",
-    "orientation": "Source -Y is front, +X is left and +Z is up; turned into the app robot frame (x forward, y left, z up). Wheels touch the floor.",
-    "stepSha256": "0aebfc11f596f8234f57bcbebe71bdc473c4eb3eb38877dca68e44b1c5b7995a",
-    "assetSha256": "e76578e97e78e30a705cf9e21680f2465a6d76f694bba54b6e484c7564433f2e"
   }
 }

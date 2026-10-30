@@ -4,12 +4,12 @@
 window.DeckSimulation={create(root,views){
   'use strict';
   // calibrate: the Calibrate view's element.
-  const calRoot=views?.calibrate||null;
+  const calRoot=views?.calibrate||null,setupRoot=views?.setup||null;
   const field=window.DeckField,planner=window.DeckPlanner,exporter=window.DeckSimExport,api=window.deck||{},native=typeof api.sim==='function';
   // Bundled chassis CAD present in this build (personal local builds only); see appearanceOptions().
   let builtins=new Set(['strafer','swechanum']);
   // The view's own elements, then Calibrate's (the guided check and, while Calibrate shows, the Send to robot panel).
-  const roots=[root,calRoot].filter(Boolean),$=selector=>{for(const r of roots){const n=r.querySelector(selector);if(n)return n;}return null;},$$=selector=>roots.flatMap(r=>[...r.querySelectorAll(selector)]),ns='http://www.w3.org/2000/svg';
+  const roots=[root,calRoot,setupRoot].filter(Boolean),$=selector=>{for(const r of roots){const n=r.querySelector(selector);if(n)return n;}return null;},$$=selector=>roots.flatMap(r=>[...r.querySelectorAll(selector)]),ns='http://www.w3.org/2000/svg';
   const KEY='deck-simulation-project-v2',OLD_KEY='deck-simulation-project-v1',finite=n=>typeof n==='number'&&Number.isFinite(n);
   const C=window.DeckSimConfig,MECH=window.DeckMechanisms,GAMES={empty:'Empty field',biobuzz:'BIOBUZZ'},STYLES={spline:'Smooth curves',sharp:'Straight lines'};
   const EXAMPLE=`import deck.pathing.DeckFollower;
@@ -128,6 +128,10 @@ public class MyAuto implements DeckAutonomous {
   // fields keeps the one it had open; each other field with a route becomes a setup of its own ("Setup 2 · Practice room"),
   // and the preset robots' old demo fields go (each preset is a built-in setup now).
   function oneField(raw){if(!raw||typeof raw!=='object')return raw;
+    // A built-in setup of a preset robot that no longer exists goes; a project open on it opens on its next setup.
+    const gone=id=>String(id||'').startsWith('preset:')&&!Object.hasOwn(window.DeckMechanisms.PRESETS,String(id).slice(7));
+    if(Array.isArray(raw.setups)&&raw.setups.some(s=>gone(s?.id))||gone(raw.setupId)){const setups=(Array.isArray(raw.setups)?raw.setups:[]).filter(s=>!gone(s?.id));raw={...raw,setups};
+      if(gone(raw.setupId)){const next=setups[0];raw=next?{...raw,...next.data,setups,setupId:next.id,setupName:next.name}:{...raw,setupId:newId()};}}
     const split=(name,d)=>{const ls=Array.isArray(d?.layouts)?d.layouts.filter(l=>l&&typeof l==='object'):[];if(ls.length<2)return [d,[]];
       const demo=l=>String(l.id).startsWith('preset-')&&!d.robotPreset,keep=ls.find(l=>l.id===d.active&&!demo(l))||ls.find(l=>!demo(l)&&l.pins?.length)||ls.find(l=>!demo(l))||ls[0];
       return [{...d,layouts:[keep],active:keep.id},ls.filter(l=>l!==keep&&!String(l.id).startsWith('preset-')&&Array.isArray(l.pins)&&l.pins.length).map(l=>({id:newId(),name:`${name} · ${l.name||'Field'}`.slice(0,40),data:{...d,layouts:[l],active:l.id,export:{...(d.export||{}),keep:false}}}))];};
@@ -163,12 +167,7 @@ public class MyAuto implements DeckAutonomous {
   const segmented=(attr,list,label)=>`<div class="segmented sim-seg" role="group" aria-label="${label}">${Object.entries(list).map(([k,v])=>`<button type="button" data-${attr}="${k}" aria-pressed="false">${v}</button>`).join('')}</div>`;
   const ICON=Object.fromEntries(Object.entries({add:'M12 5v14M5 12h14',rename:'M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4',trash:'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
     open:'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',save:'M12 4v11M7 10l5 5 5-5M5 20h14'}).map(([k,d])=>[k,`<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`]));
-  root.innerHTML=`<dialog id="sim-wiring-dialog" class="sim-wiring-dialog" aria-labelledby="sim-wiring-title"><div class="dialog-heading"><h2 id="sim-wiring-title">Control Hub wiring</h2><button type="button" id="sim-wiring-close" class="icon-button" aria-label="Close">×</button></div>
-      <div class="sim-wiring-scroll"><p class="hint">Set it up the way your robot is plugged in: which motor is on each port, the odometry and the IMU. A port left to Deck gets a free one; Send to robot writes the same ports into the robot’s configuration.</p><div id="sim-wiring-problems" role="status"></div>
-      <h3>Drivetrain</h3><p id="sim-wiring-drive-note" class="hint"></p><label for="sim-wiring-drive" class="sr-only">Drivetrain</label><select id="sim-wiring-drive"></select>
-      <h3>Hubs</h3><div id="sim-wiring-hubs"></div><h3>Drive motors and odometry</h3><div id="sim-wiring-devices"></div><p id="sim-wiring-other" class="hint"></p></div>
-      <div class="dialog-actions"><button type="button" id="sim-wiring-done" class="primary">Done</button></div></dialog>
-    <dialog id="sim-start-confirm" aria-labelledby="sim-start-confirm-title"><form method="dialog"><h2 id="sim-start-confirm-title">Is this your robot’s starting position?</h2><p id="sim-start-confirm-file" class="hint"></p><p>The simulation starts your robot exactly as this CAD is posed: slides down, arms and intakes stowed, everything inside the starting size the way it sits on the field before a match. Import it only if this is that starting configuration.</p><div class="button-row"><button type="submit" value="yes" class="primary" id="sim-start-yes">Yes, this is the starting position</button><button type="submit" value="no" class="secondary" id="sim-start-no">No, cancel</button></div></form></dialog>
+  root.innerHTML=`<dialog id="sim-start-confirm" aria-labelledby="sim-start-confirm-title"><form method="dialog"><h2 id="sim-start-confirm-title">Is this your robot’s starting position?</h2><p id="sim-start-confirm-file" class="hint"></p><p>The simulation starts your robot exactly as this CAD is posed: slides down, arms and intakes stowed, everything inside the starting size the way it sits on the field before a match. Import it only if this is that starting configuration.</p><div class="button-row"><button type="submit" value="yes" class="primary" id="sim-start-yes">Yes, this is the starting position</button><button type="submit" value="no" class="secondary" id="sim-start-no">No, cancel</button></div></form></dialog>
     <dialog id="sim-setup-delete-confirm" aria-labelledby="sim-setup-delete-title"><form method="dialog"><h2 id="sim-setup-delete-title"></h2><p>This removes the setup with its fields, planned routes, robot, mechanisms and program. It cannot be undone, so save it to a file first if you might want it back.</p><div class="button-row"><button type="submit" value="yes" class="primary danger" id="sim-setup-delete-yes">Yes, delete this setup</button><button type="submit" value="no" class="secondary" id="sim-setup-delete-no">No, keep it</button></div></form></dialog>
     <dialog id="sim-video-run" aria-labelledby="sim-video-run-title"><form method="dialog"><h2 id="sim-video-run-title">Run the autonomous first</h2><p>The Video editor films a run. Run this setup’s autonomous now and the editor opens on it when it finishes.</p><div class="button-row"><button type="submit" value="run" class="primary" id="sim-video-run-yes">Run it</button><button type="submit" value="no" class="secondary">Not now</button></div></form></dialog>
     <dialog id="sim-major-confirm" aria-labelledby="sim-major-title"><form method="dialog"><h2 id="sim-major-title"></h2><p id="sim-major-text"></p><div class="button-row"><button type="submit" value="new" class="primary" id="sim-major-new">Make a new setup</button><button type="submit" value="this" class="secondary" id="sim-major-this">Change this setup</button><button type="submit" value="cancel" class="secondary">Cancel</button></div></form></dialog>
@@ -205,72 +204,55 @@ public class MyAuto implements DeckAutonomous {
         <button class="primary" type="submit">Set starting pose</button></form>
         <div class="button-row"><button id="start-edge" class="secondary" type="button">Start at edge</button></div><p class="hint">Drag the robot, an existing obstacle or a pin from any planning tab.</p>
         <p id="start-status" role="status"></p></section>
-        <div class="sim-setup-nav"><button type="button" class="primary" data-setup-go="robot">Next: robot →</button></div></section>
-        <section class="sim-setup-page" data-setup-page="robot" aria-labelledby="sim-setup-step-robot" hidden><h2>Robot</h2>
+        <div class="sim-setup-nav"><button type="button" class="primary" data-setup-go="robot">Next: CAD →</button></div></section>
+        <section class="sim-setup-page" data-setup-page="robot" aria-labelledby="sim-setup-step-robot" hidden>
         <div id="sim-presets" class="sim-choice-cards sim-presets">${Object.entries(MECH.PRESETS).map(([id,p])=>`<button type="button" class="sim-choice" data-preset="${id}" aria-pressed="false"><strong>${p.name}</strong><span>${p.blurb}<br>${p.drive||C.drives[p.robot.drivetrain].name} · ${p.robot.length} × ${p.robot.width} in · ${p.robot.driveRpm} RPM<br>${MECH.summary(MECH.presetMechanisms(id)).replace(/, starts with \d+$/,'')}</span></button>`).join('')}</div>
         <div id="sim-preset-lock" class="sim-mech-preset" hidden><p id="sim-preset-lock-text"></p><dl id="sim-preset-about" class="sim-preset-about" hidden></dl><p id="sim-preset-note" class="hint"></p><div class="sim-preset-actions"><button type="button" class="secondary" data-preset-customize>Customize this robot</button><button type="button" class="primary" data-preset-plan>Go to path planning →</button></div></div>
         <div id="sim-robot-custom">
-        <div class="sim-robot-layout"><div class="sim-robot-cad"><div class="sim-cad-head"><h3>Your robot’s model</h3><div class="button-row"><button id="sim-model-open" class="primary" type="button">Import CAD…</button></div></div>
-        <div id="sim-model-drop" class="sim-drop"><p>Or drop your robot’s STEP file here (also URDF, SDFormat, MuJoCo, USD, GLB, STL or OBJ). Size, drivetrain, intakes and shooters fill in from it. No CAD? Skip this and type the size below.</p><p id="sim-model-import-status" class="sim-import-status" role="status"></p></div>
+        <div class="sim-robot-layout"><div class="sim-robot-cad"><div class="sim-cad-head"><div class="button-row"><button id="sim-model-open" class="primary" type="button">Import CAD…</button><button id="sim-model-remove" class="secondary" type="button" hidden>Remove model</button></div></div>
+        <div id="sim-model-drop" class="sim-drop"><p>Or drop your robot’s STEP file here (also URDF, SDFormat, MuJoCo, USD, GLB, STL or OBJ). Size, drivetrain, intakes and shooters fill in from it. No CAD? Skip this and type its size.</p><p id="sim-model-import-status" class="sim-import-status" role="status"></p></div>
         <div hidden><label for="sim-appearance">Robot model</label><select id="sim-appearance">${options({strafer:'goBILDA Strafer · mecanum',swechanum:'NYC FIRST A301 Swechanum · swerve',plain:'Simple footprint',custom:'Your imported model'},project.robot.appearance)}</select><p id="sim-model-credit" class="hint"></p></div>
         <div id="sim-model-box" hidden><div id="sim-model-preview" class="sim-model-preview"></div>
           <p id="sim-model-help" class="hint" role="status"></p>
           <div class="sim-side-assignments">${['front','back','left','right','top','bottom'].map(side=>`<button id="sim-model-${side}" data-assign-side="${side}" class="secondary" type="button" disabled>It’s the ${side}</button>`).join('')}</div>
           <div id="sim-units-box"><label for="sim-model-units">File units</label><select id="sim-model-units">${options({mm:'Millimetres',cm:'Centimetres',m:'Metres',in:'Inches'},'mm')}</select></div><p id="sim-orientation-summary" class="hint"></p>
-          <div id="sim-part-pick" class="sim-part-pick" hidden><p><b id="sim-part-name"></b> <span id="sim-part-path" class="hint"></span></p><div id="sim-part-roles" class="chips" role="group" aria-label="What this part is"></div><div class="sim-part-nav"><button type="button" class="text-button" id="sim-part-up">↑ Whole assembly</button><button type="button" class="text-button" id="sim-part-clear">Done</button></div></div>
-          <p id="sim-model-status" role="status"></p><button id="sim-model-remove" class="text-button" type="button">Remove model</button></div></div>
+          <p id="sim-model-status" role="status"></p></div></div>
         <aside class="sim-robot-specs" aria-label="Robot settings">
-        <div id="sim-parts" class="sim-parts" hidden><h3>Your robot’s parts</h3><p class="hint">Click a part on the model (again to go inside) or pick one here, then say what it is.</p><ul id="sim-part-list" class="sim-part-list"></ul></div>
-        <h3>Chassis &amp; hitbox</h3><p id="sim-mesh-size" class="hint"></p><div class="start-xy"><div><label for="sim-length">Chassis length · in</label><input id="sim-length" type="number" min="4" max="48" step="any" data-slider-min="4" data-slider-max="48" data-slider-step="0.25"></div><div><label for="sim-width">Chassis width · in</label><input id="sim-width" type="number" min="4" max="48" step="any" data-slider-min="4" data-slider-max="48" data-slider-step="0.25"></div></div>
-        <div class="start-xy"><div><label for="sim-height">Chassis height · in</label><input id="sim-height" type="number" min="1" max="48" step="any" data-slider-min="1" data-slider-max="36" data-slider-step="0.25"></div><div><label for="sim-mass">Mass · lb</label><input id="sim-mass" type="number" min="1" max="150" step="any" data-slider-min="0.5" data-slider-max="100" data-slider-step="0.1"></div></div><p id="sim-footprint" class="hint"></p>
-        <div class="sim-drive-group"><h3>Drivetrain</h3><div class="start-xy"><div><label for="sim-drivetrain">Drivetrain</label><select id="sim-drivetrain">${options(Object.fromEntries(Object.entries(C.drives).map(([k,v])=>[k,v.name])),project.robot.drivetrain)}</select></div></div><p id="sim-drive-cad" class="hint"></p><p id="sim-drive-note" class="hint"></p></div>
-        <h3>Motors &amp; power</h3><div class="start-xy"><div><label for="sim-rpm">Wheel RPM</label><input id="sim-rpm" type="number" min="30" max="6000" data-slider-max="6000" step="any" data-slider-step="1" data-slider-min="50"></div><div><label for="sim-wheel">Wheel diameter · mm</label><input id="sim-wheel" type="number" min="20" max="300" step="any" data-slider-min="24" data-slider-max="200"></div></div>
-        <label for="sim-maxspeed">Default autonomous motor power · 0–1</label><input id="sim-maxspeed" type="number" min="0" max="1" data-slider-max="1" data-slider-step="0.05" step="any"><p class="hint">0 stops the motors; 0.8 allows up to 80% power. Each path can override this default. Actual speed depends on gearing, load and traction.</p><label for="sim-drive-style">Teleop driving style</label><select id="sim-drive-style"><option value="robot">Robot-centric</option><option value="field">Field-centric</option></select></aside></div>
+        <h3>Chassis hitbox</h3><p id="sim-mesh-size" hidden></p><div class="start-xy sim-hitbox"><div><label for="sim-length">Length · in</label><input id="sim-length" type="number" min="4" max="48" step="any" data-slider-min="4" data-slider-max="48" data-slider-step="0.25"></div><div><label for="sim-width">Width · in</label><input id="sim-width" type="number" min="4" max="48" step="any" data-slider-min="4" data-slider-max="48" data-slider-step="0.25"></div><div><label for="sim-height">Height · in</label><input id="sim-height" type="number" min="1" max="48" step="any" data-slider-min="1" data-slider-max="36" data-slider-step="0.25"></div><div><label for="sim-mass">Mass · lb</label><input id="sim-mass" type="number" min="1" max="150" step="any" data-slider-min="0.5" data-slider-max="100" data-slider-step="0.1"></div></div><p id="sim-footprint" class="hint"></p>
+        <div id="sim-parts" class="sim-parts" hidden><h3>Your robot’s parts</h3><p class="hint">Click a part on the model (again to go inside) or pick one here, then say what it is.</p><div id="sim-part-pick" class="sim-part-pick" hidden><p><b id="sim-part-name"></b> <span id="sim-part-path" class="hint"></span></p><div id="sim-part-roles" class="chips" role="group" aria-label="What this part is"></div><div class="sim-part-nav"><button type="button" class="text-button" id="sim-part-up">↑ Whole assembly</button><button type="button" class="text-button" id="sim-part-clear">Done</button></div></div><ul id="sim-part-list" class="sim-part-list"></ul></div></aside></div>
 </div>
         <div class="sim-setup-nav"><button type="button" class="secondary" data-setup-go="field">← Back</button><button type="button" class="primary" data-setup-go="mechanisms">Next: mechanisms →</button></div></section>
         <section class="sim-setup-page" data-setup-page="controller" aria-labelledby="sim-setup-step-controller" hidden><h2>Robot controller</h2><div id="ctl-preset" class="sim-mech-preset" hidden><p id="ctl-preset-text"></p><button type="button" class="secondary" data-preset-customize>Customize this robot</button></div><div class="sim-setup-cols" id="sim-ctl-cols"><div class="sim-setup-col">
-        <div class="sim-ctl-choice"><h3 class="sim-setup-sub">What runs your robot</h3><div class="sim-big-toggle">${segmented('controller',{ftc:'FTC Control Hub',motionmodule:'MotionModule'},'Robot controller')}</div><p id="sim-controller-note" class="hint"></p></div>
-        <section id="sim-ctl-usb" class="sim-ctl-card"><h3>Read it from your Control Hub</h3><p class="hint">Plug it in by USB-C with the robot on. Devices are matched by name.</p><button type="button" class="primary" id="sim-hub-setup" title="Needs the Control Hub plugged into this computer by USB">Set up from the Control Hub</button><p id="sim-hub-status" class="hint" role="status"></p><ul id="mech-hub-result" class="sim-hub-result" hidden></ul></section>
-        <section id="sim-ctl-sensors" class="sim-ctl-section"><h3>Sensors</h3><label class="check sim-pinpoint-on" for="sim-pinpoint-on" hidden><input id="sim-pinpoint-on" type="checkbox"> goBILDA Pinpoint with 2 odometry pods</label><ul id="sim-sensor-list" class="sim-sensor-list"></ul><label for="sim-sensor-add" class="sr-only">Add a sensor</label><select id="sim-sensor-add"></select><select id="sim-localization" hidden aria-hidden="true">${options(Object.fromEntries(Object.entries(C.sensors).filter(([,v])=>!v.hidden).map(([k,v])=>[k,v.name])),project.sensors.localization)}</select><p id="sim-sensor-note" class="hint"></p><label for="sim-imu-source">The IMU (measures turning)</label><select id="sim-imu-source"></select><p id="sim-imu-note" class="hint"></p><div id="sim-hub-mount" hidden><div class="start-xy"><div><label for="sim-hub-logo">Control Hub logo faces</label><select id="sim-hub-logo"></select></div><div><label for="sim-hub-usb">Its USB ports face</label><select id="sim-hub-usb"></select></div></div></div><details id="sim-odometry" class="sim-mech-code" hidden><summary>Where the odometry sits</summary><p id="sim-odometry-note" class="hint"></p><div id="sim-odometry-list" class="sim-device-list"></div></details></section>
-</div><div class="sim-setup-col sim-ctl-ports-col"><section id="sim-ctl-ports" class="sim-ctl-section"><h3>Ports</h3><div id="sim-config-hubs"></div><p id="sim-wiring-summary" class="hint"></p><div class="button-row"><button type="button" class="secondary" id="sim-wiring-open" aria-haspopup="dialog">Drive motor models and odometry…</button></div>
+        <div class="sim-ctl-choice"><h3 class="sim-setup-sub">What runs your robot</h3><p id="sim-controller-now"></p><p id="sim-controller-note" class="hint"></p></div>
+        <section id="sim-ctl-sensors" class="sim-ctl-section"><h3>How it knows where it is</h3><label class="check sim-pinpoint-on" for="sim-pinpoint-on" hidden><input id="sim-pinpoint-on" type="checkbox"> goBILDA Pinpoint with 2 odometry pods</label><div id="sim-sensor-cards" class="sim-pick-cards" role="group" aria-label="Position sensors"></div><select id="sim-localization" hidden aria-hidden="true">${options(Object.fromEntries(Object.entries(C.sensors).filter(([,v])=>!v.hidden).map(([k,v])=>[k,v.name])),project.sensors.localization)}</select><p id="sim-sensor-note" class="hint"></p><h3>What measures turning</h3><div id="sim-imu-cards" class="sim-pick-cards" role="group" aria-label="What measures turning"></div><select id="sim-imu-source" hidden aria-hidden="true"></select><p id="sim-imu-note" class="hint"></p><div id="sim-hub-mount" hidden><div class="start-xy"><div><label for="sim-hub-logo">Control Hub logo faces</label><select id="sim-hub-logo"></select></div><div><label for="sim-hub-usb">Its USB ports face</label><select id="sim-hub-usb"></select></div></div></div><details id="sim-odometry" class="sim-mech-code" hidden><summary>Where the odometry sits</summary><p id="sim-odometry-note" class="hint"></p><div id="sim-odometry-list" class="sim-device-list"></div></details></section>
+</div><div class="sim-setup-col sim-ctl-ports-col"><section id="sim-ctl-ports" class="sim-ctl-section">
         <details id="sim-device-names" class="sim-mech-code" hidden><summary>Device names and motor directions</summary><p class="hint">Tick a drive motor that turns the wrong way.</p><div id="sim-device-list" class="sim-device-list"></div></details>
-        <details class="sim-mech-code"><summary>Everything plugged in, as a list</summary><div id="sim-config-table"></div></details>
-        <details id="sim-config-summary" class="sim-mech-code" hidden><summary>Configure Robot on the robot (advanced)</summary><div id="sim-robot-read" class="sim-robot-read"><div class="start-xy"><div><label for="sim-robot-source">Read the robot over</label><select id="sim-robot-source"><option value="usb">USB cable (Control Hub plugged into this computer)</option></select></div><div><label for="sim-robot-configs">Configuration</label><select id="sim-robot-configs" hidden></select></div></div><div class="button-row"><button type="button" class="secondary" id="sim-robot-usb">Read the robot’s configurations</button><button type="button" class="secondary" id="sim-robot-dashboard" title="Program &amp; Manage, OnBot Java and Blocks, served by the robot, through the USB cable">Open the robot’s dashboard (USB)</button></div><p id="sim-robot-status" class="hint" role="status"></p><div id="sim-robot-devices"></div></div></details></section><section id="sim-timed-settings"><h3>Timed driving</h3><p class="hint">With no position sensor, the robot drives each path for a set time, then stops. The times come from the robot’s drivetrain, motors, wheels and weight (step 2), so there is nothing to measure.</p>
+                <details id="sim-config-summary" class="sim-mech-code" hidden><summary>Configure Robot on the robot (advanced)</summary><div id="sim-robot-read" class="sim-robot-read"><div class="start-xy"><div><label for="sim-robot-source">Read the robot over</label><select id="sim-robot-source"><option value="usb">USB cable (Control Hub plugged into this computer)</option></select></div><div><label for="sim-robot-configs">Configuration</label><select id="sim-robot-configs" hidden></select></div></div><div class="button-row"><button type="button" class="secondary" id="sim-robot-usb">Read the robot’s configurations</button><button type="button" class="secondary" id="sim-robot-dashboard" title="Program &amp; Manage, OnBot Java and Blocks, served by the robot, through the USB cable">Open the robot’s dashboard (USB)</button></div><p id="sim-robot-status" class="hint" role="status"></p><div id="sim-robot-devices"></div></div></details></section><section id="sim-timed-settings"><h3>Timed driving</h3><p class="hint">With no position sensor, the robot drives each path for a set time, then stops. The times come from the robot’s drivetrain, motors, wheels and weight (steps 2 and 3), so there is nothing to measure.</p>
           <dl id="sim-timed-summary" class="sim-timed-summary"></dl>
           <label class="check" for="sim-timed-measured"><input id="sim-timed-measured" type="checkbox"> Use numbers measured on my real robot instead</label>
           <div id="sim-timed-manual" hidden><p class="hint">Drive the robot at the default autonomous power for 1 s and for 2 s, and measure how far it went each time once it stopped. The difference is the distance per second.</p><h4 class="sim-setup-group">Speed</h4><div class="start-xy"><div><label for="sim-timed-forward">Forward speed at full power · in/s</label><input id="sim-timed-forward" type="number" min="0.000001" data-slider-max="500" step="any" data-slider-step="1" data-slider-min="1"></div><div><label for="sim-timed-strafe">Sideways speed at full power · in/s</label><input id="sim-timed-strafe" type="number" min="0.000001" data-slider-max="500" step="any" data-slider-step="1" data-slider-min="1"></div></div><h4 class="sim-setup-group">Starting and stopping</h4><div class="start-xy"><div><label for="sim-timed-startup">Speed-up time · s</label><input id="sim-timed-startup" type="number" min="0" data-slider-max="3" step="any"></div><div><label for="sim-timed-stopping">Coasting time · s</label><input id="sim-timed-stopping" type="number" min="0" data-slider-max="2" step="any"></div></div><div class="start-xy"><div><label for="sim-timed-strafe-stopping">Sideways coasting time · s</label><input id="sim-timed-strafe-stopping" type="number" min="0" data-slider-max="2" step="any"></div><div><label for="sim-timed-heading">Heading correction strength</label><input id="sim-timed-heading" type="number" min="0" data-slider-max="10" step="any"></div></div></div><p id="sim-timed-status" class="hint" role="status"></p></section><section class="sim-advanced" hidden></section></div></div>
         <div class="sim-setup-nav"><button type="button" class="secondary" data-setup-go="mechanisms">← Back</button><button type="button" class="primary" id="sim-setup-next">Next: path planning →</button></div></section>
         <section class="sim-setup-page" data-setup-page="mechanisms" aria-labelledby="sim-setup-step-mechanisms" hidden><h2>Mechanisms</h2><p class="hint">Everything on your robot that moves.</p>
-        <p id="mech-field-note" class="hint"></p>
-        <div class="sim-mech-layout"><div class="sim-mech-main">
+        <div class="sim-mech-layout"><aside class="sim-garage" aria-label="Your robot"><h3>Your robot</h3><div id="mech-rail" class="sim-garage-rail"></div><div class="sim-mech-toolbar"><button type="button" class="primary" id="mech-add" aria-expanded="false" aria-controls="mech-picker">+ Add mechanism</button><button type="button" class="secondary" id="mech-from-cad">Configure from CAD</button></div><p id="mech-list-status" class="hint sim-mech-status" role="status"></p><p id="mech-count" class="hint sim-mech-count"></p></aside><div class="sim-mech-main"><div id="mech-stats" class="sim-stats" hidden></div>
         <div id="mech-preset" class="sim-mech-preset" hidden><p id="mech-preset-text"></p><label class="check sim-chassis-check" for="mech-chassis-edit" hidden><input id="mech-chassis-edit" type="checkbox"> Edit the chassis motors (names and Control Hub ports)</label><div class="sim-preset-actions"><button type="button" class="secondary" data-preset-customize>Customize this robot</button><button type="button" class="primary" data-preset-plan>Go to path planning →</button></div></div>
-        <div class="sim-mech-toolbar"><button type="button" class="primary" id="mech-add" aria-expanded="false" aria-controls="mech-picker">+ Add mechanism</button><button type="button" class="secondary" id="mech-from-cad">Configure from CAD</button><button type="button" class="secondary" id="mech-from-hub" title="Needs the Control Hub plugged into this computer by USB">Configure from Control Hub</button></div>
+        <section id="mech-drive" class="sim-mech-part"><div class="sim-mech-head"><h4>Chassis</h4></div><div class="sim-drive-group"><div class="start-xy"><div><label for="sim-drivetrain">Drivetrain</label><select id="sim-drivetrain">${options(Object.fromEntries(Object.entries(C.drives).map(([k,v])=>[k,v.name])),project.robot.drivetrain)}</select></div></div><p id="sim-drive-cad" class="hint"></p><p id="sim-drive-note" class="hint"></p></div><div id="sim-drive-settings"><span class="sim-mech-label">Motors &amp; power</span><div class="start-xy"><div><label for="sim-rpm">Wheel RPM</label><input id="sim-rpm" type="number" min="30" max="6000" data-slider-max="6000" step="any" data-slider-step="1" data-slider-min="50"></div><div><label for="sim-wheel">Wheel diameter · mm</label><input id="sim-wheel" type="number" min="20" max="300" step="any" data-slider-min="24" data-slider-max="200"></div></div><label for="sim-maxspeed">Default auto chassis motor power · 0–1</label><input id="sim-maxspeed" type="number" min="0" max="1" data-slider-max="1" data-slider-step="0.05" step="any"><p class="hint">0 stops the motors; 0.8 allows up to 80% power. Each path can override this default. Actual speed depends on gearing, load and traction.</p><label for="sim-drive-style">Teleop driving style</label><select id="sim-drive-style"><option value="robot">Robot-centric</option><option value="field">Field-centric</option></select></div><div id="mech-drive-ports" class="sim-wire-block"></div></section>
+        
         <div id="mech-chassis" class="sim-chassis" hidden></div>
-        <p id="mech-list-status" class="hint sim-mech-status" role="status"></p><details id="mech-cad-details" class="sim-mech-code" hidden><summary>What was found</summary><ul id="mech-cad-list" class="sim-hub-result"></ul></details><ul id="mech-hub-list" class="sim-hub-result" hidden></ul>
+        
         <div id="mech-picker" hidden></div>
-        <div id="mech-intakes"></div><div id="mech-shooters"></div><div id="mech-parts"></div>
-        <p id="mech-count" class="hint sim-mech-count"></p>
+        <div id="mech-intakes"></div><section id="mech-feeder" class="sim-mech-part" hidden><div class="sim-mech-head"><h4>Feeder</h4></div><p class="hint">Part of the intake: it moves pieces up to the shooters.</p><div class="sim-wire-block" data-wire-for="feeder"></div><label class="check sim-with-intake" for="mech-with-intake"><input id="mech-with-intake" type="checkbox"> Turns together with the intake rollers</label><div class="start-xy"><div><label for="mech-transfer">Transfer time · s</label><input id="mech-transfer" type="number" min="0" max="10" step="any" data-slider-max="4" data-slider-step="0.05"></div><div><label for="mech-index">Indexing time · s</label><input id="mech-index" type="number" min="0" max="5" step="any" data-slider-max="2" data-slider-step="0.05"></div></div></section>
+        <div id="mech-shooters"></div><section id="mech-flywheel" class="sim-mech-part" hidden><span class="sim-mech-label">Flywheel</span><div class="start-xy"><div><label for="mech-rpm">Flywheel speed · RPM</label><input id="mech-rpm" type="number" min="100" max="30000" step="any" data-slider-step="50"></div><div><label for="mech-spinup">Spin-up time · s</label><input id="mech-spinup" type="number" min="0" max="10" step="any" data-slider-max="3" data-slider-step="0.05"></div></div><p id="mech-rpm-note" class="hint"></p><span class="sim-mech-label">Velocity PIDF</span><div class="sim-grid4">${['p','i','d','f'].map(k=>`<div><label for="mech-pidf-${k}">${k.toUpperCase()}</label><input id="mech-pidf-${k}" data-pidf="${k}" type="number" min="0" max="1000" step="any"></div>`).join('')}</div><p class="hint">Leave all four empty for the SDK’s default. The guided check in Calibrate measures them.</p></section>
+        <section id="mech-turret" class="sim-mech-part" hidden><div class="sim-mech-head"><h4>Turret</h4></div><div class="start-xy"><div><label for="mech-turret-speed">Turns at · °/s</label><input id="mech-turret-speed" type="number" min="5" max="2000" step="any" data-slider-max="720" data-slider-step="5"></div><div><label for="mech-turret-range">Turns up to · ± °</label><input id="mech-turret-range" type="number" min="5" max="180" step="1"></div></div>
+          <div class="sim-wire-block" data-wire-for="turret"></div><span class="sim-mech-label">Gear train</span><div id="mech-gears"></div><button type="button" class="secondary" id="mech-gear-add">+ Add a gear pair</button></section>
+        <div id="mech-parts"></div>
+        
         <p id="mech-empty" class="hint sim-mech-empty" hidden>No mechanisms yet. Press + Add mechanism and pick what your robot has (an intake, a lift, a claw…), then Configure from CAD finds each one in your robot’s CAD.</p>
-        <section id="mech-timing"><h3>Shooter timing</h3>
-        <label for="mech-spinup">Spin-up time · s</label><input id="mech-spinup" type="number" min="0" max="10" step="any" data-slider-max="3" data-slider-step="0.05">        <div class="start-xy"><div><label for="mech-transfer">Transfer time · s</label><input id="mech-transfer" type="number" min="0" max="10" step="any" data-slider-max="4" data-slider-step="0.05"></div><div><label for="mech-index">Indexing time · s</label><input id="mech-index" type="number" min="0" max="5" step="any" data-slider-max="2" data-slider-step="0.05"></div></div>
-        <div id="mech-turret-timing" class="start-xy"><div><label for="mech-turret-speed">Turret turn speed · °/s</label><input id="mech-turret-speed" type="number" min="5" max="2000" step="any" data-slider-max="720" data-slider-step="5"></div><div><label for="mech-turret-range">Turret turns up to · ± °</label><input id="mech-turret-range" type="number" min="5" max="180" step="1"></div></div>
-        <details class="sim-mech-code"><summary>Flywheel and turret on the robot</summary><label for="mech-fly-control">Flywheel speed</label><select id="mech-fly-control">${options(MECH.FLYWHEELS,'velocity')}</select>
-        <div id="mech-fly-velocity"><div class="start-xy"><div><label for="mech-rpm">Flywheel speed · RPM</label><input id="mech-rpm" type="number" min="100" max="6000" step="any" data-slider-step="50"></div><div><label for="mech-tpr">Flywheel encoder ticks per revolution</label><input id="mech-tpr" type="number" min="1" max="10000" step="any" data-slider-max="2000"></div></div>
-          <label for="mech-tolerance">At speed within · ±%</label><input id="mech-tolerance" type="number" min="1" max="50" step="any" data-slider-max="20">
-          <p class="hint">Velocity control on the hub keeps the flywheel at this speed with its encoder. Leave the PIDF empty for the SDK's own values; the check TeleOp (hold Y) measures the flywheel's top speed and shows REV's values to enter here.</p>
-          <div class="sim-grid4"><div><label for="mech-pidf-p">P</label><input id="mech-pidf-p" data-pidf="p" type="number" min="0" max="1000" step="any"></div><div><label for="mech-pidf-i">I</label><input id="mech-pidf-i" data-pidf="i" type="number" min="0" max="1000" step="any"></div><div><label for="mech-pidf-d">D</label><input id="mech-pidf-d" data-pidf="d" type="number" min="0" max="1000" step="any"></div><div><label for="mech-pidf-f">F</label><input id="mech-pidf-f" data-pidf="f" type="number" min="0" max="1000" step="any"></div></div></div>
-        <div id="mech-fly-power" hidden><label for="mech-fly-power-value">Flywheel power · 0–1</label><input id="mech-fly-power-value" type="number" min="0.05" max="1" step="any"><p class="hint">With no encoder the flywheel runs at this power and counts as at speed after the spin-up time.</p></div>
-        <div id="mech-push-box" hidden><label for="mech-push">Pusher stays at its push position · s</label><input id="mech-push" type="number" min="0.05" max="2" step="any" data-slider-max="0.5"><p class="hint">It pushes once per indexing time (at least twice this long) and waits at rest in between, so the next piece can drop in.</p></div>
-        <div id="mech-turret-code"><label for="mech-turret-kind">Turret turns on a</label><select id="mech-turret-kind">${options(MECH.TURRETS,'motor')}</select>
-          <div id="mech-turret-motor-box"><label for="mech-turret-tpd">Encoder ticks per turret degree</label><input id="mech-turret-tpd" type="number" min="0.01" max="10000" step="any" data-slider-max="50"></div>
-          <div id="mech-turret-servo-box" class="start-xy" hidden><div><label for="mech-turret-center">Servo position facing forward · 0–1</label><input id="mech-turret-center" type="number" min="0" max="1" step="any"></div><div><label for="mech-turret-degrees">Turret turns from servo position 0 to 1 · °</label><input id="mech-turret-degrees" type="number" min="10" max="3600" step="any" data-slider-max="720"></div></div></div>
-        <p class="hint">Used in the exported robot code. Start the robot with each turret facing forward: a motor turret counts its encoder from where it is at INIT.</p></details></section>
         <section id="mech-preloads"><h3>Preloads</h3><p class="hint">BIOBUZZ robots hold up to 4 pieces in total and start with up to 4 pollen.</p>
         <div class="start-xy"><div><label for="mech-cap-pollen">Pollen capacity</label><input id="mech-cap-pollen" type="number" min="0" max="4" step="1"></div><div><label for="mech-cap-nectar">Nectar capacity</label><input id="mech-cap-nectar" type="number" min="0" max="4" step="1"></div></div>
         <p id="mech-nectar-note" class="hint"></p>
         <label for="mech-preload">Pollen it starts with</label><input id="mech-preload" type="number" min="0" max="4" step="1"></section>
-        </div><aside class="sim-mech-aside">
-          <div id="mech-model-box" class="sim-mech-model" hidden><div id="mech-model-preview" class="sim-model-preview"></div><ul id="mech-model-key" class="sim-mech-key"></ul><p id="mech-model-help" class="hint">Each part is marked. Choose “Place on model” on a part, then click it here. Set the front in step 2.</p><section id="mech-joints" class="sim-joints" aria-label="Moving parts" hidden></section></div>
+        <section id="mech-joints" class="sim-joints" aria-label="Moving parts" hidden></section></div><aside class="sim-mech-aside">
+          <div id="mech-model-box" class="sim-mech-model" hidden><div id="mech-model-preview" class="sim-model-preview"></div><ul id="mech-model-key" class="sim-mech-key"></ul><p id="mech-model-help" class="hint"></p></div>
         </aside></div>
         <div class="sim-setup-nav"><button type="button" class="secondary" data-setup-go="robot">← Back</button><button type="button" class="primary" data-setup-go="controller">Next: robot controller →</button></div></section></div>
       <div data-panel="plan" id="sim-panel-plan" role="tabpanel" aria-labelledby="sim-tab-plan" hidden><p id="sim-demo-note" class="sim-demo-note" hidden></p>
@@ -311,12 +293,36 @@ public class MyAuto implements DeckAutonomous {
         <section class="sim-log"><pre id="sim-log" role="log" aria-label="Run output">No run yet. Press Run and each step of the run is listed here.</pre></section>
         <p class="hint sim-credit">Route planning and following use the Deck controller. Third-party physics and component licences are in the app’s licenses folder.</p></div>
     </section></div>`;
+  // One tab, three steps: Setup says what electronics the robot has, Configure says what is plugged into them and what each
+  // is called, and Calibrate debugs and tunes them on the robot. Setup and Configure share an app view; all show these steps.
+  const flowArrow='<svg class="ui-icon flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17M14 6l6 6-6 6"/></svg>';
+  const flowSteps=`<nav class="flow-steps" aria-label="Setup and Calibrate steps"><button type="button" data-flow="setup"><span class="flow-num" aria-hidden="true">1</span>Setup</button>${flowArrow}<button type="button" data-flow="configure"><span class="flow-num" aria-hidden="true">2</span>Configure</button>${flowArrow}<button type="button" data-flow="calibrate"><span class="flow-num" aria-hidden="true">3</span>Calibrate</button></nav>`;
+  // Setup (its own app view): the electronics on the robot and what is plugged into them, typed in or read from the Control
+  // Hub's configuration. Simulate and Calibrate work from this.
+  if(setupRoot)setupRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-grid" id="rs-step-setup"><div class="cal-flow">
+      <section class="cal-card" aria-labelledby="rs-control-title"><h2 id="rs-control-title">Robot control system</h2><div class="sim-big-toggle">${segmented('controller',{ftc:'FTC · Control Hub',motionmodule:'Other robot'},'Robot control system')}</div></section>
+      <section class="cal-card" id="rs-robot-card" aria-labelledby="rs-robot-title"><h2 id="rs-robot-title">Your robot</h2><p id="rs-plug" class="rs-plug" role="status"><i class="dot"></i><span>Plug the Control Hub in by USB-C, or join its Wi-Fi, with the robot on.</span></p>
+        <ul id="rs-checks" class="rs-checks" hidden></ul><p id="rs-status" class="hint" role="status"></p><p id="rs-matched" hidden></p>
+        <div class="button-row"><button id="rs-read" class="secondary" type="button">Check again</button><button id="rs-scan" class="primary" type="button">Scan</button></div></section>
+      <section class="cal-card" id="rs-configs-card" aria-labelledby="rs-configs-title"><h2 id="rs-configs-title">Available configurations</h2><div id="rs-configs" class="rs-configs" role="list"></div>
+        <form id="rs-new-form" class="rs-new" hidden><label class="sr-only" for="rs-new-name">New configuration’s name</label><input id="rs-new-name" placeholder="Configuration name" maxlength="40" spellcheck="false"><button class="primary" type="submit">Create</button><button id="rs-new-cancel" class="secondary" type="button">Cancel</button></form>
+        <div class="button-row"><button id="rs-new" class="secondary" type="button">New configuration</button></div></section>
+      <section class="cal-card" id="rs-test" aria-labelledby="rs-test-title" hidden><h2 id="rs-test-title">Which hub is which?</h2><div id="rs-test-body"></div></section>
+    </div><div class="cal-side" id="rs-electronics">
+      <section class="cal-card" aria-labelledby="rs-hubs-title"><h2 id="rs-hubs-title">Electronics</h2><div id="rs-hubs"></div><div id="rs-problems"></div></section>
+    </div></div>
+    <div id="rs-step-configure" class="rs-configure" hidden></div></div>
+    <dialog id="rs-active-confirm" aria-labelledby="rs-active-title"><form method="dialog"><h2 id="rs-active-title"></h2><p id="rs-active-text"></p><div class="button-row"><button id="rs-active-yes" class="primary" type="button">Yes, make it active</button><button id="rs-active-no" class="secondary" type="button">No</button></div></form></dialog>`;
   // Calibrate (its own app view): send the code with its check TeleOp, run the guided check, and the other things to
   // measure on the real robot. It uses this setup and the same Send to robot panel, moved here while it shows.
-  if(calRoot)calRoot.innerHTML=`<div class="cal-page"><div class="cal-head"><div id="cal-setup-slot" class="cal-setup-slot"></div><button id="cal-open-sim" class="secondary" type="button">Open in Simulate</button></div>
-    <div class="cal-tabs" role="tablist" aria-label="Calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
-    <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section><div class="cal-grid"><div class="cal-flow">
-      <section class="cal-card" aria-labelledby="cal-hub-title"><h2 id="cal-hub-title">Control Hub</h2><p class="hint">Plug it in by USB-C with the robot on. Deck reads every motor, servo and sensor from its active configuration.</p>
+  if(calRoot)calRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-head"><p id="cal-saved" class="hint" role="status"></p><button id="cal-open-sim" class="secondary" type="button">Open in Simulate</button><button id="cal-save" class="primary" type="button">Save</button></div>
+    <div class="cal-tabs" role="tablist" aria-label="Debug or calibrate"><button type="button" role="tab" id="cal-tab-debug" data-cal-top="debug" aria-controls="cal-panel-debug">Debug</button><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera">Camera</button><button type="button" role="tab" id="cal-tab-calibrate" data-cal-top="calibrate" aria-controls="cal-panel-calibrate">Calibrate</button></div>
+    <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
+    <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera" hidden><section class="cal-card" id="cal-camera"></section></div>
+    <div id="cal-panel-calibrate" role="tabpanel" aria-labelledby="cal-tab-calibrate" data-cal-top-panel="calibrate" hidden>
+    <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
+    <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><div class="cal-grid"><div class="cal-flow">
+      <section class="cal-card" aria-labelledby="cal-hub-title"><h2 id="cal-hub-title">Control Hub</h2><p class="hint">Plug it in by USB-C with the robot on. Torque reads every motor, servo and sensor from its active configuration.</p>
         <div class="button-row"><button id="cal-hub-setup" class="primary" type="button">Set up from the Control Hub</button></div><p id="cal-hub-status" class="hint" role="status"></p><ul id="cal-hub-result" class="sim-hub-result" hidden></ul></section>
       <p id="cal-unsupported" class="cal-note" hidden></p>
       <section class="cal-card cal-step" aria-labelledby="cal-step1"><span class="cal-num" aria-hidden="true">1</span><div class="cal-body"><h2 id="cal-step1">Put the check on the robot</h2><p class="hint">Sends the autonomous and its check TeleOp, then builds them. Nothing starts.</p><div id="cal-send-slot"></div></div></section>
@@ -330,9 +336,8 @@ public class MyAuto implements DeckAutonomous {
       <section class="cal-card" id="cal-checklist" aria-labelledby="cal-checklist-title"><h2 id="cal-checklist-title">Also check on the robot</h2></section>
     </div><div class="cal-side" id="cal-electronics">
       <section class="cal-card" aria-labelledby="cal-hubs-title"><h2 id="cal-hubs-title">What the Control Hub reports</h2><div id="cal-hubs"></div></section>
-      <section class="cal-card" id="cal-devices-card" aria-labelledby="cal-devices-title" hidden><h2 id="cal-devices-title">Motors, servos and sensors</h2><p class="hint">Ports come from the Control Hub. Pick each device's model (a 6000 RPM motor, an Axon servo…) and the sensors on it: the hub's configuration does not say. The simulation and the code you send use these.</p><div id="cal-devices" class="cal-devices"></div></section>
     </div></div></div>
-    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div></div>`;
+    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div></div></div>`;
   const graph=$('#simulation-field'),robotGlyph=$('#field-robot'),estimateShape=$('#sim-estimate'),targetMark=$('#sim-target'),elementsLayer=$('#sim-elements');
   function svg(tag,attributes,text){const node=document.createElementNS(ns,tag);for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);if(text!==undefined)node.textContent=text;return node;}
   let fieldArtKey='';
@@ -587,7 +592,7 @@ public class MyAuto implements DeckAutonomous {
     if(f.wait)add('Paused at end of path',`${f.wait.action||'Pause'} · ${f.wait.remaining.toFixed(1)} s left`);
     else if(f.mode==='program'&&f.follower)add('Route',`leg ${f.telemetry?.leg||f.telemetry?.Leg||Math.max(1,f.follower.pathIndex+1)}${finite(f.follower.remaining)?` · ${r(f.follower.remaining)} in to go`:''}`);
     // Whether the run has ended comes from the latest frame, so replaying an earlier moment keeps the report.
-    const last=liveFrame||f,done=!!(last.result||last.practice?.phase==='finished'),box=$('#sim-run-analysis');box.hidden=!done||!runData?.frames().length;if(done&&runData)runReport();
+    const last=liveFrame||f,done=!!(last.result||last.practice?.phase==='finished'),box=$('#sim-run-analysis');box.hidden=!done||!runData?.frames().length;if(done&&runData&&runState!=='starting')runReport();
     if(f.mechanisms){const m=f.mechanisms;add('Pieces',`${m.held} held · ${m.shots} shot`);if(project.mechanisms.shooter.type!=='none')add('Flywheel',`${Math.round(m.flywheel*100)}%${m.ready?' · ready':''}`);const turrets=project.mechanisms.shooters.flatMap((s,n)=>s.type==='turret'&&!s.sharesTurret?[n]:[]);turrets.forEach(n=>add(turrets.length>1?`Turret ${n+1}`:'Turret',`${Math.round(m.turrets?.[n]??m.turret)}°${m.aligned?' · on target':''}`));if(finite(m.score))add('Score',`${m.score} pts · ${m.tips} tip${m.tips===1?'':'s'}`);}
     add('Zones',f.hit.length?'Touching a no-go zone':f.violations.length?`Touched ${f.violations.length} this run`:'Clear',f.hit.length||f.violations.length?'warn':'');
     // The running program's own telemetry, as a Driver Station would show it.
@@ -622,7 +627,7 @@ public class MyAuto implements DeckAutonomous {
   // The run report: rebuilt when a run ends and while its last pieces land, not on every frame.
     function runReport(){
     const frames=runData.frames(),end=[...frames].reverse().find(f=>f.result)?.result,m=frames.at(-1)?.mechanisms,key=JSON.stringify([runAttempt,frames[0]?.time,end?.time,end?.reason,m?.score,m?.landed,m?.shots]);if(key===reportKey)return;reportKey=key;
-    const report=lastReport=window.DeckSimReport.build(frames,{pins:L().pins,defaultPower:project.tuning.maxPathSpeed,autoSeconds:project.practice.mode==='teleop'?null:project.practice.autoSeconds,optimized:!!L().tested?.length});
+    const report=lastReport=window.DeckSimReport.build(frames,{pins:L().pins,defaultPower:project.tuning.maxPathSpeed,autoSeconds:project.practice.mode==='teleop'?null:project.practice.autoSeconds,optimized:!!L().tested?.length,whole:project.practice.mode==='teleop'});
     if(reportShown!==runAttempt)reviewLeg=null;
     window.DeckSimReport.render($('#sim-run-report'),report,{onEdit:editPath,onSeek:t=>runData.seek(t),onExport:()=>showRunView(1),onOutput:()=>{showDiag('output');showRunView(2);},onSetting:openSetting,
       selected:reviewLeg?.index??null,onSelect:leg=>{const changed=reviewLeg?.pin!==leg.pin;reviewLeg={index:leg.index,pin:leg.pin};if(changed)draw();}});
@@ -671,22 +676,18 @@ public class MyAuto implements DeckAutonomous {
   // A number the simulation cannot use (empty, or outside what its box allows: a 0 lb robot, 2000 mm wheels) glows red and
   // holds every later setup step, Path planning and Run until it is fixed. Returns the first step holding the rest, or null.
   // Boxes that may be left empty (a PIDF the SDK fills in) are only checked once they hold a number.
-  var SETUP_ORDER=['field','robot','mechanisms','controller'],SETUP_NAMES={field:'Field',robot:'Robot',controller:'Robot controller',mechanisms:'Mechanisms'};
+  var SETUP_ORDER=['field','robot','mechanisms','controller'],SETUP_NAMES={field:'Field',robot:'CAD',controller:'Robot controller',mechanisms:'Mechanisms'};
   var SETUP_REQUIRED=new Set(['sim-field-width','sim-field-height','sim-length','sim-width','sim-height','sim-mass','sim-rpm','sim-wheel','sim-maxspeed']);
   const unusable=i=>{if(i.validity.badInput)return true;if(i.value==='')return SETUP_REQUIRED.has(i.id);const v=i.valueAsNumber,min=parseFloat(i.min),max=parseFloat(i.max);return !finite(v)||finite(min)&&v<min||finite(max)&&v>max;};
   function setupGate(){let held=null;if(!SETUP_ORDER)return null;
     for(const step of SETUP_ORDER){const page=document.querySelector(`[data-setup-page=${step}]`),tabButton=$(`#sim-setup-step-${step}`);if(!page||!tabButton)continue;
       const after=held!==null;tabButton.disabled=after;tabButton.title=after?`Fix the red value in ${SETUP_NAMES[held]} first`:'';
       let bad=0;for(const i of page.querySelectorAll('input[type=number]')){const h=i.closest('[hidden]'),wrong=(!h||h===page)&&!i.disabled&&unusable(i);i.classList.toggle('sim-bad-input',wrong);i.toggleAttribute('aria-invalid',wrong);bad+=wrong;}
-      bad+=wiringRed(step);if(step==='robot'&&project.needsCad&&!project.model)bad++;
+      if(step==='robot'&&project.needsCad&&!project.model)bad++;
       for(const b of page.querySelectorAll('.sim-setup-nav .primary')){b.disabled=after||bad>0;b.title=b.disabled?'Fix the value marked red first':'';}
       if(!held&&bad)held=step;}
     for(const name of ['plan','run','video']){const b=$(`.sim-tabs [data-tab=${name}]`);if(b){b.disabled=!!held;if(held)b.title=`Finish setup first: ${SETUP_NAMES[held]} has a value marked red`;}}
     return held;}
-  // Wiring that cannot work (two devices on one port, a model the part cannot run on): red on Robot controller, the
-  // last step, where every port is set; a mechanism's own card shows its part too, but does not hold the steps after it.
-  function wiringRed(step){if(project.controller!=='ftc'||!window.DeckWiring||step!=='controller')return 0;const W=window.DeckWiring,n=W.red(W.state(project),()=>true).length;
-    if(step==='controller'){const b=$('#sim-wiring-open');b?.classList.toggle('sim-bad-input',n>0);b?.toggleAttribute('aria-invalid',n>0);}return n;}
   function stageMarks(){
     const est=L().route&&!diagnostics.length?routeEstimate():null,auto=project.practice.autoSeconds;
     for(const row of $$('#sim-pin-list .sim-path-row'))row.classList.toggle('needs-change',pathNeedsChange(Number(row.dataset.path)));
@@ -695,7 +696,7 @@ public class MyAuto implements DeckAutonomous {
       L().route&&!analysisPending?['done',`Route planned and checked${est?.time?` · about ${est.time.toFixed(1)} s`:''}`]:null;
     const run=lastReport&&!$('#sim-run-analysis').hidden?[lastReport.level==='ok'?'done':'attention',`Last run: ${lastReport.title}`]:null;
     const held=setupGate(),check=unconfirmed();
-    const setup=held?['incomplete',held==='robot'&&project.needsCad&&!project.model?'Robot: import your robot’s CAD':`${SETUP_NAMES[held]}: a value is not usable (red)`]:check.length?['attention',`Check the robot’s ${check.map(k=>NEEDS[k][1]).join(', ').replace(/, ([^,]*)$/,' and $1')}`]:['done','Field, robot, controller and mechanisms set'];
+    const setup=held?['incomplete',held==='robot'&&project.needsCad&&!project.model?'CAD: import your robot’s CAD':`${SETUP_NAMES[held]}: a value is not usable (red)`]:check.length?['attention',`Check the robot’s ${check.map(k=>NEEDS[k][1]).join(', ').replace(/, ([^,]*)$/,' and $1')}`]:['done','Field, robot, controller and mechanisms set'];
     stepMarks(held,check);
     for(const [k,s] of Object.entries({setup,plan,run})){const b=$(`.sim-tabs [data-tab=${k}]`),[state,note]=s||['',''];if(!b||b.dataset.state===state&&b.title===note)continue;
       b.dataset.state=state;b.title=note;note?b.setAttribute('aria-description',note):b.removeAttribute('aria-description');}
@@ -705,10 +706,11 @@ public class MyAuto implements DeckAutonomous {
   // glow amber until checked (a CAD has none); more motors or servos than the game allows is red on Mechanisms.
   function stepMarks(held,check){
     const marks={};if(held)marks[held]=held==='robot'&&project.needsCad&&!project.model?['incomplete','Import your robot’s CAD (Import CAD…, or drop its file): its size, drivetrain and mechanisms come from it.',()=>$('#sim-model-open')]:['incomplete','A value marked red is not usable.',()=>$(`[data-setup-page=${held}] .sim-bad-input`)];
-    if(check.length&&!marks.robot)marks.robot=['attention',`Your CAD has no ${check.map(k=>NEEDS[k][1]).join(', ').replace(/, ([^,]*)$/,' or $1')}: check the amber box${check.length>1?'es':''} (click and leave ${check.length>1?'each':'it'} to keep the number).`,()=>$(NEEDS[check[0]][0])];
-    const over=project.controller==='ftc'&&window.DeckWiring?window.DeckWiring.state(project).problems.find(p=>p.level==='limit'):null;if(over&&!marks.mechanisms)marks.mechanisms=['incomplete',over.text,()=>$('#mech-count')];
+    const limits=project.controller==='ftc'&&window.DeckWiring?window.DeckWiring.state(project).problems:[],over=limits.find(p=>p.level==='limit'),unsure=limits.find(p=>p.check);if(over&&!marks.mechanisms)marks.mechanisms=['incomplete',over.text,()=>$('#mech-count')];else if(unsure&&!marks.mechanisms)marks.mechanisms=['attention',unsure.text,()=>$('#mech-count')];
+    {const byStep={};for(const k of check)(byStep[$(NEEDS[k][0]).closest('[data-setup-page]').dataset.setupPage]||=[]).push(k);
+      for(const [step,keys] of Object.entries(byStep))if(!marks[step])marks[step]=['attention',`Your CAD has no ${keys.map(k=>NEEDS[k][1]).join(', ').replace(/, ([^,]*)$/,' or $1')}: check the amber box${keys.length>1?'es':''} (click and leave ${keys.length>1?'each':'it'} to keep the number).`,()=>$(NEEDS[keys[0]][0])];}
     for(const step of SETUP_ORDER){const b=$(`#sim-setup-step-${step}`),[state,note]=marks[step]||['',''];if(!b)continue;b.dataset.state=state;if(!b.disabled)b.title=note;}
-    const box=$('#sim-setup-flags'),list=Object.entries(marks);if(!box)return;const key=JSON.stringify(list.map(([s,[st,t]])=>[s,st,t]));if(box.dataset.key===key)return;box.dataset.key=key;box.hidden=!list.length;
+    const box=$('#sim-setup-flags'),list=Object.entries(marks).filter(([step,[state]])=>!(step==='mechanisms'&&held!=='mechanisms'));if(!box)return;const key=JSON.stringify(list.map(([s,[st,t]])=>[s,st,t]));if(box.dataset.key===key)return;box.dataset.key=key;box.hidden=!list.length;
     box.replaceChildren(...list.map(([step,[state,text,target]])=>{const b=document.createElement('button');b.type='button';b.className=`sim-setup-flag ${state}`;b.innerHTML='<b></b> <span></span>';b.querySelector('b').textContent=SETUP_NAMES[step]+':';b.querySelector('span').textContent=text;
       b.onclick=()=>{showSetupStep(step);requestAnimationFrame(()=>{const el=target();if(el){el.scrollIntoView({block:'center'});el.focus?.({preventScroll:true});}});};return b;}));}
   function diagnosticBox(id){const box=document.createElement('section');box.id=id;box.className='sim-diagnostics';return box;}
@@ -1384,7 +1386,7 @@ public class MyAuto implements DeckAutonomous {
   // The hidden #sim-send-robot holds the chosen address ("usb" or the robot's host) for the send and the guided check.
   const link={usb:null,wifi:null,choice:null,looking:null};
   function detectLink(){if(!native||!api.robotLink)return Promise.resolve();if(link.looking)return link.looking;
-    link.looking=(async()=>{try{const d=await api.robotLink('detect');link.usb=d.usb;link.wifi=d.wifi;}catch(e){link.usb={found:false,message:e.message};link.wifi=null;}finally{link.looking=null;showLink();}})();showLink();return link.looking;}
+    link.looking=(async()=>{try{const d=await api.robotLink('detect');link.usb=d.usb;link.wifi=d.wifi;}catch(e){link.usb={found:false,message:e.message};link.wifi=null;}finally{link.looking=null;showLink();mechanismsPanel();robotPanel();}})();showLink();return link.looking;}
   const linkChoice=()=>link.choice||(link.usb?.found?'usb':link.wifi?.robot?'wifi':'usb');
   function showLink(){
     const usb=link.usb,wifi=link.wifi,choice=linkChoice(),looking=!!link.looking&&!usb;
@@ -1595,7 +1597,7 @@ public class MyAuto implements DeckAutonomous {
       if(!route&&needsRoute){runState='idle';transport();return status('#sim-run-status',L().pins.length?`The route can't be planned yet: ${planError||'check the Path planning tab.'}`:'No route yet. Add at least one path in Path planning first.');}
       const exported=project.program.kind==='opmode'&&!teleop?teamCode(route,true):null;
       const payload={kind:project.program.kind,preview:needsRoute,source:project.program.kind==='source'?project.program.source:undefined,files:exported?.files,opMode:exported?.opMode,route:route?{heading:route.heading,segments:route.segments,stops:route.stops,turns:!!route.turns,nonholonomic:!!route.nonholonomic,effects:!!route.effects}:null};
-      trail=[];setTool('select');const r=await api.sim('practice',{mode:project.practice.mode,timing:project.practice,program:payload});if(attempt!==runAttempt)return;if(!r.ok){runState='idle';if(r.error!=='Stopped.')status('#sim-run-status',r.error);}else{runState='running';if(teleop)status('#sim-run-status','Teleop practice started. Centre the controller sticks to enable driving.');}
+      trail=[];lastReport=null;reportKey='';reviewLeg=null;runData?.reset();setTool('select');const r=await api.sim('practice',{mode:project.practice.mode,timing:project.practice,program:payload});if(attempt!==runAttempt)return;if(!r.ok){runState='idle';if(r.error!=='Stopped.')status('#sim-run-status',r.error);}else{runState='running';if(teleop)status('#sim-run-status','Teleop practice started. Centre the controller sticks to enable driving.');}
     }catch(e){runState='idle';status('#sim-run-status',e.message);}transport();
   };
   // Pause holds the run where it is (the clock, the robot and every piece); Resume carries on from there.
@@ -1607,7 +1609,7 @@ public class MyAuto implements DeckAutonomous {
   $('#sim-reset').onclick=()=>{runAttempt++;runState='idle';trail=[];void call('reset').catch(e=>status('#sim-run-status',e.message));};
   $('#sim-speed').onchange=e=>void call('speed',Number(e.target.value)).catch(()=>{});
   const clockText=seconds=>`${Math.floor(Math.ceil(seconds)/60)}:${String(Math.ceil(seconds)%60).padStart(2,'0')}`;
-  function practicePanel(current=frame?.practice){pressed('practice',project.practice.mode);for(const [id,k] of [['#sim-auto-seconds','autoSeconds'],['#sim-transition-seconds','transitionSeconds'],['#sim-teleop-seconds','teleopSeconds']])if(document.activeElement!==$(id))$(id).value=project.practice[k];
+  function practicePanel(current=frame?.practice){pressed('practice',project.practice.mode);$('#sim-run').textContent={autonomous:'Run autonomous',teleop:'Run teleop',match:'Run full match'}[project.practice.mode];for(const [id,k] of [['#sim-auto-seconds','autoSeconds'],['#sim-transition-seconds','transitionSeconds'],['#sim-teleop-seconds','teleopSeconds']])if(document.activeElement!==$(id))$(id).value=project.practice[k];
     const p=project.practice,sum=$('#sim-period-summary');if(sum)sum.textContent=p.mode==='autonomous'?`Autonomous period · ${p.autoSeconds} s`:p.mode==='teleop'?`Teleop period · ${p.teleopSeconds} s`:`Periods · ${p.autoSeconds} s auto, ${p.transitionSeconds} s transition, ${p.teleopSeconds} s teleop`;
     $('#sim-practice-phase').textContent=current?{auto:'Autonomous',transition:'Transition · controls locked',teleop:current.neutralRequired?'Teleop · centre sticks':'Teleop · Controller 1',finished:'Complete'}[current.phase]:'Ready';$('#sim-practice-time').textContent=clockText(current?.remaining??(project.practice.mode==='teleop'?project.practice.teleopSeconds:project.practice.autoSeconds));
     $('#sim-practice-help').textContent=project.practice.mode==='autonomous'?'Autonomous only. Controller driving stays disabled.':project.practice.mode==='match'?'Auto → transition → teleop. Early autonomous completion holds still until its timer ends. Controller 1 is enabled only in teleop.':'Controller 1: left stick moves, right stick turns, left bumper slows down. Release both sticks after starting or reconnecting.';
@@ -1623,6 +1625,7 @@ public class MyAuto implements DeckAutonomous {
   // (inert); Custom robot (Customize this robot) keeps the same robot with every setting open to change.
   const PR=()=>window.DeckPresetRobots;let chassisEdit=false,presetPicking=false;
   function presetPanel(){
+    reliableNote();
     const id=project.robotPreset,preset=id&&MECH.PRESETS[id],lock=!!preset,adjust=!!preset?.adjustable,fixed=lock&&!adjust,picking=!id&&presetPicking;
     for(const b of $$('[data-robot-source]'))b.setAttribute('aria-pressed',String(b.dataset.robotSource===(id||picking?'preset':'custom')));
     $('#sim-presets').hidden=true;$('#sim-robot-custom').hidden=false;demoPanel();
@@ -1640,8 +1643,10 @@ public class MyAuto implements DeckAutonomous {
         :`These are the ${preset.name} preset’s controller, sensors and wiring, and they can’t be changed. To change them, choose Customize this robot (Custom robot in step 2).`;
       $('#mech-preset-text').textContent=(project.mechanisms.enabled?`These are the ${preset.name} preset’s mechanisms, rigged on its CAD, and they can’t be changed.`:`The ${preset.name} has no mechanisms: it pushes pieces.`)+' To add or change mechanisms, choose Customize this robot (Custom robot in step 2).';}
     aboutPreset(lock&&builtin(project.setupId)&&!adjust);
+    // Mechanisms is closed on a kit, so its wheels, power and driving style stay beside its size, and its ports go on Robot controller.
+    {const box=$('#sim-drive-settings'),specs=$('#sim-robot-custom .sim-robot-specs'),ports=$('#mech-drive-ports'),ctlPorts=$('#sim-ctl-ports');if(adjust){if(box.parentElement!==specs)specs.append(box);if(ports.parentElement!==ctlPorts)ctlPorts.append(ports);}else{if(ports.parentElement===ctlPorts)$('#mech-drive').append(ports);if(box.parentElement===specs)$('#mech-drive').insertBefore(box,ports);}}
     $('#sim-robot-custom').toggleAttribute('data-locked',lock);const ctl=document.querySelector('[data-setup-page=controller]');
-    $('#sim-robot-custom .sim-robot-specs').inert=fixed;ctl.querySelector('.sim-setup-cols').inert=fixed;for(const el of ctl.querySelectorAll('.sim-ctl-choice,#sim-sensor-list,#sim-sensor-add,#sim-imu-source'))el.inert=lock;
+    $('#sim-robot-custom .sim-robot-specs').inert=fixed;ctl.querySelector('.sim-setup-cols').inert=fixed;for(const el of ctl.querySelectorAll('.sim-ctl-choice,#sim-sensor-cards,#sim-imu-cards'))el.inert=lock;
     ctl.toggleAttribute('data-locked',lock);document.querySelector('[data-setup-page=mechanisms]').toggleAttribute('data-locked',lock);
     for(const b of $$('[data-preset-customize]'))b.hidden=builtin(project.setupId)&&!project.customRobot;
     chassisEdit=false;$('#mech-chassis-edit').checked=false;document.querySelector('[data-setup-page=mechanisms]').toggleAttribute('data-chassis',false);
@@ -1675,7 +1680,7 @@ public class MyAuto implements DeckAutonomous {
     if(native&&(frame?.playing||frame?.practice))void call('stop');
     // A custom robot (its CAD, settings, mechanisms and wiring, and the field it was on) is kept, not replaced.
     if(!project.robotPreset){const {controller,robot,sensors,imuSource,mechanisms,kinematics,model:cad,setupDone,active}=snapshot();project.customRobot={controller,robot,sensors,imuSource,mechanisms,kinematics,model:cad,setupDone,active};}
-    Object.assign(project,P.apply(id,project,C,{asset:presetAsset(id)}));project.model=null;model=null;project.setupDone=false;
+    Object.assign(project,P.apply(id,project,C));project.model=null;model=null;project.setupDone=false;
     // The setup keeps its own field and route (a preset's demo route is in its built-in setup). Placing the model makes
     // its CAD (placeModel: a preset robot with no model yet).
     save();robotPanel();mechanismsPanel();presetPanel();setupSteps();changed('robot');await placeModel();
@@ -1711,12 +1716,12 @@ public class MyAuto implements DeckAutonomous {
       save();refreshAll();await placeModel();reload();status('#start-status',`Loaded the robot from ${file.name} into this setup.`);}
   function robotPanel(committed=false){
     const r=project.robot;for(const [id,value] of Object.entries({'#sim-drivetrain':r.drivetrain,'#sim-length':r.length,'#sim-width':r.width,'#sim-height':r.heightIn,'#sim-mass':r.massLb,'#sim-rpm':r.driveRpm,'#sim-wheel':r.wheelDiameterMm,'#sim-drive-style':r.driveStyle,'#sim-appearance':r.appearance,'#sim-localization':project.sensors.localization,'#sim-maxspeed':project.tuning.maxPathSpeed??.8}))inputValue(id,value,committed);
-    const f=geometry().footprint;let text=C.chassisHitbox(r)?`Hitbox: the chassis, ${(f.front+f.rear).toFixed(2)} × ${(f.half*2).toFixed(2)} in.`:`Hitbox: ${f.front.toFixed(2)} in front, ${f.rear.toFixed(2)} in rear, ${f.half.toFixed(2)} in each side.`;
-    const ext=field.extents(start.heading,C.footprint(r)),bounds=geometry().bounds;if(ext[1]-ext[0]>bounds.x1-bounds.x0||ext[3]-ext[2]>bounds.y1-bounds.y0)text+=' This robot does not fit in this field at the selected heading. Increase the field size or reduce the robot size.';
+    const f=geometry().footprint,hitbox=C.chassisHitbox(r)?`Hitbox: the chassis, ${(f.front+f.rear).toFixed(2)} × ${(f.half*2).toFixed(2)} in.`:`Hitbox: ${f.front.toFixed(2)} in front, ${f.rear.toFixed(2)} in rear, ${f.half.toFixed(2)} in each side.`;let text='';
+    const ext=field.extents(start.heading,C.footprint(r)),bounds=geometry().bounds;if(ext[1]-ext[0]>bounds.x1-bounds.x0||ext[3]-ext[2]>bounds.y1-bounds.y0)text+='This robot does not fit in this field at the selected heading. Increase the field size or reduce the robot size.';
     if(info){const e=info.robot;if(e.length!==r.length||e.width!==r.width)text+=` (Applied ${e.length} × ${e.width} in: the closest size the physics supports.)`;}
-    $('#sim-footprint').textContent=text;inputValue('#sim-clearance',L().clearance);pressed('style',C.drives[r.drivetrain].holonomic?L().style:'sharp');rotatePanel();for(const button of $$('[data-style]'))button.disabled=!C.drives[r.drivetrain].holonomic&&button.dataset.style!=='sharp';
+    $('#sim-footprint').textContent=text.trim();$('#sim-footprint').title=hitbox;inputValue('#sim-clearance',L().clearance);pressed('style',C.drives[r.drivetrain].holonomic?L().style:'sharp');rotatePanel();for(const button of $$('[data-style]'))button.disabled=!C.drives[r.drivetrain].holonomic&&button.dataset.style!=='sharp';
     const d=C.drives[r.drivetrain];$('#sim-drive-note').textContent='';
-    const s=C.sensors[project.sensors.localization],motion=project.controller==='motionmodule';pressed('controller',project.controller);$('#sim-controller-note').textContent=motion?'MotionModule: add 2 or 3 odometry pods or an OTOS to know position; without them the robot drives by time.':'';
+    const s=C.sensors[project.sensors.localization],motion=project.controller==='motionmodule';pressed('controller',project.controller);$('#sim-controller-now').textContent=`${motion?'Other robot':`FTC · Control Hub${project.calibration?.hub?.config?`, filled in from “${project.calibration.hub.config.name}” in Setup`:''}`}. Change it in the Setup tab.`;$('#sim-controller-note').textContent=motion?'MotionModule: add 2 or 3 odometry pods or an OTOS to know position; without them the robot drives by time.':'';
     const select=$('#sim-localization');if(select.dataset.forController!==project.controller){select.innerHTML=options(Object.fromEntries(C.sensorChoices(project.controller).map(k=>[k,C.sensors[k].name])),project.sensors.localization);select.dataset.forController=project.controller;}inputValue('#sim-localization',project.sensors.localization);select.disabled=false;
     const device=['fused','optical'].includes(project.sensors.localization),sources=device?{device:project.sensors.localization==='fused'?'Pinpoint integrated IMU':'OTOS integrated IMU'}:motion?{module:'MotionModule IMU',external:'Separate IMU over I²C'}:{hub:'Control Hub built-in IMU',external:'Separate IMU over I²C'};
     if(!Object.hasOwn(sources,project.imuSource))project.imuSource=Object.keys(sources)[0];const sourceKey=JSON.stringify(sources);if($('#sim-imu-source').dataset.options!==sourceKey){$('#sim-imu-source').innerHTML=options(sources,project.imuSource);$('#sim-imu-source').dataset.options=sourceKey;}inputValue('#sim-imu-source',project.imuSource);hubPanel();
@@ -1756,22 +1761,19 @@ public class MyAuto implements DeckAutonomous {
   const POSITION={odometry:'2 odometry pods',odometry3:'3 odometry pods',fused:'goBILDA Pinpoint computer + 2 pods',optical:'SparkFun OTOS optical sensor'};
   function sensorList(){
     const loc=project.sensors.localization,choices=C.sensorChoices(project.controller),hasEnc=loc==='encoders'||!!project.sensors.driveEncoders&&choices.includes('encoders'),pos=POSITION[loc]?loc:null;
-    const row=(name,detail,remove)=>{const li=document.createElement('li'),b=document.createElement('b'),span=document.createElement('span');b.textContent=name;span.textContent=detail;li.append(b,span);
-      if(remove){const x=document.createElement('button');x.type='button';x.className='icon-button';x.textContent='×';x.title='Remove';x.setAttribute('aria-label','Remove '+name);x.onclick=remove;li.append(x);}return li;};
-    const imu={hub:'Built-in IMU (Control Hub)',external:'External IMU over I²C',module:'MotionModule IMU',device:pos==='fused'?'The Pinpoint’s IMU':'The OTOS’s IMU'}[project.imuSource]||'IMU';
-    const detail={odometry:'Position: one forward and one sideways pod.',odometry3:'Position: two forward pods and one sideways pod (incremental or absolute encoders).',fused:'Position: the Pinpoint reads its 2 pods and its own IMU.',optical:'Position: tracks the floor optically, with its own IMU.'};
-    // With a Pinpoint on a Control Hub, the hub's own IMU is used too: the exported code turns with it while the Pinpoint
-    // does not answer.
-    const backup=project.controller==='ftc'&&pos==='fused'&&project.imuSource==='device';
-    $('#sim-sensor-list').replaceChildren(row(imu,'Turning. Choose which IMU below.'),
-      ...(backup?[row('Built-in IMU (Control Hub)','Backup heading: the robot turns with it if the Pinpoint stops answering.')]:[]),
-      ...(pos?[row(POSITION[pos],detail[pos],()=>setLocalization(hasEnc?'encoders':'gyro'))]:[]),
-      ...(hasEnc?[row('Drive motor encoders',pos?'On the drive motors; the '+(pos==='optical'?'OTOS':'pods')+' track position.':'Position from the wheel motors (they slip more than pods).',()=>{project.sensors.driveEncoders=false;if(loc==='encoders')setLocalization('gyro');else{save();robotPanel();}})]:[]));
-    const add=$('#sim-sensor-add'),opts=[new Option(pos?'Add or switch a sensor…':'Add a sensor…','')];
-    for(const k of Object.keys(POSITION))if(choices.includes(k)&&k!==pos)opts.push(new Option(pos?'Switch to '+POSITION[k]+' (replaces '+POSITION[pos]+')':POSITION[k],k));
-    if(choices.includes('encoders')&&!hasEnc)opts.push(new Option('Drive motor encoders','encoders'));
-    add.replaceChildren(...opts);add.value='';add.hidden=opts.length===1;
+    // Each choice as a picture of the very sensor, larger under the pointer. Drive motor encoders are in the motors, so they get no close-up.
+    const art=window.DeckDeviceArt,fig=tag=>tag?`<span class="ce-fig sim-pick-fig" data-fig="${tag}">${art?art.svg(tag,{title:false}):''}</span>`:'<span class="ce-fig empty sim-pick-fig"></span>',card=(attr,key,tag,name,what,on,tip=!!tag)=>`<button type="button" class="sim-pick-card" ${attr}="${key}" aria-pressed="${on}"${tip?` data-tip-tag="${tag}"`:''}>${fig(tag)}<b>${name}</b><small>${what}</small></button>`;
+    const CARDS={fused:['goBILDAPinpoint','goBILDA Pinpoint + 2 pods','A small computer reads the pods and its own IMU.'],odometry:['goBILDAOdometryPod','2 odometry pods','One rolls forward, one sideways.'],odometry3:['goBILDAOdometryPod','3 odometry pods','Two roll forward, one sideways.'],optical:['SparkFunOTOS','SparkFun OTOS','Tracks the floor optically, with its own IMU.']};
+    const position=Object.keys(CARDS).filter(k=>choices.includes(k)).map(k=>card('data-sensor-card',k,CARDS[k][0],CARDS[k][1],CARDS[k][2],k===pos));
+    if(choices.includes('encoders'))position.push(card('data-sensor-card','encoders','goBILDA5202SeriesMotor','Drive motor encoders',pos?'Also read the wheels’ own encoders.':'Position from the wheels. They slip more than pods.',hasEnc,false));
+    const imuTag={hub:'ControlHubImuBHI260AP',external:'AdafruitBNO055IMU',device:pos==='fused'?'goBILDAPinpoint':'SparkFunOTOS'},imuWhat={hub:'Inside the Control Hub.',external:'Its own board, on an I²C port.',module:'Inside the MotionModule.',device:project.controller==='ftc'&&pos==='fused'?'The Control Hub’s IMU is its backup.':'Part of the sensor you picked.'};
+    const turning=[...$('#sim-imu-source').options].map(o=>card('data-imu-card',o.value,imuTag[o.value]||'',o.textContent,imuWhat[o.value]||'',o.value===project.imuSource));
+    for(const [box,list] of [[$('#sim-sensor-cards'),position],[$('#sim-imu-cards'),turning]]){const html=list.join('');if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;window.DeckPartPicker?.dress?.(box);}}
   }
+  $('#sim-sensor-cards').addEventListener('click',e=>{const k=e.target.closest('[data-sensor-card]')?.dataset.sensorCard;if(!k)return;const loc=project.sensors.localization,pos=POSITION[loc]?loc:null,hasEnc=loc==='encoders'||!!project.sensors.driveEncoders;
+    if(k==='encoders'){if(hasEnc){project.sensors.driveEncoders=false;if(loc==='encoders')setLocalization('gyro');else{save();robotPanel();}}else{project.sensors.driveEncoders=true;if(!pos)setLocalization('encoders');else{save();robotPanel();}}return;}
+    setLocalization(k===pos?(hasEnc&&C.sensorChoices(project.controller).includes('encoders')?'encoders':'gyro'):k);});
+  $('#sim-imu-cards').addEventListener('click',e=>{const k=e.target.closest('[data-imu-card]')?.dataset.imuCard,sel=$('#sim-imu-source');if(!k||k===sel.value)return;sel.value=k;sel.dispatchEvent(new Event('change'));});
   // The robot's own names for the drive motors and sensors the Control Hub exports use, and drive motors that turn the
   // other way. Only what differs from Deck's defaults is stored (project.robot.devices).
   const deviceDefaults=()=>window.DeckSimFtc.deviceSlots(C.robot({...project.robot,devices:undefined},project.controller),project.sensors.localization);
@@ -1786,14 +1788,12 @@ public class MyAuto implements DeckAutonomous {
   $('#sim-device-list').addEventListener('change',e=>{const el=e.target;
     if(el.dataset.device){const name=C.deviceName(el.value);if(!name){el.value=window.DeckSimFtc.deviceSlots(project.robot,project.sensors.localization).find(s=>s.key===el.dataset.device)?.name||'';return;}setDevice(el.dataset.device,entry=>{entry.name=name;});}
     else if(el.dataset.deviceReversed)setDevice(el.dataset.deviceReversed,entry=>{entry.reversed=el.checked;});});
-  // ---- Control Hub wiring (ui/sim-wiring.js): the Robot step's popup and the Robot controller step's configuration ----
+  // ---- Control Hub wiring (ui/sim-wiring.js) ----
   // The drivetrain comes from the CAD's wheel names when it has them (Configure from CAD, import); otherwise the team picks it.
   function driveFromCad(){const found=project.model?.drivetrain,name=found&&C.drives[found]?.name;
     return !project.model?'':found?(found===project.robot.drivetrain?`From your CAD: ${name} (from its wheel names).`:`Your CAD’s wheels look like ${name}; you chose ${C.drives[project.robot.drivetrain].name}.`):'Your CAD does not name its wheels, so choose the drivetrain.';}
-  function applyWiring(next){const focus=document.activeElement?.id;project.robot=C.robot({...project.robot,wiring:next},project.controller);
-    // Four drive motors of one model set the wheel speed (the model's free speed).
-    const D=window.DeckHardware,models=['frontLeft','frontRight','backLeft','backRight','left','right'].map(k=>next?.devices?.['robot.'+k]?.model).filter(Boolean),rpm=D.MODELS[models[0]]?.rpm;
-    if(models.length>=2&&new Set(models).size===1&&finite(rpm)&&rpm!==project.robot.driveRpm){project.robot.driveRpm=rpm;$('#sim-rpm').value=rpm;}
+  function applyWiring(next){const focus=document.activeElement?.id,was=project.robot.wiring?.devices||{};project.robot=C.robot({...project.robot,wiring:next},project.controller);
+    const now=project.robot.wiring?.devices||{},moved=Object.keys({...was,...now}).filter(k=>(was[k]?.model||'')!==(now[k]?.model||''));if(moved.length)modelSpeeds(moved,was);
     save();robotPanel();mechanismsPanel();reload();if(focus&&document.activeElement?.id!==focus)document.getElementById(focus)?.focus();}
   // A device's configuration name, wherever Setup keeps it: drive motors and sensors on the robot, game devices on their
   // intake or shooter, a moving part's on its actuator.
@@ -1809,41 +1809,47 @@ public class MyAuto implements DeckAutonomous {
     save();robotPanel();mechanismsPanel();reload();}
   // A device's type (a DC motor or a continuous servo for a roller, a servo pusher or gate for a feeder...), set on the
   // mechanism; a model of another type is cleared.
+  // A mechanism on a shared motor sets only how fast it turns.
+  function deviceRpm(key,rpm){const row=window.DeckWiring.state(project).rows.find(r=>r.key===key);if(!row)return;
+    if(row.role==='flywheel'){const m=structuredClone(project.mechanisms);m.shooter.rpm=rpm;project.mechanisms=MECH.sanitize(m);}else{const kin=structuredClone(project.kinematics);for(const j of kin.joints)if(row.joints?.includes(j.id))j.rpm=rpm;project.kinematics=window.DeckKinematics.sanitize(kin);}
+    save();mechanismsPanel();reload();}
+  // What each chosen model says about how fast things go, through the CAD's ratios. With no model chosen, REV's numbers: an HD Hex
+  // 20:1 motor, a Smart Robot Servo. only: the devices whose model just changed (every device when left out); before: them as they
+  // were, so a flywheel that was running flat out still does on its new motor, and one set slower stays where the team put it.
+  function modelSpeeds(only,before={}){const H=window.DeckHardware,kin=structuredClone(project.kinematics),m=structuredClone(project.mechanisms),round=(v,d=1)=>+v.toFixed(d);
+    const free=(row,id)=>H.MODELS[id]?.rpm??H.MODELS[row.kind==='crservo'?'rev-smart-cr':'rev-hd-hex-20'].rpm,sweep=id=>H.MODELS[id]?.speed??H.MODELS['rev-smart'].speed;
+    // Degrees its servo turns for one of the joint's, through the gears the CAD shows.
+    const stepUp=id=>{let r=1,at=id;for(let n=0;n<6;n++){const c=kin.couplings.find(x=>x.from===at&&String(x.to).startsWith(id+'gear'));if(!c)break;r*=Math.abs(c.ratio)||1;at=c.to;}return r;};
+    for(const row of window.DeckWiring.state(project).rows){if(only&&!only.includes(row.key))continue;const mine=kin.joints.filter(j=>row.joints?.includes(j.id)),spins=row.kind==='dcmotor'||row.kind==='crservo',model=row.model;
+      if(row.role==='roller'||row.role==='feeder'&&spins)for(const j of mine)j.rpm=round(free(row,model)*(j.ratio||1));
+      else if(row.role==='feeder')for(const j of mine)j.speed=round(sweep(model));
+      else if(row.role==='flywheel')for(const j of mine){const top=free(row,model)*(j.ratio||1),had=free(row,before[row.key]?.model)*(j.ratio||1);j.rpm=round(top);if(m.shooter.rpm>top||only&&m.shooter.rpm>=had*.95)m.shooter.rpm=Math.max(100,Math.round(top));}
+      else if(row.role==='turret')m.turret.speed=Math.max(5,Math.min(2000,Math.round((spins?free(row,model)*6:sweep(model))/(gearRatio(m.turret.gears)||1))));
+      else if(row.role==='hood'&&row.kind==='servo')for(const j of mine)j.speed=round(sweep(model)/stepUp(j.id));
+      else if((row.role==='ramp'||row.role==='kicker')&&row.kind==='servo'){const i=m.intakes[row.setting?.index];if(i)for(const j of mine){const range=Math.abs((j.states?.lowered??0)-(j.states?.raised??0))||i.travel||0;if(range)i.down=i.up=Math.min(3,Math.max(.05,round(range*stepUp(j.id)/sweep(model),2)));}}
+      else if(/^kin-/.test(row.role)&&H.MODELS[model]){const a=kin.actuators.find(x=>x.id===H.parseKey(row.key)?.kin),j=a&&kin.joints.find(x=>x.id===a.joint),md=H.MODELS[model],ratio=Math.abs(a?.ratio)||1;if(a&&j&&(md.kind==='linear')===(j.type==='prismatic')&&!(md.kind==='dcmotor'&&j.type==='prismatic'))a.speed=round((md.rpm?md.rpm*6:md.speed)/ratio);}}
+    project.kinematics=window.DeckKinematics.sanitize(kin);project.mechanisms=MECH.sanitize(m);}
+  // Plugged into means something only with a Control Hub: on USB, on Wi-Fi, or read and saved in Calibrate.
+  // A port the robot's configuration has: the device takes that port, and its name there.
+  function deviceAssign(key,value){const W=window.DeckWiring,row=W.state(project).rows.find(r=>r.key===key);if(!row)return;const [at,name]=value.split('|');if(value)deviceName(key,name);applyWiring(W.setPort(project.robot.wiring,key,at||'',row.family));mechanismsPanel();robotPanel();}
   function deviceKind(key,kind){const k=window.DeckHardware.parseKey(key),W=window.DeckWiring;if(!k)return;
     const firstOf=kind2=>window.DeckHardware.ACTUATORS.find(m=>m.kind===kind2)?.id;let model=project.robot.wiring?.devices?.[key]?.model;const md=window.DeckHardware.MODELS[model];
     if(k.list){const m=structuredClone(project.mechanisms),part=m[k.list]?.[k.index];if(!part)return;
       if(k.list==='intakes'&&(k.field==='motor'||k.field==='motor2'))part.device=kind==='crservo'?'crservo':'motor';
       else if(k.field==='indexer')part.indexerKind={dcmotor:'motor',crservo:'crservo',pusher:'pusher',gate:'gate'}[kind]||part.indexerKind;
-      else if(k.field==='turretMotor')m.turret.kind=kind==='servo'||kind==='crservo'?kind:'motor';
+      else if(k.field==='turretMotor'||k.field==='turretMotor2')m.turret.kind=kind==='servo'||kind==='crservo'?kind:'motor';
+      else if(k.list==='intakes'&&k.field==='servo'){if(kind==='servo')delete part.rampKind;else part.rampKind=kind;}
       project.mechanisms=MECH.sanitize(m);}
     const want={pusher:'servo',gate:'servo'}[kind]||kind;if(md&&md.kind!==want)model='';if(want==='linear'&&!md)model=firstOf('linear');if(want==='servo'&&md?.kind==='linear')model='';
     project.robot=C.robot({...project.robot,wiring:W.setModel(project.robot.wiring,key,model)},project.controller);save();robotPanel();mechanismsPanel();reload();}
-  // A robot with more than a chassis (intakes, shooters or moving parts) gets the Expansion Hub ticked, until the team
-  // ticks it off.
+  // A robot starts with a Control Hub and one Expansion Hub, until the team takes it away or the robot says it has none.
   function hubDefaults(){const h=project.robot.wiring?.hubs?.expansion;if(project.controller!=='ftc'||h||h===false)return;
-    const m=project.mechanisms,more=m.enabled&&(m.intakes.length+m.shooters.length>0)||project.kinematics.actuators.length>0||(project.model?.parts||[]).some(p=>['intake','shooter','indexer'].includes(p.role));
-    if(more){project.robot=C.robot({...project.robot,wiring:window.DeckWiring.setHub(project.robot.wiring,'expansion',true)},project.controller);save();}}
+    project.robot=C.robot({...project.robot,wiring:window.DeckWiring.setHub(project.robot.wiring,'expansion',true)},project.controller);save();}
   function wiringPanel(){hubDefaults();
-    const W=window.DeckWiring,ftc=project.controller==='ftc',st=W.state(project),robotRows=st.rows.filter(r=>W.stepOf(r.key)==='robot'),dialog=$('#sim-wiring-dialog');
-    $('#sim-drive-cad').textContent=driveFromCad();for(const id of ['#sim-ctl-usb','#sim-ctl-ports','#sim-config-summary'])$(id).hidden=!ftc;
-    // A Control Hub's ports fill the right column on their own, scrolled apart from what runs the robot and how it senses;
-    // a MotionModule has no ports, so timed driving and path correction sit there instead.
-    {const cols=$('#sim-ctl-cols'),[left,right]=cols.children;cols.classList.toggle('sim-ctl-split',ftc);for(const el of [$('#sim-timed-settings'),$('.sim-advanced')])if(el.parentElement!==(ftc?left:right))(ftc?left:right).append(el);}
-    const red=W.red(st,()=>true),others=st.problems.filter(x=>x.level!=='red');
-    $('#sim-wiring-summary').textContent=!ftc?'':st.error?st.error:`${robotRows.map(r=>`${r.name} ${r.portLabel?.replace(/^Control Hub /,'')||''}`).join(' · ')}${red.length?` · ${red[0].text}`:others.length?` · Check: ${others[0].text}`:''}`;
-    if(ftc){const hubs=W.hubsHtml(st),box=$('#sim-config-hubs');if(box.dataset.html!==hubs){const focus=document.activeElement?.id;box.innerHTML=hubs;box.dataset.html=hubs;if(focus)document.getElementById(focus)?.focus();}$('#sim-config-table').innerHTML=W.summaryHtml(st);}
-    if(!dialog.open)return;const focus=document.activeElement?.id;
-    const drive=$('#sim-wiring-drive');drive.disabled=!!project.robotPreset;drive.innerHTML=options(Object.fromEntries(Object.entries(C.drives).map(([k,v])=>[k,v.name])),project.robot.drivetrain);
-    $('#sim-wiring-drive-note').textContent=`${driveFromCad()||'Choose the drivetrain.'}${st.error?' '+st.error:''}`;
-    $('#sim-wiring-problems').innerHTML=st.problems.filter(x=>x.keys.some(k=>W.stepOf(k)==='robot')).map(x=>`<p class="sim-wire-problem ${x.level}">${W.esc(x.text)}</p>`).join('');$('#sim-wiring-hubs').innerHTML=W.hubsHtml(st);$('#sim-wiring-devices').innerHTML=st.error?'':robotRows.map(r=>W.deviceHtml(r,st)).join('')||'<p class="hint">No drive motors to wire.</p>';
-    const mech=st.rows.filter(r=>W.stepOf(r.key)!=='robot'&&r.role!=='sensor');$('#sim-wiring-other').textContent=mech.length?`Mechanism motors, servos and sensors (${mech.map(r=>r.name).join(', ')}) are wired in Setup → Mechanisms.`:'';
-    if(focus)document.getElementById(focus)?.focus();}
-  window.DeckWiring.bind($('#sim-wiring-dialog'),{project:()=>project,apply:applyWiring,setKind:deviceKind,share:shareDevice});
-  window.DeckWiring.bind($('#sim-config-hubs'),{project:()=>project,apply:applyWiring});
-  $('#sim-wiring-open').onclick=()=>{$('#sim-wiring-dialog').showModal();wiringPanel();};
-  for(const id of ['#sim-wiring-close','#sim-wiring-done'])$(id).onclick=()=>$('#sim-wiring-dialog').close();
-  $('#sim-wiring-dialog').addEventListener('close',()=>stageMarks());
-  $('#sim-wiring-drive').onchange=e=>{$('#sim-drivetrain').value=e.target.value;$('#sim-drivetrain').onchange({target:$('#sim-drivetrain')});wiringPanel();};
+    const ftc=project.controller==='ftc';$('#sim-drive-cad').textContent=driveFromCad();$('#sim-ctl-ports').hidden=!ftc;
+    // A Control Hub's step is one column: models and electronics are Setup & Calibrate's. A MotionModule's timed driving and
+    // path correction sit in a column of their own.
+    {const cols=$('#sim-ctl-cols'),[left,right]=cols.children;cols.classList.toggle('sim-ctl-one',ftc);for(const el of [$('#sim-timed-settings'),$('.sim-advanced')])if(el.parentElement!==(ftc?left:right))(ftc?left:right).append(el);}}
   // ---- Configure Robot in Deck: the robot's configurations, read over USB (ADB) or its Wi-Fi (as a Driver Station),
   // edited hub by hub and port by port, and saved back over Wi-Fi under a new name, made active, as Configure Robot does.
   // Each device also shows the Java that gets it from the hardware map (DeckRobotConfig.javaOf), as Blocks lists them.
@@ -1854,12 +1860,12 @@ public class MyAuto implements DeckAutonomous {
     const list=[['usb','USB cable (Control Hub plugged into this computer)'],...saved.map(r=>[r.host,`${r.name} over Wi-Fi (${r.host})`]),['192.168.43.1','Control Hub over Wi-Fi (192.168.43.1)']];
     select.replaceChildren(...list.filter((c,i)=>list.findIndex(x=>x[0]===c[0])===i).map(([v,t])=>new Option(t,v)));if(keep&&[...select.options].some(o=>o.value===keep))select.value=keep;}
   function robotReadPanel(){
-    const r=robotRead,select=$('#sim-robot-configs'),box=$('#sim-robot-devices'),wifi=r?.source==='wifi';if(!r){select.hidden=true;box.replaceChildren();return;}
+    const r=robotRead,select=$('#sim-robot-configs'),box=$('#sim-robot-devices');if(!r){select.hidden=true;box.replaceChildren();return;}
     const opts=r.configurations.map(n=>new Option(n===r.active?.name?`${n} (active)`:n,n));select.replaceChildren(...opts);select.value=robotEdit?.name||r.active?.name||'';select.hidden=!r.configurations.length;
     if(!robotEdit){box.replaceChildren();return;}
-    const E=robotEdit,devices=E.devices,hubs=RobotConfig.parse(r.files[E.name]).hubs.filter(h=>h.tag==='LynxModule'),java=RobotConfig.javaOf(devices),editor=!$('#sim-source-box').hidden;
+    const E=robotEdit,devices=E.devices,hubs=RobotConfig.parse(r.files[E.name]).hubs.filter(h=>h.tag==='LynxModule'||h.tag==='ServoHub'),java=RobotConfig.javaOf(devices),editor=!$('#sim-source-box').hidden;
     const esc=window.DeckWiring.esc,familyName={motor:'Motor port',servo:'Servo port',analog:'Analog port',digital:'Digital port',i2c:'I2C bus'};
-    const sameHub=(d,h)=>d.module?d.module.address===h.address&&!d.module.servoHub:d.hub===h.name;
+    const sameHub=(d,h)=>d.module?d.module.address===h.address&&!!d.module.servoHub===(h.tag==='ServoHub'):d.hub===h.name;
     const html=hubs.map(h=>{const mine=devices.map((d,i)=>({d,i})).filter(x=>sameHub(x.d,h));
       const rows=mine.map(({d,i})=>{const fam=RobotConfig.familyOfTag(d.tag),types=RobotConfig.EDIT_TYPES[fam]||[[d.tag,d.tag]],n=RobotConfig.PORT_COUNT[fam]||4,at=fam==='i2c'?d.bus:d.port,j=java.list[i];
         return `<tr data-dev="${i}"><td><select data-dev-port aria-label="Port">${Array.from({length:n},(_,k)=>`<option value="${k}"${k===at?' selected':''}>${familyName[fam]||'Port'} ${k}</option>`).join('')}</select></td>
@@ -1868,8 +1874,7 @@ public class MyAuto implements DeckAutonomous {
           <td><button type="button" class="text-button" data-dev-copy>Copy</button>${editor?'<button type="button" class="text-button" data-dev-insert>Insert</button>':''}<button type="button" class="icon-button" data-dev-remove aria-label="Remove ${esc(d.name)}" title="Remove">×</button></td></tr>`;}).join('');
       return `<h4 class="sim-setup-group">${esc(h.name)}${h.parent?'':` (address ${h.address})`}</h4><table class="sim-wire-table sim-robot-table"><thead><tr><th>Port</th><th>Type</th><th>Name</th><th>Java</th><th></th></tr></thead><tbody>${rows}</tbody></table>
         <div class="button-row"><label class="sr-only" for="sim-robot-add-${h.address}">Add a device to ${esc(h.name)}</label><select id="sim-robot-add-${h.address}" data-dev-add="${h.address}"><option value="">+ Add a device…</option>${Object.entries(familyName).map(([f,l])=>`<option value="${f}">${l.replace(/ (port|bus)$/,'')}</option>`).join('')}</select></div>`;}).join('');
-    const save=wifi?`<div class="sim-robot-save"><label for="sim-robot-save-name">Save to the robot as</label><div class="button-row"><input id="sim-robot-save-name" maxlength="40" spellcheck="false" value="${esc(E.saveName||RobotConfig.configurationName(`${E.name} Deck`,r.configurations))}"><button type="button" class="primary" id="sim-config-save"${E.changed?'':' disabled'}>Save and make active</button>${E.name!==r.active?.name?'<button type="button" class="secondary" id="sim-config-activate">Make this one active</button>':''}</div><p class="hint">A new configuration, so “${esc(E.name)}” stays as it is. The robot makes it active and restarts, as Configure Robot does.</p></div>`
-      :`<p class="hint">Over USB Deck reads the robot’s configurations. To save one, read the robot over its Wi-Fi (the robot list above).</p>`;
+    const save=`<div class="sim-robot-save"><label for="sim-robot-save-name">Save to the robot as</label><div class="button-row"><input id="sim-robot-save-name" maxlength="40" spellcheck="false" value="${esc(E.saveName||RobotConfig.configurationName(`${E.name} Deck`,r.configurations))}"><button type="button" class="primary" id="sim-config-save"${E.changed?'':' disabled'}>Save and make active</button>${E.name!==r.active?.name?'<button type="button" class="secondary" id="sim-config-activate">Make this one active</button>':''}</div><p class="hint">A new configuration, so “${esc(E.name)}” stays as it is. The robot makes it active and restarts, as Configure Robot does.</p></div>`;
     box.innerHTML=`${html}<div class="button-row"><button type="button" class="secondary" id="sim-robot-copy-all">Copy all Java</button><button type="button" class="secondary" id="sim-robot-use">Use these names and ports in Setup</button></div>${save}`;}
   // Edits: a port, a type, a name, a device added or removed. The Java column follows each change.
   const robotBox=$('#sim-robot-devices');
@@ -1894,8 +1899,8 @@ public class MyAuto implements DeckAutonomous {
       status('#sim-robot-status',c?`${robotRead.source==='usb'?`Control Hub ${robotRead.serial} on USB`:`The robot at ${robotRead.host}`}: ${c} configuration${c>1?'s':''}. ${robotRead.active?.guessed?'The robot did not say which is active; this is the newest.':`“${robotRead.active.name}” is active`}, with ${n} device${n===1?'':'s'}.`:'The robot has no configurations yet: make one in Configure Robot, or let Send to robot make one.');}
     catch(e){robotRead=null;robotEdit=null;robotReadPanel();status('#sim-robot-status',e.message);}finally{b.disabled=false;}}
   async function saveRobotConfig(){const E=robotEdit,r=robotRead,name=(E.saveName||$('#sim-robot-save-name').value).trim();let xml;try{xml=RobotConfig.rebuild(r.files[E.name],E.devices);}catch(e){return status('#sim-robot-status',e.message);}
-    status('#sim-robot-status',`Saving “${name}” on the robot…`);try{const out=await api.robotLink('configure',{host:r.host,name,xml});status('#sim-robot-status',`Saved “${out.name}” with ${out.devices} device${out.devices===1?'':'s'}; it is the active configuration and the robot restarted.`);await readRobotConfigs();}catch(e){status('#sim-robot-status',e.message);}}
-  async function activateRobotConfig(){const r=robotRead,name=robotEdit.name;status('#sim-robot-status',`Making “${name}” active…`);try{await api.robotLink('activate',{host:r.host,name});status('#sim-robot-status',`“${name}” is the active configuration; the robot restarted.`);await readRobotConfigs();}catch(e){status('#sim-robot-status',e.message);}}
+    status('#sim-robot-status',`Saving “${name}” on the robot…`);try{const out=await api.robotLink('configure',{host:r.host||'usb',name,xml});status('#sim-robot-status',`Saved “${out.name}” with ${out.devices} device${out.devices===1?'':'s'}; it is the active configuration and the robot restarted.`);await readRobotConfigs();}catch(e){status('#sim-robot-status',e.message);}}
+  async function activateRobotConfig(){const r=robotRead,name=robotEdit.name;status('#sim-robot-status',`Making “${name}” active…`);try{await api.robotLink('activate',{host:r.host||'usb',name});status('#sim-robot-status',`“${name}” is the active configuration; the robot restarted.`);await readRobotConfigs();}catch(e){status('#sim-robot-status',e.message);}}
   $('#sim-robot-usb').onclick=()=>void readRobotConfigs();
   $('#sim-robot-dashboard').onclick=async()=>{status('#sim-robot-status','Opening the robot’s dashboard over USB…');try{const r=await api.robotLink('usb-dashboard');status('#sim-robot-status',`The robot’s dashboard is open in its own window (Control Hub ${r.serial} on USB): Program & Manage, OnBot Java and Blocks, with this computer on any Wi-Fi.`);}catch(e){status('#sim-robot-status',e.message);}};
   $('#sim-robot-configs').onchange=e=>{robotSelect(e.target.value);robotReadPanel();};
@@ -1903,33 +1908,165 @@ public class MyAuto implements DeckAutonomous {
   // Setup's devices take the robot's: each export name matched to the robot's device of that kind (front_left to
   // frontleft or FL), then its name and its hub port; a device on another hub turns the Expansion Hub on at its address.
   function useRobotConfig(){
-    const H=window.DeckHardware,W=window.DeckWiring,devices=robotDevices(),result=RobotConfig.check(robotNeeds(),{devices}),st=W.state(project);let wiring=project.robot.wiring,count=0;
+    const H=window.DeckHardware,W=window.DeckWiring,HS=window.DeckHubSetup,devices=robotDevices(),result=RobotConfig.check(robotNeeds(),{devices}),st=W.state(project),hubs=HS.hubsOf(RobotConfig.parse(robotRead.files[robotEdit.name]));let wiring=project.robot.wiring,count=0;
     for(const row of result.rows){const pick=row.status==='ok'&&!row.duplicate?row.name:row.suggestion,dev=devices.find(d=>d.name===pick),key=H.settingKey(row.setting);if(!dev||!key)continue;
-      if(pick!==row.name)deviceName(key,pick);const fam=st.rows.find(r=>r.key===key)?.family,control=dev.module?dev.module.address===173:/control hub/i.test(dev.hub||'');
-      if(!control&&dev.module)wiring=W.setHub(wiring,'expansion',true,dev.module.address);
-      if(fam)wiring=W.setPort(wiring,key,`${control?'control':'expansion'}:${dev.bus??dev.port}`,fam);count++;}
+      if(pick!==row.name)deviceName(key,pick);const fam=st.rows.find(r=>r.key===key)?.family,at=HS.placeOf(dev,hubs);
+      if(at&&at.hub!=='control')wiring=W.setHub(wiring,at.hub,true,hubs.ids.find(([id])=>id===at.hub)[1].address);
+      if(fam&&at)wiring=W.setPort(wiring,key,`${at.hub}:${at.bus??at.port}`,fam);count++;}
     project.robot=C.robot({...project.robot,wiring},project.controller);save();robotPanel();mechanismsPanel();reload();
     status('#sim-robot-status',count?`Setup uses the robot’s names and ports for ${count} device${count===1?'':'s'}.${result.rows.length>count?` ${result.rows.length-count} have no match on the robot: Send to robot can add them.`:''}`:'None of the robot’s devices match what this setup uses.');}
   // ---- One-button setup from the Control Hub (ui/sim-hub-setup.js): it has to be plugged in by USB. Its active
   // configuration is matched to everything Setup wires (only the chassis for a preset robot), names, hubs and ports taken.
   // From Mechanisms (Configure from Control Hub) the result shows there, under what Configure from CAD found; from
-  // Calibrate → Electronics, under its button.
-  async function hubSetup(from='controller'){
-    const mech=from==='mechanisms',cal=from==='calibrate',out=mech?'#mech-list-status':cal?'#cal-hub-status':'#sim-hub-status',list=$(mech?'#mech-hub-list':cal?'#cal-hub-result':'#mech-hub-result'),buttons=[$('#sim-hub-setup'),$('#mech-from-hub'),$('#cal-hub-setup')].filter(Boolean),HS=window.DeckHubSetup;
-    if(mech)$('#mech-cad-details').hidden=true;
-    if(project.controller!=='ftc')return status(out,'Set up from the Control Hub is for an FTC Control Hub: choose it above.');
+  // Calibrate → Electronics or the Setup view, under its button.
+  // One configuration into the project: hubs, names, ports, sensors, and what Calibrate shows as read from the hub.
+  function useHubConfig(config,{name,serial,source='usb',guessed=false},out,list){
+    const HS=window.DeckHubSetup,chassis=!!project.robotPreset,result=HS.plan(project,config,{only:chassis?'chassis':undefined}),next=HS.apply(project,result);
+    for(const k of ['robot','sensors','mechanisms','kinematics'])project[k]=next[k];inputValue('#sim-localization',project.sensors.localization);
+    save();robotPanel();mechanismsPanel();reload();calHubRead({source,name,...(serial?{serial}:{}),readout:HS.readout(config),config:{name,devices:config.devices||[],hubs:config.hubs||[]}});
+    status(out,`“${name}”${guessed?' (the newest; the robot did not say which is active)':source==='usb'?' (active)':''}${serial?` on Control Hub ${serial}`:''}${chassis?', chassis only':''}. ${HS.summary(result)}`);
+    list.replaceChildren(...HS.lines(result).map(l=>{const li=document.createElement('li');li.className='sim-hub-'+l.level;li.textContent=l.text;return li;}));list.hidden=!list.children.length;setupRender();calRender();}
+  async function hubSetup(from){
+    const out=from==='setup'?'#rs-status':'#cal-hub-status',list=$(from==='setup'?'#rs-result':'#cal-hub-result'),buttons=[$('#cal-hub-setup'),$('#rs-read')];
+    if(project.controller!=='ftc')return status(out,'Set up from the Control Hub is for an FTC Control Hub: choose it in Setup.');
     if(!native||!api.robotLink)return status(out,'Setting up from the Control Hub needs the desktop app, with the Control Hub plugged into this computer by USB.');
     for(const b of buttons)b.disabled=true;list.hidden=true;status(out,'Reading the Control Hub on USB…');
     try{let read;try{read=await api.robotLink('read-usb');}catch(e){return status(out,`Plug the Control Hub into this computer with its USB-C data cable, turn the robot on and press this again. (${e.message})`);}
       const name=read.active?.name||read.configurations[0];if(!name||!read.files?.[name])return status(out,'The Control Hub has no configuration yet. Make one in Configure Robot on the Driver Station (name each motor, servo and sensor), then press this again.');
       let config;try{config=RobotConfig.parse(read.files[name]);}catch(e){return status(out,e.message);}
-      const chassis=!!project.robotPreset,result=HS.plan(project,config,{only:chassis?'chassis':undefined}),next=HS.apply(project,result);
-      for(const k of ['robot','sensors','mechanisms','kinematics'])project[k]=next[k];inputValue('#sim-localization',project.sensors.localization);
-      save();robotPanel();mechanismsPanel();reload();calHubRead({source:'usb',name,serial:read.serial,readout:HS.readout(config)});
-      status(out,`“${name}”${read.active?.guessed?' (the newest; the robot did not say which is active)':' (active)'} on Control Hub ${read.serial}${chassis?', chassis only':''}. ${HS.summary(result)}`);
-      list.replaceChildren(...HS.lines(result).map(l=>{const li=document.createElement('li');li.className='sim-hub-'+l.level;li.textContent=l.text;return li;}));list.hidden=!list.children.length;}
+      setupRead=read;useHubConfig(config,{name,serial:read.serial,guessed:!!read.active?.guessed},out,list);}
     finally{for(const b of buttons)b.disabled=false;}}
-  $('#sim-hub-setup').onclick=()=>void hubSetup();
+  // ---- the Setup view ------------------------------------------------------------------------------------------------
+  // Plugging in the Control Hub is enough: the robot lists its hubs (their addresses and kinds) and Deck reads its active
+  // configuration, which says what is on each port; a hub cannot sense that by itself. A test is offered only when two hubs
+  // of one kind could be mistaken for each other.
+  let setupShown=false,setupRead=null,setupRobot=null,setupConn=null,setupTried=null,setupBusy=false,setupTimer=null,hubTest=null,configEditor=null,setupChecking=null,setupAutoFor=null,setupAutoTries=0,setupAgain=0;
+  const setupPlug=(text,on)=>{const p=$('#rs-plug');p.querySelector('span').textContent=text;p.querySelector('i').className=`dot${on?' live':''}`;};
+  const setupNote=text=>status('#rs-status',text);
+  // Over USB-C if a Control Hub is plugged in, else over the robot's Wi-Fi. Reading a configuration asks no hub anything; only Scan does.
+  function setupChecks(steps){const list=$('#rs-checks');list.replaceChildren(...steps.map(s=>{const li=document.createElement('li');li.className=s.ok?'ok':'bad';li.append(Object.assign(document.createElement('b'),{textContent:s.name}),Object.assign(document.createElement('span'),{textContent:s.detail||''}));return li;}));list.hidden=!steps.length;}
+  async function setupRead_({check=false}={}){if(setupBusy||project.controller!=='ftc'||!setupConn)return;setupBusy=true;const conn=setupConn;setupRender();
+    try{setupPlug('Control Hub found. Reading what is connected…',true);setupNote('');
+      const read=conn.host==='usb'?await api.robotLink('read-usb'):await api.robotLink('read-all',{host:conn.host}),name=read.active?.name||read.configurations[0],xml=name?read.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]},had=setupRobot?.id===conn.id?setupRobot:null;
+      setupRead=read;setupRobot={id:conn.id,serial:read.serial||conn.host,configured:config.hubs.map(h=>h.address),...(had?.scanned?{portals:had.portals,scanned:had.scanned}:{})};
+      useHubConfig(window.DeckHubSetup.withScan(config,had?.portals),{name:name||'no configuration',...(read.serial?{serial:read.serial}:{}),guessed:!!read.active?.guessed},'#rs-matched',document.createElement('ul'));
+      if(!name)setupNote('The robot has no configuration yet. Press New configuration to make one from what Scan finds.');
+      setupPlug(`Control Hub ${setupRobot.serial} connected over ${conn.host==='usb'?'USB-C':'Wi-Fi'}.`,true);
+      // Android is up before the Robot Controller app: its answer on which configuration is active comes a little later.
+      setupAgain=read.active?.guessed?setupAgain+1:0;
+      if(check){setupChecks([{name:'Checking the connection…',ok:true}]);setupChecking=api.robotLink('check',{host:conn.host}).then(setupChecks,e=>setupChecks([{name:'Talk to the robot',ok:false,detail:e.message}])).finally(()=>{setupChecking=null;});}}
+    catch(e){setupRobot=null;if(/still starting/.test(e.message)){setupTried=null;setupPlug(e.message,true);}else setupPlug(`Could not read the Control Hub. ${e.message}`,false);}
+    finally{setupBusy=false;setupRender();}}
+  // Scan: what answers on the robot now, as Configure Robot's Scan does. It adds what it found to the hubs Setup uses.
+  // What Scan has so far: the hubs the robot has open at once, then each answer from the cable. Setup only takes new hubs when the list changes.
+  let setupScanning=null;
+  function setupScanned({portals,others},checking){const scan=setupScanning;if(!scan||!setupRobot)return;const name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]};
+    setupRobot.portals=portals;setupRobot.checking=checking;setupRobot.scanned=portals.flatMap(p=>[...p.modules.map(m=>m.address),...(p.servoHubs||[]).map(h=>h.address)]);
+    project.calibration.hub={...project.calibration.hub,scan:{expansion:portals.reduce((n,p)=>n+p.modules.filter(m=>!m.parent).length,0),servoHub:portals.reduce((n,p)=>n+(p.servoHubs||[]).length,0),others:others??project.calibration.hub?.scan?.others??[],at:new Date().toISOString()}};
+    const key=[...setupRobot.scanned].sort().join();if(key===scan.key)return setupRender();scan.key=key;
+    useHubConfig(window.DeckHubSetup.withScan(config,portals),{name:name||'no configuration',...(setupRead.serial?{serial:setupRead.serial}:{})},'#rs-matched',document.createElement('ul'));}
+  async function setupScan({auto=false}={}){if(setupBusy||!setupRobot||!setupRead)return;const quiet=auto&&setupAutoTries>1;let answered=false;setupBusy=true;setupScanning={key:null};setupRobot.scanned??=[];setupRobot.checking=true;if(!quiet)setupRender();
+    try{if(setupChecking)await setupChecking;setupPlug('Scanning for hubs and devices…',true);setupScanned(await api.robotLink('scan',{host:setupConn.host}),false);answered=true;calSave();
+      setupPlug(`Control Hub ${setupRobot.serial} connected over ${setupConn.host==='usb'?'USB-C':'Wi-Fi'}.`,true);}
+    catch(e){if(setupRobot)setupRobot.checking=false;if(auto&&setupAutoTries<12){setupAutoFor=null;setupPlug('Waiting for the Robot Controller app to answer…',true);}else setupPlug(`The scan did not finish. ${e.message}`,false);}
+    finally{setupScanning=null;setupBusy=false;if(!quiet||answered)setupRender();}}
+  // A hub Scan did not find: out of the active configuration on the robot, with the devices set up on it, and out of Setup.
+  async function setupRemoveHub(id){if(setupBusy||!setupRobot||!setupRead)return;const hub=window.DeckHardware.wiringOf(project.robot).hubs[id],label=window.DeckHardware.hubName(id,{hubs:window.DeckHardware.wiringOf(project.robot).hubs}),name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null;if(!hub)return;
+    const tag=window.DeckHardware.hubKind(id)==='servoHub'?'ServoHub':'LynxModule',out=xml?RobotConfig.removeHub(xml,{address:hub.address,tag}):{xml,devices:[]};
+    if(out.xml===xml)return useHubConfig(window.DeckHubSetup.withScan(xml?RobotConfig.parse(xml):{devices:[],hubs:[]},setupRobot.portals),{name:name||'no configuration'},'#rs-matched',document.createElement('ul'));
+    if(out.devices.length&&!confirm(`${label} has ${out.devices.length===1?'1 device':`${out.devices.length} devices`} set up on it: ${out.devices.map(d=>d.name).join(', ')}. Remove the hub and ${out.devices.length===1?'it':'them'} from “${name}”?`))return;
+    if(configEditor?.current()===name&&configEditor.dirty()&&!confirm(`Your changes to “${name}” in Configure are not saved. Discard them?`))return;
+    await setupAct(`Removing ${label} from “${name}”. The robot restarts…`,async()=>{await api.robotLink('configure',{host:setupConn.host,name,xml:out.xml,replace:true});if(configEditor?.current()===name)configEditor.open(name,out.xml,setupRobot?.portals);});}
+  async function setupWatch(){const watched=()=>setupShown||calibrating;if(!watched()||setupBusy||!native||!api.robotLink)return;let d;try{d=await api.robotLink('detect');}catch(e){d={usb:{found:false,message:e.message}};}if(!watched())return;
+    if(d.usb?.found){hubOnUsb=true;hubMisses=0;}else if(hubOnUsb&&project.controller==='ftc'){hubMisses++;if(hubMisses===1){await api.robotLink('usb-recover').catch(()=>{});return;}hubOnUsb=false;hubMisses=0;if(!hubDropped.open){hubDropped.showModal();window.DeckDebugCheck?.chime();}}
+    const conn=d.usb?.found?{id:'usb:'+d.usb.serial,host:'usb'}:d.wifi?.robot&&d.wifi.reachable!==false?{id:'wifi:'+d.wifi.host,host:d.wifi.host}:null;
+    if(!conn){setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;if(setupRobot){setupRobot=null;setupRead=null;setupChecks([]);setupRender();}setupPlug(d.usb?.message&&!/Not plugged/.test(d.usb.message)?d.usb.message:'Plug the Control Hub in by USB-C, or join its Wi-Fi, with the robot on.',false);return;}
+    setupConn=conn;if(setupShown&&setupRobot?.id!==conn.id&&setupTried!==conn.id){setupTried=conn.id;await setupRead_({check:true});}
+    else if(setupShown&&setupRobot?.id===conn.id&&setupAgain>0&&setupAgain<8)await setupRead_();
+    // Plugged in: it scans by itself, once for each time the hub is connected.
+    if(setupShown&&setupRobot?.id===conn.id&&setupAutoFor!==conn.id&&!setupBusy&&(setupAgain===0||setupAgain>=8)){setupAutoFor=conn.id;setupAutoTries++;await setupScan({auto:true});}}
+  // Runs one action on a configuration, then reads the robot again.
+  async function setupAct(doing,task){if(setupBusy||!setupConn)return;setupBusy=true;setupNote(doing);setupRender();let ok=false;if(setupChecking)await setupChecking;try{await task();ok=true;setupNote('');}catch(e){setupNote(e.message);}finally{setupBusy=false;}if(ok)await setupRead_();else setupRender();}
+  function setupConfigs(){const box=$('#rs-configs'),names=[...(setupRead?.configurations||[])].sort((a,b)=>a.localeCompare(b)),active=setupRead?.active?.name;
+    box.replaceChildren(...names.map(name=>{const row=document.createElement('div'),on=name===active,b=(text,act,off)=>{const x=Object.assign(document.createElement('button'),{type:'button',className:act==='delete'?'secondary danger':'secondary',textContent:text,disabled:setupBusy||!!off});x.dataset.cfg=act;x.dataset.name=name;x.setAttribute('aria-label',`${text} ${name}`);return x;};
+      row.className='rs-config'+(on?' active':'');row.setAttribute('role','listitem');const title=document.createElement('div');title.append(Object.assign(document.createElement('b'),{textContent:name}));if(on)title.append(Object.assign(document.createElement('span'),{className:'rs-pill ok',textContent:'Active'}));
+      row.append(title,b('Edit','edit'),b('Activate','activate',on),b('Delete','delete'));return row;}));
+    if(!names.length){const p=Object.assign(document.createElement('p'),{className:'hint',textContent:setupRobot?'This robot has no saved configurations.':'Connect to the robot to see its configurations.'});box.replaceChildren(p);}
+    $('#rs-new').disabled=setupBusy||!setupRobot;}
+  // Opens one configuration in Configure: from its Edit button in Setup, or from the list beside Configure's Save.
+  // A Control Hub that was connected and is gone: in the middle of the screen until OK is pressed. Only on the tabs that work with
+  // the hub (Setup, Configure, Calibrate); never while driving. ADB gets one chance to bring it back first.
+  const hubDropped=document.createElement('dialog');hubDropped.id='hub-dropped';hubDropped.setAttribute('role','alertdialog');hubDropped.setAttribute('aria-labelledby','hub-dropped-title');hubDropped.innerHTML='<h2 id="hub-dropped-title">Your Control Hub dropped</h2><p>The USB connection to the Control Hub was lost. Unplug its USB-C cable from this computer, plug it back in, and check the robot is on. Torque reconnects by itself.</p><button id="hub-dropped-ok" type="button">OK</button>';document.body.append(hubDropped);
+  hubDropped.addEventListener('cancel',e=>e.preventDefault());hubDropped.querySelector('button').onclick=()=>hubDropped.close();
+  let hubOnUsb=false,hubMisses=0;
+  function hubWatch(){const on=setupShown||calibrating;if(on&&!setupTimer){hubOnUsb=false;hubMisses=0;void setupWatch();setupTimer=setInterval(()=>void setupWatch(),3000);}else if(!on&&setupTimer){clearInterval(setupTimer);setupTimer=null;}}
+  const setupAskActive=name=>new Promise(done=>{const d=$('#rs-active-confirm'),unsaved=configEditor?.dirty();if(d.open)return done(false);const answer=v=>{d.oncancel=d.onkeydown=null;d.close();done(v);};$('#rs-active-title').textContent=`Make “${name}” your active configuration?`;$('#rs-active-text').textContent=`The robot restarts to use it, and Configure shows it.${unsaved?` Your changes to “${configEditor.current()}” are not saved and will be lost.`:''}`;$('#rs-active-yes').onclick=()=>answer(true);$('#rs-active-no').onclick=()=>answer(false);d.oncancel=ev=>{ev.preventDefault();answer(false);};d.onkeydown=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();answer(false);}};d.showModal();$('#rs-active-no').focus();});
+  // Only the active configuration is ever on the Configure screen. Anything else has to become active first, and the team says so.
+  async function setupSwitch(name,{go=false}={}){const show=()=>{if(go){flowStep='configure';flowMarks();}setupRender();};
+    if(name===setupRead?.active?.name)return show();
+    if(!setupConn||!setupRead?.files?.[name])return setupNote(`Could not read “${name}”.`);
+    if(!await setupAskActive(name)){configEditor?.render();return;}
+    if(configEditor?.dirty())configEditor.close();
+    await setupAct(`Making “${name}” active. The robot restarts…`,()=>api.robotLink('activate',{host:setupConn.host,name}));
+    // A restarting robot's web server can't say what is active yet, so ask until it says this one.
+    for(let i=0;i<6&&setupRead?.active?.name!==name&&setupConn;i++){await new Promise(r=>setTimeout(r,2000));await setupRead_();}
+    if(setupRead?.active?.name!==name)setupNote(`The robot has not reported “${name}” as active yet. Press Check again in a moment.`);show();}
+  // What Configure holds follows the robot, except while there are changes to save.
+  let editorRead=null;function setupFollowActive(){const name=setupRead?.active?.name,xml=name&&setupRead.files?.[name];if(!configEditor||!xml||configEditor.dirty())return;
+    if(configEditor.current()!==name)configEditor.open(name,xml,setupRobot?.portals);else if(editorRead!==setupRead)configEditor.refresh(name,xml,setupRobot?.portals);editorRead=setupRead;}
+  const setupSave=async(name,xml)=>{await api.robotLink('configure',{host:setupConn.host,name,xml,replace:true});await setupRead_();};
+  function setupTestHtml(){const HS=window.DeckHubSetup,D=window.DeckHardware,w=D.wiringOf(project.robot),kinds=HS.needsTest(w),word=k=>D.HUBS[k].name;if(!kinds.length)return '';
+    const many=kinds.map(k=>`${D.hubsOfKind(w.hubs,k).length} ${word(k)}s`).join(' and ');
+    if(!hubTest)return `<p class="hint">You have ${many}, and they look the same from here. Want to move one thing on each to see which is which?</p><div class="button-row"><button type="button" class="primary" data-hub-test="begin">Test them</button></div>`;
+    if(hubTest.stage==='confirm')return `<p>Motors and servos will move. Put the robot on blocks with its wheels off the floor and keep clear.</p><p class="hint">This puts a small test program, Torque Debug, on the robot as team code. It does not touch the hub’s firmware, and you can delete it in OnBot Java.</p><div class="button-row"><button type="button" class="primary" data-hub-test="go">It’s on blocks: start</button><button type="button" class="secondary" data-hub-test="cancel">Cancel</button></div>`;
+    if(hubTest.stage==='starting')return `<p class="hint" role="status">${W_esc(hubTest.text||'Starting the test on the robot…')}</p><div class="button-row"><button type="button" class="secondary" data-hub-test="cancel">Cancel</button></div>`;
+    const s=hubTest.steps[hubTest.at];if(!s)return `<p>All done. Your hubs’ names are saved in this setup.</p><div class="button-row"><button type="button" class="primary" data-hub-test="cancel">Finish</button></div>`;
+    const of=`Step ${hubTest.at+1} of ${hubTest.steps.length}: the ${word(s.kind)} at address ${s.address}`,mates=D.hubsOfKind(w.hubs,s.kind).length,pick=`<label for="rs-test-label">Which one moved?</label><select id="rs-test-label" data-wire-hub-label="${s.hub}"><option value="0">Not decided</option>${Array.from({length:mates},(_,i)=>`<option value="${i+1}"${w.hubs[s.hub].label===i+1?' selected':''}>${word(s.kind)} ${i+1}</option>`).join('')}</select>`;
+    if(!s.device)return `<p>${of}</p><p class="hint">Nothing is configured on this hub, so there is nothing to move. Add a device in Configure Robot, or name this hub yourself.</p>${pick}<div class="button-row"><button type="button" class="primary" data-hub-test="next">Next</button><button type="button" class="secondary" data-hub-test="cancel">Stop</button></div>`;
+    return `<p>${of}</p><p class="hint">Moves ${s.device.kind==='motor'?'motor':'servo'} port ${s.device.port}, “${W_esc(s.device.name)}”, for one second.</p><div class="button-row"><button type="button" class="primary" data-hub-test="run"${hubTest.running?' disabled':''}>${hubTest.ran?'Move it again':'Move it'}</button></div>${hubTest.note?`<p class="hint" role="status">${W_esc(hubTest.note)}</p>`:''}${pick}<div class="button-row"><button type="button" class="secondary" data-hub-test="next">Next</button><button type="button" class="secondary" data-hub-test="cancel">Stop</button></div>`;}
+  const W_esc=v=>window.DeckWiring.esc(v);
+  // Setup's step shows done once the Control Hub has been read.
+  let flowStep='setup';
+  function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?'calibrate':flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);b.toggleAttribute('data-done',b.dataset.flow==='setup'&&!!project.calibration?.hub?.readout);}
+    if(setupRoot){$('#rs-step-setup').hidden=flowStep!=='setup';$('#rs-step-configure').hidden=flowStep!=='configure';}}
+  function setupRender(){if(!setupRoot||setupRoot.hidden)return;hubDefaults();flowMarks();const W=window.DeckWiring,HS=window.DeckHubSetup,st=W.state(project),ftc=project.controller==='ftc';
+    $('#rs-read').disabled=!ftc||setupBusy;$('#rs-scan').disabled=!ftc||setupBusy||!setupRobot;$('#rs-scan').title=setupRobot?'':'Connect to the robot first';$('#rs-robot-card').hidden=!ftc;$('#rs-configs-card').hidden=!ftc;setupConfigs();
+    if(!configEditor)configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:setupSave,photo:tag=>api.devicePhoto(tag),names:()=>setupRead?.configurations||[],pick:name=>void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:()=>setupRobot?.scanned?project.calibration?.hub?.scan?.others||[]:null,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(st,{ids:'rc-',only:['spm']})}</div>`:''}});setupFollowActive();configEditor.render();
+    if(!ftc){calHtml($('#rs-hubs'),'<p class="hint">This setup is for a robot without a Control Hub, so there are no hubs or ports to set here.</p>');calHtml($('#rs-problems'),'');$('#rs-test').hidden=true;return;}
+    calHtml($('#rs-hubs'),W.scanHtml(st,project.calibration?.hub?.scan||null,{busy:setupBusy,seen:setupRobot?.scanned?id=>HS.hubSeen(id==='control'?173:st.wiring.hubs[id].address,setupRobot):()=>null}));
+    calHtml($('#rs-problems'),st.problems.filter(x=>!x.keys.length).map(x=>`<p class="sim-wire-problem ${x.level}">${W_esc(x.text)}</p>`).join(''));
+    const test=setupRobot?setupTestHtml():'';$('#rs-test').hidden=!test;calHtml($('#rs-test-body'),test);}
+  async function hubTestAct(act){const HS=window.DeckHubSetup,set=next=>{hubTest=next;setupRender();};
+    if(act==='begin')return set({stage:'confirm'});
+    if(act==='cancel'){if(hubTest?.stage!=='confirm')await liveDebug?.stop().catch(()=>{});return set(null);}
+    if(act==='go'){if(!liveDebug)return;set({stage:'starting',text:'Putting the test on the robot and building it…'});await detectLink();
+      if(!await liveDebug.install()){if(hubTest)status('#rs-status','The robot could not build the test program. Check OnBot Java for errors in its code.');return set(null);}
+      if(!hubTest)return;set({stage:'starting',text:'Starting the test on the robot…'});await liveDebug.start();
+      try{await new Promise((ok,fail)=>{const end=Date.now()+15000,t=setInterval(()=>{if(liveDebug.latest().frame&&liveDebug.running()){clearInterval(t);ok();}else if(!hubTest||Date.now()>end){clearInterval(t);fail(Error('The robot did not start the test.'));}},200);});}catch(e){status('#rs-status',e.message);await liveDebug.stop().catch(()=>{});return set(null);}
+      return set({stage:'steps',steps:HS.testSteps(project.calibration.hub?.readout||[],project.robot.wiring),at:0});}
+    if(act==='next')return set({...hubTest,at:hubTest.at+1,ran:false,note:''});
+    if(act==='run'){const d=hubTest.steps[hubTest.at]?.device;if(!d||hubTest.running)return;set({...hubTest,running:true,note:'Moving…'});
+      const r=await liveDebug.pulse(d.command,d.name,d.command==='S'?.6:.25,1);if(d.command==='S')void liveDebug.send(`S\t${d.name}\t0.5`);
+      if(hubTest)set({...hubTest,running:false,ran:true,note:r.error||(r.changes.length?`The robot read a change: ${r.changes[0].text}.`:'Watch the robot: did it move? If not, check the wire, then move it again.')});}}
+  if(setupRoot){const after=fn=>(...a)=>{fn(...a);setupRender();};
+    for(const b of setupRoot.querySelectorAll('[data-controller]'))b.addEventListener('click',()=>setupRender());
+    window.DeckWiring.bind($('#rs-step-configure'),{project:()=>project,apply:after(applyWiring)});
+    window.DeckWiring.bind($('#rs-test'),{project:()=>project,apply:after(applyWiring)});
+    $('#rs-test').addEventListener('click',e=>{const b=e.target.closest('[data-hub-test]');if(b)void hubTestAct(b.dataset.hubTest);});
+    $('#rs-read').onclick=async()=>{setupTried=null;await setupWatch();if(setupConn&&!setupBusy&&setupRobot)await setupRead_({check:true});};
+    $('#rs-scan').onclick=()=>void setupScan();api.onRobotScan?.(p=>setupScanned(p,true));
+    $('#rs-hubs').addEventListener('click',e=>{const b=e.target.closest('[data-hub-remove]');if(b)void setupRemoveHub(b.dataset.hubRemove);});
+    $('#rs-configs').addEventListener('click',e=>{const b=e.target.closest('[data-cfg]');if(!b)return;const name=b.dataset.name,act=b.dataset.cfg;
+      if(act==='edit')return void setupSwitch(name,{go:true});
+      if(act==='activate')return void setupSwitch(name);
+      if(act==='delete'&&confirm(`Delete the configuration “${name}” from the robot?`))void setupAct(`Deleting “${name}”…`,async()=>{await api.robotLink('delete-config',{host:setupConn.host,name});if(configEditor.current()===name)configEditor.close();});});
+    $('#rs-new').onclick=()=>{$('#rs-new-form').hidden=false;$('#rs-new').hidden=true;$('#rs-new-name').value=RobotConfig.configurationName('robot',setupRead?.configurations||[]);$('#rs-new-name').select();};
+    const closeNew=()=>{$('#rs-new-form').hidden=true;$('#rs-new').hidden=false;};$('#rs-new-cancel').onclick=closeNew;
+    $('#rs-new-form').onsubmit=e=>{e.preventDefault();const name=$('#rs-new-name').value.trim();if(!RobotConfig.validName(name))return setupNote('Use letters, digits, spaces, - and _ (up to 40), starting with a letter or digit.');if((setupRead?.configurations||[]).some(n=>n.toLowerCase()===name.toLowerCase()))return setupNote(`The robot already has a configuration named “${name}”.`);closeNew();
+      void setupAct(`Scanning the robot and making “${name}”. The robot restarts…`,async()=>{const {portals}=await api.robotLink('scan',{host:setupConn.host});if(!portals.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
+        const imus=[];for(const p of portals){const parent=p.modules.find(m=>m.parent),tag=parent&&RobotConfig.IMU_TAGS[parent.imu];if(tag&&p.serial==='(embedded)')imus.push({name:'imu',tag,device:'imu',port:0,bus:0,module:{portal:p.serial,address:parent.address,name:'Control Hub'}});}
+        await api.robotLink('configure',{host:setupConn.host,name,xml:RobotConfig.newConfiguration(portals,imus)});});};
+    api.onRobotConfig?.(({name,xml})=>{if(project.controller!=='ftc')return;try{const config=RobotConfig.parse(xml);if(setupRobot)setupRobot.configured=config.hubs.map(h=>h.address);useHubConfig(window.DeckHubSetup.withScan(config,setupRobot?.portals),{name,source:'driver station'},'#rs-matched',document.createElement('ul'));}catch(e){status('#rs-status',e.message);}});}
   // Where the odometry sits and which way it counts (project.robot.odometry; only what differs from Deck's defaults is
   // stored). The exports configure the Pinpoint, OTOS or pods with it, and the guided check measures it on the robot.
   // A key starting with - is shown negated (the right pod's inches right of centre).
@@ -1957,7 +2094,6 @@ public class MyAuto implements DeckAutonomous {
     const odo=C.odometryOf(project.robot),path=odoPath(key),last=path.pop();path.reduce((o,k)=>o[k],odo)[last]=v;
     project.robot=C.robot({...project.robot,odometry:odo},project.controller);save();reload();odometryPanel();});
   function setLocalization(v){const sel=$('#sim-localization');if(![...sel.options].some(o=>o.value===v))return;sel.value=v;sel.dispatchEvent(new Event('change'));}
-  $('#sim-sensor-add').onchange=e=>{const k=e.target.value;if(!k)return;if(k==='encoders'){project.sensors.driveEncoders=true;if(!POSITION[project.sensors.localization])setLocalization('encoders');else{save();robotPanel();}}else setLocalization(k);};
   // Timed driving: the engine works the numbers out from the robot settings unless the team measured them.
   function timedPanel(committed=false){
     const measured=project.timing.source==='measured',t=measured?project.timing:info?.timing,fmt=(v,unit)=>finite(v)?`${+v.toFixed(unit==='s'?2:1)} ${unit}`:'…';
@@ -1986,15 +2122,13 @@ public class MyAuto implements DeckAutonomous {
   }
   async function testRobot(){const T=window.DeckTestRobot;return storeGenerated(await api.simFile('test-robot'),T.MODEL,()=>T.kinematics());}
   // A preset robot's CAD: kept only while the setup still has that preset (chosen, or customized from it).
-  async function presetRobot(id){const P=PR(),asset=presetAsset(id);return storeGenerated(await api.simFile('preset-robot',{id,asset}),P.model(id,asset),()=>P.kinematics(id,asset),()=>project.robotPreset===id&&!project.model||P.ofModel(project.model)===id);}
+  async function presetRobot(id){const P=PR();return storeGenerated(await api.simFile('preset-robot',{id}),P.model(id),()=>P.kinematics(id),()=>project.robotPreset===id&&!project.model||P.ofModel(project.model)===id);}
   const presetLoading=new Map();
   let testRobotLoading=null;
   // The stored one-body model, placed in the robot frame for 2D and 3D.
   // A preset whose vendor CAD is in this build (the goBILDA Strafer, NYC FIRST's A301 Swechanum) shows it, with its
   // curated wheel and module animation, in place of its generated model.
   const presetCad=()=>{const cad=PR()?.ROBOTS[project.robotPreset]?.cad;return cad&&builtins.has(cad)?cad:null;};
-  // A preset whose prepared vendor CAD (REV's DUO Starter Bot) is in this build uses it, with its own joints and wiring.
-  const presetAsset=id=>{const a=PR()?.ROBOTS[id]?.asset;return !!a&&builtins.has(a);};
   // Each preset robot is a saved setup of its own ("Starter Mecanum"), built in: it cannot be deleted or renamed, and
   // opens on its demo route, optimized, ready to run. Clone one to change it freely.
   function ensurePresetSetups(){const P=PR();if(!P)return;let added=false;
@@ -2003,22 +2137,20 @@ public class MyAuto implements DeckAutonomous {
       // A demo whose route changed in a new version gets the new route (its field cannot be edited, so nothing is lost);
       // Optimize reshapes paths and aiming sets turns, but each stop stays, so stops are compared.
       const stops=pins=>JSON.stringify((pins||[]).map(q=>[q.x,q.y,q.action||'',q.wait||0])),fresh=have&&P.has(id)?cleanLayout({...P.layout(id),id:presetLayoutId(id)}):null;
-      if(fresh){const d=project.setupId===have.id?project:have.data,l=d?.layouts?.[0];if(l&&stops(l.pins)!==stops(fresh.pins)){d.layouts=[fresh];d.active=fresh.id;d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};const m=P.apply(id,d,C,{asset:presetAsset(id)}).mechanisms;d.mechanisms=m;if(d===project){info=null;void switchLayout(fresh.id);}added=true;}}
+      if(fresh){const d=project.setupId===have.id?project:have.data,l=d?.layouts?.[0];if(l&&stops(l.pins)!==stops(fresh.pins)){d.layouts=[fresh];d.active=fresh.id;d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};const m=P.apply(id,d,C).mechanisms;d.mechanisms=m;if(d===project){info=null;void switchLayout(fresh.id);}added=true;}}
       if(!P.has(id)||have||project.setups.length>=20)continue;
-      const d=defaults(),demo=cleanLayout({...P.layout(id),id:presetLayoutId(id)});Object.assign(d,P.apply(id,d,C,{asset:presetAsset(id)}));d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};d.model=null;d.layouts=[demo];d.active=demo.id;d.setupDone=true;d.setupName=`${MECH.PRESETS[id].name} demo`;
+      const d=defaults(),demo=cleanLayout({...P.layout(id),id:presetLayoutId(id)});Object.assign(d,P.apply(id,d,C));d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};d.model=null;d.layouts=[demo];d.active=demo.id;d.setupDone=true;d.setupName=`${MECH.PRESETS[id].name} demo`;
       const {setups,...data}=JSON.parse(JSON.stringify(d));project.setups.push({id:'preset:'+id,name:`${MECH.PRESETS[id].name} demo`,data});added=true;}
     if(added){save();setupPanel();presetPanel();}}
   async function placeModel(){
     const cad=presetCad();if(cad&&(project.model||project.robot.appearance!==cad)){project.model=null;project.robot.appearance=cad;project.kinematics=window.DeckKinematics.sanitize({});save();robotPanel();mechanismsPanel();}
-    // A locked preset drawn from the other source (the vendor CAD came or went with the build) is set up again from it.
-    if(project.robotPreset&&PR()?.ofModel(project.model)===project.robotPreset&&PR().assetModel(project.model)!==presetAsset(project.robotPreset)){Object.assign(project,PR().apply(project.robotPreset,project,C,{asset:presetAsset(project.robotPreset)}));project.model=null;model=null;save();}
     if(native&&typeof api.simFile==='function'&&(!project.model&&project.robot.appearance==='custom'&&testRobotParts()||project.model?.name===window.DeckTestRobot?.NAME&&placeModel.missing===project.model.id)){
       testRobotLoading??=testRobot().catch(e=>status('#start-status',`Could not build the Test robot: ${e.message}`)).finally(()=>{testRobotLoading=null;placeModel.retried=placeModel.missing;placeModel.missing=null;});await testRobotLoading;}
     // A preset robot's CAD is made when it has none yet (just chosen, or a setup saved before presets had CAD; that one gets
     // the rest of its preset too) and again when its stored file is gone (a cleared models folder, another computer).
     const preset=project.robotPreset&&!project.model?(cad?null:project.robotPreset):PR()?.ofModel(project.model);
     if(native&&typeof api.simFile==='function'&&PR()?.has(preset)&&(!project.model||placeModel.missing===project.model.id)){
-      if(!project.model&&!project.kinematics.joints.some(j=>(j.parts||[]).some(p=>String(p).startsWith(PR().robotOf(preset,presetAsset(preset)).name+'/'))))Object.assign(project,PR().apply(preset,project,C,{asset:presetAsset(preset)}));
+      if(!project.model&&!project.kinematics.joints.some(j=>(j.parts||[]).some(p=>String(p).startsWith(PR().ROBOTS[preset].name+'/'))))Object.assign(project,PR().apply(preset,project,C));
       if(!presetLoading.has(preset))presetLoading.set(preset,presetRobot(preset).catch(e=>status('#start-status',`Could not build the ${MECH.PRESETS[preset].name}: ${e.message}`)).finally(()=>{presetLoading.delete(preset);placeModel.retried=placeModel.missing;placeModel.missing=null;}));
       await presetLoading.get(preset);}
     const seq=placeModel.seq=(placeModel.seq||0)+1;
@@ -2030,6 +2162,11 @@ public class MyAuto implements DeckAutonomous {
       if(key!==model.placeKey){model.holder=M().place(model.geometry,meta||{front:'+x',top:'+z',units:'in'},chassis);model.picture=M().silhouette(model.holder,model.look===look?model.picture:null);model.look=look;model.placeKey=key;}
     }catch(e){model=null;status('#start-status',e.message);}
     modelUi();draw();view3d?.setModel(fieldRig());
+    // A setup whose CAD has not been traced yet (saved before this could, or a mechanism was removed): what powers what is
+    // worked out once, by itself. Built-in test and preset robots come with theirs set.
+    if(imported&&model?.id===imported.id&&model.holder&&project.controller==='ftc'&&project.mechanisms.enabled&&!project.mechanisms.traced&&imported.name!==window.DeckTestRobot?.NAME&&!PR()?.ofModel(imported)&&placeModel.tracedId!==`${imported.id}:${project.mechanisms.intakes.length+project.mechanisms.shooters.length}`){
+      placeModel.tracedId=`${imported.id}:${project.mechanisms.intakes.length+project.mechanisms.shooters.length}`;
+      try{if(project.kinematics.joints.length){actuatorsFromCad();save();reload();mechanismsPanel();robotPanel();}else void configureFromCad();}catch(e){status('#mech-list-status',`Could not read what powers each mechanism: ${e.message}`);}}
   }
   // The field views (3D, run videos) draw a lighter copy of a heavy CAD body (DeckRobotModel.lighten), made once per
   // model in the background; until it is ready they show the plain robot. The Setup previews keep every triangle,
@@ -2057,12 +2194,12 @@ public class MyAuto implements DeckAutonomous {
     view3d?.update(frame,state3d());mechPreview?.resize();}
   const fieldRig=()=>rigOf(fieldBody(),'fieldRig'),mechRig=()=>rigOf(model?.holder,'mechRig');
   function modelUi(){
-    const meta=project.model,builtin=model?.builtin;$('#sim-model-box').hidden=!meta&&!builtin;$('#sim-model-drop').classList.toggle('compact',!!meta||!!builtin);
+    const meta=project.model,builtin=model?.builtin;$('#sim-model-box').hidden=!meta&&!builtin;$('#sim-model-remove').hidden=!meta||!!builtin;$('#sim-model-drop').classList.toggle('compact',!!meta||!!builtin);
     $('#sim-model-credit').textContent=builtin?model.meta?.credit||'':meta?'Its moving parts (turrets, hoods, rollers, ramps) are found and checked under Mechanisms.':'Choose a bundled chassis or import your own.';
     // The Mechanisms page shows the same model with its parts marked.
     queueMicrotask(()=>mechModel());
-    if(!meta&&!builtin){modelPreview?.dispose();modelPreview=null;return;}
-    $('#sim-model-remove').hidden=!!builtin;$('#sim-model-help').hidden=false;
+    if(!meta&&!builtin){modelPreview?.dispose();modelPreview=null;partsPanel();return;}
+    $('#sim-model-help').hidden=false;
     $('#sim-units-box').hidden=!!builtin||meta?.source==='step';$('#sim-model-units').value=meta?.units||'in';
     const s=model?.holder?.userData.size,name=meta?.name||model?.meta?.name||'Chassis';$('#sim-mesh-size').textContent=s?`${name}: fitted to ${s.length.toFixed(1)} × ${s.width.toFixed(1)} in, ${s.height.toFixed(1)} in tall.`:name;
     if(model?.holder){if(!modelPreview){modelPreview=M().preview($('#sim-model-preview'),{onSide:side=>{selectedSide=side;for(const b of $$('[data-assign-side]'))b.disabled=!side;status('#sim-model-help','');}});modelPreview.pick(pickPart);}modelPreview.update(model.holder,chassisFootprint());}
@@ -2157,11 +2294,14 @@ public class MyAuto implements DeckAutonomous {
       project.model=M().meta({id:stored.id,name:result.name||stored.name,units:body.units,front:front||'+x',top:top||'+z',source:body.source,parts,bodyChassis:true});project.robot.appearance='custom';$('#sim-appearance').value='custom';model={id:stored.id,geometry:body.geometry};
       // A robot file's joints (URDF, SDFormat, MuJoCo, USD) come with it, confirmed.
       if(body.kinematics)project.kinematics=window.DeckKinematics.sanitize({...body.kinematics,model:stored.id});
-      project.robotPreset=null;const cad=setUpFromCad({merge:true});project.model.autoSize=!cad?.robot;project.model.entered=[];
+      project.robotPreset=null;const cad=setUpFromCad({merge:true});project.model.autoSize=!cad?.robot;project.model.entered=[];placeModel.tracedId=`${stored.id}:${project.mechanisms.intakes.length+project.mechanisms.shooters.length}`;
       // The drivetrain from part names ("104mm Mecanum Wheel", "Swerve module"...).
       const drive=MECH.drivetrainFromNames(result.names||[]);if(drive&&C.drives[drive]){project.robot.drivetrain=drive;project.model.drivetrain=drive;cad?.found.unshift(`Drivetrain: ${C.drives[drive].name}`);}
       save();robotPanel();mechanismsPanel();presetPanel();
       if(!stay){selectTab('setup');showSetupStep('robot');}await placeModel();const sized=sizeFromModel();reload();
+      // What powers each mechanism comes from the CAD too, so the count of motors and servos is the robot's and not a guess
+      // (a robot file's joints are already confirmed).
+      if(cad?.found.length&&!body.kinematics){importStatus('Finding what powers each mechanism…',true);try{await configureFromCad();}catch(e){status('#mech-list-status',`Could not read what powers each mechanism: ${e.message}`);}}
       importStatus(`Imported ${body.parts} part${body.parts===1?'':'s'} in ${Math.round((Date.now()-began)/1000)} s${result.cached?' (from the last import of this file)':''}.${sized?` Size from the CAD: ${sized}.`:''}${cad?.found.length?` From the assembly names: ${cad.found.join('; ')}.`:body.kinematics?'':' Name the assemblies Chassis, Intake, Shooter (or Turret, Pollen shooter, Nectar shooter) and Indexer in your CAD to set the robot up from them.'} Check the front and top with the cube.${body.kinematics?` Its ${body.kinematics.joints.filter(j=>j.type!=='fixed').length} joints come from the ${body.format?body.format+' file':'file'} (Setup → Moving parts).`:''}${body.missing?.length?` Not drawn: ${body.missing.slice(0,4).join('; ')}${body.missing.length>4?'…':''}.`:''}${body.notes?.length?` Not read from the file: ${body.notes.slice(0,2).join(' ')}${body.notes.length>2?` (and ${body.notes.length-2} more)`:''}`:''}`,false,true);
     }catch(e){importStatus(`Could not import the robot: ${e.message}`);}finally{clearInterval(ticking);$('#sim-model-drop').classList.remove('busy');}
   }
@@ -2238,9 +2378,9 @@ public class MyAuto implements DeckAutonomous {
   // program and run settings. The picker lists what every setup holds; the bar beside it creates, renames
   // and deletes setups and opens or saves them as files, and right-clicking one (or the menu key) opens,
   // clones, renames or deletes it.
-  const CONTROLLERS={ftc:'FTC Control Hub',motionmodule:'MotionModule'};
+  const CONTROLLERS={ftc:'FTC Control Hub',motionmodule:'Other robot'};
   function setupFacts(d){
-    if(d?.needsCad&&!d.model)return [['Robot','Not set up yet: import its CAD in 2 · Robot']];
+    if(d?.needsCad&&!d.model)return [['Robot','Not set up yet: import its CAD in 2 · CAD']];
     const layouts=Array.isArray(d?.layouts)?d.layouts:[],l=layouts.find(x=>x.id===d.active)||layouts[0]||{},r=d?.robot||{},m=d?.mechanisms||{},preset=MECH.PRESETS[d?.robotPreset];
     const game=l.field==='biobuzz',drive=(C.drives[r.drivetrain]?.name||'').split(' · ')[0],count=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
     const fieldText=(l.name||GAMES[l.field]||'Field')+(game?` · ${l.alliance==='blue'?'blue':'red'} alliance`:finite(l.width)&&finite(l.height)?` · ${l.width} × ${l.height} in`:'')+(layouts.length>1?` (+${layouts.length-1} more)`:'');
@@ -2254,6 +2394,7 @@ public class MyAuto implements DeckAutonomous {
     return [['Field',fieldText],['Robot',robotText],['Mechanisms',mechText],['Controller',CONTROLLERS[d?.controller]||CONTROLLERS.ftc],['Route',pins?`${count(pins,'pin')}${l.route?' · planned':''}`:'No route yet']];
   }
   function setupPanel(){
+    reliableNote();
     const current=$('#sim-setup'),facts=setupFacts(project);current.querySelector('strong').textContent=project.setupName;current.querySelector('small').textContent=facts.slice(0,4).map(f=>f[1]).join(' · ');current.title=facts.map(f=>f.join(': ')).join('\n');
     if(!$('#sim-setup-list').hidden)setupList();activeSetupPanel();
   }
@@ -2367,89 +2508,70 @@ public class MyAuto implements DeckAutonomous {
   // The robot's parts, edited like DSIM's robot builder: option cards, side chips and a 3×3 position
   // grid, with the robot model (when there is one) updating as you choose.
   // Every change goes through the shared sanitizer, so this page, the engine and the exports agree.
-  let mechPreview=null,mechPlacing=null,mechList=null;
+  let mechPreview=null,mechPlacing=null,mechList=null,garagePick=null,garageKeys=null;
   const GRID=Object.keys(MECH.MOUNT_AT),title=s=>s[0].toUpperCase()+s.slice(1);
   const chip=(field,value,label,on,disabled=false)=>`<button type="button" class="sim-chip" data-field="${field}" data-value="${value}" aria-pressed="${on}"${disabled?' disabled':''}>${label}</button>`;
   const choiceCards=(field,list,notes,value)=>`<div class="sim-choice-cards">${Object.entries(list).map(([k,v])=>`<button type="button" class="sim-choice" data-field="${field}" data-value="${k}" aria-pressed="${k===value}"><strong>${v}</strong><span>${notes[k]}</span></button>`).join('')}</div>`;
   const mountGrid=(value,blocked)=>`<div class="sim-mount-grid" role="group" aria-label="Position on the robot"><span class="sim-mount-front">▲ Front</span>${GRID.map(k=>`<button type="button" data-field="mount" data-value="${k}" aria-pressed="${k===value}"${blocked.has(k)?' disabled title="Too close to the other shooter"':''}>${MECH.MOUNTS[k]}</button>`).join('')}</div>`;
   const placeButton=part=>model?.holder?`<button type="button" class="secondary sim-place" data-place="${part}" aria-pressed="${mechPlacing===part}">${mechPlacing===part?'Click the part on the model…':'Place on model'}</button>`:'';
-  const configNote='<p class="hint">Names must match your Control Hub configuration (or hardware.py on MotionModule). Tick “Turns the other way” for a device mounted so it runs backwards; the check TeleOp exported with the code shows which ones need it.</p>';
-  const reverseBox=(id,field,on)=>`<label class="check sim-mech-reverse" for="${id}"><input id="${id}" data-field="${field}" type="checkbox"${on?' checked':''}> Turns the other way</label>`;
-  // The motors and servos a game mechanism runs on, in one line; its Actuators section holds their settings.
-  const escHtml=s=>String(s??'').replace(/[&<>"]/g,c=>`&#${c.charCodeAt(0)};`);
-  const deviceLine=list=>`<p class="hint sim-mech-devices"><b>Actuators:</b> ${list.map(([what,kind,name,extra])=>`${what} on a ${kind} “${escHtml(name)}”${extra?` (${extra})`:''}`).join('; ')}.</p>`;
-  const intakeDevices=i=>[...(i.kind!=='kicker'?[[i.kind==='ramp'?'rollers':'roller',i.device==='crservo'?'continuous servo':'DC motor',i.motor],...(i.motor2?[['second roller',i.device==='crservo'?'continuous servo':'DC motor',i.motor2]]:[])]:[]),
-    ...(MECH.deploys(i.kind)?[[i.kind,'servo',i.servo,`down at ${i.downPos}, up at ${i.upPos}`]]:[])];
-  const shooterDevices=(s,n,m)=>[['flywheel','DC motor',s.motor],...(s.motor2?[['second flywheel','DC motor',s.motor2]]:[]),
-    ['feeder',{motor:'DC motor',crservo:'continuous servo',pusher:'servo',gate:'servo'}[s.indexerKind],s.indexer,MECH.servoFeeder(s.indexerKind)?`${s.indexerKind==='gate'?'open':'push'} at ${s.feedPos}, rest at ${s.restPos}`:''],
-    ...(s.type==='turret'&&!(n===1&&m.shooters[1]?.sharesTurret)?[['turret',{servo:'servo',crservo:'continuous servo with its feedback wire'}[m.turret.kind]||'DC motor with encoder',s.turretMotor]]:[]),...(s.hood?[['hood','servo',s.hood]]:[])];
-  function intakeCard(intake,n,used){
-    const swing=SWINGS[intake.kind];
-    return `<section class="sim-mech-part" data-part="intake:${n}"><div class="sim-mech-head"><h4>Intake ${n+1}</h4><button type="button" class="icon-button" data-mech-remove="intake:${n}" aria-label="Remove intake ${n+1}" title="Remove">×</button></div>
+  // A deployable ramp is two intakes that work as one: the ramp that pivots, on a servo, and the rollers, on a motor or a servo.
+  // They share one pick-up box on one side of the robot, so they are grouped under it.
+  // How far it swings starts from 0, the CAD's pose.
+  const deployJoint=n=>project.kinematics.joints.find(j=>j.drive?.signal==='deploy'&&j.drive.of==='intake:'+n);
+  const swingRange=(intake,n)=>{const j=deployJoint(n);return j?+Math.abs((j.states?.lowered??0)-(j.states?.raised??0)).toFixed(1):intake.travel??90;};
+  const swingFields=(intake,n)=>{const ramp=intake.kind==='ramp';return `<div class="start-xy"><div><label for="mech-deploy-time-${n}">${ramp?'Folds up and down in':'Swings up and down in'} · s</label><input id="mech-deploy-time-${n}" data-field="fold" type="number" min="0" max="3" step="any" data-slider-max="1.5" data-slider-step="0.05" value="${intake.down}"></div><div><label for="mech-intake-range-${n}">${ramp?'Folds through':'Swings through'} · ° from 0</label><input id="mech-intake-range-${n}" data-range="${n}" type="number" min="-360" max="360" step="any" data-slider="off" value="${swingRange(intake,n)}"></div></div>`;};
+  function intakeCard(intake,n,used,num=n+1){
+    const deploy=!!SWINGS[intake.kind],group=intake.kind==='ramp',where=intake.sides.map(title).join(' and ').toLowerCase();
+    return `<section class="sim-mech-part" data-part="intake:${n}"><div class="sim-mech-head"><h4>${group?`Intakes ${num} and ${num+1} · grouped on the ${where} of the robot`:`Intake ${num}`}</h4><button type="button" class="icon-button" data-mech-remove="intake:${n}" aria-label="Remove intake ${n+1}" title="Remove">×</button></div>
       ${choiceCards('kind',MECH.INTAKES,INTAKE_SHORT,intake.kind)}
-      <span class="sim-mech-label">Size</span><div class="sim-grid3"><div><label for="mech-intake-reach-${n}">Sticks out past the frame · in</label><input id="mech-intake-reach-${n}" data-field="reach" type="number" min="0" max="18" step="any" data-slider-max="8" data-slider-step="0.25" value="${intake.reach}"></div><div><label for="mech-intake-width-${n}">Mouth width · in</label><input id="mech-intake-width-${n}" data-field="width" type="number" min="1" max="48" step="any" data-slider-max="${Math.max(project.robot.width,project.robot.length)}" data-slider-step="0.25" value="${+(intake.width??(intake.sides.some(e=>e==='front'||e==='back')?project.robot.width:project.robot.length)).toFixed(2)}"></div><div><label for="mech-intake-height-${n}">Opening height · in</label><input id="mech-intake-height-${n}" data-field="height" type="number" min="1" max="24" step="any" data-slider-max="12" data-slider-step="0.25" value="${intake.height}"></div></div>
-      <span class="sim-mech-label">Picks up from</span><div class="sim-chips">${MECH.EDGES.map(e=>chip('side',e,title(e),intake.sides.includes(e),used.has(e)&&!intake.sides.includes(e))).join('')}</div>${placeButton('intake:'+n)}
-      ${swing?`<span class="sim-mech-label">${swing.label}</span><div class="start-xy"><div><label for="mech-deploy-down-${n}">${swing.down}</label><input id="mech-deploy-down-${n}" data-field="down" type="number" min="0" max="3" step="any" data-slider-max="1.5" data-slider-step="0.05" value="${intake.down}"></div><div><label for="mech-deploy-up-${n}">${swing.up}</label><input id="mech-deploy-up-${n}" data-field="up" type="number" min="0" max="3" step="any" data-slider-max="1.5" data-slider-step="0.05" value="${intake.up}"></div></div>`:''}
-      ${deviceLine(intakeDevices(intake))}<div class="sim-wire-block" data-wire-for="intake:${n}"></div><details class="sim-mech-code"><summary>Actuators · motors and servos</summary>${intake.kind!=='kicker'?`<div class="start-xy"><div><label for="mech-intake-device-${n}">${swing?'Rollers run on a':'Roller runs on a'}</label><select id="mech-intake-device-${n}" data-field="device">${options(MECH.ROLLERS,intake.device||'motor')}</select></div><div><label for="mech-intake-power-${n}">${swing?'Roller power':'Intake power'} · 0–1</label><input id="mech-intake-power-${n}" data-field="power" type="number" min="0.05" max="1" step="any" value="${intake.power}"></div></div>
-        <div class="start-xy"><div><label for="mech-intake-motor-${n}">${swing?'Roller name':'Intake roller name'}</label><input id="mech-intake-motor-${n}" data-field="motor" maxlength="40" autocomplete="off" spellcheck="false" value="${intake.motor}"></div>${reverseBox(`mech-intake-rev-${n}`,'reversed',intake.reversed)}</div>
-        <div class="start-xy"><div><label for="mech-intake-motor2-${n}">Second roller name (optional)</label><input id="mech-intake-motor2-${n}" data-field="motor2" maxlength="40" autocomplete="off" spellcheck="false" placeholder="None" value="${intake.motor2||''}"></div>${intake.motor2?reverseBox(`mech-intake-rev2-${n}`,'reversed2',intake.reversed2):''}</div>`:''}${swing?`<div class="start-xy"><div><label for="mech-deploy-servo-${n}">${swing.servo}</label><input id="mech-deploy-servo-${n}" data-field="servo" maxlength="40" autocomplete="off" value="${intake.servo}"></div></div><div class="start-xy"><div><label for="mech-deploy-downpos-${n}">Servo position down · 0–1</label><input id="mech-deploy-downpos-${n}" data-field="downPos" type="number" min="0" max="1" step="any" value="${intake.downPos}"></div><div><label for="mech-deploy-uppos-${n}">Servo position up · 0–1</label><input id="mech-deploy-uppos-${n}" data-field="upPos" type="number" min="0" max="1" step="any" value="${intake.upPos}"></div></div>`:''}${configNote}</details></section>`;
+      <div class="sim-box-fields"><span class="sim-mech-label">${group?'Pick-up box, shared by both':'Pick-up box'}</span><div class="sim-grid3"><div><label for="mech-intake-reach-${n}">Sticks out past the frame · in</label><input id="mech-intake-reach-${n}" data-field="reach" type="number" min="0" max="18" step="any" data-slider-max="8" data-slider-step="0.25" value="${intake.reach}"></div><div><label for="mech-intake-width-${n}">Mouth width · in</label><input id="mech-intake-width-${n}" data-field="width" type="number" min="1" max="48" step="any" data-slider-max="${Math.max(project.robot.width,project.robot.length)}" data-slider-step="0.25" value="${+(intake.width??(intake.sides.some(e=>e==='front'||e==='back')?project.robot.width:project.robot.length)).toFixed(2)}"></div><div><label for="mech-intake-height-${n}">Opening height · in</label><input id="mech-intake-height-${n}" data-field="height" type="number" min="1" max="24" step="any" data-slider-max="12" data-slider-step="0.25" value="${intake.height}"></div></div>
+      <span class="sim-mech-label">Picks up from</span><div class="sim-chips">${MECH.EDGES.map(e=>chip('side',e,title(e),intake.sides.includes(e),used.has(e)&&!intake.sides.includes(e))).join('')}</div>${placeButton('intake:'+n)}</div>
+      ${group?`<div class="sim-mech-sub"><h5>Intake ${num} · Deployable ramp</h5>${swingFields(intake,n)}<div class="sim-wire-block" data-wire-for="intakeRamp:${n}"></div></div><div class="sim-mech-sub"><h5>Intake ${num+1} · Rollers</h5><div class="sim-wire-block" data-wire-for="intakeRoller:${n}"></div></div>`:`${deploy?swingFields(intake,n):''}<div class="sim-wire-block" data-wire-for="intake:${n}"></div>`}</section>`;
   }
   // One line on each option card; the full notes are under "How this … works".
   const INTAKE_SHORT={sweeper:'Edge roller that sweeps pieces off the floor.',siderollers:'Grips from the sides; reaches into flowers.',ramp:'Fold-down ramp with rollers; reaches into flowers.',kicker:'Servo arm that scoops pieces in.'},
     SHOOTER_SHORT={turret:'Turns to aim; the robot can face any way.',fixed:'Fires one way; the robot turns to aim.'};
-  // A kicker or a ramp moves on a servo: how long it takes down and back up, and its servo.
-  const SWINGS={kicker:{label:'Kicker swing',down:'Swings down in · s',up:'Swings back up in · s',servo:'Kicker servo name',hint:'It swings down when an Intake action starts and picks up only once it is all the way down. When the action ends it swings back up, and what it scooped moves on into storage.'},
-    ramp:{label:'Ramp servo',down:'Folds down in · s',up:'Folds back up in · s',servo:'Ramp servo name',hint:'The servo pushes the ramp down when an Intake action starts. Once it is all the way down it picks up, off the floor or a flower’s bottom pollen, and its rollers pull pieces straight into storage. When the action ends it folds back up. Drive the ramp into a flower to take its pollen; a sweeper roller cannot.'}};
+  const SWINGS={kicker:true,ramp:true};
   function shooterCard(s,n,m){
     // Two shooters on one turret sit together; on their own turrets they must stay apart.
     const shared=!!m.shooters[1]?.sharesTurret,other=m.shooters.length===2&&!shared?m.shooters[1-n]:null,blocked=new Set(other?['center',...GRID.filter(k=>MECH.adjacent(k,other.mount))]:[]);
     const pieces=`<span class="sim-mech-label">Shoots</span><div class="sim-chips">${Object.entries(MECH.PIECES).map(([k,v])=>chip('pieces',k,v,s.pieces===k)).join('')}</div>`;
-    const turretChoice=n===1&&s.type==='turret'&&m.shooters[0].type==='turret'?`<span class="sim-mech-label">Turret</span><div class="sim-chips">${chip('sharesTurret','false','Its own turret',!shared)}${chip('sharesTurret','true','On shooter 1’s turret',shared)}</div>
-      <p class="hint">${shared?`Both flywheels ride one turntable at the ${MECH.MOUNTS[m.shooters[0].mount].toLowerCase()}: one turret motor aims them together. Move it from shooter 1.`:'Each turret turns on its own motor and aims from its own spot. Two turrets cannot sit next to each other.'}</p>`:'';
+    const turretChoice=n===1&&s.type==='turret'&&m.shooters[0].type==='turret'?`<span class="sim-mech-label">Turret</span><div class="sim-chips">${chip('sharesTurret','false','Its own turret',!shared)}${chip('sharesTurret','true','On shooter 1’s turret',shared)}</div>`:'';
     const riding=n===1&&shared;
-    return `<section class="sim-mech-part" data-part="shooter:${n}"><div class="sim-mech-head"><h4>Shooter ${n+1} · ${MECH.PIECES[s.pieces].toLowerCase()}</h4><button type="button" class="icon-button" data-mech-remove="shooter:${n}" aria-label="Remove shooter ${n+1}" title="Remove">×</button></div>${s.parts?.length?`<p class="hint">From your CAD: ${s.parts.join(', ').replace(/[&<>"]/g,c=>`&#${c.charCodeAt(0)};`)}</p>`:''}
-      ${choiceCards('type',{turret:'Turret',fixed:'Fixed shooter'},SHOOTER_SHORT,s.type)}${pieces}${turretChoice}
+    return `<section class="sim-mech-part" data-part="shooter:${n}"><div class="sim-mech-head"><h4>Shooter ${n+1} · ${MECH.PIECES[s.pieces].toLowerCase()}</h4><button type="button" class="icon-button" data-mech-remove="shooter:${n}" aria-label="Remove shooter ${n+1}" title="Remove">×</button></div>
+      ${choiceCards('type',{turret:'On a turret',fixed:'Fixed'},SHOOTER_SHORT,s.type)}${pieces}${turretChoice}
       ${riding?'':`<span class="sim-mech-label">Position on the robot</span>${mountGrid(s.mount,blocked)}${placeButton('shooter:'+n)}`}
       ${s.type==='fixed'?`<span class="sim-mech-label">Fires toward</span><div class="sim-chips">${Object.keys(MECH.FACING).map(f=>chip('facing',f,title(f),s.facing===f)).join('')}</div>`:''}
-      ${deviceLine(shooterDevices(s,n,m))}<div class="sim-wire-block" data-wire-for="shooter:${n}"></div><details class="sim-mech-code"><summary>Actuators · motors and servos</summary><div class="start-xy"><div><label for="mech-shooter-motor-${n}">Flywheel motor name</label><input id="mech-shooter-motor-${n}" data-field="motor" maxlength="40" autocomplete="off" spellcheck="false" value="${s.motor}"></div>${reverseBox(`mech-shooter-rev-${n}`,'reversed',s.reversed)}</div>
-      <div class="start-xy"><div><label for="mech-shooter-motor2-${n}">Second flywheel motor (optional)</label><input id="mech-shooter-motor2-${n}" data-field="motor2" maxlength="40" autocomplete="off" spellcheck="false" placeholder="None" value="${s.motor2||''}"></div>${s.motor2?reverseBox(`mech-shooter-rev2-${n}`,'reversed2',s.reversed2):''}</div>
-      <div class="start-xy"><div><label for="mech-indexer-kind-${n}">Feeder is a</label><select id="mech-indexer-kind-${n}" data-field="indexerKind">${options(MECH.INDEXERS,s.indexerKind)}</select></div><div><label for="mech-indexer-name-${n}">Feeder name</label><input id="mech-indexer-name-${n}" data-field="indexer" maxlength="40" autocomplete="off" spellcheck="false" value="${s.indexer}"></div></div>
-      ${MECH.servoFeeder(s.indexerKind)?`<div class="start-xy"><div><label for="mech-feed-pos-${n}">${s.indexerKind==='gate'?'Open':'Push'} position · 0–1</label><input id="mech-feed-pos-${n}" data-field="feedPos" type="number" min="0" max="1" step="any" value="${s.feedPos}"></div><div><label for="mech-rest-pos-${n}">${s.indexerKind==='gate'?'Closed':'Rest'} position · 0–1</label><input id="mech-rest-pos-${n}" data-field="restPos" type="number" min="0" max="1" step="any" value="${s.restPos}"></div></div>`:reverseBox(`mech-indexer-rev-${n}`,'indexerReversed',s.indexerReversed)}
-      <p class="hint">${MECH.INDEXER_NOTES[s.indexerKind]}</p>
-      <div class="start-xy"><div><label for="mech-hood-${n}">Hood servo name (empty: a fixed hood)</label><input id="mech-hood-${n}" data-field="hood" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Fixed hood" value="${escHtml(s.hood||'')}"></div></div>
-      ${s.type==='turret'&&!riding?`<div class="start-xy"><div><label for="mech-turret-motor-${n}">Turret ${m.turret.kind==='motor'?'motor':'servo'} name${shared?' (both shooters)':''}</label><input id="mech-turret-motor-${n}" data-field="turretMotor" maxlength="40" autocomplete="off" spellcheck="false" value="${s.turretMotor}"></div>${reverseBox(`mech-turret-rev-${n}`,'turretReversed',s.turretReversed)}</div>`:''}${configNote}</details></section>`;
+      <span class="sim-mech-label">Hood</span><div class="sim-chips">${chip('hood','on','Moves on a servo',!!s.hood)}${chip('hood','off','Fixed',!s.hood)}</div>
+      <div class="sim-wire-block" data-wire-for="shooter:${n}"></div></section>`;
   }
   function mechanismsPanel(){
     // The game's intakes and shooters are BIOBUZZ's; on another field only the moving mechanisms are listed.
     const m=project.mechanisms,l=L(),on=m.enabled&&l.field==='biobuzz',intakes=on?m.intakes:[],shooters=on?m.shooters:[],used=new Set(intakes.flatMap(i=>i.sides));
-    $('#mech-field-note').textContent=l.field!=='biobuzz'?'':shooters.length?`Shots aim at the ${l.alliance||'red'} hive's up-facing cell (set the alliance in step 1).`:'';
     // Rebuilt from settings; keep focus on a text field the user is typing in.
     const typing=document.activeElement?.closest?.('#mech-intakes,#mech-shooters')&&document.activeElement.matches('input:not([type=number]):not([type=checkbox])');
-    if(!typing){const parts='#mech-intakes details,#mech-shooters details',key=d=>d.closest('[data-part]').dataset.part+' '+d.className,open=new Set([...$$(parts)].filter(d=>d.open).map(key));
-      $('#mech-intakes').innerHTML=intakes.map((i,n)=>intakeCard(i,n,used)).join('');$('#mech-shooters').innerHTML=shooters.map((s,n)=>shooterCard(s,n,m)).join('');
-      for(const d of $$(parts))d.open=open.has(key(d));}
-    $('#mech-timing').hidden=!shooters.length;$('#mech-turret-timing').hidden=$('#mech-turret-code').hidden=!MECH.hasTurret(m);$('#mech-preloads').hidden=!on;
+    if(!typing){
+      $('#mech-intakes').innerHTML=intakes.map((i,n)=>intakeCard(i,n,used,1+intakes.slice(0,n).reduce((t,x)=>t+(x.kind==='ramp'?2:1),0))).join('');$('#mech-shooters').innerHTML=shooters.map((s,n)=>shooterCard(s,n,m)).join('');}
+    $('#mech-flywheel').hidden=!shooters.length;$('#mech-turret').hidden=!on||!MECH.hasTurret(m);$('#mech-feeder').hidden=!shooters.length;$('#mech-preloads').hidden=!on;gearsPanel();
     const nectarOk=shooters.some(s=>s.pieces!=='pollen');$('#mech-cap-nectar').disabled=!nectarOk;$('#mech-preload').max=String(m.capacity.pollen);
     $('#mech-nectar-note').textContent=nectarOk?`Holds ${m.storage} pieces in any mix: up to ${m.capacity.pollen} pollen and up to ${m.capacity.nectar} nectar, ${MECH.STORAGE_MAX} at most together.`:'To carry nectar, set a shooter to shoot nectar (or pollen and nectar).';
-    for(const [id,v] of [['#mech-cap-pollen',m.capacity.pollen],['#mech-cap-nectar',m.capacity.nectar],['#mech-preload',m.preload.pollen],['#mech-spinup',m.shooter.spinUp],['#mech-transfer',m.transfer.seconds],['#mech-index',m.indexer.seconds],['#mech-turret-speed',m.turret.speed],['#mech-turret-range',Math.max(-m.turret.min,m.turret.max)],['#mech-rpm',m.shooter.rpm],['#mech-tpr',m.shooter.ticksPerRev],['#mech-turret-tpd',m.turret.ticksPerDegree]])inputValue(id,v);
-    // How the flywheels hold their speed, the pusher's push and what the turret turns on.
-    const power=m.shooter.control==='power';$('#mech-fly-control').value=m.shooter.control;$('#mech-fly-velocity').hidden=power;$('#mech-fly-power').hidden=!power;
-    $('#mech-push-box').hidden=!shooters.some(s=>s.indexerKind==='pusher');$('#mech-turret-kind').value=m.turret.kind;$('#mech-turret-motor-box').hidden=m.turret.kind!=='motor';$('#mech-turret-servo-box').hidden=m.turret.kind!=='servo';
-    for(const [id,v] of [['#mech-tolerance',+(m.shooter.tolerance*100).toFixed(3)],['#mech-fly-power-value',m.shooter.power],['#mech-push',m.indexer.pushSeconds],['#mech-turret-center',m.turret.servoCenter],['#mech-turret-degrees',m.turret.servoDegrees]])inputValue(id,v);
-    for(const el of $$('[data-pidf]'))if(document.activeElement!==el)el.value=m.shooter.pidf?String(m.shooter.pidf[el.dataset.pidf]):'';
+    for(const [id,v] of [['#mech-cap-pollen',m.capacity.pollen],['#mech-cap-nectar',m.capacity.nectar],['#mech-preload',m.preload.pollen],['#mech-spinup',m.shooter.spinUp],['#mech-transfer',m.transfer.seconds],['#mech-index',m.indexer.seconds],['#mech-turret-speed',m.turret.speed],['#mech-turret-range',Math.max(-m.turret.min,m.turret.max)],['#mech-rpm',m.shooter.rpm],...['p','i','d','f'].map(k=>['#mech-pidf-'+k,m.shooter.pidf?.[k]??''])])inputValue(id,v);
+    {const fly=window.DeckWiring.state(project).rows.find(r=>r.role==='flywheel'),j=fly&&project.kinematics.joints.find(x=>fly.joints?.includes(x.id));$('#mech-rpm-note').textContent=j?.rpm?`Its motor can spin it up to ${Math.round(j.rpm)} RPM.`:'';
+      const together=$('#mech-with-intake'),named=MECH.onOneMotor(m);together.closest('label').hidden=!intakes.length;together.checked=MECH.chained(m);together.disabled=named;}
     $('#sim-action-list').replaceChildren(...MECH.actions(m).map(v=>new Option(v,v)));
-    queueMicrotask(stageMarks);mechList?.render();$('#mech-empty').hidden=intakes.length+shooters.length+(mechList?.listed().length||0)>0;$('#mech-from-cad').disabled=!project.model;$('#mech-from-hub').hidden=project.controller!=='ftc'||!!project.robotPreset;mechCount(intakes,shooters);
+    queueMicrotask(stageMarks);mechList?.render();$('#mech-empty').hidden=intakes.length+shooters.length+(mechList?.listed().length||0)>0;$('#mech-from-cad').disabled=!project.model;mechCount(intakes,shooters);
     $('#mech-from-cad').title=project.model?'Finds each mechanism in your CAD by its name':'Import your robot’s CAD in step 2 first';
-    wireBlocks();mechModel();observeMechCards();chassisPanel();
+    wireBlocks();mechModel();observeMechCards();chassisPanel();garage();
   }
   // The chassis alone (a preset robot with Edit the chassis motors ticked): each drive motor's configuration name, then its
   // model and port.
   function chassisPanel(){const box=$('#mech-chassis'),on=!!project.robotPreset&&chassisEdit&&project.controller==='ftc';box.hidden=!on;if(!on){box.innerHTML='';box.dataset.html='';return;}
     if(box.contains(document.activeElement)&&document.activeElement.matches('input'))return;
     const W=window.DeckWiring,st=W.state(project),rows=st.rows.filter(r=>r.role==='drive'||r.role==='steer');
-    const html=`<h3 class="sim-setup-sub">Chassis</h3><p class="hint">Type each motor’s name as the robot’s configuration has it, or press Set up from the Control Hub above to read them all.</p>${rows.map(r=>`<div class="sim-chassis-row"><label for="chassis-name-${W.esc(r.key)}">${W.esc(r.label)} · name on the robot</label><input id="chassis-name-${W.esc(r.key)}" data-chassis-name="${W.esc(r.key)}" maxlength="40" autocomplete="off" spellcheck="false" value="${W.esc(r.name)}">${W.deviceHtml(r,st)}</div>`).join('')||'<p class="hint">No drive motors to wire.</p>'}`;
+    const html=`<h3 class="sim-setup-sub">Chassis</h3><p class="hint">Type each motor’s name as the robot’s configuration has it, or plug in the Control Hub and Setup reads them all.</p>${rows.map(r=>`<div class="sim-chassis-row"><label for="chassis-name-${W.esc(r.key)}">${W.esc(r.label)} · name on the robot</label><input id="chassis-name-${W.esc(r.key)}" data-chassis-name="${W.esc(r.key)}" maxlength="40" autocomplete="off" spellcheck="false" value="${W.esc(r.name)}">${W.deviceHtml(r,st,{noHub:noHub()})}</div>`).join('')||'<p class="hint">No drive motors to wire.</p>'}`;
     if(box.dataset.html!==html){const focus=document.activeElement?.id;box.innerHTML=html;box.dataset.html=html;if(focus)document.getElementById(focus)?.focus();}}
   window.DeckWiring.bind($('#mech-chassis'),{project:()=>project,apply:applyWiring});
+  window.DeckWiring.bind($('#mech-drive-ports'),{project:()=>project,apply:applyWiring,assign:deviceAssign});
   $('#mech-chassis').addEventListener('change',e=>{const key=e.target.dataset?.chassisName;if(!key)return;const name=C.deviceName(e.target.value);if(!name){e.target.value=window.DeckWiring.state(project).rows.find(r=>r.key===key)?.name||'';return;}
     deviceName(key,name);save();e.target.blur();robotPanel();mechanismsPanel();reload();});
   $('#mech-chassis-edit').onchange=e=>{chassisEdit=e.target.checked;presetPanel();mechanismsPanel();};
@@ -2462,9 +2584,14 @@ public class MyAuto implements DeckAutonomous {
     for(const a of project.kinematics.actuators)add(a.kind);
     // A motor or servo two mechanisms share (belted together: one name in the configuration) is one.
     if(project.controller==='ftc'){const rows=window.DeckWiring.state(project).rows.filter(r=>!['pod','sensor','imu','drive','steer'].includes(r.role)),extra=family=>{const seen=new Set();let n=0;for(const r of rows.filter(r=>r.family===family))if(seen.has(r.name))n++;else seen.add(r.name);return n;};motors-=extra('motor');servos-=extra('servo');}
+    if(project.mechanisms.enabled)for(const o of project.mechanisms.others)add(o.kind);
+    // Two servos on one gear are two.
+    if(project.controller==='ftc'&&project.mechanisms.enabled){const seen=new Set();for(const r of window.DeckWiring.state(project).rows){const n=project.mechanisms.power[r.key]?.count||1;if(n<2||seen.has(r.name))continue;seen.add(r.name);if(r.family==='motor')motors+=n-1;else if(r.family==='servo')servos+=n-1;}}
     // The drivetrain's own motors (a swerve module's steering is counted by the team: a servo or a motor each).
-    const d=project.robot.drivetrain,drive={tank2:2,kiwi:3}[d]??4,steer=/swerve/i.test(d)?' plus its steering':'',all=motors+drive;
-    const el=$('#mech-count');el.textContent=motors+servos?`Your robot uses ${all} motors (${drive} to drive${steer}, ${motors} in mechanisms) and ${servos} servo${servos===1?'':'s'}. FTC allows 8 motors and 8 servos (BIOBUZZ rule R503)${all>8||servos>8?`: this is ${[all>8?`${all-8} motor${all-8===1?'':'s'}`:'',servos>8?`${servos-8} servo${servos-8===1?'':'s'}`:''].filter(Boolean).join(' and ')} too many`:''}.`:'';
+    // What the CAD does not show is not counted as on the robot until the team picks it.
+    const unsure=project.controller==='ftc'&&project.mechanisms.enabled?window.DeckWiring.state(project).rows.filter(r=>project.mechanisms.guessed.includes(r.key)&&!r.model):[],sure=(family,n)=>n-new Set(unsure.filter(r=>r.family===family).map(r=>r.name)).size;motors=sure('motor',motors);servos=sure('servo',servos);
+    const d=project.robot.drivetrain,drive={tank2:2,kiwi:3,kiwiSwerve:3,diffSwerve:8}[d]??4,steer=['swerve','coaxSwerve','kiwiSwerve'].includes(d)?' plus its steering':'',all=motors+drive;
+    const el=$('#mech-count');el.textContent=motors+servos+unsure.length?`Your robot uses ${all} motors (${drive} to drive${steer}, ${motors} in mechanisms) and ${servos} servo${servos===1?'':'s'}. FTC allows 8 motors and 8 servos (BIOBUZZ rule R503)${all>8||servos>8?`: this is ${[all>8?`${all-8} motor${all-8===1?'':'s'}`:'',servos>8?`${servos-8} servo${servos-8===1?'':'s'}`:''].filter(Boolean).join(' and ')} too many`:''}.${unsure.length?` Your CAD does not show what powers ${unsure.map(r=>r.label.replace(/^[A-Z](?![A-Z])/,c=>c.toLowerCase())).join(', ')}: pick a motor or servo for each.`:''}`:'';
     el.classList.toggle('over',servos>8||all>8);}
   // The robot model with each part marked; "Place on model" picks a part's position by clicking it.
   function mechModel(){
@@ -2476,7 +2603,7 @@ public class MyAuto implements DeckAutonomous {
     mechPreview.update(mechRig(),chassisFootprint());
     // Intakes: see-through green boxes at their real size. Shooters: dots (yellow pollen, red nectar, orange both).
     const normal={front:[1,0],back:[-1,0],left:[0,1],right:[0,-1]},marks=[],colors={pollen:0xf2d14b,nectar:0xe5484d,both:0xf2994a};
-    for(const i of m.intakes)for(const e of i.sides){const [nx,ny]=normal[e],dist=nx?hl:hw,edgeLen=nx?r.width:r.length,depth=Math.max(i.reach,1),span=Math.min(i.width??edgeLen,edgeLen),c=dist+i.reach-depth/2;
+    for(const i of m.intakes)for(const e of i.sides){const [nx,ny]=normal[e],dist=nx?hl:hw,edgeLen=nx?r.width:r.length,depth=Math.max(i.reach,1),span=i.width??edgeLen,c=dist+i.reach-depth/2;
       marks.push({x:cx+nx*c,y:ny*c,z:i.height/2,size:nx?[depth,span,i.height]:[span,depth,i.height],color:0x49cbb3});}
     for(const s of m.shooters){const [fx,fy]=MECH.MOUNT_AT[s.mount],p=s.at||{x:cx+fx*(hl-3),y:fy*(hw-3),z:h};marks.push({...p,z:p.z??h,color:colors[s.pieces],radius:1.4});}
     $('#mech-model-key').replaceChildren(...[...m.intakes.map((i,n)=>[0x49cbb3,`Intake ${n+1}`,`${MECH.INTAKES[i.kind]} on the ${i.sides.join(' + ')}: the box is where it picks up`]),
@@ -2491,14 +2618,17 @@ public class MyAuto implements DeckAutonomous {
     joints.render();mechGlow();
   }
   // ---- each mechanism's hardware (ui/sim-wiring.js) and what it is on the model ---------------------------------------
-  // Every motor and servo on a mechanism, with its model, hub port and sensors and a line on what it does and how it is
-  // read. The CAD is every part's zero: encoders count from it, a servo's center holds it, named positions are from it.
+  // Every motor and servo on a mechanism. The CAD is every part's zero: encoders count from it, a servo's center holds it.
   function wireBlocks(){
+    // Whether a Control Hub is there is looked for now and then while these cards are shown, so one plugged in unlocks Plugged into.
+    if(project.controller==='ftc'&&Date.now()-(wireBlocks.looked||0)>15000){wireBlocks.looked=Date.now();void detectLink();}
     hubDefaults();const W=window.DeckWiring,ftc=project.controller==='ftc',st=ftc?W.state(project):null,focus=document.activeElement?.id;
     for(const box of $$('[data-wire-for]')){box.hidden=!ftc;if(!ftc){box.innerHTML='';box.dataset.html='';continue;}
-      const [kind,id]=box.dataset.wireFor.split(':'),rows=st.rows.filter(r=>r.role!=='sensor'&&(kind==='kin'?/^kin\./.test(r.key)&&r.joints?.includes(id):r.key.startsWith(`${kind}s.${id}.`)));
-      const html=rows.length?`<span class="sim-mech-label">Hardware · model, port and sensors</span>${rows.map(r=>W.deviceHtml(r,st,{sensors:true,model:kind!=='kin'})).join('')}`:'';
-      if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
+      const [kind,id]=box.dataset.wireFor.split(':'),part={intakeRamp:'ramp',intakeRoller:'roller'}[kind],seen=new Set(),rows=st.rows.filter(r=>r.role!=='sensor'&&(kind==='feeder'?r.role==='feeder'&&!seen.has(r.name)&&seen.add(r.name):kind==='turret'?r.role==='turret':kind==='kin'?/^kin\./.test(r.key)&&r.joints?.includes(id):part?r.key.startsWith(`intakes.${id}.`)&&r.role===part:kind==='shooter'?r.key.startsWith(`shooters.${id}.`)&&!['feeder','turret'].includes(r.role):r.key.startsWith(`${kind}s.${id}.`)));
+      const read=project.calibration?.hub?.readout||null,second=r=>{const k=window.DeckHardware.parseKey(r.key),word=project.mechanisms.turret.kind==='motor'?'motor':'servo';return k?.field==='turretMotor'&&!project.mechanisms.shooters[k.index]?.turretMotor2?`<button type="button" class="secondary sim-second" data-turret-second="${k.index}">+ Another ${word} on this gear train</button>`:k?.field==='turretMotor2'?`<button type="button" class="secondary sim-second" data-turret-second-off="${k.index}">Remove this ${word}</button>`:'';};
+      const html=rows.map(r=>W.mechRowHtml(kind==='feeder'?{...r,label:'Feeder'}:r,st,{read,model:kind!=='kin'})+(kind==='turret'?second(r):'')).join('');
+      if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;window.DeckPartPicker?.dress?.(box);}}
+    {const box=$('#mech-drive-ports'),rows=ftc?st.rows.filter(r=>['drive','steer'].includes(r.role)):[],html=rows.length?`<span class="sim-mech-label">Plugged into</span><p class="hint">Only the ports. Every wheel shares the RPM and diameter above, and the motor and servo models come from Setup &amp; Calibrate.</p>${W.chassisHtml(rows,st,project.calibration?.hub?.readout||null)}`:'';box.hidden=!html;if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
     if(focus&&document.activeElement?.id!==focus)document.getElementById(focus)?.focus();}
   // What is being edited (a device or sensor row, a game part intake:N / shooter:N, or kin:<joint id>) glows on the
   // preview: on a click, focus or open in its card, or when its card scrolls to the middle of the page.
@@ -2512,11 +2642,11 @@ public class MyAuto implements DeckAutonomous {
   let mechCards=null;
   function observeMechCards(){
     if(typeof IntersectionObserver!=='function')return;mechCards?.disconnect();
-    mechCards=new IntersectionObserver(list=>{if(setupStep!=='mechanisms'||document.activeElement?.closest?.('.sim-mech-main [data-part],.sim-mech-main [data-mech]'))return;
+    mechCards=new IntersectionObserver(list=>{if(setupStep!=='mechanisms'||document.activeElement?.closest?.('.sim-mech-main [data-part],.sim-mech-main [data-mech],#mech-feeder,#mech-turret'))return;
       const top=list.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];if(top)focusMech(focusOf(top.target));},{rootMargin:'-30% 0px -50% 0px'});
-    for(const card of $$('.sim-mech-main [data-part],.sim-mech-main [data-mech]'))mechCards.observe(card);}
-  for(const host of ['#mech-intakes','#mech-shooters','#mech-parts']){const box=$(host);
-    window.DeckWiring.bind(box,{project:()=>project,apply:applyWiring,setKind:deviceKind,share:shareDevice});
+    for(const card of $$('.sim-mech-main [data-part],.sim-mech-main [data-mech],#mech-feeder [data-wire-row],#mech-turret [data-wire-row]'))mechCards.observe(card);}
+  for(const host of ['#mech-intakes','#mech-feeder','#mech-shooters','#mech-turret','#mech-parts']){const box=$(host);
+    window.DeckWiring.bind(box,{project:()=>project,apply:applyWiring,setKind:deviceKind,share:shareDevice,setRpm:deviceRpm,assign:deviceAssign});
     for(const type of ['focusin','pointerdown'])box.addEventListener(type,e=>focusMech(focusOf(e.target)));
     box.addEventListener('toggle',e=>{if(e.target.open)focusMech(focusOf(e.target));},true);}
   // Every leaf of the CAD with its name, its node's key and its box, for DeckHardware.driveTrain (belts, chains and gears).
@@ -2525,6 +2655,13 @@ public class MyAuto implements DeckAutonomous {
     const boxes=[];for(let v=0;v<part.length;v++){const k=part[v];let b=boxes[k];if(!b)b=boxes[k]=[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
       for(let a=0;a<3;a++){const x=pos[v*3+a];if(x<b[a])b[a]=x;if(x>b[a+3])b[a+3]=x;}}
     const out=[];for(const n of idx.nodes)for(const leaf of n.leaves)if(boxes[leaf])out.push({ref:'#'+leaf,key:n.key,name:n.name,box:boxes[leaf]});return out;}
+  // A turret's gears from the CAD, servo side first, where their names give their teeth: the gear on the servo, the pinion it
+  // meshes with, the gear on the pinion's shaft, and the turret's own gear from how much faster that shaft turns than the turret.
+  function gearsFromCad(id,idx){const J=project.kinematics.joints,gears=J.filter(j=>String(j.id).startsWith(id+'gear'));if(gears.length<2)return null;
+    const nameOf=r=>String(r).startsWith('#')?idx.nodes.find(n=>n.leaves?.includes(+String(r).slice(1)))?.name||'':idx.nodes.find(n=>n.key===r)?.name||'',teeth=n=>{const t=/(\d+)\s*t(?:\s|$)|\((\d+)\s*teeth\)|^(\d+)\s+pinion/i.exec(n);return t?+(t[1]||t[2]||t[3]):0;},pick=(j,re)=>(j.parts||[]).map(nameOf).filter(n=>re.test(n)).map(teeth).find(Boolean)||0;
+    const shaft=project.kinematics.couplings.find(c=>c.from===id&&String(c.to).startsWith(id+'gear')),near=J.find(j=>j.id===shaft?.to),servo=gears.filter(j=>j!==near).map(j=>pick(j,/gear/i)).find(Boolean),pinion=near&&pick(near,/pinion/i),spur=near&&pick(near,/^(?!.*pinion).*(spur|gear)/i);if(!servo||!pinion||!spur||!finiteRatio(shaft?.ratio))return null;
+    return [[servo,pinion],[spur,Math.round(spur*Math.abs(shaft.ratio))]];}
+  const finiteRatio=r=>finite(r)&&r!==0;
   // Motors and servos named in the CAD (goBILDA, REV, Axon... part numbers and names): each goes to the mechanism it sits
   // in (DeckHardware.assignCad), setting that device's type and model. Drive motors all take the model found on one.
   function actuatorsFromCad(){
@@ -2532,35 +2669,55 @@ public class MyAuto implements DeckAutonomous {
     const idx=window.DeckKinematics.partIndex(tree),parts=[],clean=n=>String(n).replace(/\s*<\d+>$/,'');
     const inner=n=>{for(const c of n.children){const m=H.fromCadName(c.name);if(m?.model)return m;const d=inner(c);if(d)return d;}return null;};
     const visit=(n,path)=>{const m=H.fromCadName(n.name);if(m){const d=m.model?null:inner(n);parts.push({name:clean(n.name),key:n.key,path,...m,...(d&&(d.kind===m.kind||m.kind==='servo'&&d.kind==='crservo')?{kind:d.kind,model:d.model}:{})});return;}for(const c of n.children)visit(c,[...path,n.name]);};
-    for(const n of idx.nodes.filter(n=>n.parent<0||!idx.nodes[n.parent]))visit(n,[]);if(!parts.length)return [];
+    for(const n of idx.nodes.filter(n=>n.parent<0||!idx.nodes[n.parent]))visit(n,[]);
+    if(!parts.length){project.mechanisms=MECH.sanitize({...project.mechanisms,others:[],power:{},traced:1,guessed:W.state(project).rows.filter(r=>(r.family==='motor'||r.family==='servo')&&!['pod','sensor','imu','drive','steer'].includes(r.role)).map(r=>r.key)});return [];}
     // A shooter whose hood the CAD shows moving gets its hood servo, so the hood's servo in the CAD has a device to go to.
     if(project.mechanisms.enabled&&project.mechanisms.shooters.some((s,i)=>!s.hood&&project.kinematics.joints.some(j=>j.drive?.signal==='hood'&&j.drive.of===`shooter:${i}`))){
       const m=structuredClone(project.mechanisms);m.shooters.forEach((s,i)=>{if(!s.hood&&project.kinematics.joints.some(j=>j.drive?.signal==='hood'&&j.drive.of===`shooter:${i}`))s.hood=i?`hood${i+1}`:'hood';});project.mechanisms=MECH.sanitize(m);}
     const st=W.state(project),chassis=(project.model?.parts||[]).filter(p=>p.role==='chassis'&&p.key).map(p=>p.key);
     const partOf=key=>{const k=H.parseKey(key);return k?.list?`${k.list==='intakes'?'intake':'shooter'}:${k.index}`:k?.kin?`kin:${project.kinematics.actuators.find(a=>a.id===k.kin)?.joint}`:null;};
-    const devices=st.rows.filter(r=>(r.family==='motor'||r.family==='servo')&&!['pod','sensor','imu'].includes(r.role))
+    const devices=st.rows.filter(r=>(r.family==='motor'||r.family==='servo')&&!['pod','sensor','imu'].includes(r.role)&&!/turretMotor2$/.test(r.key))
       .map(r=>({key:r.key,role:r.role,family:r.family,scope:r.role==='drive'||r.role==='steer'?chassis:W.focusRefs(project,partOf(r.key)||r.key),own:W.focusRefs(project,r.key)}));
     const found=H.assignCad(parts,devices),drive=found.find(f=>st.rows.find(r=>r.key===f.key)?.role==='drive'&&f.model);
     for(const r of st.rows.filter(r=>r.role==='drive'))if(drive&&!found.some(f=>f.key===r.key))found.push({...drive,key:r.key});
     // A mechanism with no motor or servo of its own in the CAD: its pulleys and gears are followed through belts, chains and
     // shafts to the one that turns it ("Motor Part" in the chassis drives the intake through two belts). Two mechanisms
     // that reach one motor share it: one name in the configuration, counted once against the game's limit.
-    const train=H.driveTrain(cadLeaves(idx)),roleOf=key=>st.rows.find(r=>r.key===key)?.role;
-    const taken=new Set(found.filter(f=>!['drive','steer'].includes(roleOf(f.key))).map(f=>f.ref)),fits=(d,a)=>(d.family==='motor'?['dcmotor','crservo']:['servo','linear','crservo']).includes(a.kind);
-    const byActuator=new Map(),shares=[];
-    for(const d of devices){if(found.some(f=>f.key===d.key)||['drive','steer'].includes(d.role))continue;const skip=a=>taken.has(a.key)||!fits(d,a);
-      const hit=(d.own.length?train.from(d.own,{skip}):null)||train.from(d.scope,{skip});if(!hit)continue;
+    const train=H.driveTrain(cadLeaves(idx)),roleOf=key=>st.rows.find(r=>r.key===key)?.role,familyOf=key=>st.rows.find(r=>r.key===key)?.family,familyOfKey=familyOf;
+    const fits=(d,a)=>(d.family==='motor'?['dcmotor','crservo']:['servo','linear','crservo']).includes(a.kind);
+    // The transmission first: from each moving part, through the gears geared to it, to the motors and servos on it. This is
+    // the CAD's geometry, whatever its assemblies are called, so it replaces what the names said.
+    const J=project.kinematics.joints,geared=ids=>{const set=ids.map(id=>J.find(j=>j.id===id)).filter(Boolean);for(let i=0;i<set.length;i++)for(const c of project.kinematics.couplings){const o=c.from===set[i].id?c.to:c.to===set[i].id?c.from:null,n=J.find(j=>j.id===o);if(n&&!set.includes(n))set.push(n);}for(const j of J)if(set[0]?.drive?.signal==='turret'&&String(j.id).startsWith(set[0].id+'gear')&&!set.includes(j))set.push(j);return set;};
+    const carried=new Set((project.model?.parts||[]).map(p=>p.key).filter(Boolean)),ownRefs=set=>set.flatMap(j=>j.parts||[]).filter(r=>!carried.has(r)),can=(role,a)=>{const k=H.ROLES[role]?.kinds||[];return !k.length||k.includes(a.kind)||a.kind==='servo'&&k.includes('crservo');};
+    // What a part shown as this device turns: what sits around the joint's axis. A strut holding a plate up may have been
+    // taken into a joint because it touches it, but it does not turn with it, so it is not lit up with it.
+    const leaves=cadLeaves(idx),aroundAxis=(j,box)=>{if(!Array.isArray(j.axis)||!Array.isArray(j.origin))return true;const c=[0,1,2].map(k=>(box[k]+box[k+3])/2-j.origin[k]),along=c[0]*j.axis[0]+c[1]*j.axis[1]+c[2]*j.axis[2],off=Math.hypot(...c.map((v,k)=>v-along*j.axis[k])),size=Math.max(...[0,1,2].map(k=>box[k+3]-box[k]));return off<=.2*size+.2;};
+    const turning=set=>set.flatMap(j=>(j.parts||[]).filter(r=>!carried.has(r)&&leaves.some(l=>(l.ref===r||l.key===r||String(l.key).startsWith(r+'/'))&&aroundAxis(j,l.box))));
+    const feederJoints=J.filter(j=>j.drive?.signal==='feeder'),feeders=feederJoints.map(j=>{const res=H.powerOf(train,geared([j.id]),ownRefs(geared([j.id])),a=>can('feeder',a));return {id:j.id,origin:j.origin,power:res?res.actuators.map(a=>a.id).join('+'):'none'};});
+    const fed=H.feedersByShooter(feeders,project.mechanisms.shooters.map((s,n)=>J.find(j=>j.drive?.signal==='flywheel'&&j.drive.of===`shooter:${n}`)?.origin||null));
+    for(const d of devices){if(['drive','steer'].includes(d.role))continue;const row=st.rows.find(r=>r.key===d.key),k=H.parseKey(d.key),ids=d.role==='feeder'&&k?.list==='shooters'&&fed[k.index]?.length?fed[k.index]:row?.joints||[];if(!ids.length)continue;
+      const set=geared(ids),res=H.powerOf(train,set,ownRefs(set),a=>can(d.role,a));if(!res)continue;const a=res.actuators[0],n=res.actuators.length,where=String(a.key).split('/').slice(-2,-1)[0]||'your robot',at=found.findIndex(f=>f.key===d.key);if(at>=0)found.splice(at,1);
+      const route=n>1?`${n} of them on one gear train`:res.how==='axis'?'on its axis':res.belts?`through ${res.belts} belt${res.belts===1?'':'s'} or chain${res.belts===1?'':'s'}`:'through its gears';
+      found.push({key:d.key,part:a.name,ref:a.key,kind:a.kind,model:a.model,ids:res.actuators.map(x=>x.id),count:n,spins:set[0]?.type==='continuous',refs:[...new Set([...res.actuators.flatMap(x=>x.refs||[]),...res.refs,...turning(set)])],from:`“${clean(a.name)}” in “${clean(where)}”, ${route}${res.sure?'':' (its gears are spaced apart in the CAD: check this one)'}`});}
+    // A mechanism belted to a motor another one is named on is chained to it too: they share it.
+    const byActuator=new Map(),shares=[];for(const f of found)if(!['drive','steer'].includes(roleOf(f.key)))for(const a of train.actuators)if((f.ids?f.ids.includes(a.id):a.key===f.ref)){if(!byActuator.has(a.id))byActuator.set(a.id,f.key);else if(f.ids&&byActuator.get(a.id)!==f.key&&familyOfKey(byActuator.get(a.id))===familyOfKey(f.key)&&!shares.some(s=>s[0]===f.key))shares.push([f.key,byActuator.get(a.id)]);}
+    for(const d of devices){if(found.some(f=>f.key===d.key)||['drive','steer'].includes(d.role))continue;const can=a=>fits(d,a)&&(!byActuator.has(a.id)||familyOf(byActuator.get(a.id))===d.family);
+      const hit=(d.own.length?H.chainOf(train,d.own,can):null)||H.chainOf(train,d.scope,can);if(!hit)continue;
       const a=hit.actuator,where=String(a.key).split('/').slice(-2,-1)[0]||'your robot',mate=byActuator.get(a.id);if(mate)shares.push([d.key,mate]);else byActuator.set(a.id,d.key);
       found.push({key:d.key,part:a.name,ref:a.key,kind:a.kind,model:a.model,from:`“${clean(a.name)}” in “${clean(where)}”, through ${hit.belts} belt${hit.belts===1?'':'s'} or chain${hit.belts===1?'':'s'}`});}
     const m=structuredClone(project.mechanisms),said=[];let wiring=project.robot.wiring;
     for(const f of found){const row=st.rows.find(r=>r.key===f.key),k=H.parseKey(f.key),part=k?.list?m[k.list]?.[k.index]:null;if(!row)continue;
-      // An Axon MINI on a turret or swerve steering, which turns on past a servo's range through its gears, runs in
-      // continuous mode; its feedback wire (the Axon's absolute encoder) then tells where it is.
-      if(f.model==='axon-mini'&&['turret','steer'].includes(row.role)&&H.ROLES[row.role].kinds.includes('crservo'))Object.assign(f,{kind:'crservo',model:'axon-mini-cr'});
+      // An Axon MINI on swerve steering, which turns on past a servo's range through its gears, runs in continuous mode; its
+      // feedback wire (the Axon's absolute encoder) then tells where it is.
+      if(f.model==='axon-mini'&&row.role==='steer'&&H.ROLES[row.role].kinds.includes('crservo'))Object.assign(f,{kind:'crservo',model:'axon-mini-cr'});
+      // A servo that keeps turning rollers around runs in continuous mode.
+      if(f.kind==='servo'&&f.spins&&['roller','feeder'].includes(row.role)){const twin=`${f.model}-cr`;Object.assign(f,{kind:'crservo',model:H.MODELS[twin]?twin:null});}
       if(part&&row.role==='roller')part.device=f.kind==='crservo'?'crservo':'motor';
       if(part&&row.role==='feeder')part.indexerKind=f.kind==='dcmotor'?'motor':f.kind==='crservo'?'crservo':['pusher','gate'].includes(part.indexerKind)?part.indexerKind:'pusher';
-      if(row.role==='turret')m.turret.kind=f.kind==='dcmotor'?'motor':f.kind==='crservo'?'crservo':'servo';
+      if(row.role==='turret'){m.turret.kind=f.kind==='dcmotor'?'motor':f.kind==='crservo'?'crservo':'servo';if(part&&k.field==='turretMotor'){if(f.count>1)part.turretMotor2=part.turretMotor2||`${part.turretMotor}b`.slice(0,40);else delete part.turretMotor2;}const g=gearsFromCad(row.joints?.[0],idx);if(g){m.turret.gears=g;if(m.turret.kind==='servo')m.turret.servoDegrees=Math.max(10,(H.MODELS[f.model]?.range||300)/gearRatio(g));}}
       if(f.model)wiring=W.setModel(wiring,f.key,f.model);
+      else{const had=H.MODELS[H.wiringOf({wiring}).devices?.[f.key]?.model];if(had&&had.kind!==f.kind)wiring=W.setModel(wiring,f.key,'');}
+      if(f.model&&row.role==='turret'&&f.count>1)wiring=W.setModel(wiring,f.key+'2',f.model);
       wiring=W.setFrom(wiring,f.key,f.from||'');
       const feedback=f.model==='axon-mini-cr'&&Object.hasOwn(H.ROLES[row.role]?.sensors||{},'axonFeedback')&&!H.wiringOf({wiring}).sensors.some(s=>s.for===f.key&&H.SENSOR_MODELS[s.model]?.kind==='axonFeedback');
       if(feedback)wiring=W.addSensor(wiring,row,'axon-feedback');
@@ -2568,7 +2725,35 @@ public class MyAuto implements DeckAutonomous {
     for(const [key,mateKey] of shares){const row=st.rows.find(r=>r.key===key),mate=st.rows.find(r=>r.key===mateKey),k=H.parseKey(key),own=k?.list?m[k.list]?.[k.index]:null;if(!row||!mate)continue;
       const name=mate.name;if(own)own[k.field]=name;else if(k?.kin){const kin=structuredClone(project.kinematics),act=kin.actuators.find(x=>x.id===k.kin);if(act){act.device=name;project.kinematics=window.DeckKinematics.sanitize(kin);}}
       said.push(`${row.label} and ${mate.label.toLowerCase()} share one ${row.family==='servo'?'servo':'motor'} “${name}”: your CAD shows them belted together`);}
-    project.mechanisms=MECH.sanitize(m);project.robot=C.robot({...project.robot,wiring},project.controller);return said;}
+    spinFromCad(train,idx,found,m);
+    m.guessed=devices.filter(d=>!['drive','steer'].includes(d.role)&&!found.some(f=>f.key===d.key)).map(d=>d.key);m.traced=1;
+    m.power=Object.fromEntries(found.filter(f=>f.refs).map(f=>[f.key,{refs:f.refs,count:f.count}]));
+    m.others=H.cadOthers(parts,found);for(const o of m.others)said.push(`“${o.name}”${o.in?` in “${o.in}”`:''}: counted on the robot, but the simulation does not run it`);
+    project.mechanisms=MECH.sanitize(m);project.robot=C.robot({...project.robot,wiring},project.controller);modelSpeeds();return said;}
+  // Whatever a motor turns through the CAD's belts, gears and shafts turns in the simulation too. A shaft with a roller, feeder or
+  // flywheel on it gives that part its ratio to the motor; every other shaft follows it at its own speed (DeckHardware.spinPlan
+  // stops at a differential). Rollers with their feeder's wheels right behind them run with the feeder, even on a motor of their
+  // own: the wheels that take a piece from them have to be turning. Adds to found's refs, so choosing a device lights all it turns.
+  let trainSaid=[];
+  function spinFromCad(train,idx,found,m){
+    const H=window.DeckHardware,K=window.DeckKinematics,kin=structuredClone(project.kinematics),cache=new Map(),leavesOf=j=>{if(!cache.has(j.id))cache.set(j.id,new Set([...idx.expand(j.parts)].map(k=>'#'+k)));return cache.get(j.id);},plans=H.spinPlan(train,kin.joints,leavesOf);
+    const byId=new Map(kin.joints.map(j=>[j.id,j])),spins=j=>['roller','feeder','flywheel','wheel'].includes(j?.drive?.signal)||/gear[0-9]*$/.test(j?.id||''),owner=new Map();for(const j of K.order(kin))for(const r of leavesOf(j))owner.set(r,j.id);
+    let added=0;trainSaid=[];
+    for(const plan of plans){
+      for(const p of plan.primaries){const j=byId.get(p.joint.id);j.ratio=+Math.abs(p.speed).toFixed(4);const more=p.extra.filter(r=>!spins(byId.get(owner.get(r))));if(more.length){j.parts=[...new Set([...j.parts,...more])];for(const r of more)owner.set(r,j.id);}}
+      let n=0;for(const f of plan.followers){const lead=byId.get(f.of),own=f.refs.filter(r=>!spins(byId.get(owner.get(r))));if(!own.length||kin.joints.length>=96||kin.couplings.length>=96)continue;
+        const votes=new Map();for(const r of own){const o=owner.get(r);if(o)votes.set(o,(votes.get(o)||0)+1);}const carrier=[...votes].sort((a,b)=>b[1]-a[1])[0]?.[0];
+        let id;do{n++;id=`${lead.id}gear${n}`;}while(byId.has(id));const same=f.axis===f.leadAxis,ratio=+(f.ratio*(same?1:Math.sign(lead.axis[f.leadAxis])||1)).toFixed(4),clean=String(f.names[0]).replace(/\s*<\d+>$/,'');
+        const j={id,name:`${lead.name} gear ${n}`,type:'continuous',parent:carrier||lead.parent||null,parts:own,origin:f.origin,axis:same?lead.axis:[0,1,2].map(k=>k===f.axis?1:0),source:'inferred',confidence:.7,note:`“${clean}” turns with “${lead.name}” through the CAD’s belts and gears: ${Math.abs(ratio).toFixed(2)}× as fast${ratio<0?', the other way':''}.`};
+        kin.joints.push(j);byId.set(id,j);kin.couplings.push({kind:'gear',from:lead.id,to:id,ratio,offset:0});for(const r of own)owner.set(r,id);added++;}}
+    for(const f of found){const plan=plans.find(p=>f.ids?.includes(p.actuator.id));if(plan&&f.refs)f.refs=[...new Set([...f.refs,...plan.followers.flatMap(x=>x.refs)])];}
+    if(added)trainSaid.push(`${added} shaft${added===1?'':'s'} and gear${added===1?'':'s'} follow their motors`);
+    // How near counts as right behind: a sixth of the robot, a piece's width on an FTC robot.
+    const near=Math.max(project.robot.length||18,project.robot.width||18)/6,line=(j,o,a)=>Math.hypot(...[0,1,2].filter(k=>k!==a).map(k=>o[k]-j.origin[k]));
+    m.intakes.forEach((intake,n)=>{const rollers=kin.joints.filter(j=>j.drive?.signal==='roller'&&j.drive.of===`intake:${n}`),mainAxis=j=>j.axis.findIndex(v=>Math.abs(v)>.7);delete intake.withFeeder;
+      const with_=plans.some(p=>{const feeds=p.primaries.some(x=>x.joint.drive.signal==='feeder');if(!feeds)return false;if(p.primaries.some(x=>rollers.includes(byId.get(x.joint.id))))return true;return p.followers.some(f=>f.rides>2&&rollers.some(r=>mainAxis(r)===f.axis&&line(r,f.origin,f.axis)<=near));});
+      if(with_){intake.withFeeder=true;trainSaid.push(`intake ${n+1} runs with the feeder`);}});
+    project.kinematics=K.sanitize(kin);}
   // Configure from CAD: each mechanism added is looked for in the CAD by the names most like it. The game's intakes and
   // shooters take the CAD's named intake and shooter assemblies (their side, size, spot and parts; what the team chose
   // stays); then every moving mechanism added without parts is looked for (DeckMechanismTypes.likeness) and its pivot,
@@ -2589,10 +2774,13 @@ public class MyAuto implements DeckAutonomous {
     const bare=n=>String(n).replace(/\s*<\d+>$/,''),inMech=s=>bare(s.path.find((n,i)=>i>0&&(project.model?.parts||[]).some(p=>bare(p.name)===bare(n)))||s.path[1]||'');
     return {said,sensors:cad.sensors.map(s=>`${s.what} “${s.name}”${inMech(s)?` in “${bare(inMech(s))}”`:''}`)};}
   // Configure from CAD: one line on what it set up, and every detail in a list under it.
-  const cadDetails=lines=>{$('#mech-cad-list').replaceChildren(...lines.map(t=>Object.assign(document.createElement('li'),{textContent:t})));$('#mech-cad-details').hidden=!lines.length;};
-  $('#mech-from-cad').onclick=async()=>{
-    if(!project.model)return status('#mech-list-status','Import your robot’s CAD in step 2 (Robot) first.');
-    const said=[],game=L().field==='biobuzz',button=$('#mech-from-cad');button.disabled=true;$('#mech-hub-list').hidden=true;
+  $('#mech-from-cad').onclick=()=>configureFromCad();
+  // Setup is optional. When it has read a Control Hub, what it read fills in the mechanisms and Robot controller.
+  async function configureFromCad(){await readCadMechanisms();}
+  async function readCadMechanisms(){
+    if(project.model)placeModel.tracedId=`${project.model.id}:${project.mechanisms.intakes.length+project.mechanisms.shooters.length}`;
+    if(!project.model)return status('#mech-list-status','Import your robot’s CAD in step 2 (CAD) first.');
+    const said=[],game=L().field==='biobuzz',button=$('#mech-from-cad');button.disabled=true;
     try{
       if(game){const out=setUpFromCad({merge:true});if(out?.matched?.length)said.push(...out.matched);if(out?.extra?.length)said.push(`Also in your CAD: ${out.extra.join(', ')}; add it with + Add mechanism to set it up`);}
       save();robotPanel();mechanismsPanel();status('#mech-list-status','Looking through your CAD for each mechanism…');
@@ -2602,15 +2790,14 @@ public class MyAuto implements DeckAutonomous {
       if(r?.unmatched?.length)said.push(`Not found by name: ${r.unmatched.join(', ')}. Name its assembly like it in your CAD, or press Choose its parts on its card`);
       if(r?.told?.length)said.push(...r.told.map(t=>t.replace(/\.$/,'')));
       const hardware=actuatorsFromCad();if(hardware.length)said.push(...hardware);
+      await new Promise(done=>requestAnimationFrame(done));const furthest=[];project.mechanisms.intakes.forEach((_,n)=>{const r=joints.fitIntake(n);if(r?.name)furthest.push(`intake ${n+1}’s box reaches “${r.name}” (${r.kind})`);});
       const sensed=sensorsFromCad();if(sensed?.said.length)said.push(`Robot controller: ${sensed.said.join(', ')}`);if(sensed?.sensors.length)said.push(...sensed.sensors.map(s=>`${s}: set its port in Robot controller`));
       save();reload();mechanismsPanel();robotPanel();
-      const m=project.mechanisms,n=(k,one,many=one+'s')=>k?`${k} ${k===1?one:many}`:'',moving=project.kinematics.joints.filter(j=>j.type!=='fixed'&&j.drive?.signal!=='wheel').length;
-      const what=[n(m.enabled?m.intakes.length:0,'intake'),n(m.enabled?m.shooters.length:0,m.shooters.some(s=>s.type==='turret')?'turret shooter':'shooter'),n(moving,'moving part'),n(hardware.length,'motor and servo','motors and servos')].filter(Boolean);
+      const m=project.mechanisms,n=(k,one,many=one+'s')=>k?`${k} ${k===1?one:many}`:'',moving=project.kinematics.joints.filter(j=>j.type!=='fixed'&&j.drive?.signal!=='wheel'&&!/gear[0-9]*$/.test(j.id)).length;
+      const what=[n(m.enabled?m.intakes.length:0,'intake'),n(m.enabled?m.shooters.length:0,m.shooters.some(s=>s.type==='turret')?'turret shooter':'shooter'),n(moving,'moving part'),n(new Set(window.DeckWiring.state(project).rows.filter(r=>(r.family==='motor'||r.family==='servo')&&!['pod','sensor','imu'].includes(r.role)).map(r=>r.name)).size+(m.enabled?m.others.length:0),'motor and servo','motors and servos')].filter(Boolean);
       const extra=[...(sensed?.said||[]),...(sensed?.sensors.length?[n(sensed.sensors.length,'sensor')]:[])];
-      cadDetails(said);
-      status('#mech-list-status',said.length?`From your CAD: ${what.join(', ')||'nothing new'}${extra.length?` · ${extra.join(', ')}`:''}. Plug in the Control Hub and press Configure from Control Hub to take its names and ports.`:'Nothing in your CAD is named like these mechanisms. Name the assemblies in your CAD (Intake, Lift, Claw…), or choose each one’s parts on the model.');
-    }finally{button.disabled=!project.model;}};
-  $('#mech-from-hub').onclick=()=>void hubSetup('mechanisms');
+      status('#mech-list-status',said.length?`From your CAD: ${what.join(', ')||'nothing new'}${extra.length?` · ${extra.join(', ')}`:''}${furthest.length?` · ${furthest.join(', ')}`:''}${trainSaid.length?` · ${trainSaid.join(', ')}`:''}.`:'Nothing in your CAD is named like these mechanisms. Name the assemblies in your CAD (Intake, Lift, Claw…), or choose each one’s parts on the model.');
+    }finally{button.disabled=!project.model;}}
   // Mechanisms are on while the robot has any part; adding the first part starts from that part alone.
   function setMech(change){const m=structuredClone(project.mechanisms);if(!m.enabled){m.intakes=[];m.shooters=[];}change(m);m.enabled=m.intakes.length>0||m.shooters.length>0;project.mechanisms=MECH.sanitize(m);save();mechanismsPanel();reload();}
   // + Add mechanism's game entries (BIOBUZZ): an intake of a kind on a free edge, or a turret or fixed shooter (the second
@@ -2623,7 +2810,7 @@ public class MyAuto implements DeckAutonomous {
   for(const host of ['#mech-intakes','#mech-shooters']){
     const box=$(host),partOf=el=>{const [kind,n]=el.closest('[data-part]').dataset.part.split(':');return {kind,n:+n};};
     box.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;
-      if(b.dataset.mechRemove){const [kind,n]=b.dataset.mechRemove.split(':');if(mechPlacing?.startsWith(kind))mechPlacing=null;project.kinematics=window.DeckKinematics.reindex(project.kinematics,kind,+n);if(project.robot.wiring)project.robot.wiring=window.DeckHardware.reindex(project.robot.wiring,kind==='intake'?'intakes':'shooters',+n);return setMech(m=>m[kind==='intake'?'intakes':'shooters'].splice(+n,1));}
+      if(b.dataset.mechRemove){const [kind,n]=b.dataset.mechRemove.split(':');if(mechPlacing?.startsWith(kind))mechPlacing=null;project.kinematics=window.DeckKinematics.reindex(project.kinematics,kind,+n);if(project.robot.wiring)project.robot.wiring=window.DeckHardware.reindex(project.robot.wiring,kind==='intake'?'intakes':'shooters',+n);return setMech(m=>{m[kind==='intake'?'intakes':'shooters'].splice(+n,1);m.power={};m.guessed=[];m.traced=0;});}
       if(b.dataset.place){mechPlacing=mechPlacing===b.dataset.place?null:b.dataset.place;status('#mech-model-help',mechPlacing?'Click where that part is on the model. Drag to turn the view.':'');mechanismsPanel();return;}
       const field=b.dataset.field,value=b.dataset.value;if(!field||value===undefined)return;const {kind,n}=partOf(b);
       setMech(m=>{const part=m[kind==='intake'?'intakes':'shooters'][n];if(!part)return;
@@ -2631,22 +2818,34 @@ public class MyAuto implements DeckAutonomous {
         else if(field==='sharesTurret'){part.sharesTurret=value==='true';delete part.at;
           // Back on its own turret: it moves to the first shooter's partner spot.
           if(!part.sharesTurret){const first=m.shooters[0];part.mount=MECH.PARTNER[first.mount==='center'?'front':first.mount];}}
+        else if(field==='hood'){if(value==='on')part.hood=part.hood||(n?'hood2':'hood');else delete part.hood;}
         else{part[field]=value;if(field==='mount')delete part.at;}});});
-    box.addEventListener('change',e=>{const el=e.target;if(!el.dataset?.field)return;const {kind,n}=partOf(el);
-      setMech(m=>{const part=m[kind==='intake'?'intakes':'shooters'][n];if(!part)return;part[el.dataset.field]=el.type==='checkbox'?el.checked:el.type==='number'?(finite(el.valueAsNumber)?el.valueAsNumber:part[el.dataset.field]):el.value;});});
+    box.addEventListener('input',e=>{const el=e.target;if(el.dataset?.range===undefined||!finite(el.valueAsNumber))return;const j=deployJoint(+el.dataset.range);if(j)joints.pose(j.id,(j.states?.raised??0)+el.valueAsNumber);});
+    box.addEventListener('change',e=>{const el=e.target;if(el.dataset?.range!==undefined)return swingTo(+el.dataset.range,el.valueAsNumber);if(!el.dataset?.field)return;const {kind,n}=partOf(el);
+      setMech(m=>{const part=m[kind==='intake'?'intakes':'shooters'][n];if(!part)return;if(el.dataset.field==='fold'){if(finite(el.valueAsNumber))part.down=part.up=el.valueAsNumber;return;}part[el.dataset.field]=el.type==='checkbox'?el.checked:el.type==='number'?(finite(el.valueAsNumber)?el.valueAsNumber:part[el.dataset.field]):el.value;});});
   }
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&mechPlacing){mechPlacing=null;status('#mech-model-help','');mechanismsPanel();}});
   const mechNumber=(id,apply)=>$(id).addEventListener('change',e=>{if(finite(e.target.valueAsNumber))setMech(m=>apply(m,e.target.valueAsNumber));});
   mechNumber('#mech-cap-pollen',(m,v)=>m.capacity.pollen=v);mechNumber('#mech-cap-nectar',(m,v)=>m.capacity.nectar=v);mechNumber('#mech-preload',(m,v)=>m.preload.pollen=v);
   mechNumber('#mech-spinup',(m,v)=>m.shooter.spinUp=v);mechNumber('#mech-transfer',(m,v)=>m.transfer.seconds=v);mechNumber('#mech-index',(m,v)=>m.indexer.seconds=v);
   mechNumber('#mech-turret-speed',(m,v)=>m.turret.speed=v);mechNumber('#mech-turret-range',(m,v)=>{m.turret.min=-Math.abs(v);m.turret.max=Math.abs(v);});
-  mechNumber('#mech-rpm',(m,v)=>m.shooter.rpm=v);mechNumber('#mech-tpr',(m,v)=>m.shooter.ticksPerRev=v);mechNumber('#mech-turret-tpd',(m,v)=>m.turret.ticksPerDegree=v);
-  mechNumber('#mech-tolerance',(m,v)=>m.shooter.tolerance=v/100);mechNumber('#mech-fly-power-value',(m,v)=>m.shooter.power=v);mechNumber('#mech-push',(m,v)=>m.indexer.pushSeconds=v);
-  mechNumber('#mech-turret-center',(m,v)=>m.turret.servoCenter=v);mechNumber('#mech-turret-degrees',(m,v)=>m.turret.servoDegrees=v);
-  $('#mech-fly-control').onchange=e=>setMech(m=>{m.shooter.control=e.target.value;});$('#mech-turret-kind').onchange=e=>setMech(m=>{m.turret.kind=e.target.value;});
-  // Velocity PIDF: all four numbers set it, and all four empty go back to the SDK's own values.
-  for(const el of $$('[data-pidf]'))el.addEventListener('change',()=>{const v=Object.fromEntries([...$$('[data-pidf]')].map(x=>[x.dataset.pidf,x.value.trim()===''?null:x.valueAsNumber]));
-    if(Object.values(v).every(x=>x===null))setMech(m=>{delete m.shooter.pidf;});else if(Object.values(v).every(finite))setMech(m=>{m.shooter.pidf=v;});});
+  mechNumber('#mech-rpm',(m,v)=>m.shooter.rpm=v);
+  $('#mech-with-intake').onchange=e=>setMech(m=>{for(const i of m.intakes){if(e.target.checked)i.withFeeder=true;else delete i.withFeeder;}});
+  $('#mech-flywheel').addEventListener('change',e=>{if(!e.target.dataset.pidf)return;const vals=Object.fromEntries(['p','i','d','f'].map(k=>[k,$('#mech-pidf-'+k).valueAsNumber]));setMech(m=>{if(Object.values(vals).every(v=>!finite(v)||v===0))delete m.shooter.pidf;else m.shooter.pidf=Object.fromEntries(Object.entries(vals).map(([k,v])=>[k,finite(v)?v:0]));});});
+  // How far a ramp swings, from 0 at the CAD's pose. A negative number turns it the other way, and that way becomes positive.
+  let swingBack=0;
+  function swingTo(n,v){if(!finite(v))return;const abs=Math.abs(v),now=deployJoint(n);if(now){const kin=structuredClone(project.kinematics),j=kin.joints.find(x=>x.id===now.id),was=(j.states?.lowered??0)-(j.states?.raised??0);let raised=j.states?.raised??0;
+      if((v<0)!==(was<0)){j.axis=j.axis.map(a=>a?-a:0);raised=-raised;}j.states={...j.states,raised,lowered:raised+abs};if(finite(j.lower)||finite(j.upper)){j.lower=Math.min(raised,raised+abs);j.upper=Math.max(raised,raised+abs);}project.kinematics=window.DeckKinematics.sanitize(kin);}
+    setMech(m=>{if(m.intakes[n])m.intakes[n].travel=abs;});joints.fitIntake(n);if(now){const id=now.id,raised=project.kinematics.joints.find(x=>x.id===id)?.states?.raised??0;joints.pose(id,raised+abs);clearTimeout(swingBack);swingBack=setTimeout(()=>joints.pose(id,raised),2500);}}
+  // A second motor or servo chained to the first through the turret's gears, and the gear pairs from it to the turret.
+  $('#mech-turret').addEventListener('click',e=>{const on=e.target.closest('[data-turret-second]'),off=e.target.closest('[data-turret-second-off]');
+    if(on)return setMech(m=>{const s=m.shooters[+on.dataset.turretSecond];if(s)s.turretMotor2=`${s.turretMotor}b`.slice(0,40);});if(off)return setMech(m=>{const s=m.shooters[+off.dataset.turretSecondOff];if(s)delete s.turretMotor2;});
+    const x=e.target.closest('[data-gear-remove]');if(x)setGears(g=>g.filter((_,i)=>i!==+x.dataset.gearRemove));});
+  $('#mech-gear-add').onclick=()=>setGears(g=>[...g,[20,60]]);
+  $('#mech-gears').addEventListener('change',e=>{const [i,side]=String(e.target.dataset.gear||'').split(':');if(side!==undefined&&e.target.valueAsNumber>0)setGears(g=>g.map((p,k)=>k===+i?(side==='0'?[e.target.valueAsNumber,p[1]]:[p[0],e.target.valueAsNumber]):p));});
+  const gearRatio=g=>(g||[]).reduce((r,[a,b])=>r*b/a,1);
+  function setGears(change){setMech(m=>{const g=change(m.turret.gears||[]);if(g.length)m.turret.gears=g;else delete m.turret.gears;if(m.turret.kind==='servo'){const md=window.DeckHardware.MODELS[project.robot.wiring?.devices?.['shooters.0.turretMotor']?.model];m.turret.servoDegrees=Math.max(10,(md?.range||300)/gearRatio(g));}});}
+  function gearsPanel(){const g=project.mechanisms.turret.gears||[],box=$('#mech-gears'),html=g.map(([a,b],i)=>`<div class="sim-gear-row"><label for="mech-gear-${i}-0">Gear ${i+1} teeth</label><input id="mech-gear-${i}-0" data-gear="${i}:0" data-slider="off" type="number" min="1" max="2000" step="1" value="${a}"><span aria-hidden="true">→</span><label class="sr-only" for="mech-gear-${i}-1">Gear ${i+1} drives teeth</label><input id="mech-gear-${i}-1" data-gear="${i}:1" data-slider="off" type="number" min="1" max="2000" step="1" value="${b}"><button type="button" class="icon-button" data-gear-remove="${i}" aria-label="Remove gear pair ${i+1}" title="Remove">×</button></div>`).join('')+(g.length?`<p class="hint">${+gearRatio(g).toFixed(2)} turn${+gearRatio(g).toFixed(2)===1?'':'s'} of the ${project.mechanisms.turret.kind==='motor'?'motor':'servo'} turn the turret once.</p>`:'');if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
   for(const b of $$('[data-alliance]'))b.onclick=()=>{const l=L(),next=b.dataset.alliance;if((l.alliance||'red')===next)return;
     // BIOBUZZ is point-symmetric: the other alliance runs the same route turned 180° about the centre.
     const route=l.field==='biobuzz'&&(l.start||l.pins.length||l.zones.length);if(route){Object.assign(l,planner.allianceRoute(l,{mode:'rotate',width:l.width,height:l.height}));if(l.start){start=l.start;preview={...start};if(native&&info)void api.sim('start',start).catch(()=>{});}}
@@ -2662,20 +2861,81 @@ public class MyAuto implements DeckAutonomous {
   mechList=window.DeckMechanismList.create({host:$('#mech-parts'),picker:$('#mech-picker'),api:{
     kinematics:()=>project.kinematics,commit(next){project.kinematics=window.DeckKinematics.sanitize(next);save();mechanismsPanel();view3d?.setModel(fieldRig());reload();},
     joints:()=>joints,isMechanism:j=>joints.isMechanism(j),game:()=>L().field==='biobuzz',cad:()=>!!project.model&&!!model?.geometry,addGame,rows:()=>M()?.rows?.(project.model||{}),
-    status:text=>status('#mech-list-status',text),adding:on=>$('#mech-add').setAttribute('aria-expanded',String(on)),decorate:()=>{wireBlocks();observeMechCards();}}});
-  $('#mech-add').onclick=()=>mechList.open();
+    status:text=>status('#mech-list-status',text),adding:on=>$('#mech-add').setAttribute('aria-expanded',String(on)),decorate:()=>{wireBlocks();observeMechCards();garage();}}});
+  // Range of motion test (sim-motion-test.js): each mechanism through its whole range, and what it runs into.
+  // Each number can say what it is and how to measure it on the real robot, one press away.
+  const HELP=[[/^sim-length$/,'The robot frame from front to back. It sets the hitbox for planning.','Tape measure at the widest point of the frame.'],[/^sim-width$/,'The robot frame from side to side, outside the wheels.','Tape measure across the widest point. FTC allows 18 in.'],[/^sim-height$/,'How tall the frame is. It decides what the robot fits under.','Measure from the floor to the top of the frame.'],[/^sim-mass$/,'The robot with its battery. Heavier robots speed up, brake and turn slower.','Stand on a scale with and without the robot, and subtract.'],
+    [/^sim-rpm$/,'How fast the wheels turn at full power, after any gears or belts.','Motor RPM divided by the gear ratio: 435 RPM through 2:1 is about 217.'],[/^sim-wheel$/,'How wide the drive wheels are. With the RPM it sets top speed.','Measure across the wheel. goBILDA mecanum wheels are 96 or 104 mm.'],[/^sim-maxspeed$/,'The most power routes use unless a path says otherwise. 1 is full power.','Start at 0.8. Lower it if the robot slides or misses its stops.'],[/^sim-drive-style$/,'Robot-centric: forward is where the robot faces. Field-centric: forward is away from the driver.',''],
+    [/^mech-intake-reach-/,'How far the intake reaches past the frame when it picks up.','Measure from the frame to the front of the intake.'],[/^mech-intake-width-/,'How wide a piece can enter the intake.','Measure across the opening.'],[/^mech-intake-height-/,'How tall a piece can enter the intake.','Measure from the floor to the top of the opening.'],[/^mech-deploy-time-/,'How long it takes to fold all the way, down or up.','Film it and count: at 30 frames a second, 9 frames is 0.3 s.'],[/^mech-intake-range-/,'How far it swings from where your CAD has it, in degrees. Negative turns it the other way.','Watch it on the model until it touches the floor.'],
+    [/^mech-turret-speed$/,'How fast the turret turns while it aims.','Film a 90° turn and divide: 90° in 0.4 s is 225°/s.'],[/^mech-turret-range$/,'How far the turret may turn each way from facing forward.','Turn it by hand until a wire or a stop would catch.'],[/^mech-rpm$/,'How fast the flywheel spins when it shoots.','Read it from the motor’s velocity in telemetry.'],[/^mech-spinup$/,'How long the flywheel takes to reach its speed from a stop.','Time it from telemetry, or film it.'],[/^mech-pidf-/,'The numbers the Control Hub’s velocity control runs the flywheel on.','Press the guided check in Calibrate; it measures the flywheel and fills them in.'],[/^wire-rpm-/,'How fast this part turns at full power. It comes from the motor you chose and the belts and gears in your CAD. Change it if yours differs.','Read it from telemetry, or count turns on a slow-motion video.'],[/^mech-transfer$/,'How long a piece takes to travel from the intake to the shooter.','Film it and count frames.'],[/^mech-index$/,'The time between one shot and the next.','Film a few shots and divide by how many.'],[/^mech-cap-pollen$/,'The most pollen the robot can hold.',''],[/^mech-cap-nectar$/,'The most nectar the robot can hold.',''],[/^mech-preload$/,'The pollen in the robot when the match starts.','']];
+  function helpFields(){for(const label of document.querySelectorAll('[data-setup-page=mechanisms] label[for],[data-setup-page=robot] .sim-hitbox label[for]')){const h=HELP.find(([re])=>re.test(label.htmlFor));if(!h||label.querySelector('[data-help]'))continue;const b=document.createElement('button');b.type='button';b.className='sim-help-btn';b.dataset.help=label.htmlFor;b.textContent='?';b.setAttribute('aria-label',`What is this? ${label.textContent.trim()}`);b.setAttribute('aria-expanded','false');label.append(b);}}
+  $('#sim-panel-setup').addEventListener('click',e=>{const b=e.target.closest('[data-help]');if(!b)return;e.preventDefault();const place=b.closest('label').parentElement,had=place.querySelector(':scope>.sim-help');if(had){had.remove();b.setAttribute('aria-expanded','false');return;}const [,what,how]=HELP.find(([re])=>re.test(b.dataset.help)),p=document.createElement('p');p.className='sim-help';p.textContent=what;if(how){const m=document.createElement('b');m.textContent='Measure it: ';p.append(document.createElement('br'),m,how);}place.append(p);b.setAttribute('aria-expanded','true');});
+  // Every card in Mechanisms can be folded away to its title, and stays folded.
+  const FOLDED='torque-folded-cards';let folded=new Set();try{folded=new Set(JSON.parse(localStorage.getItem(FOLDED)||'[]'));}catch{}
+  const foldKey=c=>{const h5=c.matches('.sim-mech-sub')?c.querySelector(':scope>h5')?.firstChild?.textContent||'':'';return `${c.closest('[data-part]')?.dataset.part||c.dataset.mech||c.id}${h5?'|'+h5:''}`;};
+  function foldCards(){helpFields();const page=$('[data-setup-page=mechanisms]');for(const c of page.querySelectorAll('.sim-mech-sub')){const head=c.querySelector(':scope>.sim-mech-head,:scope>.sim-joints-head,:scope>h5,:scope>h3');if(!head)continue;let b=head.querySelector(':scope>[data-fold]');
+      if(!b){b=document.createElement('button');b.type='button';b.className='icon-button sim-fold';b.dataset.fold='';const x=head.querySelector(':scope>[data-mech-remove],:scope>.icon-button:not([data-fold])');head.classList.add('sim-fold-head');head.insertBefore(b,x);}
+      const on=folded.has(foldKey(c)),label=`${on?'Show':'Minimize'} ${(head.firstChild?.textContent||'this').trim()}`;c.toggleAttribute('data-folded',on);if(b.textContent!==(on?'+':'–'))b.textContent=on?'+':'–';if(b.getAttribute('aria-label')!==label){b.setAttribute('aria-label',label);b.title=on?'Show':'Minimize';}b.setAttribute('aria-expanded',String(!on));}}
+  $('[data-setup-page=mechanisms]').addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const c=b.closest('[data-folded],.sim-mech-sub,.sim-mech-part'),key=foldKey(c);if(folded.has(key))folded.delete(key);else folded.add(key);try{localStorage.setItem(FOLDED,JSON.stringify([...folded]));}catch{}foldCards();});
+  {let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;foldCards();});}).observe($('[data-setup-page=mechanisms]'),{childList:true,subtree:true});foldCards();}
+  helpFields();
+  $('#mech-add').onclick=()=>{mechList.open();garagePick='picker';garage();};
+  // ---- the garage: every part of the robot as a tile. One part shows at a time, with its numbers and what to do with it. ----
+  const garageArt=i=>window.DeckMechArt.svg(i.icon,{tint:i.tint,drive:project.robot.drivetrain});
+  // What a part runs on, from its first device row, and how many of its devices have a port.
+  function garageLine(el){const rows=[...el.querySelectorAll('[data-wire-row]')];if(!rows.length)return '';const r=rows[0],text=sel=>{const o=r.querySelector(sel);return o?.selectedOptions?.[0]?.textContent||'';},kind=text('[id^="wire-type-"]'),model=text('[data-wire-model]');
+    const wired=rows.filter(x=>x.querySelector('[data-wire-port],[data-wire-assign]')?.value).length;return `${[kind,model&&model!=='Not set'?model:'',rows.length>1?`${rows.length} devices`:''].filter(Boolean).join(' · ')}${project.controller==='ftc'?`<em data-wired="${wired===rows.length}">${wired}/${rows.length} plugged in</em>`:''}`;}
+  function garageItems(){const m=project.mechanisms,items=[],add=(key,title,icon,el,extra={})=>{if(el&&!el.hidden)items.push({key,title,icon,el,...extra});};
+    add('chassis','Chassis','chassis',$('#mech-drive'));
+    let num=1;for(const el of $$('#mech-intakes>.sim-mech-part')){const n=+el.dataset.part.split(':')[1],kind=m.intakes[n]?.kind;
+      if(kind==='ramp'){add(`intake:${n}:0`,`Intake ${num} · Ramp`,'ramp',el,{sub:0,tint:'intake',focus:`intakes.${n}.servo`});add(`intake:${n}:1`,`Intake ${num+1} · Rollers`,'rollers',el,{sub:1,tint:'intake',focus:`intakes.${n}.motor`});num+=2;}
+      else{add(`intake:${n}`,`${kind==='kicker'?'Kicker':'Intake'} ${num}`,kind==='kicker'?'kicker':kind==='siderollers'?'siderollers':'sweeper',el,{tint:'intake',focus:`intake:${n}`});num++;}}
+    add('feeder','Feeder','feeder',$('#mech-feeder'),{tint:'feeder',focus:'shooters.0.indexer'});
+    for(const el of $$('#mech-shooters>.sim-mech-part')){const n=+el.dataset.part.split(':')[1];add(`shooter:${n}`,`Shooter ${n+1} · ${MECH.PIECES[m.shooters[n]?.pieces]||''}`,'shooter',el,{tint:m.shooters[n]?.pieces,focus:`shooter:${n}`});}
+    add('turret','Turret','turret',$('#mech-turret'),{tint:'turret',focus:'shooters.0.turretMotor'});
+    for(const el of $$('#mech-parts [data-mech]'))add('kin:'+el.dataset.mech,el.querySelector('h4,h3,h5')?.firstChild?.textContent?.trim()||'Mechanism','part',el,{tint:'part',focus:'kin:'+el.dataset.mech});
+    add('preloads','Preloads','preload',$('#mech-preloads'),{tint:'pollen'});
+    if(!$('#mech-joints').hidden)add('moving','Moving parts','moving',$('#mech-joints'),{tint:'turret',line:()=>`${project.kinematics.joints.filter(j=>j.drive?.signal!=='wheel'&&!/gear[0-9]*$/.test(j.id)).length} found in your CAD`});
+    return items;}
+  // One line on what to do here. Every number a part runs on is an input on its own tile.
+  function garageStats(item){const m=project.mechanisms,r=project.robot,t=m.turret,k=item.key;let tip='';
+    if(k==='chassis')tip=`Pick the drivetrain, type the wheel RPM after any gearing, then say which port each motor is on. These wheels top out near ${Math.round(r.driveRpm/60*Math.PI*r.wheelDiameterMm/25.4)} in/s.`;
+    else if(/^intake:\d+:0$/.test(k)||/^intake:\d+$/.test(k)&&SWINGS[m.intakes[+k.split(':')[1]]?.kind]){tip='Type a range and watch it turn on the model. A negative number turns it the other way.';}
+    else if(/^intake:/.test(k))tip='Rollers only spin: say what drives them, and their speed follows the motor. Port can wait until the real robot is wired.';
+    else if(k==='feeder')tip='The feeder moves pieces from the intake up to the shooters. The path planner times your auto with these.';
+    else if(/^shooter:/.test(k)){const s=m.shooters[+k.split(':')[1]];tip=`Shoots ${MECH.PIECES[s?.pieces]?.toLowerCase()||'pieces'}. Speed and spin-up are below; the guided check in Calibrate can measure them.`;}
+    else if(k==='turret'){tip=t.kind==='motor'?'Enter each gear pair from the motor to the turret. Calibrate measures its encoder counts.':'Enter each gear pair from the servo to the turret. Calibrate measures where it faces forward.';}
+    else if(k==='preloads')tip='What the robot can carry, and what it starts the match with.';
+    else if(k==='moving')tip='Press Play to watch everything move. Open a part only if it moves wrong on the model.';
+    else if(k==='picker')tip='Pick what your robot has. It joins your robot on the left.';
+    const box=$('#mech-stats'),off=item.el?.querySelector?.(':scope>.sim-mech-head [data-mech-remove],:scope>.sim-mech-head .icon-button:not([data-fold])'),html=`<div class="sim-hero"><span class="sim-hero-art">${garageArt(item)}</span><div class="sim-hero-text"><h3>${escText(item.title)}</h3>${tip?`<p>${escText(tip)}</p>`:''}</div>${off?`<button type="button" class="icon-button" data-hero-remove aria-label="${escText(off.getAttribute('aria-label')||'Remove')}" title="Remove">×</button>`:''}</div>`;box.hidden=false;if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
+  const escText=v=>String(v??'').replace(/[&<>"]/g,c=>`&#${c.charCodeAt(0)};`);
+  function garage(){const items=garageItems(),keys=new Set(items.map(i=>i.key)),picking=garagePick==='picker'&&!$('#mech-picker').hidden;
+    // A part just added opens by itself.
+    const fresh=garageKeys?items.find(i=>!garageKeys.has(i.key)):null;garageKeys=keys;if(fresh&&garagePick==='picker')garagePick=fresh.key;
+    if(!picking&&!keys.has(garagePick))garagePick=items[0]?.key||null;
+    const now=picking?{key:'picker',el:$('#mech-picker'),title:'Add a mechanism',icon:'part',tint:'part'}:items.find(i=>i.key===garagePick),rail=$('#mech-rail'),html=items.map(i=>{const line=i.line?i.line():garageLine(i.sub===undefined?i.el:i.el.querySelectorAll('.sim-mech-sub')[i.sub]||i.el);return `<button type="button" class="sim-tile" data-garage="${escText(i.key)}" aria-pressed="${i.key===garagePick&&!picking}"><span class="sim-tile-icon">${garageArt(i)}</span><span class="sim-tile-text"><b>${escText(i.title)}</b><small>${line}</small></span></button>`;}).join('');
+    if(rail.dataset.html!==html){rail.innerHTML=html;rail.dataset.html=html;}
+    for(const el of [$('#mech-drive'),...$$('#mech-intakes>.sim-mech-part'),$('#mech-feeder'),...$$('#mech-shooters>.sim-mech-part'),$('#mech-turret'),...$$('#mech-parts [data-mech]'),$('#mech-flywheel'),$('#mech-preloads'),$('#mech-joints'),$('#mech-picker')]){el.toggleAttribute('data-garage-off',el!==now?.el&&!(el.id==='mech-flywheel'&&/^shooter:/.test(now?.key||'')));if(el===now?.el){const part=now.sub;el.toggleAttribute('data-garage-second',part===1);[...el.querySelectorAll(':scope>.sim-mech-sub')].forEach((c,n)=>c.toggleAttribute('data-garage-off',part!==undefined&&n!==part));}}
+    $('#mech-count').classList.toggle('sim-over',project.controller==='ftc'&&window.DeckWiring.state(project).problems.some(p=>p.level==='limit'));
+    if(now)garageStats(now);if(now?.focus&&!$('#mech-joints').contains(document.activeElement))focusMech(now.focus);}
+  $('#mech-stats').addEventListener('click',e=>{if(!e.target.closest('[data-hero-remove]'))return;garageItems().find(i=>i.key===garagePick)?.el.querySelector(':scope>.sim-mech-head [data-mech-remove],:scope>.sim-mech-head .icon-button:not([data-fold])')?.click();});
+  $('#mech-rail').addEventListener('keydown',e=>{if(!['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Home','End'].includes(e.key))return;const list=[...$$('#mech-rail [data-garage]')],at=list.indexOf(document.activeElement);if(at<0)return;e.preventDefault();const to=e.key==='Home'?0:e.key==='End'?list.length-1:Math.max(0,Math.min(list.length-1,at+(e.key==='ArrowDown'||e.key==='ArrowRight'?1:-1)));garagePick=list[to].dataset.garage;mechList.close();garage();$(`#mech-rail [data-garage="${CSS.escape(garagePick)}"]`)?.focus();$('.sim-mech-main').scrollTop=0;});
+  $('#mech-rail').addEventListener('click',e=>{const b=e.target.closest('[data-garage]');if(!b)return;garagePick=b.dataset.garage;mechList.close();garage();$('.sim-mech-main').scrollTop=0;});
   mechanismsPanel();presetPanel();
   // Setup runs in order like Path planning: 1 Field, 2 Robot, 3 Mechanisms, 4 Robot controller (its sensing and the
   // ports of everything set up before it, so Set up from the Control Hub can match every device at once).
   // Mechanisms on every field: what the robot has, each with what drives it. Picking up and shooting pieces (the game's
   // intakes and shooters, their timing and preloads) belong to BIOBUZZ; elsewhere every mechanism moves by route actions.
   function stepHidden(step){const p=project.robotPreset&&MECH.PRESETS[project.robotPreset];return !!p&&(step==='mechanisms'||step==='controller'&&!p.adjustable);}
+  // A ready-made robot has no CAD to import, so its step stays Robot.
+  const stepName=s=>s==='robot'&&project.robotPreset?'Robot':SETUP_NAMES[s];
   function setupSteps(){const game=L().field==='biobuzz',page=document.querySelector('[data-setup-page=mechanisms]');
-    const shown=SETUP_ORDER.filter(s=>!stepHidden(s));for(const s of SETUP_ORDER){const b=$(`#sim-setup-step-${s}`);b.hidden=stepHidden(s);b.textContent=`${shown.indexOf(s)+1} · ${SETUP_NAMES[s]}`;}
+    const shown=SETUP_ORDER.filter(s=>!stepHidden(s));for(const s of SETUP_ORDER){const b=$(`#sim-setup-step-${s}`);b.hidden=stepHidden(s);b.textContent=`${shown.indexOf(s)+1} · ${stepName(s)}`;}
     const after=s=>shown[shown.indexOf(s)+1]||'plan',before=s=>shown[shown.indexOf(s)-1]||'field';
-    for(const [s,dir] of [['robot','next'],['mechanisms','next'],['mechanisms','back'],['controller','back']]){const b=document.querySelector(`[data-setup-page=${s}] .sim-setup-nav ${dir==='next'?'.primary':'.secondary'}[data-setup-go]`);if(!b)continue;const to=dir==='next'?after(s):before(s);b.dataset.setupGo=to;b.textContent=dir==='next'?(to==='plan'?'Next: path planning →':`Next: ${SETUP_NAMES[to].toLowerCase()} →`):'← Back';}
-    page.querySelector('h2+.hint').textContent=game?'Everything on your robot that moves. Intakes and shooters pick up and shoot BIOBUZZ pieces (routes run them with Intake, Spin up, Aim and Shoot); every other mechanism moves to its named positions when a route action names it (for example “Lift up”). Your CAD is every part’s zero: start the robot posed as in the CAD, and encoders and positions count from there.':'Everything on your robot that moves. A route action named after a mechanism and one of its positions (for example “Lift up”) moves it. Your CAD is every part’s zero: start the robot posed as in the CAD, and encoders and positions count from there.';
-    page.dataset.game=String(game);for(const id of ['#mech-timing','#mech-preloads'])if(!game)$(id).hidden=true;
+    for(const [s,dir] of [['field','next'],['robot','next'],['mechanisms','next'],['mechanisms','back'],['controller','back']]){const b=document.querySelector(`[data-setup-page=${s}] .sim-setup-nav ${dir==='next'?'.primary':'.secondary'}[data-setup-go]`);if(!b)continue;const to=dir==='next'?after(s):before(s);b.dataset.setupGo=to;b.textContent=dir==='next'?(to==='plan'?'Next: path planning →':`Next: ${stepName(to)==='CAD'?'CAD':stepName(to).toLowerCase()} →`):'← Back';}
+    page.querySelector('h2+.hint').textContent='Everything on your robot that moves. Your CAD is where each part starts: that pose is 0.';
+    page.dataset.game=String(game);for(const id of ['#mech-flywheel','#mech-preloads'])if(!game)$(id).hidden=true;
   }
   // Asked by the main process before the window closes: the setup being set up (Setup open, Path planning not yet), or null.
   window.deckUnfinishedSetup=()=>active&&tab==='setup'&&!project.setupDone?project.setupName:null;
@@ -2805,18 +3065,20 @@ public class MyAuto implements DeckAutonomous {
     recordButton.disabled=!native||!!videoReplay||video.ending||video.preparing;
     pressedIn(videoView,'videoview',video.exportView);videoButton.textContent=videoReplay?'Cancel video':'Save video of the last run…';};
   videoRefresh=videoButtons;
-  // The Video editor tab is there after any run that finished, problems and all (a run that touched something replays
+  // The Video editor tab is there after any run that ended, problems and all (a run that touched something replays
   // each contact in the video), and while a recording is open: opening it edits the run's own cameras; a recording
-  // also keeps its filmed take.
+  // also keeps its filmed take. Autonomous, teleop or a full match: a run has ended once nothing is running, or once
+  // the robot finishes in an autonomous on its own, whose clock only holds it still.
   let studioRun=null;
   let openAfterRun=false;
-  const runReady=()=>!!take||!!lastReport&&runData.frames().length>1;
+  const runEnded=()=>{const F=runData.frames();return F.length>1&&F.at(-1).time-F[0].time>.05&&(runState==='idle'||project.practice.mode==='autonomous'&&!!lastReport);};
+  const runReady=()=>!!take||runEnded();
   // Where the run touched a wall, a field structure or a no-go zone, for the video's contact replays: the run report's
   // contacts (seconds from the first frame), each at the point of the robot's outline that is in or against what it
   // touched. A second touch of the same thing within 2 s is the same contact.
   const CONTACT_LABEL={wall:'the field wall',field:'a field structure',zone:'a no-go zone'};
   function videoCrashes(frames){
-    const clamp=(v,a,z)=>Math.max(a,Math.min(z,v));let report=null;try{report=window.DeckSimReport.build(frames,{pins:L().pins});}catch{}if(!report?.contacts?.length||!info)return [];
+    const clamp=(v,a,z)=>Math.max(a,Math.min(z,v));let report=null;try{report=window.DeckSimReport.build(frames,{pins:L().pins,whole:true});}catch{}if(!report?.contacts?.length||!info)return [];
     const t0=frames[0].time,zones=[...(info.fieldZones||[]),...(L().zones||[])],b=info.bounds||{x0:0,y0:0,x1:144,y1:144},out=[],last={};
     for(const c of report.contacts){if(last[c.id]!==undefined&&c.time-last[c.id]<2){last[c.id]=c.time;continue;}last[c.id]=c.time;
       const f=frames[Math.max(0,frames.findIndex(x=>x.time-t0>=c.time-1e-6))],p=f?.truth;if(!p)continue;
@@ -2833,10 +3095,11 @@ public class MyAuto implements DeckAutonomous {
     return out;
   }
   function videoTab(){$('#sim-tab-video').hidden=false;$('#sim-tab-video').dataset.state=runReady()?'done':'';if(!runReady()&&tab==='video')selectTab('run');
-    if(openAfterRun&&runReady()){openAfterRun=false;void editRun();}}
+    if(openAfterRun&&runReady()&&!video.live){openAfterRun=false;videoSay('');void editRun();}}
   async function editRun(){
-    if(!runReady()){const d=$('#sim-video-run');d.returnValue='';d.addEventListener('close',()=>{if(d.returnValue!=='run')return;if(setupGate()){selectTab('setup');return showSetupStep(setupGate());}openAfterRun=true;selectTab('run');$('#sim-run').click();},{once:true});d.showModal();$('#sim-video-run-yes').focus();return;}
-    if(take||studioRun===reportShown&&studio)return selectTab('video');try{await openStudio(runData.frames(),viewNow());studioRun=reportShown;}catch(e){status('#sim-run-status',e.message);}}
+    if(!runReady()&&runState!=='idle'){openAfterRun=true;videoSay('The Video editor opens when this run ends.');return;}
+    if(!runReady()){const d=$('#sim-video-run'),what={autonomous:'the autonomous',teleop:'teleop',match:'the full match'}[project.practice.mode];$('#sim-video-run-title').textContent=`Run ${what} first`;d.querySelector('p').textContent=`The Video editor films a run. Run ${what} now and the editor opens on it when it ends.`;d.returnValue='';d.addEventListener('close',()=>{if(d.returnValue!=='run')return;if(setupGate()){selectTab('setup');return showSetupStep(setupGate());}openAfterRun=true;selectTab('run');$('#sim-run').click();},{once:true});d.showModal();$('#sim-video-run-yes').focus();return;}
+    const first=runData.frames()[0];if(take||studioRun===first&&studio)return selectTab('video');try{await openStudio(runData.frames(),viewNow());studioRun=first;}catch(e){status('#sim-run-status',e.message);}}
   function dropTake(){take=null;takeBox.hidden=true;studio?.clear();studioRun=null;videoTab();}
   // A finished take opens in the Video editor, with the run it filmed, so it can be cut between cameras and exported.
   function showTake(blob,view,section,seconds,frames){
@@ -2849,7 +3112,7 @@ public class MyAuto implements DeckAutonomous {
   takeBox.querySelector('#sim-record-discard').onclick=()=>{dropTake();videoSay('Recording discarded.');};
   async function openStudio(frames,view){
     if(!frames?.length)throw Error('The run was not recorded, so it cannot be edited.');
-    await script('sim-edit.js');await script('sim-encode.js');await script('sim-studio.js');
+    frames=Video.editable(frames);await script('sim-edit.js');await script('sim-encode.js');await script('sim-studio.js');
     studio=studio||window.DeckStudio.create({host:$('#sim-panel-video'),camera:videoCamera,
       save:async(bytes,ext,name)=>{if(!native)return 'Saving videos needs the installed app.';const r=await api.simFile('video-save',{name:`${String(name||'').replace(/[^\w -]+/g,'').replace(/\s+/g,' ').trim().slice(0,60)||'Deck run'} - edited`,ext,bytes});return r?.message||'The video was not saved.';},
       saveOriginal:async()=>{if(!take)return 'The recording is gone.';await saveVideo(take.blob,take.section,take.view);return videoStatus.textContent;},
@@ -2858,14 +3121,16 @@ public class MyAuto implements DeckAutonomous {
     await studio.load({frames,view,name:L().name,ctx:cameraBase(aim),crashes:videoCrashes(frames),
       state:{layout:L(),start,info,hitboxes:false,preview:null,aim}});
   }
-  const videoSections=()=>{const s=Video.sections(runData.frames());for(const o of videoSection.options)o.disabled=!s[o.value];return s;};
+  const videoFrames=()=>Video.editable(runData.frames());
+  // The parts this run has; a part it does not have (the autonomous of a teleop run) gives way to one it does.
+  const videoSections=()=>{const s=Video.sections(videoFrames());for(const o of videoSection.options)o.disabled=!s[o.value];if(s.all&&!s[videoSection.value])videoSection.value=s.auto?'auto':s.teleop?'teleop':'all';return s;};
   async function saveVideo(blob,section,view){
     if(!blob?.size){videoSay('Nothing was filmed.');return;}
     videoSay('Choose where to save the video…');
     try{const r=await api.simFile('video-save',{name:Video.title(L().name,section,view),ext:videoRec.ext(),bytes:new Uint8Array(await blob.arrayBuffer())});videoSay(r?.message||'The video was not saved.');}catch(e){videoSay(e.message);}
   }
   async function endLive(wait){
-    clearInterval(liveTimer);video.ending=true;videoButtons();if(wait)await new Promise(r=>setTimeout(r,wait));
+    clearInterval(liveTimer);video.ending=true;openAfterRun=false;videoButtons();if(wait)await new Promise(r=>setTimeout(r,wait));
     const blob=await videoRec.stop(),view=videoShow?.view||viewNow(),seconds=(performance.now()-video.began)/1000,from=videoShow?.from,all=runData.frames(),filmed=all.filter(f=>!(from>f.time+1e-6));
     videoRec.close();videoShow=null;Object.assign(video,{armed:false,live:false,ending:false});videoButtons();
     showTake(blob,view,{autonomous:'auto',teleop:'teleop'}[project.practice.mode]||'all',seconds,(filmed.length>1?filmed:all).slice());
@@ -2881,6 +3146,8 @@ public class MyAuto implements DeckAutonomous {
         videoSay(`Recording in ${view.toUpperCase()}. It stops when ${project.practice.mode==='autonomous'?'the autonomous finishes':project.practice.mode==='teleop'?'the teleop period ends':'the match ends'}, or press Stop recording.`);}
       catch(e){videoRec.close();videoShow=null;video.armed=false;videoSay(e.message);}videoButtons();}
     else if(video.live&&!video.ending&&(runState==='idle'||event==='finished'&&project.practice.mode==='autonomous'))void endLive(event==='finished'?1000:700);
+    // A run event: the run may just have ended, whichever period it was, so the tab and the parts catch up.
+    if(event){if(event==='error')openAfterRun=false;videoSections();videoTab();}
   };
   // One press arms Record with the camera of the view on screen (the field model loads once); Run starts filming.
   recordButton.onclick=async()=>{
@@ -2894,7 +3161,7 @@ public class MyAuto implements DeckAutonomous {
   videoSection.onfocus=videoSections;
   videoButton.onclick=async()=>{
     if(videoReplay){videoReplay.cancel=true;return;}
-    const frames=runData.frames().slice(),section=videoSection.value,range=videoSections()[section],view=video.exportView;
+    const frames=videoFrames().slice(),parts=videoSections(),section=videoSection.value,range=parts[section],view=video.exportView;
     if(!frames.length)return videoSay('Run the robot first; every run is recorded while it plays.');
     if(!range)return videoSay(`The last run has no ${Video.SECTIONS[section].toLowerCase()} period. Choose another part.`);
     if(!native)return videoSay('Saving videos needs the installed app.');
@@ -3001,12 +3268,21 @@ public class MyAuto implements DeckAutonomous {
   // (the flywheel's speed and what each shot costs it, the hood angle by flywheel speed, the turret, feeder, intakes and
   // moving parts); the simulation runs on them. What the check measures is read from the check TeleOp generated for the
   // setup: one line for each step it asks about.
-  let calibrating=false,calTab='electronics';
-  const setupBar=$('.sim-setup-bar'),setupHome=setupBar?.nextElementSibling,calEsc=v=>window.DeckWiring.esc(v);
+  let calibrating=false,calTop='debug',calTab='electronics';
+  window.DeckPartPicker?.install({photo:native?tag=>api.devicePhoto(tag):null});
+  const setupBar=$('.sim-setup-bar'),setupHome=setupBar?.nextElementSibling,reliable=document.createElement('div');reliable.id='sim-reliable';reliable.className='sim-reliable';reliable.setAttribute('role','status');reliable.hidden=true;reliable.innerHTML='<span></span><button type="button" class="secondary">Go to Setup &amp; Calibrate</button><button type="button" class="sim-reliable-close" aria-label="Close this note" title="Close">×</button>';setupBar?.after(reliable);
+  const RELIABLE_CLOSED='torque-reliable-closed',reliableClosed=()=>{try{return new Set(JSON.parse(localStorage.getItem(RELIABLE_CLOSED)||'[]'));}catch{return new Set();}};
+  reliable.querySelector('button').onclick=()=>void api.page('setup');
+  reliable.querySelector('.sim-reliable-close').onclick=()=>{const closed=reliableClosed();closed.add(project.setupId);try{localStorage.setItem(RELIABLE_CLOSED,JSON.stringify([...closed]));}catch{}reliableNote();};
+  // The simulation stands on its own; Setup and Calibrate only make it more accurate, so this note says so and holds nothing back.
+  // It is for a team's own robot: the demos that ship with Torque have no real electronics to set up. A team can close it, for that setup.
+  function reliableNote(){const box=document.getElementById('sim-reliable');if(!box)return;const hub=project.calibration?.hub,done=!!hub?.config,tuned=Object.keys(project.calibration?.mechs||{}).length>0;box.hidden=project.controller!=='ftc'||builtin(project.setupId)||!!project.robotPreset||(done&&tuned)||reliableClosed().has(project.setupId);
+    box.querySelector('span').textContent=done?'Estimate: your electronics are set up, but nothing is calibrated yet. The real mechanisms may not match this.':'Estimate only: this shows how the robot and its mechanisms should move, with no promise the real robot will. For reliable data, finish Setup & Calibrate so Torque knows what is connected to what.';}
+  const calEsc=v=>window.DeckWiring.esc(v);
   const MEASURES=[[/top speed/i,'Top speed, for the flywheel velocity PIDF'],[/^IMU/,'How the hub is mounted, and which way it turns'],[/Pinpoint|OTOS|odometry/i,'Where the pods sit and which way they count'],[/turret/i,'Its zero and how far it turns'],[/kicker|ramp|pusher|gate|servo|arm|claw/i,'Its servo positions'],[/./,'Which way it turns']];
   const calNote=text=>Object.assign(document.createElement('li'),{className:'hint',textContent:text});
   async function calibrateShow(){
-    if(setupBar)$('#cal-setup-slot').append(setupBar);$('#cal-send-slot').append($('#sim-send'));void sendPanel();void detectLink();calSelect(calTab);calRender();
+    $('#cal-send-slot').append($('#sim-send'));void sendPanel();void detectLink();calSelect(calTop==='calibrate'?calTab:calTop);calRender();
     const ftc=native&&!!api.robotLink&&!$('#sim-export-onbot').hidden;$('#cal-unsupported').hidden=ftc;
     $('#cal-unsupported').textContent=!native?'Calibrating needs the installed app.':'The guided check is for FTC Control Hub setups that export OnBot Java. Choose one in Simulate → Setup.';
     $('#sim-check-start').disabled=!ftc||!!checking?.running;
@@ -3021,8 +3297,10 @@ public class MyAuto implements DeckAutonomous {
     const drive=steps.filter(t=>/(?<!fly)wheel|^IMU|Pinpoint|OTOS|odometry/i.test(t)),groups=[['Drive and position sensing',drive],['Mechanisms',steps.filter(t=>!drive.includes(t))]].filter(([,list])=>list.length);
     list.replaceChildren(...groups.length?groups.flatMap(([name,list])=>[Object.assign(document.createElement('li'),{className:'cal-group',textContent:`${name} · ${list.length}`}),...list.map(row)]):[calNote('This setup has no devices for the check to test.')]);
   }
-  function calSelect(key){calTab=key;for(const b of $$('[data-cal-tab]')){const on=b.dataset.calTab===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$('[data-cal-panel]'))p.hidden=p.dataset.calPanel!==key;}
-  for(const b of $$('[data-cal-tab]')){b.onclick=()=>calSelect(b.dataset.calTab);b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const other=$$('[data-cal-tab]').find(x=>x!==b);calSelect(other.dataset.calTab);other.focus();};}
+  function calTabs(attr,panel,key){for(const b of $$(`[data-${attr}]`)){const on=b.getAttribute(`data-${attr}`)===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$(`[data-${panel}]`))p.hidden=p.getAttribute(`data-${panel}`)!==key;}
+  // Electronics or Mechanisms opens the Calibrate tab they are in; Debug is its own.
+  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);}
+  for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const other=$$(`[data-${attr}]`).find(x=>x!==b);calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
   function calRender(){if(!calRoot||calRoot.hidden)return;calElectronics();calMechanisms();calGates();const h=calHubHash();if(liveDebug&&h!==calLayout){calLayout=h;liveDebug.layout();}}
@@ -3030,18 +3308,17 @@ public class MyAuto implements DeckAutonomous {
   function calHtml(box,html){if(box.dataset.html===html)return;const focus=document.activeElement?.id;box.innerHTML=html;box.dataset.html=html;if(focus)document.getElementById(focus)?.focus();}
   // ---- Electronics: the hub's read-out, then each device (its model, the port it reported and its sensors), drive first.
   function calElectronics(){
-    const W=window.DeckWiring,st=W.state(project),ftc=project.controller==='ftc',hub=project.calibration.hub,read=ftc?hub?.readout||null:null;$('#cal-hub-setup').disabled=!ftc;
+    flowMarks();const W=window.DeckWiring,st=W.state(project),ftc=project.controller==='ftc',hub=project.calibration.hub,read=ftc?hub?.readout||null:null;$('#cal-hub-setup').disabled=!ftc;
     // What is plugged in where shows only once it was read from the Control Hub: the port Deck would pick says nothing about the robot.
     const from=read?`<p class="hint">Read from “${calEsc(hub.name||'the configuration')}”${hub.serial?` on Control Hub ${calEsc(hub.serial)}`:''}, ${calEsc(new Date(hub.at).toLocaleString())}. Plug it in and read it again after changing the wiring.</p>`:'';
     calHtml($('#cal-hubs'),!ftc?'<p class="hint">This setup runs on a MotionModule, which has no hub ports. Choose FTC Control Hub in Simulate → Setup to set up a Control Hub.</p>':read?from+W.readoutHtml(read,st):'<p class="hint" data-cal-unread>Nothing read yet. Plug the Control Hub in by USB-C and press Set up from the Control Hub: what is connected to each port shows here, with the motors, servos and sensors.</p>');
-    $('#cal-devices-card').hidden=!read;if(!read){calHtml($('#cal-devices'),'');return;}
-    const groups=[['Drive and position sensing',r=>W.stepOf(r.key)==='robot'],['Mechanisms',r=>W.stepOf(r.key)!=='robot']].map(([name,test])=>[name,st.rows.filter(r=>r.role!=='sensor'&&test(r))]).filter(([,rows])=>rows.length);
-    calHtml($('#cal-devices'),st.error?`<p class="hint">${calEsc(st.error)}</p>`:groups.map(([name,rows])=>`<h3 class="cal-group-title">${name} · ${rows.length}</h3>${rows.map(r=>W.deviceHtml(r,st,{sensors:true,read})).join('')}`).join('')||'<p class="hint">This setup has no motors, servos or sensors yet: set up the robot in Simulate → Setup.</p>');
+    
   }
   // A model or sensor picked here is not a change to what the hub reported, so a read that was current stays current.
   function calKeepRead(change){const hub=project.calibration.hub,fresh=!!hub&&hub.hash===calHubHash();change();if(fresh){hub.hash=calHubHash();calSave();}else calRender();}
   window.DeckWiring.bind($('#cal-electronics'),{project:()=>project,apply:next=>calKeepRead(()=>applyWiring(next)),setKind:(key,kind)=>calKeepRead(()=>deviceKind(key,kind))});
   $('#cal-hub-setup').onclick=async()=>{await hubSetup('calibrate');calRender();};
+  $('#cal-save').onclick=()=>{save();status('#cal-saved',`Saved at ${new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}.`);};
   // ---- Mechanisms. Each number is a path into project.mechanisms (scale: what the box shows per stored unit, 100 for a %).
   const calGet=(o,path)=>path.split('.').reduce((a,k)=>a?.[k],o);
   function calField(path,label,{min,max,step=1,unit='',scale=1,note='',value}={}){
@@ -3103,9 +3380,9 @@ public class MyAuto implements DeckAutonomous {
   const TU=window.DeckTune,calOpen={},calTemp={};
   const calWait=ms=>new Promise(r=>setTimeout(r,ms));
   function calHubHash(){const st=window.DeckWiring.state(project);return TU.hash(st.rows.map(r=>[r.name,r.family,r.hub??'',r.port??r.bus??'',r.model??'']).sort());}
-  function calHubRead(info){const readout=project.calibration.hub?.readout;project.calibration.hub={...(readout?{readout}:{}),...info,at:new Date().toISOString(),hash:calHubHash()};calSave();}
+  function calHubRead(info){const {readout,config,scan}=project.calibration.hub||{};project.calibration.hub={...(readout?{readout}:{}),...(config?{config}:{}),...(scan?{scan}:{}),...info,at:new Date().toISOString(),hash:calHubHash()};calSave();}
   const calRec=id=>(project.calibration.mechs[id]??={gates:{}});
-  function calSave(){project.calibration=TU.sanitize(project.calibration);save();calRender();}
+  function calSave(){project.calibration=TU.sanitize(project.calibration);save();calRender();reliableNote();}
   function calPass(m,gate,extra){const rec=calRec(m.id);Object.assign(rec,extra||{});rec.gates={...rec.gates,[gate]:{at:new Date().toISOString(),dep:calDeps(m,rec)[gate]}};calSave();}
   // The mechanisms Setup knows, each with the device that moves it, the sensors on that device and its template.
   function calMechList(){
@@ -3128,6 +3405,7 @@ public class MyAuto implements DeckAutonomous {
   function calKey(m,rec){if(rec?.bind)return rec.bind;const a=m.sensors.find(s=>s.family==='analog'&&s.use==='position');if(a)return `a:${a.name}`;return m.row.family==='motor'?`m:${m.row.name}:${m.template==='T3'?'vel':'pos'}`:'';}
   const calCmd=m=>m.row.family==='motor'?'M':m.row.kind==='crservo'?'C':'S';
   const calUnit=(m,rec)=>m.template==='T3'?'RPM':rec?.transform?.unit==='mm'?'mm':'°';
+  const liveCamera=window.DeckCamera&&calRoot?window.DeckCamera.create({host:$('#cal-camera'),api,native,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='Webcam').map(d=>d.name)}):null;
   function calUnitsNow(m,rec){const v=liveDebug?.values()||{},raw=v[calKey(m,rec)];return TU.toUnits(raw,rec?.transform||{});}
   const calFix=(v,d=2)=>finite(v)?(+v).toFixed(d):'—';
   const calNeedLive=()=>`<p class="cal-note">This step moves the robot. Start Live debug in Electronics first (robot on blocks).</p><div class="button-row"><button type="button" class="secondary" data-cal-act="to-live">Go to Live debug</button></div>`;
@@ -3221,7 +3499,7 @@ public class MyAuto implements DeckAutonomous {
       calSave();}
     catch(e){state.ramp={text:e.message};out(0);calRender();}
     finally{off();}}
-  // The robot-side step test (G7): Deck Debug's own loop on the raw reading, the gains turned from units into raw counts.
+  // The robot-side step test (G7): Torque Debug's own loop on the raw reading, the gains turned from units into raw counts.
   async function calStep(m){
     const rec=calRec(m.id),p=calPid(m,rec),t=rec.transform||{},key=calKey(m,rec),vel=m.template==='T3',per=Math.abs(TU.toUnits(1,{...t,offset:0})-TU.toUnits(0,{...t,offset:0}))||1,g=(t.sign===-1?-1:1)*(rec.motorSign===-1?-1:1);
     const sensor=key.startsWith('a:')?`ana:${key.slice(2)}`:`enc:${key.split(':')[1]}`,state=calTemp[m.id]??={};state.step={text:'Moving to the start…'};calRender();
@@ -3268,8 +3546,10 @@ public class MyAuto implements DeckAutonomous {
   // The setup bar's right-click menu works here too.
   calRoot?.addEventListener('contextmenu',e=>{const b=e.target.closest('[data-setup-id],#sim-setup');if(!b)return;e.preventDefault();const r=b.getBoundingClientRect();setupMenu(b.dataset.setupId||project.setupId,e.clientX||r.left+16,e.clientY||r.bottom);});
   $('#cal-open-sim').onclick=()=>void api.page?.('simulation');
-  return {calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();},
+  return {flow(step){if(step!=='calibrate'){flowStep=step;setupRender();}flowMarks();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
+    calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();hubWatch();},
     activate(value){
+    if(value)reliableNote();
     if(value){sendHome.append($('#sim-send'));if(setupBar&&setupHome)setupHome.before(setupBar);}
     if(active&&!value){glideStop();pointer=null;drag=null;status('#sim-run-status',runState==='running'?'Simulation closed. The running program was stopped.':'');if(tool==='start')preview={...start};frame=null;info=null;runState='idle';trail=[];draw();}
     const was=active;active=value;document.body.classList.toggle('sim-workspace',active&&tab!=='setup');

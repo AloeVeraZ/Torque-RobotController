@@ -100,7 +100,7 @@ test('an offline plan: drive motors on the Control Hub, other motors on the Expa
   // The Through Bore on the turret is plugged into the turret motor's own encoder input (port 3 counts in hardware): the
   // robot reads it through "turret", whose own encoder is then not used.
   assert.equal(assign['sensor.turretTb'].via,'turret');
-  assert.deepEqual(problems,[{level:'amber',keys:['kin.liftMotor'],text:'No motor port is free for Lift. Run a roller on a continuous servo, or free a motor port.'}]);
+  assert.deepEqual(problems,[{level:'amber',keys:['kin.liftMotor'],text:'No motor port is free for Lift. Run a roller on a continuous servo, or free a motor port.',port:true}]);
   // Deterministic, and the same with no Expansion Hub says to add one; a Servo Hub takes servos past the Control Hub's six.
   assert.deepEqual(H.plan(rows,WIRING),H.plan(rows,WIRING));
   const alone=H.plan(rows,{devices:WIRING.devices});assert.match(alone.problems.map(p=>p.text).join('\n'),/No motor port is free for Intake 1 roller\. Add an Expansion Hub/);
@@ -129,10 +129,10 @@ test('problems: two devices on one port, a model that is not what the mechanism 
     'amber: Actuonix L16-R 50 mm on Shooter 1 hood is not on the 2026-27 pre-verified list: bring its data sheet to inspection.',
     'red: Shooter 1 flywheel: only its motor’s own encoder can read its speed (a REV Through Bore overflows the hub’s speed reading).',
     'red: Shooter 1 turret: REV Touch Sensor is on Control Hub digital port 2; it reads only on odd digital channels (1, 3, 5 and 7).',
-    'red: Intake 1 ramp servo: REV Potentiometer is on Control Hub analog port 1; it reads only on even analog channels (0 and 2).',
+    'red: Intake 1 ramp: REV Potentiometer is on Control Hub analog port 1; it reads only on even analog channels (0 and 2).',
     'amber: Shooter 1 flywheel: REV Through Bore is on Expansion Hub encoder port 2: ports 1 and 2 count in software and can miss counts from a Through Bore. Use encoder port 0 or 3.',
     'amber: shooters.1.indexer: REV Color Sensor V3 measures a device this robot no longer has.',
-    'amber: Intake 1 ramp servo: Axon feedback wire: goBILDA Torque servo has no feedback wire; pick an Axon for intake 1 ramp servo, or another sensor.'])assert.ok(texts.includes(want),want+'\n'+texts.join('\n'));
+    'amber: Intake 1 ramp: Axon feedback wire: goBILDA Torque servo has no feedback wire; pick an Axon for intake 1 ramp, or another sensor.'])assert.ok(texts.includes(want),want+'\n'+texts.join('\n'));
   // A continuous servo turret needs a sensor that tells where it is; the IMU's bus is the hub's own.
   const cr=H.conflicts([{key:'shooters.0.turretMotor',label:'Shooter 1 turret',role:'turret',family:'servo',kind:'crservo',name:'turret'},{key:'robot.imu',label:'IMU',role:'imu',family:'i2c',kind:'imu',name:'imu'},
     {key:'robot.pinpoint',label:'goBILDA Pinpoint',role:'pinpoint',family:'i2c',kind:'pinpoint',name:'pinpoint',hub:'control',bus:0}],null).map(x=>x.text);
@@ -166,4 +166,11 @@ test('motors and servos named in a CAD: the model from part numbers and names, a
   const d=(key,role,family)=>({key,role,family,scope:[S],own:[]});
   const got=Object.fromEntries(H.assignCad(parts,[d('shooters.0.turretMotor','turret','motor'),d('shooters.0.motor','flywheel','motor'),d('shooters.0.indexer','feeder','servo'),d('shooters.0.hood','hood','servo')]).map(x=>[x.key,x.part]));
   assert.deepEqual(got,{'shooters.0.motor':'Flywheel motor','shooters.0.turretMotor':'Turret motor','shooters.0.indexer':'Kicker servo','shooters.0.hood':'Hood servo'},'a turret motor mounted on the chassis still turns the turret');
+});
+
+test('an FTC robot can only be given what the Control Hub lets you configure',()=>{
+  const legal=new Set(Object.values(RobotConfig.DEVICE_TYPES).flat().map(([tag])=>tag));
+  for(const m of H.ACTUATORS)assert.ok(legal.has(m.xmlType),m.id);
+  for(const s of H.SENSORS)if(s.xmlType)assert.ok(legal.has(s.xmlType),s.id);
+  assert.ok(!H.ACTUATORS.concat(H.SENSORS).some(p=>/stepper|rplidar/i.test(p.name)));
 });

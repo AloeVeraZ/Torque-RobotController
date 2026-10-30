@@ -1,5 +1,4 @@
 /* Shared station theme. Robot websites keep their own styles. */
-.driver-station{--radius-panel:16px;--radius-control:10px;--radius-detail:6px}
 body{font-family:var(--font);-webkit-font-smoothing:antialiased;background-color:var(--bg);background-image:linear-gradient(var(--grid-major) 1px,transparent 1px),linear-gradient(90deg,var(--grid-major) 1px,transparent 1px),linear-gradient(var(--grid-minor) 1px,transparent 1px),linear-gradient(90deg,var(--grid-minor) 1px,transparent 1px);background-size:80px 80px,80px 80px,20px 20px,20px 20px}
 h1,h2,h3,.brand,.eyebrow,.status-heading{font-family:var(--font-display);font-weight:700;text-transform:uppercase}
 h1{letter-spacing:.01em}
@@ -101,21 +100,5 @@ dialog h2{font-size:28px;letter-spacing:.03em}
 .driver-station .input-help{border:1px solid var(--line-strong)}
 .driver-station #controller-robot-note{margin-block:16px;line-height:1.5}
 .driver-station .robot-discovery{margin-top:16px}
-.bar{margin:8px 12px 0;border:1px solid var(--line);border-top-color:var(--edge-top);border-radius:12px;background:var(--raised);min-height:52px}
-.bar .brand span{font:700 18px var(--font-display);color:var(--text);letter-spacing:.03em}
-.banner{border-radius:999px}
-.tile,.opbar,.stage,.status{border-radius:12px;border-top-color:var(--edge-top)}
-.opbar{background:var(--accent-bg);border-color:#40566f}
-.opname.chosen span{font:700 20px var(--font-display);letter-spacing:.035em}
-.go{border-radius:20px;background:var(--accent-fill)}
-.go.stop{background:linear-gradient(180deg,#e2554c,#c23b34);border-color:#e97970}
-.go.stop::after,.go.start::after{font:700 20px var(--font-display);letter-spacing:.1em}
-.status-heading{font-size:12px;color:var(--accent-text)}
-.stopwatch,.abort{border-radius:12px;background:var(--well)}
-.ds-batt{color:var(--muted)}
-.picker-card{border-radius:16px;background:var(--surface)}
-.picker-head h2{font:700 24px var(--font-display);letter-spacing:.04em}
-.picker-list button.selected{background:var(--accent-bg)}
-.dialog-actions .ok{border-radius:999px;background:var(--accent-fill);color:#080808}
 @media(max-width:1100px){body>header:not(.bar){padding-inline:12px;gap:12px}.tab{min-width:76px}.panel{padding:16px}.brand{font-size:20px}}
-@media(max-width:640px){body>header:not(.bar){margin:6px 8px;top:6px;padding-inline:8px;gap:6px}#drive-view{height:calc(100dvh - 72px)}.tab{min-width:58px;padding:0 8px}.brand{gap:0}nav{padding:2px}.network-chip{border-radius:999px}.browser-toolbar{margin-inline:8px;padding-inline:4px}.browser-actions button{min-width:30px}.welcome{padding:20px}.welcome h1{font-size:32px}.panel{padding:16px}.settings-heading h1{font-size:30px}#settings-view{padding:16px 12px}.bar{margin:8px 8px 0}.bar .brand span{font-size:16px}}
+@media(max-width:640px){body>header:not(.bar){margin:6px 8px;top:6px;padding-inline:8px;gap:6px}#drive-view{height:calc(100dvh - 72px)}.tab{min-width:58px;padding:0 8px}.brand{gap:0}nav{padding:2px}.network-chip{border-radius:999px}.browser-toolbar{margin-inline:8px;padding-inline:4px}.browser-actions button{min-width:30px}.welcome{padding:20px}.welcome h1{font-size:32px}.panel{padding:16px}.settings-heading h1{font-size:30px}#settings-view{padding:16px 12px}}

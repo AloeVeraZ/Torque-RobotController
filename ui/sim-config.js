@@ -3,20 +3,20 @@
   // Shared by the editor and the local physics adapter. Labels describe drivetrain families,
   // not hardware integrations. H/Kiwi use the generic omni-wheel physics model.
   const drives={
-    mecanum:{name:'Mecanum · 4 wheels',engine:'mecanum',holonomic:true},
-    swerve:{name:'Swerve · 4 modules',engine:'swerve',holonomic:true},
-    tank:{name:'Tank · 4 wheels',engine:'tank',holonomic:false},
-    tank2:{name:'Differential · 2 wheels + casters',engine:'tank',holonomic:false},
-    tank6:{name:'Tank · 6 wheels / drop centre',engine:'tank',holonomic:false},
-    tank8:{name:'Tank · 8 wheels',engine:'tank',holonomic:false},
-    tracks:{name:'Tank · continuous tracks',engine:'tank',holonomic:false},
-    xdrive:{name:'X-drive · 4 omni wheels',engine:'xdrive',holonomic:true},
-    kiwi:{name:'Kiwi · 3 omni wheels',engine:'xdrive',holonomic:true,approximation:'Generic omni-wheel physics'},
-    hdrive:{name:'H-drive / U-drive · omni wheels',engine:'xdrive',holonomic:true,approximation:'Generic omni-wheel physics'},
-    diffSwerve:{name:'Differential swerve',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
-    coaxSwerve:{name:'Coaxial swerve',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
+    mecanum:{name:'Mecanum · 4 DC motors',engine:'mecanum',holonomic:true},
+    tank2:{name:'Tank · 2 DC motors',engine:'tank',holonomic:false},
+    tank:{name:'Tank · 4 DC motors',engine:'tank',holonomic:false},
+    xdrive:{name:'X-drive · 4 DC motors',engine:'xdrive',holonomic:true},
+    kiwi:{name:'Kiwi · 3 DC motors',engine:'xdrive',holonomic:true,approximation:'Generic omni-wheel physics'},
+    swerve:{name:'Swerve · 4 modules, drive and steering each',engine:'swerve',holonomic:true},
+    coaxSwerve:{name:'Coaxial swerve · 4 modules, 1 motor and 1 servo each',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
+    kiwiSwerve:{name:'Kiwi swerve · 3 modules, 1 motor and 1 servo each',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
+    diffSwerve2:{name:'Differential swerve · 2 modules + casters, 4 DC motors',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
+    diffSwerve:{name:'Differential swerve · 4 modules, 8 DC motors',engine:'swerve',holonomic:true,approximation:'Generic swerve physics'},
     butterfly:{name:'Butterfly · mecanum set lowered',engine:'butterfly',holonomic:true}
   };
+  // Saved setups may name drivetrains that are no longer offered.
+  const RETIRED={tank6:'tank',tank8:'tank',tracks:'tank',hdrive:'xdrive'};
   const sensors={
     none:{name:'Legacy sensor-free test fixture',translation:false,imu:false,error:[0,0,0],hidden:true},
     odometry:{name:'2 odometry pods + IMU',translation:true,imu:true,error:[.003,.02,.5]},
@@ -79,7 +79,7 @@
   // nothing is set). Without the catalogue loaded the wiring is kept as it came, so a save never loses it.
   function wiring(raw){const H=globalThis.DeckHardware||(typeof require==='function'?require('./sim-hardware.js'):null);
     if(H)return H.sanitizeWiring(raw);try{return raw&&typeof raw==='object'?JSON.parse(JSON.stringify(raw)):null;}catch{return null;}}
-  function robot(raw={},controller){const own=devices(raw.devices),odo=odometry(raw.odometry),wire=wiring(raw.wiring);return {drivetrain:Object.hasOwn(drives,raw.drivetrain)?raw.drivetrain:'mecanum',intakeIn:intake(raw),
+  function robot(raw={},controller){if(RETIRED[raw.drivetrain])raw={...raw,drivetrain:RETIRED[raw.drivetrain]};const own=devices(raw.devices),odo=odometry(raw.odometry),wire=wiring(raw.wiring);return {drivetrain:Object.hasOwn(drives,raw.drivetrain)?raw.drivetrain:'mecanum',intakeIn:intake(raw),
     length:positive(raw.length,17.56),width:positive(raw.width,17.79),heightIn:positive(raw.heightIn,12),massLb:positive(raw.massLb,9.41),driveRpm:positive(raw.driveRpm,312),wheelDiameterMm:positive(raw.wheelDiameterMm,104),driveAmps:current(raw.driveAmps,controller),driveStyle:raw.driveStyle==='field'?'field':'robot',...hubMounting(raw),
     appearance:['strafer','swechanum','plain','custom'].includes(raw.appearance)?raw.appearance:raw.drivetrain==='swerve'?'swechanum':'strafer',...(Object.keys(own).length?{devices:own}:{}),...(Object.keys(odo).length?{odometry:odo}:{}),...(wire?{wiring:wire}:{})};}
   // A robot imported from CAD (appearance custom) collides as its chassis only: length × width.

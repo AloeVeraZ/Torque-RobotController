@@ -91,7 +91,8 @@ class CheckScript {
 // as LynxModuleMeta (address, whether it is the portal's parent, its IMU).
 const HUBS=[{serial:'(embedded)',modules:[{moduleAddress:173,isParent:true,imuType:'BHI260'},{moduleAddress:2,isParent:false,imuType:'BNO055'}]}];
 class SimController {
-  constructor({send,version=R.VERSION,reject=false,opModes=OP_MODES,battery='12.84',configurations=CONFIGURATIONS,active='competition',hubs=HUBS}={}){
+  constructor({send,version=R.VERSION,reject=false,opModes=OP_MODES,battery='12.84',configurations=CONFIGURATIONS,active='competition',hubs=HUBS,usb=[]}={}){
+    this.usb=usb;this.camera=null;this.frameNum=0;
     this.send=send;this.version=version;this.reject=reject;this.opModes=opModes;this.battery=battery;this.configurations=structuredClone(configurations);this.active=active;this.hubs=hubs;this.seq=0;this.stamp=1n;
     this.peer=false;this.lastPacket=0;this.opMode=R.STOP_OP_MODE;this.opState='stopped';this.gamepads={};this.commands=[];this.pending=[];this.timers=[];this.robotState=0;this.heartbeats=0;this.restarts=0;
   }
@@ -136,7 +137,9 @@ class SimController {
     else if(name==='CMD_REQUEST_CONFIGURATIONS')this.command('CMD_REQUEST_CONFIGURATIONS_RESP',JSON.stringify(this.configurations.map(c=>this.configFile(c.name))));
     else if(name==='CMD_REQUEST_PARTICULAR_CONFIGURATION'){let want=null;try{want=JSON.parse(extra).name;}catch{}const c=this.configurations.find(c=>c.name===want);if(c)this.command('CMD_REQUEST_PARTICULAR_CONFIGURATION_RESP',c.xml);}
     // Configure Robot's Scan: the USB devices (ScannedDevices), then the hubs behind one (LynxModuleMetaList).
-    else if(name==='CMD_SCAN')this.command('CMD_SCAN_RESP',JSON.stringify({map:this.hubs.map(h=>({key:h.serial,value:'LYNX_USB_DEVICE'}))}));
+    else if(name==='CMD_SCAN')this.command('CMD_SCAN_RESP',JSON.stringify({map:[...this.hubs.map(h=>({key:h.serial,value:'LYNX_USB_DEVICE'})),...this.usb.map(d=>({key:d.serial,value:d.type}))]}));
+    // The Camera Stream: a frame in base64 chunks, as CameraStreamServer sends it (a small picture, not a JPEG, for tests).
+    else if(name==='CMD_REQUEST_FRAME'&&this.camera){const bytes=this.camera();if(bytes){const frameNum=++this.frameNum;this.command('CMD_RECEIVE_FRAME_BEGIN',JSON.stringify({frameNum,length:bytes.length,numChunks:Math.ceil(bytes.length/4000),quality:75}));for(let at=0,chunkNum=0;at<bytes.length;at+=4000,chunkNum++)this.command('CMD_RECEIVE_FRAME_CHUNK',JSON.stringify({frameNum,chunkNum,encodedData:bytes.subarray(at,at+4000).toString('base64')}));}}
     else if(name==='CMD_DISCOVER_LYNX_MODULES')this.command('CMD_DISCOVER_LYNX_MODULES_RESP',JSON.stringify({serialNumber:extra,modules:this.hubs.find(h=>h.serial===extra)?.modules||[]}));
     // Save writes FIRST/<name>.xml, replacing one of that name, and makes it active; as in the SDK, the text is split at
     // every ";" and only what comes before the second one is kept.
@@ -192,20 +195,23 @@ function startOnBotJava({address='127.0.0.2',port=8080,compile=()=>[],buildMs=15
 }
 // A robot whose op mode list includes what OnBot Java last built, announced to a connected station as the SDK does.
 function listBuilt(sim){const base=sim.opModes.filter(m=>m.source!=='ONBOTJAVA');return files=>{sim.opModes=[...base,...opModesIn(files)];if(sim.peer)sim.command('CMD_NOTIFY_OP_MODE_LIST',JSON.stringify(sim.opModes));};}
-// Deck Debug (src/onbot/DeckDebug.java) as the robot runs it, for tests: while the simulated robot runs its "Deck Debug"
+// Torque Debug (src/onbot/TorqueDebug.java) as the robot runs it, for tests: while the simulated robot runs its "TorqueDebug-..."
 // op mode, port 20886 answers with the devices of a configuration (one JSON line) and then readings every 20 ms, and
 // takes Deck's commands (M, C, S, E, L, R, Q, T, X, P) with the same 300 ms watchdog (a motor power lasts 300 ms unless sent again). Motors turn at 2800 ticks/s at
 // full power; a switch named …home or …limit is pressed (active-low, reads 0) while the first mechanism motor is below
 // 100 ticks; a colour sensor sees a piece while a motor named intake runs; an analog input follows the first servo.
 // commands lists every line Deck sent, for tests to check.
 function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}){
-  const net=require('node:net'),RobotConfig=require('../ui/ftc/robot-config.js'),devices=RobotConfig.parse(xml).devices;
+  const net=require('node:net'),RobotConfig=require('../ui/ftc/robot-config.js'),devices=RobotConfig.parse(xml).devices.filter(d=>d.module||d.bus!==undefined);
   const of=(fam,test=()=>true)=>devices.filter(d=>RobotConfig.familyOfTag(d.tag)===fam&&test(d)).map(d=>d.name);
   const I2C={RevColorSensorV3:'color',REV_VL53L0X_RANGE_SENSOR:'distance',goBILDAPinpoint:'pinpoint',SparkFunOTOS:'otos',ControlHubImuBHI260AP:'imu',LynxEmbeddedIMU:'imu'};
   const m={deck:'debug',version:1,motors:of('motor'),servos:of('servo',d=>d.tag!=='ContinuousRotationServo'),crservos:of('servo',d=>d.tag==='ContinuousRotationServo'),digital:of('digital',d=>d.tag!=='RevTouchSensor'),touch:of('digital',d=>d.tag==='RevTouchSensor'),
     analog:of('analog').map(n=>({n,max:3.3})),i2c:devices.filter(d=>I2C[d.tag]).map(d=>({n:d.name,k:I2C[d.tag]})),hubs:[{n:'Control Hub',address:173,parent:true}]};
+  // A webcam in the configuration: the SDK's camera as ui/sim-camera.js models it, one tag in view at 4 ft.
+  const Cam=require('../ui/sim-camera.js'),webcams=[...xml.matchAll(/<Webcam\b[^>]*\bname="([^"]*)"/g)].map(x=>x[1]);m.cameras=webcams;let camera={exposure:'auto',gain:100,decimation:3,feet:4},camNum=0;
+  if(webcams.length&&sim){sim.camera=()=>Cam.simFrame(camNum++,.6);sim.command?.('CMD_STREAM_CHANGE','true');}
   const pos=m.motors.map(()=>0),power=m.motors.map(()=>0),at=m.motors.map(()=>0),cr=m.crservos.map(()=>0),servo=m.servos.map(()=>null),on=m.servos.map(()=>false),latched=m.servos.map(()=>false),commands=[];
-  let client=null,heard=0,loop=null,t0=Date.now(),timer=null;const running=()=>sim.opMode==='Deck Debug'&&sim.opState==='running';
+  let client=null,heard=0,loop=null,t0=Date.now(),timer=null;const running=()=>/^TorqueDebug-/.test(sim.opMode||'')&&sim.opState==='running';
   const mech=Math.max(0,m.motors.findIndex(n=>!/front|back|left|right/.test(n)));
   const apply=line=>{commands.push(line);const f=line.split('\t'),i=k=>m[k].indexOf(f[1]);
     if(f[0]==='M'&&i('motors')>=0){power[i('motors')]=Math.max(-1,Math.min(1,+f[2]||0));at[i('motors')]=Date.now();if(loop?.index===i('motors'))loop=null;}
@@ -216,6 +222,8 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}
     else if(f[0]==='R'&&i('motors')>=0)pos[i('motors')]=0;
     else if(f[0]==='Q'){const index=m.motors.indexOf(f[1]);if(index>=0)loop={index,target:+f[4],kP:+f[5],kI:+f[6],kD:+f[7],kS:+f[9],kG:+f[10],tol:+f[11],integral:0,last:null};}
     else if(f[0]==='T'&&loop)loop.target=+f[1];
+    else if(f[0]==='V')camera={...camera,...(f[1]==='auto'?{exposure:'auto'}:{exposure:+f[1],gain:+f[2]})};
+    else if(f[0]==='D')camera={...camera,decimation:+f[1]};
     else if(f[0]==='X')stopAll();};
   const stopAll=()=>{loop=null;power.fill(0);cr.fill(0);m.servos.forEach((_,k)=>{if(!latched[k])on[k]=false;});};
   const tick=()=>{if(!running()){if(client){client.destroy();client=null;}stopAll();return;}
@@ -227,11 +235,12 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}
     const frame={t:Date.now()-t0,loop:6.2,v:12.6,m:m.motors.map((n,k)=>[Math.round(pos[k]),Math.round(Math.sign(power[k])*Math.max(0,Math.abs(power[k])-.04)*2800/20)*20,power[k],Math.abs(power[k])*2,0]),
       s:m.servos.map((n,k)=>[servo[k],on[k]?1:0,latched[k]?1:0]),c:cr,d:m.digital.map(n=>/home|limit/i.test(n)?(home?0:1):1),touch:m.touch.map(()=>0),a:m.analog.map(()=>servo[0]!==null&&on[0]?+(servo[0]*3.3).toFixed(4):1.65),
       i:m.i2c.map(d=>({age:10,v:d.k==='color'?{r:.1,g:.1,b:.1,a:piece?.6:.05,d:piece?2:8}:d.k==='distance'?{d:piece?3:20}:d.k==='pinpoint'?{x:0,y:0,h:0,ex:0,ey:0,status:'READY'}:d.k==='otos'?{x:0,y:0,h:0}:{yaw:0,pitch:0,roll:0,wz:0}}))};
+    if(webcams.length){const hit=Math.random()<Cam.simRate(camera);frame.cam={state:'STREAMING',fps:Cam.fpsOf(camera.decimation),range:[1,100,0,255],exp:camera.exposure==='auto'?null:camera.exposure,gain:camera.exposure==='auto'?null:camera.gain,dec:camera.decimation,tags:hit?[{id:584,name:'Simulated tag',m:60,r:48,b:0,y:0}]:[]};}
     client.write(JSON.stringify(frame)+'\n');};
   const server=net.createServer(s=>{if(!running()){s.destroy();return;}if(client)client.destroy();client=s;heard=Date.now();t0=Date.now();s.setNoDelay(true);s.write(JSON.stringify(m)+'\n');
     let buffer='';s.on('data',c=>{heard=Date.now();buffer+=c;for(let k;(k=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,k);buffer=buffer.slice(k+1);if(line)apply(line);}});
     s.on('close',()=>{if(client===s){client=null;stopAll();}});s.on('error',()=>{});});
-  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
+  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,camera:()=>camera,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
 }
 module.exports={SimController,CheckScript,startUdpRobot,startOnBotJava,opModesIn,listBuilt,startDebugServer,OP_MODES,CONFIG_XML,SENSOR_CONFIG_XML,HUBS};
 if(require.main===module){const address=process.argv.slice(2).find(a=>!a.startsWith('--'))||'127.0.0.2';

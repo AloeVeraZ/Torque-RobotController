@@ -85,4 +85,4 @@ and Technology). Steam Deck is a trademark of Valve Corporation. Other names are
 their owners and are used only to describe compatibility.
 
 If you hold rights in anything here and have a concern, please open an issue at
-https://github.com/AloeVeraZ/SteamDeck-RobotController/issues and it will be addressed promptly.
+https://github.com/AloeVeraZ/Torque-RobotController/issues and it will be addressed promptly.

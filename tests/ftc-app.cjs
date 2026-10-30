@@ -70,6 +70,12 @@ async function targets(){return (await fetch('http://127.0.0.1:9333/json/list'))
     console.log('after settings 2.6s: sim',robot.sim.opState,'peer',robot.sim.peer,'| launcher url',await L.eval('state.url'),'| DS active input',await D.eval('document.querySelector("#link-text").textContent'));
     await L.eval(`document.querySelector('#drive-tab').click()`);await wait(300);
     const hb=robot.sim.heartbeats;await wait(1000);const rate=robot.sim.heartbeats-hb;console.log('heartbeats/s while shown:',rate);if(rate<6)throw Error('heartbeat rate too low');
+    // The station's bar replaces the browser toolbar and footer, follows the app's theme and drives fullscreen.
+    assert.equal(await L.eval(`getComputedStyle(document.querySelector('.browser-toolbar')).display`),'none');assert.equal(await L.eval(`getComputedStyle(document.querySelector('#drive-view footer')).display`),'none');
+    await L.eval(`document.querySelector('[data-theme-choice=light]').click()`);await until(()=>D.eval(`document.documentElement.dataset.theme==='light'`),3000,'station follows the light theme');
+    await L.eval(`document.querySelector('[data-theme-choice=system]').click()`);await until(()=>D.eval(`!document.documentElement.dataset.theme`),3000,'station follows the system theme');
+    await D.eval(`document.querySelector('#ds-fullscreen').click()`);await until(()=>D.eval(`document.body.classList.contains('fullscreen')`),3000,'station fullscreen');
+    await L.eval('window.deck.robotFullscreen(false)');await until(()=>D.eval(`!document.body.classList.contains('fullscreen')`),3000,'station leaves fullscreen');
     // Close robot: STOP is sent before the socket closes.
     await L.eval(`document.querySelector('#close-page').click()`);await until(()=>robot.sim.opState==='stopped',3000,'stop on close');console.log('close sent stop: sim',robot.sim.opState,robot.sim.opMode);
     const saved=JSON.parse(fs.readFileSync(path.join(data,'robots.json'),'utf8')).robots;console.log('saved:',JSON.stringify(saved.map(r=>({name:r.name,url:r.url,kind:r.kind}))));

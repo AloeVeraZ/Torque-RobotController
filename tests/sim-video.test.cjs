@@ -14,6 +14,14 @@ test('a full match splits into autonomous and teleop, without the transition',()
   assert.deepEqual(V.sections(run([null,null,null])),{all:[0,2],auto:[0,2],teleop:null});
 });
 
+test('a video of an autonomous on its own ends a second after the robot finishes; teleop and a match stay whole',()=>{
+  const clocked=(phase,n,extra={})=>Array.from({length:n},(_,i)=>({time:i,practice:{phase},...extra,...(extra.result&&i<3?{result:undefined}:{})}));
+  const held=clocked('auto',10,{result:{time:3}});assert.equal(V.editable(held).at(-1).time,4);
+  const teleop=clocked('teleop',10);assert.equal(V.editable(teleop),teleop);
+  const match=[...clocked('auto',4,{result:{time:2}}),...clocked('teleop',2).map(f=>({...f,time:f.time+4,result:{time:2}}))];assert.equal(V.editable(match),match);
+  const stopped=clocked('auto',5);assert.equal(V.editable(stopped),stopped);
+});
+
 test('MP4 is preferred and WebM is the fallback',()=>{
   assert.deepEqual(V.pickType(t=>t.startsWith('video/mp4')),{type:'video/mp4;codecs=avc1.640028',ext:'mp4'});
   assert.deepEqual(V.pickType(t=>t==='video/webm;codecs=vp8'),{type:'video/webm;codecs=vp8',ext:'webm'});

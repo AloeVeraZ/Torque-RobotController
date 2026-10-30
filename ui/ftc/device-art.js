@@ -118,6 +118,7 @@
     AdafruitBNO055IMU:{name:'Adafruit BNO055 IMU',maker:'Adafruit',family:'i2c',addr:0x28,what:'Adafruit BNO055 9-DOF absolute orientation board.',art:()=>board({color:'#1b3a8a',w:84,h:62,parts:[chip(30,16,22,22),axes(14,48)],name:'BNO055'})},
     AndyMarkIMU:{name:'AndyMark IMU',maker:'AndyMark',family:'i2c',addr:0x28,what:'AndyMark BNO055 IMU board.',art:()=>board({color:'#1f2329',w:84,h:62,parts:[chip(30,16,22,22),axes(14,48)],name:'AM IMU'})},
     KauaiLabsNavxMicro:{name:'navX2-Micro',maker:'Kauai Labs',family:'i2c',addr:0x32,what:'Kauai Labs navX-Micro 9-axis IMU.',art:()=>board({color:'#0e5a6b',w:84,h:62,parts:[chip(30,16,22,22),led(66,16,'#22c55e'),led(66,30,'#f59e0b')],name:'navX'})},
+    goBILDAOdometryPod:{name:'goBILDA odometry pod',maker:'goBILDA',family:'motor',what:'Swingarm odometry pod: a free wheel on a spring arm with an encoder that plugs into a motor port’s encoder input.',art:()=>board({color:'#1f2329',w:96,h:70,parts:[(x,y,w,h)=>circle(x+w/2,y+h/2+6,20,'#3a3f47')+circle(x+w/2,y+h/2+6,8,'#f6c500'),label(48,14,'POD',8,'#f6c500')],name:''})},
     goBILDAPinpoint:{name:'goBILDA Pinpoint',maker:'goBILDA',family:'i2c',addr:0x31,what:'goBILDA Pinpoint Odometry Computer: reads two odometry pods and its own IMU and reports the robot’s position.',art:()=>board({color:'#1f2329',w:96,h:70,parts:[chip(38,14,22,22),label(48,48,'PINPOINT',8,'#f6c500'),pods],name:''})},
     SparkFunOTOS:{name:'SparkFun OTOS',maker:'SparkFun',family:'i2c',addr:0x17,what:'SparkFun Optical Tracking Odometry Sensor: an optical mouse sensor and IMU that report the robot’s position. Mount it 10 mm off the floor.',art:()=>board({color:'#c8102e',w:84,h:72,ports:2,parts:[lens(42,30,12)],name:'OTOS',ink:'#fff'})},
     OctoQuadFTC:{name:'OctoQuad',maker:'DigitalChicken Labs',family:'i2c',addr:0x30,what:'DigitalChicken Labs OctoQuad: reads up to eight encoders (odometry pods or absolute encoders).',art:()=>board({color:'#14324d',w:110,h:66,parts:[chip(40,12,26,18),octo],name:''})},
@@ -170,6 +171,7 @@
     ModernRoboticsI2cRangeSensor:MR('range-sensor','0000400_range-sensor_500','45-2008 Range Sensor'),
     ControlHubImuBHI260AP:[REV('31-1595'),'Inside the REV Control Hub'],LynxEmbeddedIMU:[REV('31-1153'),'Inside the REV hub'],RevExternalImu:[REV('31-3332'),'REV-31-3332'],
     AdafruitBNO055IMU:[AM('absolute-orientation-imu-fusion-breakout'),'Adafruit BNO055 breakout'],AndyMarkIMU:[AM('imu-andymark-standard-sensors-2'),'AndyMark am-5638'],KauaiLabsNavxMicro:[AM('navx2-micro-navigation-sensor'),'AndyMark am-3554a'],
+    goBILDAOdometryPod:[GB('swingarm-odometry-pod-48mm-wheel'),'goBILDA 3110-0001-0001'],
     goBILDAPinpoint:[GB('pinpoint-odometry-computer-imu-sensor-fusion-for-2-wheel-odometry'),'goBILDA 3110-0002-0001',{image:GBI('2262/13386/unnamed__75902__17614.1726607396'),mask:[[.6,.83,.4,.17]]}],SparkFunOTOS:['https://www.sparkfun.com/sparkfun-optical-tracking-odometry-sensor-paa5160e1-qwiic.html','SparkFun SEN-24904'],
     OctoQuadFTC:['https://www.tindie.com/products/digitalchickenlabs/octoquad-ftc-ed-mk2-8x-encoderpwm-imu/','OctoQuad FTC Edition MK2',
       {image:'https://img.tindie.com/images/resize/bFPvBQRWnsoWWMAng1wdRAjEBNw=/p/fit-in/1032x688/filters:fill(fff)/i/730853/products/2025-03-08T23:58:39.498Z-MK2_CaseClosed.jpg?1741449693'}],HuskyLens:['https://www.dfrobot.com/product-1922.html','DFRobot SEN0305'],
@@ -179,14 +181,28 @@
     QWIIC_LED_STICK:['https://www.sparkfun.com/sparkfun-qwiic-led-stick-apa102c.html','SparkFun COM-18354'],Webcam:['https://www.logitech.com/en-us/products/webcams/c270-hd-webcam.960-000694.html','Shown: Logitech C270',
       {image:'https://resource.logitech.com/w_800,c_limit,q_auto,f_png,dpr_1.0/d_transparent.gif/content/dam/products/logitech/webcams/c270-hd-webcam/gallery/c270-hd-webcam-1-0224.png'}],
     EthernetDevice:[AM('limelight-3a'),'Limelight 3A (AndyMark am-3833)',{image:AMI('am-3833_3A')}],
+    // Each model of a type that many makers share (a Servo, a goBILDA motor, an encoder), so the picture is of the one chosen.
+    // A tag "model-<id>|<device>" is that photo, drawn as <device> until it is on this computer. A model with no listing to show
+    // has no entry, and keeps the drawing rather than another maker's photo.
+    ...(()=>{const AX=p=>`https://axon-robotics.com/products/${p}`,SW=p=>`https://swyftrobotics.com/motion/${p}`,Y=(r,rpm)=>GB(`5203-series-yellow-jacket-planetary-gear-motor-${r}-ratio-24mm-length-8mm-rex-shaft-${rpm}-rpm-3-3-5v-encoder`),AC=p=>`https://www.actuonix.com/${p}`,STUDICA='https://web.archive.org/web/2025id_/https://www.studica.com/multi-mode-smart-servo',US=p=>`https://www.usdigital.com/products/encoders/${p}/`;
+      const table={'gobilda-torque':[GB('2000-series-dual-mode-servo-25-2-torque'),'goBILDA 2000-0025-0002'],'gobilda-speed':[GB('2000-series-dual-mode-servo-25-3-speed'),'goBILDA 2000-0025-0003'],'gobilda-superspeed':[GB('2000-series-dual-mode-servo-25-4-super-speed'),'goBILDA 2000-0025-0004'],'gobilda-5turn':[GB('2000-series-5-turn-dual-mode-servo-25-3-speed'),'goBILDA 2000-0025-0503'],
+        'axon-max':[AX('max'),'Axon MAX'],'axon-mini':[AX('mini'),'Axon MINI'],'axon-micro':[AX('micro'),'Axon MICRO'],'rev-smart':['https://web.archive.org/web/2024id_/https://www.revrobotics.com/rev-41-1097/','REV-41-1097 (discontinued)'],
+        'studica-multimode':[STUDICA,'Studica Multi-Mode'],'studica-multimode-fast':[STUDICA,'Studica Multi-Mode'],'swyft-speed':[SW('swyft-servos'),'SWYFT servo'],'swyft-balance':[SW('swyft-servos'),'SWYFT servo'],'swyft-torque':[SW('swyft-servos'),'SWYFT servo'],'swyft-slim':[SW('swyft-mini-servos'),'SWYFT mini servo'],'swyft-nano':[SW('swyft-mini-servos'),'SWYFT mini servo'],
+        'torctex-max':['https://torctex.com/products/torctex-max','TORCTEX MAX'],'hitec-485':['https://hitecrcd.com/products/servos/analog/sport-2/hs-485hb/product','Hitec HS-485HB'],
+        'actuonix-l16-50':[AC('l16-50-150-6-r'),'Actuonix L16-50'],'actuonix-l16-100':[AC('l16-100-150-6-r'),'Actuonix L16-100'],'actuonix-l16-140':[AC('l16-140-150-6-r'),'Actuonix L16-140'],'hitec-hls12':['https://hitecrcd.com/products/servos/linear-series/hls12-3050-6v-501-gear-ratio-30mm-stroke-5mm-lead-linear-servo-6v/product','Hitec HLS12-3050'],
+        'gobilda-5203-6000':[GB('5203-series-yellow-jacket-motor-1-1-ratio-24mm-length-8mm-rex-shaft-6000-rpm-3-3-5v-encoder'),'goBILDA 5203-2402-0001'],'gobilda-5203-1620':[GB('5203-series-yellow-jacket-planetary-gear-motor-3-7-1-ratio-1620-rpm-3-3-5v-encoder'),'goBILDA 5203-2402-0003'],'gobilda-5203-1150':[Y('5-2-1',1150),'goBILDA 5203-2402-0005'],'gobilda-5203-435':[Y('13-7-1',435),'goBILDA 5203-2402-0014'],'gobilda-5203-312':[Y('19-2-1',312),'goBILDA 5203-2402-0019'],'gobilda-5203-223':[Y('26-9-1',223),'goBILDA 5203-2402-0027'],'gobilda-5203-117':[Y('50-9-1',117),'goBILDA 5203-2402-0051'],'gobilda-5203-84':[Y('71-2-1',84),'goBILDA 5203-2402-0071'],'gobilda-5203-60':[Y('99-5-1',60),'goBILDA 5203-2402-0100'],'gobilda-5203-43':[Y('139-1',43),'goBILDA 5203-2402-0139'],'gobilda-5203-30':[Y('188-1',30),'goBILDA 5203-2402-0188'],
+        'rev-hd-hex':[REV('41-1291'),'REV-41-1291'],'rev-through-bore':[REV('11-1271'),'REV-11-1271'],'rev-through-bore-v2':[REV('11-3174'),'REV-11-3174'],'rev-through-bore-abs':[REV('11-3174'),'REV-11-3174'],'gobilda-pod-encoder':[GB('swingarm-odometry-pod-48mm-wheel'),'goBILDA 3110-0001-0001'],'quadrature-encoder':[US('incremental/kit/e4t'),'Shown: US Digital E4T'],
+        'axon-feedback':[AX('max'),'Shown: Axon MAX'],'rev-potentiometer':[REV('31-1155'),'REV-31-1155'],'andymark-am5200':[AM('hex-bore-encoder'),'AndyMark am-5200'],'analog-absolute':[US('absolute/shaft/ma3'),'Shown: US Digital MA3'],'rev-magnetic-limit':[REV('31-1462'),'REV-31-1462'],'limit-switch':[AM('limit-switch'),'Shown: AndyMark am-3372']};
+      return Object.fromEntries(Object.entries(table).map(([id,p])=>['model-'+id,p]));})(),
     // The hubs themselves, for the pinout's panel headings.
     '#ControlHub':[REV('31-1595'),'REV-31-1595 Control Hub'],'#ExpansionHub':[REV('31-1153'),'REV-31-1153 Expansion Hub'],'#ServoHub':[REV('11-1855'),'REV-11-1855 Servo Hub']};
   // An archived listing names the maker's own site.
   const siteOf=page=>{try{const u=new URL(page),old=u.hostname==='web.archive.org'&&/\/web\/[^/]+\/(https?:\/\/[^/]+)/.exec(u.pathname)?.[1];
     return old?new URL(old).hostname.replace(/^www\./,'')+' (archived)':u.hostname.replace(/^www\./,'');}catch{return '';}};
-  const photoOf=tag=>{const p=PHOTOS[tag];if(!p)return null;return {page:p[0],caption:p[1],site:siteOf(p[0]),image:p[2]?.image||null,mask:p[2]?.mask||[]};};
+  const photoKey=tag=>String(tag??'').split('|')[0];
+  const photoOf=tag=>{const p=PHOTOS[photoKey(tag)];if(!p)return null;return {page:p[0],caption:p[1],site:siteOf(p[0]),image:p[2]?.image||null,mask:p[2]?.mask||[]};};
   const OTHER={name:'Other device',maker:'',family:'other',what:'A device type Deck has no picture for.',art:unknown};
-  const info=tag=>DEVICES[tag]||{...OTHER,name:tag||OTHER.name};
+  const info=tag=>{const drawn=String(tag??'').split('|')[1]??tag;return DEVICES[drawn]||{...OTHER,name:drawn||OTHER.name};};
   // The drawing as a standalone SVG, or (nested) placed in a pinout at x, y, w, h: the product photo when photos has
   // one for the tag (a data: URL), else the drawing.
   const svg=(tag,{title=true}={})=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img"${title?` aria-label="${esc(info(tag).name)}"`:' aria-hidden="true"'}>${info(tag).art()}</svg>`;
@@ -209,5 +225,5 @@
   // Two devices with the same address on one bus cannot both work. devices: [{name, tag}]; returns [[a, b, addr]].
   function addressClashes(devices){const out=[];(devices||[]).forEach((a,i)=>devices.slice(i+1).forEach(b=>{const x=info(a.tag).addr,y=info(b.tag).addr;if(x!==undefined&&x===y)out.push([a,b,x]);}));return out;}
   const hex=n=>'0x'+n.toString(16).toUpperCase().padStart(2,'0');
-  return {DEVICES,PHOTOS,photoOf,info,svg,place,GEARING,gearOf,addressClashes,hex,esc};
+  return {DEVICES,PHOTOS,photoOf,photoKey,info,svg,place,GEARING,gearOf,addressClashes,hex,esc};
 });

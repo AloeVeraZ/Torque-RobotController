@@ -268,3 +268,5 @@ dialog p { font-size: 13px; overflow-wrap: anywhere; }
   .input-notice { padding-inline: 12px; } .input-notice span { max-width: 54%; }
   #update-dialog { padding: 20px; min-height: 0; } #update-dialog h2 { font-size: 22px; }
 }
+.bug-images{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:6px 0;padding:0}.bug-images:empty{display:none}.bug-images li{position:relative}.bug-images img{display:block;width:96px;height:72px;object-fit:cover;border:1px solid var(--line);border-radius:8px}.bug-images .icon-button{position:absolute;top:-6px;right:-6px;min-width:28px;min-height:28px;padding:0;border-radius:50%}
+#bug-dialog textarea,#bug-dialog input:not([type=file]){width:100%;box-sizing:border-box}#bug-dialog textarea{font:inherit;padding:10px 12px}

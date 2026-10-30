@@ -86,7 +86,7 @@ test('Setup’s wiring: a device lands on the port Setup gave it, a taken port o
   assert.deepEqual(assignments.map(a=>[a.name,RobotConfig.portLabel(a),a.tag,!!a.fixed]),[['front_left','Control Hub motor port 3','RevRoboticsCoreHexMotor',true],['front_right','Control Hub motor port 0','goBILDA5202SeriesMotor',false],
     ['back_left','Control Hub motor port 1','goBILDA5202SeriesMotor',false],['back_right','Control Hub motor port 2','goBILDA5202SeriesMotor',false],['imu','Control Hub I2C bus 0','ControlHubImuBHI260AP',false],
     ['pinpoint','Control Hub I2C bus 1','goBILDAPinpoint',false],['intake','Expansion Hub 2 motor port 0','goBILDA5202SeriesMotor',true],['shooter','Expansion Hub 2 motor port 1','goBILDA5202SeriesMotor',false],['indexer','Expansion Hub 2 motor port 2','goBILDA5202SeriesMotor',false]]);
-  assert.deepEqual(problems,['Intake 1 ramp servo: Setup has it on a Servo Hub, which the robot does not have.','Shooter 1 turret: Expansion Hub 2 motor port 0 has "intake".']);
+  assert.deepEqual(problems,['Intake 1 ramp: Setup has it on a Servo Hub, which the robot does not have.','Shooter 1 turret: Expansion Hub 2 motor port 0 has "intake".']);
   // A device Setup placed keeps its port when sending (change it in Setup); another device cannot be swapped onto it.
   assert.deepEqual(RobotConfig.portChoices(assignments,0,{modules}),[]);
   const choices=RobotConfig.portChoices(assignments,assignments.findIndex(a=>a.name==='shooter'),{modules});assert.deepEqual(choices.find(c=>c.label==='Expansion Hub 2 motor port 0').taken,'intake');
@@ -218,7 +218,7 @@ test('Send to robot scans the hubs and saves a new configuration as the active o
   let robot2;try{robot2=await startUdpRobot({address:ROBOT});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
   t.after(()=>robot2.close());
   const r=await read({scan:true});assert.deepEqual(r.portals,[{serial:'(embedded)',modules:[{address:173,parent:true,imu:'BHI260'},{address:2,parent:false,imu:'BNO055'}]}]);
-  const plan=RobotConfig.planPorts([{name:'kicker',label:'Intake 1 kicker servo',device:'servo'}],{modules:RobotConfig.modulesOf(r,r.portals),devices:r.devices}),xml=RobotConfig.addDevices(r.xml,plan.assignments);
+  const plan=RobotConfig.planPorts([{name:'kicker',label:'Intake 1 kicker',device:'servo'}],{modules:RobotConfig.modulesOf(r,r.portals),devices:r.devices}),xml=RobotConfig.addDevices(r.xml,plan.assignments);
   const write=async(name,text)=>{const socket=await station();try{return await writeConfiguration(ROBOT,{name,xml:text},{socket});}finally{await socket.close();}};
   assert.deepEqual(await write('competition Deck',xml),{name:'competition Deck',devices:11,restarted:true});
   assert.equal(robot2.sim.active,'competition Deck');assert.equal(robot2.sim.restarts,1,'the robot restarts to build its hardware map from it');
@@ -305,4 +305,16 @@ test('Configure Robot from Deck over Wi-Fi: every configuration read, an edited 
   const back=await withSocket(socket=>activateConfiguration(ROBOT,'competition',{socket}));assert.deepEqual(back,{name:'competition',restarted:true});
   const now=await withSocket(socket=>readConfigurations(ROBOT,{socket}));assert.deepEqual(now.configurations.sort(),['competition','competition Deck']);assert.equal(now.active.name,'competition');
   await assert.rejects(withSocket(socket=>activateConfiguration(ROBOT,'nope',{socket})),/no configuration named/);
+});
+
+test('Setup checks the connection, replaces a configuration when editing it, and deletes one',async t=>{
+  let robot;try{robot=await startUdpRobot({address:ROBOT});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
+  t.after(()=>robot.close());const {connectionCheck,deleteConfiguration,readConfigurations}=require('../src/robot-link.cjs');
+  const withSocket=async f=>{const socket=await station();try{return await f(socket);}finally{await socket.close();}};
+  const steps=await withSocket(socket=>connectionCheck(ROBOT,{socket}));assert.equal(steps[0].ok,true);assert.match(steps[0].detail,/FTC SDK/);assert.equal(steps[1].ok,true);assert.match(steps[1].detail,/configuration/);
+  await assert.rejects(withSocket(socket=>writeConfiguration(ROBOT,{name:'competition',xml:CONFIG_XML},{socket})),/already has/);
+  assert.equal((await withSocket(socket=>writeConfiguration(ROBOT,{name:'competition',xml:CONFIG_XML,replace:true},{socket}))).name,'competition');
+  await withSocket(socket=>writeConfiguration(ROBOT,{name:'spare',xml:CONFIG_XML},{socket}));await withSocket(socket=>deleteConfiguration(ROBOT,'spare',{socket}));
+  assert.ok(!(await withSocket(socket=>readConfigurations(ROBOT,{socket}))).configurations.includes('spare'));
+  await assert.rejects(withSocket(socket=>deleteConfiguration(ROBOT,'nope',{socket})),/no configuration named/);
 });

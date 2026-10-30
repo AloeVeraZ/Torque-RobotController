@@ -46,7 +46,7 @@
   // What a game can drive a joint with. The simulator's mechanism model gives these each tick.
   const SIGNALS={turret:'Turret angle',hood:'Hood (rest / shooting)',flywheel:'Flywheel speed',roller:'Intake rollers',deploy:'Deploys while intaking',float:'Floats over pieces',feeder:'Feeder',wheel:'Drive wheel',steer:'Swerve steering',action:'Route actions'};
   // Spinning parts are drawn turning at most this fast (degrees a second) so a 3000 rpm flywheel does not strobe.
-  const SHOW_SPIN=540;
+  const SHOW_SPIN=5400,shownRate=rpm=>{const r=Math.abs(rpm),show=r<=300?r:300*(r/300)**.37;return Math.min(SHOW_SPIN,show*6)*Math.sign(rpm);};
   // ---------------------------------------------------------------- vectors and 4×4 matrices (column-major, as three.js)
   const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],scale=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
   const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],len=a=>Math.hypot(a[0],a[1],a[2]);
@@ -114,10 +114,14 @@
       // cylinder's stroke, a universal joint's two angles. (A ball joint's per-angle stops approximate a cone.)
       ...(n&&type!=='revolute'&&type!=='prismatic'&&Array.isArray(raw.limits)?(l=>l.some(Boolean)?{limits:l}:{})(Array.from({length:n},(_,i)=>{const x=raw.limits[i];return Array.isArray(x)&&finite(x[0])&&finite(x[1])&&x[0]<=x[1]?[+x[0],+x[1]]:null;})):{}),
       ...(Object.keys(states).length?{states}:{}),...(drive?{drive}:{}),
+      // The team says it goes all the way round (a turret on a slip ring), past what its game aims it through.
+      ...(raw.free===true?{free:true}:{}),
       // What the part is (a claw, a lift, a turret: DeckMechanismTypes), for its defaults and the panel's labels.
       ...(typeof raw.kind==='string'&&/^[a-z][a-z0-9-]{0,31}$/.test(raw.kind)?{kind:raw.kind}:{}),
       // How fast it moves to a position (units a second), or how fast it spins at full speed (rpm).
       ...(finite(raw.speed)&&raw.speed>0?{speed:clamp(raw.speed,.01,1e5)}:{}),...(finite(raw.rpm)&&raw.rpm>0?{rpm:clamp(raw.rpm,.1,60000)}:{}),
+      // Turns for each turn of its motor, from the CAD's belts and gears: the motor's model then sets rpm.
+      ...(finite(raw.ratio)&&raw.ratio>0?{ratio:clamp(raw.ratio,.001,1000)}:{}),
       // A turret's heading in the CAD (degrees counterclockwise from the robot's front, seen from above).
       ...(finite(raw.zero)?{zero:+(((raw.zero%360)+540)%360-180).toFixed(3)}:{}),
       // A hood's launch angle as the CAD has it (degrees above level); it tilts by the difference to the game's.
@@ -167,6 +171,8 @@
     const poses=(Array.isArray(r.poses)?r.poses:[]).slice(0,32).map(p=>{if(!p||typeof p.name!=='string'||!p.name.trim())return null;const values={};
       for(const [k,v] of Object.entries(p.values&&typeof p.values==='object'?p.values:{}).slice(0,32))if(movable.has(k)&&finite(v))values[k]=+v;return Object.keys(values).length?{name:text(p.name,40),values}:null;}).filter(Boolean);
     if(poses.length)out.poses=poses;
+    // The CAD the team says has every mechanism at zero (the range of motion test measures from it).
+    if(typeof r.zeroed==='string'&&r.zeroed.length<=80)out.zeroed=r.zeroed;
     if(r.discovered===true)out.discovered=true;if(finite(r.finder))out.finder=Math.round(r.finder);return out;
   }
   // An action: steps that command actuators. Each step starts `delay` seconds after the step it follows ends (or after
@@ -474,19 +480,23 @@
       // Hoods head for their shooting position while the shooter spins up, aims or feeds, and back to rest after. A hood
       // whose CAD launch angle is known tilts by the difference to the game's launch angle (s.hood), within its limits.
       for(const j of m.joints)if(j.drive?.signal==='hood')this.axes.get('hood:'+j.id).to((s.spin||s.aim||s.feed)?(finite(j.launch)&&finite(s.hood)?clamp(s.hood-j.launch,j.lower??-180,j.upper??180):j.states?.shoot??0):j.states?.rest??0);
-      for(const j of m.joints)this.axes.get('feeder:'+j.id)?.to(s.feed?j.states.feed:j.states.rest??0);
+      // Rollers and a feeder chained to one motor (s.chained) turn together.
+      const rolling=s.intake||s.chained&&s.feed,feeding=s.feed||s.chained&&s.intake;
+      for(const j of m.joints)this.axes.get('feeder:'+j.id)?.to(feeding?j.states.feed:j.states.rest??0);
       for(const [,axis] of this.axes)axis.step(dt);this.moves=this.moves.filter(m=>!m.axis.done);
       for(const j of m.joints){const axis=this.axes.get('joint:'+j.id);if(axis)this.q[j.id]=axis.q;}
       for(const a of m.actuators){const axis=this.axes.get(a.id),j=m.joints.find(x=>x.id===a.joint),v=valuesOf(j,this.q[j.id]);v[a.index]=axis.q;this.q[j.id]=v.length===1?v[0]:v;}
-      for(const j of m.joints){const d=j.drive;if(!d)continue;const n=+String(d.of||'').split(':')[1]||0,rate=rpm=>Math.min(SHOW_SPIN,Math.abs(rpm)*6)*Math.sign(rpm);
+      // A joint others follow keeps counting past a turn, or its followers would jump when it wrapped.
+      const led=new Set(m.couplings.map(c=>c.from));
+      for(const j of m.joints){const d=j.drive;if(!d)continue;const n=+String(d.of||'').split(':')[1]||0,rate=shownRate,turn=v=>led.has(j.id)?v:wrap360(v);
         if(d.signal==='turret')this.q[j.id]=(s.turrets?.[n]??0)-(j.zero||0);
         else if(d.signal==='deploy'){const f=clamp(s.kick?.[n]??0,0,1),up=j.states?.raised??0,down=j.states?.lowered??0;this.q[j.id]=up+(down-up)*f;}
         // A roller on a swing arm rests where it sits and rides up over a piece as the intake takes it in.
         else if(d.signal==='float'){const f=clamp(s.lift?.[n]??0,0,1),rest=j.states?.rest??0,top=j.states?.up??rest;this.q[j.id]=rest+(top-rest)*f;}
         else if(d.signal==='hood')this.q[j.id]=this.axes.get('hood:'+j.id).q;
-        else if(d.signal==='flywheel')this.q[j.id]=wrap360(this.q[j.id]+rate((s.flywheel||0)*(j.rpm||s.rpm||3000))*dt);
-        else if(d.signal==='roller')this.q[j.id]=wrap360(this.q[j.id]+rate(s.intake?(j.rpm||300):0)*dt);
-        else if(d.signal==='feeder')this.q[j.id]=this.axes.get('feeder:'+j.id)?.q??wrap360(this.q[j.id]+rate(s.feed?(j.rpm||200):0)*dt);}
+        else if(d.signal==='flywheel')this.q[j.id]=turn(this.q[j.id]+rate((s.flywheel||0)*Math.min(s.rpm||3000,j.rpm||Infinity))*dt);
+        else if(d.signal==='roller')this.q[j.id]=turn(this.q[j.id]+rate(rolling?(j.rpm||300):0)*dt);
+        else if(d.signal==='feeder')this.q[j.id]=this.axes.get('feeder:'+j.id)?.q??turn(this.q[j.id]+rate(feeding?(j.rpm||200):0)*dt);}
       // Steps end, and the steps after them start, once this tick's motion is done: a step that follows another starts
       // the moment it ends, and its command moves the next tick.
       for(const r of this.running)this.stepAction(r);this.running=this.running.filter(r=>r.steps.some(x=>x.end===null));
@@ -672,7 +682,7 @@
     if(n===removed){delete j.drive;j.note=(j.note?j.note+' ':'')+'Its mechanism was removed.';}else if(n>removed)d.of=kind+':'+(n-1);}return sanitize(out);}
   // What the engine needs: the joints with a drive, actuators and actions, without part lists.
   function forEngine(model){const m=sanitize(model);return {...m,joints:m.joints.map(({parts,alternatives,note,...j})=>j)};}
-  return {TYPES,ACTUATORS,MODES,COUPLINGS,SIGNALS,PROVENANCE,RESPONSES,STAGES,SENSORS,SHOW_SPIN,sanitize,EMPTY,mover,partIndex,order,resolve,worlds,motion,frame,dofOf,valuesOf,limitsOf,couple,applyCouplings,solveLoops,pose,reach,Axis,moveSeconds,Driver,resolveAction,reading,volts,VOLTS,timeline,sampleTimeline,reindex,forEngine,
+  return {TYPES,ACTUATORS,MODES,COUPLINGS,SIGNALS,PROVENANCE,RESPONSES,STAGES,SENSORS,SHOW_SPIN,shownRate,sanitize,EMPTY,mover,partIndex,order,resolve,worlds,motion,frame,dofOf,valuesOf,limitsOf,couple,applyCouplings,solveLoops,pose,reach,Axis,moveSeconds,Driver,resolveAction,reading,volts,VOLTS,timeline,sampleTimeline,reindex,forEngine,
     stagesRatio,actuatorUnit,motorAtJoint,rigging,planetary,
     math:{sub,add,scale,dot,cross,len,unit,perpendicular,I4,mul,apply,applyDir,trans,rot,about,invert}};
 });

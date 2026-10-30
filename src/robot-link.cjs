@@ -34,7 +34,7 @@ async function session(host,task,{timeout=8000,socket=null}={}){
     const t=setInterval(()=>{if(!ds.pending.includes(command))end();else if(Date.now()-began>ms)end(Error(`The robot did not take ${command.name}.`));},20);});
   try{
     ds.start();
-    const s=await until(s=>['connected','rejected','incompatible'].includes(s.connection),timeout,`No FTC robot answered at ${host}. Join the robot's Wi-Fi and check the Robot Controller app is running.`);
+    const s=await until(s=>['connected','rejected','incompatible'].includes(s.connection),host==='usb'?Math.max(timeout,30000):timeout,host==='usb'?'The Robot Controller app on the Control Hub did not answer over the USB cable. Restart the robot, then try again.':`No FTC robot answered at ${host}. Join the robot's Wi-Fi and check the Robot Controller app is running.`);
     if(s.connection==='rejected')throw Error('Another Driver Station is connected to this robot. Disconnect it, then try again.');
     if(s.connection==='incompatible')throw Error(`This robot runs an FTC SDK older than this app supports (Robocol ${s.robot?.robocol}).`);
     return await task({ds,ask,answer,until,sent,host});
@@ -52,9 +52,9 @@ async function configurations({ask,until},timeout){
 // IMUs the scan answers UNKNOWN come from the robot's web server (RobotConfig.withImus).
 async function scanHubs(ask,host){
   const serials=RobotConfig.lynxSerials(await ask('CMD_SCAN','',20000)),portals=[];
-  for(const serial of serials)portals.push(RobotConfig.lynxModules(await ask('CMD_DISCOVER_LYNX_MODULES',serial,20000)));
-  const found=portals.filter(p=>p.modules.length);
-  return RobotConfig.unknownImus(found)?RobotConfig.withImus(found,await rcHubs(host)):found;
+  for(const serial of serials)portals.push(await RobotConfig.discover(()=>ask('CMD_DISCOVER_LYNX_MODULES',serial,20000)));
+  const live=await rcHubs(host),found=RobotConfig.withLiveHubs(portals,live).filter(p=>p.modules.length);
+  return RobotConfig.unknownImus(found)?RobotConfig.withImus(found,live):found;
 }
 // The hubs the Robot Controller's web server lists (/js/rcInfo.json revHubNamesAndVersions); none when it cannot be read.
 async function rcHubs(host){
@@ -63,6 +63,15 @@ async function rcHubs(host){
     return Array.isArray(hubs)?hubs:[];}catch{return [];}
 }
 
+// Every hub on the robot right now, from the robot itself: no configuration read, nothing started, nothing changed.
+// Configure Robot's Scan, exactly: what answers on the wire now. A hub the robot has open but that does not answer is not
+// counted; its web server only corrects a product number the scan failed to read.
+// live: the web server's list when already read. onProgress({portals, others}): after each answer, to show it at once.
+const scanDevices=(host,{timeout=8000,socket=null,live=null,onProgress}={})=>session(host,async link=>{const [scan,open]=await Promise.all([link.ask('CMD_SCAN','',20000),live||rcHubs(host)]),portals=[],others=RobotConfig.otherUsb(scan);
+  const result=list=>{const found=RobotConfig.withLiveHubs(list,open,{add:false}).filter(p=>p.modules.length);return {portals:RobotConfig.unknownImus(found)?RobotConfig.withImus(found,open):found,others};};
+  for(const serial of RobotConfig.lynxSerials(scan)){const i=portals.length;portals.push(await RobotConfig.discover(()=>link.ask('CMD_DISCOVER_LYNX_MODULES',serial,20000),{expect:open.filter(h=>h?.parentSerial===serial).map(h=>h.moduleAddress),onAnswer:p=>{const so=[...portals];so[i]=p;onProgress?.(result(so));}}));}
+  return result(portals);},{timeout:Math.max(timeout,8000),socket});
+const scanRobot=(host,{timeout=8000,socket=null}={})=>session(host,link=>scanHubs(link.ask,host),{timeout:Math.max(timeout,8000),socket});
 // ---- the robot configuration
 // The active configuration's devices and hubs. scan: also scan the robot's hubs (portals), to add devices or to make
 // a configuration for a robot that has none.
@@ -77,14 +86,14 @@ async function readRobot(host,{timeout=8000,socket=null,scan=false}={}){
 }
 // Saves xml as a new configuration and makes it active (the robot announces it), reads it back, then restarts the robot
 // so its hardware map is built from it. A name the robot already has is refused.
-async function writeConfiguration(host,{name,xml}={},{timeout=8000,socket=null,restart=true}={}){
+async function writeConfiguration(host,{name,xml,replace=false}={},{timeout=8000,socket=null,restart=true}={}){
   if(!RobotConfig.validName(name))throw Error('A configuration name has letters, digits, spaces, - and _ only (up to 40).');
   // A Robocol command carries at most 64 KB.
   if(typeof xml!=='string'||Buffer.byteLength(xml)>60000)throw Error('That is not a robot configuration the robot can take.');
   const devices=RobotConfig.parse(xml).devices;if(xml.includes(';'))throw Error('The robot cannot take a configuration with a ; in it.');
   return session(host,async link=>{
     const {ds,ask,until,sent}=link,{files}=await configurations(link,timeout);
-    if(files.some(c=>c.name.toLowerCase()===name.toLowerCase()))throw Error(`The robot already has a configuration named “${name}”. Deck never replaces one.`);
+    if(!replace&&files.some(c=>c.name.toLowerCase()===name.toLowerCase()))throw Error(`The robot already has a configuration named “${name}”. Deck never replaces one.`);
     await sent(ds.command('CMD_SAVE_CONFIGURATION',`${JSON.stringify(configFile(name))};${xml}`));
     await until(s=>s.activeConfig?.name===name,15000,`The robot did not save “${name}”. Check the Robot Controller app, then try again.`);
     const saved=RobotConfig.parse(await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(configFile(name)))).devices;
@@ -105,6 +114,17 @@ async function activateConfiguration(host,name,{timeout=8000,socket=null,restart
   return session(host,async link=>{const {ds,until,sent}=link,{files}=await configurations(link,timeout);if(!files.some(c=>c.name===name))throw Error(`The robot has no configuration named “${name}”.`);
     await sent(ds.command('CMD_ACTIVATE_CONFIGURATION',JSON.stringify(configFile(name))));await until(s=>s.activeConfig?.name===name,15000,`The robot did not make “${name}” active.`);
     if(restart)await sent(ds.restartRobot());return {name,restarted:restart};},{timeout,socket});}
+
+// Deletes a saved configuration, as the Driver Station's Configure Robot does.
+async function deleteConfiguration(host,name,{timeout=8000,socket=null}={}){
+  return session(host,async link=>{const {ds,ask,sent}=link,{files}=await configurations(link,timeout);if(!files.some(c=>c.name===name))throw Error(`The robot has no configuration named “${name}”.`);
+    await sent(ds.command('CMD_DELETE_CONFIGURATION',JSON.stringify(configFile(name))));const left=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS'));if(Array.isArray(left)&&left.some(c=>c?.name===name))throw Error(`The robot did not delete “${name}”.`);return {name};},{timeout,socket});}
+// That data really goes both ways with this robot, whichever hub and FTC SDK it has. Each step: {name, ok, detail}.
+async function connectionCheck(host,{timeout=8000,socket=null}={}){
+  return session(host,async({ds,ask})=>{const robot=ds.state.robot||{},began=Date.now(),list=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS')),ms=Date.now()-began,live=await rcHubs(host);
+    return [{name:'Robot Controller app',ok:true,detail:`FTC SDK ${robot.sdk||'unknown'}, Robocol ${robot.robocol??'unknown'}${ds.state.adaptedVersion?' (matched to this robot)':''}`},
+      {name:'Data to and from the robot',ok:true,detail:`${Array.isArray(list)?list.length:0} configuration${Array.isArray(list)&&list.length===1?'':'s'} read in ${ms} ms`},
+      {name:'Robot web server',ok:live.length>0,detail:live.length?`${live.length} hub${live.length===1?'':'s'} open`:'Did not answer. Hubs, sending code and logs may not work until the robot restarts.'}];},{timeout,socket});}
 
 // ---- the guided check, run from Deck
 // Runs the check TeleOp as a Driver Station does (INIT, then START once it has initialized) and stays connected while
@@ -147,24 +167,29 @@ function runCheck(host,opMode,{onUpdate=()=>{},limit=20*60e3,timeout=8000,socket
 const PAD=[[0,'a'],[1,'b'],[2,'x'],[3,'y'],[12,'dpad_up'],[13,'dpad_down'],[14,'dpad_left'],[15,'dpad_right']];
 
 // ---- live debug (Calibrate → Electronics), run from Deck
-// Deck Debug (src/onbot/DeckDebug.java, put on the robot with send()) is the same op mode for every robot. runDebug runs
+// Torque Debug (src/onbot/TorqueDebug.java, put on the robot with send()) uses every device in the active configuration, so it
+// fits any robot. Its name says when it went on, on a 24-hour clock: TorqueDebug-18.11-10-30-26. runDebug runs
 // it as a Driver Station does, then connects to the op mode's own port (20886: through ADB on the USB cable, or at the
 // robot's address on its Wi-Fi) and keeps a heartbeat going every 100 ms, which the op mode's watchdog needs to keep any
 // output on. onManifest gets its device list once, onFrame each line of readings. send(line) passes one command (see
 // DeckDebug.apply); stop() stops the outputs and the op mode. ended resolves with why: stopped, ended, time or lost.
-const DEBUG_OP_MODE='Deck Debug',DEBUG_PORT=20886,DEBUG_FILE='org/firstinspires/ftc/teamcode/DeckDebug.java',debugSource=()=>fs.readFileSync(path.join(__dirname,'onbot','DeckDebug.java'),'utf8');
+const DEBUG_PORT=20886,DEBUG_FILE='TorqueDebug.java',OLD_DEBUG_FILE='org/firstinspires/ftc/teamcode/DeckDebug.java',isDebugOpMode=m=>/^TorqueDebug\b/.test(m?.name||'');
+const two=n=>String(n).padStart(2,'0'),debugName=(at=new Date())=>`TorqueDebug-${two(at.getHours())}.${two(at.getMinutes())}-${two(at.getMonth()+1)}-${two(at.getDate())}-${two(at.getFullYear()%100)}`;
+const debugSource=(name=debugName())=>fs.readFileSync(path.join(__dirname,'onbot','TorqueDebug.java'),'utf8').replace('@TeleOp(name = "TorqueDebug"',`@TeleOp(name = "${name}"`);
 function connectRetry({host,port},ms){
   const began=Date.now();
-  return new Promise((ok,fail)=>{const attempt=()=>{const s=net.connect({host,port},()=>{s.off('error',retry);ok(s);});const retry=e=>{s.destroy();if(Date.now()-began>ms)fail(Error(`Deck Debug did not open its port on the robot (${e.code||e.message}).`));else setTimeout(attempt,250);};s.once('error',retry);};attempt();});}
-function runDebug(host,{onManifest=()=>{},onFrame=()=>{},limit=60*60e3,timeout=8000,socket=null,connect=null}={}){
-  let finish=()=>{},stopping=false,sock=null;const done=new Promise(r=>{finish=why=>{stopping=true;r(why);};});
+  return new Promise((ok,fail)=>{const attempt=()=>{const s=net.connect({host,port},()=>{s.off('error',retry);ok(s);});const retry=e=>{s.destroy();if(Date.now()-began>ms)fail(Error(`Torque Debug did not open its port on the robot (${e.code||e.message}).`));else setTimeout(attempt,250);};s.once('error',retry);};attempt();});}
+function runDebug(host,{onManifest=()=>{},onFrame=()=>{},onCamera=()=>{},limit=60*60e3,timeout=8000,socket=null,connect=null}={}){
+  let finish=()=>{},stopping=false,sock=null,station=null,wantCamera=false;const done=new Promise(r=>{finish=why=>{stopping=true;r(why);};});
   const ended=session(host,async({ds,until})=>{
     await until(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
-    if(!ds.state.opModes.some(m=>m.name===DEBUG_OP_MODE))throw Error('The robot has no Deck Debug op mode yet. Put Deck Debug on the robot first.');
-    if(ds.state.opModeState!=='stopped'&&ds.state.activeOpMode!==DEBUG_OP_MODE)throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);
-    if(ds.state.opModeState==='stopped'){ds.initOpMode(DEBUG_OP_MODE);await until(s=>s.activeOpMode===DEBUG_OP_MODE&&s.opModeState==='init',10000,'The robot did not INIT Deck Debug.');}
-    if(!stopping&&ds.state.opModeState!=='running'){ds.startOpMode(DEBUG_OP_MODE);await until(s=>s.opModeState==='running',10000,'The robot did not START Deck Debug.');}
-    let ping=null,timer=null,offState=()=>{};
+    const mode=ds.state.opModes.find(isDebugOpMode)?.name;if(!mode)throw Error('The robot has no Torque Debug op mode yet. Put Torque Debug on the robot first.');
+    if(ds.state.opModeState!=='stopped'&&ds.state.activeOpMode!==mode)throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);
+    if(ds.state.opModeState==='stopped'){ds.initOpMode(mode);await until(s=>s.activeOpMode===mode&&s.opModeState==='init',10000,'The robot did not INIT Torque Debug.');}
+    if(!stopping&&ds.state.opModeState!=='running'){ds.startOpMode(mode);await until(s=>s.opModeState==='running',10000,'The robot did not START Torque Debug.');}
+    // The picture, as the Driver Station's Camera Stream asks for it: one frame, then the next once it has come. A stream that
+    // is not up yet answers nothing, so the asking goes on.
+    let ping=null,timer=null,offState=()=>{},asked=0,offFrame=ds.on('frame',bytes=>{onCamera(bytes);asked=0;if(wantCamera){asked=Date.now();ds.requestFrame();}});station=ds;const asking=setInterval(()=>{if(wantCamera&&Date.now()-asked>1000){asked=Date.now();ds.requestFrame();}},250);
     try{
       if(!stopping){
         sock=await connectRetry(connect||(host==='usb'?{host:'127.0.0.1',port:(await usbForward()).debug}:{host:checkHost(host),port:DEBUG_PORT}),6000);sock.setNoDelay(true);
@@ -177,7 +202,7 @@ function runDebug(host,{onManifest=()=>{},onFrame=()=>{},limit=60*60e3,timeout=8
         timer=setTimeout(()=>finish('time'),limit);}
       return await done;
     }finally{
-      clearInterval(ping);clearTimeout(timer);offState();
+      clearInterval(ping);clearTimeout(timer);clearInterval(asking);offFrame();station=null;wantCamera=false;offState();
       if(sock&&!sock.destroyed){try{sock.write('X\n');}catch{}sock.end();setTimeout(()=>sock.destroy(),300);}
       if(ds.connected()&&ds.state.opModeState!=='stopped'){ds.stopOpMode();await until(s=>s.opModeState==='stopped',3000,'').catch(()=>{});}
     }
@@ -185,6 +210,7 @@ function runDebug(host,{onManifest=()=>{},onFrame=()=>{},limit=60*60e3,timeout=8
   ended.catch(()=>{});
   return {ended,
     send(line){if(!sock||sock.destroyed||typeof line!=='string'||!line||line.length>400||/[\r\n]/.test(line))return false;sock.write(line+'\n');return true;},
+    camera(on){wantCamera=!!on;return !!station;},
     stop(){finish('stopped');}};
 }
 
@@ -213,6 +239,8 @@ class OnBotJava{
   // The robot's copy of a file, or null when it has none (OnBot Java answers 404 "File Not Found!").
   async read(file){const r=await this.call('GET','/java/file/get?f='+sourcePath(file));if(r.status===404)return null;if(r.status!==200)throw Error(`The robot did not return ${path.basename(file)} (HTTP ${r.status}: ${r.text.slice(0,120)}).`);return r.text;}
   async save(file,text){const r=await this.call('POST','/java/file/save?f='+sourcePath(file),'data='+formEncode(text));if(r.status!==200)throw Error(`The robot refused to save ${path.basename(file)} (HTTP ${r.status}${r.text?`: ${r.text.slice(0,120)}`:''}).`);}
+  // Deletes a file, as the OnBot Java editor does.
+  async remove(file){const r=await this.call('POST','/java/file/delete','delete='+formEncode(JSON.stringify([decodeURIComponent(sourcePath(file))])));if(r.status!==200)throw Error(`The robot did not delete ${path.basename(file)} (HTTP ${r.status}).`);}
   async status(){const r=await this.call('GET','/java/build/status');if(r.status!==200)throw Error(`The robot's build status could not be read (HTTP ${r.status}).`);return JSON.parse(r.text);}
   // Builds everything in OnBot Java and waits for it. Resolves with whether it built, how long it took and its log.
   async build({timeout=240000,poll=500,onProgress=()=>{}}={}){
@@ -238,14 +266,15 @@ function buildErrors(log){
   return out.slice(0,20);
 }
 // Uploads the export's files and builds them. A file the robot already has with other contents is kept on this computer
-// first (backupDir); files listed in keep are written only when the robot does not have them yet.
-async function send(host,files,{keep=[],backupDir,onProgress=()=>{},client}={}){
+// first (backupDir); files listed in keep are written only when the robot does not have them yet. remove: files of Deck's own
+// that this replaces, deleted first.
+async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},client}={}){
   if(!client)client=host==='usb'?new OnBotJava('127.0.0.1',{port:(await usbForward()).port}):new OnBotJava(host);
-  if(host==='usb'&&files&&!files[USB_LINK_FILE])files={...files,[USB_LINK_FILE]:usbLinkSource()};
   const entries=Object.entries(files||{});if(!entries.length)throw Error('Nothing to send.');
   const backups=[],written=[],kept=[];
   // Just after a new configuration the robot restarts, and its web server may refuse a connection for a moment.
   for(let attempt=0;;attempt++){try{await client.available();break;}catch(e){if(!['ECONNREFUSED','ECONNRESET'].includes(e.code)||attempt>=8)throw e;await delay(1000);}}
+  for(const file of remove)if(await client.read(file)!==null)await client.remove(file);
   for(const [file,text] of entries){
     if(typeof text!=='string'||text.length>4*1024*1024)throw Error(`${file} is not a source file.`);
     onProgress('uploading',path.basename(file));
@@ -264,7 +293,7 @@ async function send(host,files,{keep=[],backupDir,onProgress=()=>{},client}={}){
 // (the copy the REV Hardware Client installs, Android's platform-tools, or one on PATH). The Robot Controller's own web
 // server (port 8080), forwarded over the same cable, says which one is active (/js/rcInfo.json activeConfigName) and
 // lists the hardware Blocks offers from it (/hardware: allHardwareIdentifiers, "<name>As<Type>").
-const {execFile}=require('node:child_process');
+const {execFile,spawn}=require('node:child_process'),os=require('node:os');
 function adbPath(){const fsx=require('node:fs'),cands=[process.env.ADB,process.platform==='win32'?path.join(process.env['ProgramFiles(x86)']||'C:\\Program Files (x86)','REV Robotics','REV Hardware Client','android-tools','adb.exe'):null,
     process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'Android','Sdk','platform-tools','adb.exe'):null,process.env.ANDROID_HOME?path.join(process.env.ANDROID_HOME,'platform-tools',process.platform==='win32'?'adb.exe':'adb'):null].filter(Boolean);
   return cands.find(f=>fsx.existsSync(f))||'adb';}
@@ -274,13 +303,17 @@ const getLocal=(port,p,timeout=5000)=>new Promise((resolve,reject)=>{const req=h
 // Blocks' hardware names: "frontleftAsDcMotor" is the device "frontleft" as a DcMotor (hub modules left out).
 function blocksHardware(js){const m=/allHardwareIdentifiers\s*=\s*\[([^\]]*)\]/.exec(String(js||''));if(!m)return [];
   return [...m[1].matchAll(/'((?:\\.|[^'\\])*)'/g)].map(x=>x[1].replace(/\\(.)/g,'$1')).map(id=>{const i=id.lastIndexOf('As');return i>0?{identifier:id,name:id.slice(0,i),type:id.slice(i+2)}:null;}).filter(x=>x&&!/^(REVModule|ServoController|VoltageSensor|MotorController|LynxModule)$/.test(x.type));}
+const usbList=async(run,timeout)=>{const all=(await adb(['devices','-l'],{run,...(timeout?{timeout}:{})})).split(/\r?\n/).slice(1).map(l=>l.trim()).filter(Boolean);return all.filter(l=>!/\bmodel:Driver_Hub\b/.test(l)).map(l=>l.split(/\s+/)).filter(x=>x[0]);};
 async function readUsb({run}={}){
-  const listed=(await adb(['devices'],{run})).split(/\r?\n/).slice(1).map(l=>l.trim().split(/\s+/)).filter(x=>x[0]);
+  const listed=await usbList(run);
   if(!listed.length)throw Error('No Control Hub on USB. Plug its USB-C port into this computer with a data cable (some cables only charge).');
   const ready=listed.find(x=>x[1]==='device');if(!ready)throw Error(listed[0][1]==='unauthorized'?'The Control Hub is on USB but has not allowed this computer yet: look for the prompt in the REV Hardware Client.':`The Control Hub on USB is ${listed[0][1]}.`);
   const serial=ready[0],sh=cmd=>adb(['-s',serial,'shell',cmd],{run});
   // Names with their times, newest first: ls -l --full-time is not on every Android, so plain ls -l and a sort by name too.
-  const files=(await sh('ls -1t /sdcard/FIRST/ 2>/dev/null')).split(/\r?\n/).map(s=>s.trim()).filter(s=>/\.xml$/i.test(s)&&!/^\./.test(s));
+  // The hub answers on USB before Android has finished starting, so its storage can fail to list: that is not an error, only a wait.
+  // Fully started with no folder is a hub that has no configurations yet.
+  let listing='';try{listing=await sh('ls -1t /sdcard/FIRST/ 2>/dev/null');}catch(e){const up=await sh('getprop sys.boot_completed').then(v=>v.trim()==='1',()=>false);if(!up)throw Object.assign(Error('The Control Hub is still starting up. This takes about a minute after the battery goes on.'),{code:'HUB_STARTING'});await new Promise(r=>setTimeout(r,1000));listing=await sh('ls -1t /sdcard/FIRST/ 2>/dev/null').catch(()=>'');}
+  const files=listing.split(/\r?\n/).map(s=>s.trim()).filter(s=>/\.xml$/i.test(s)&&!/^\./.test(s));
   if(!files.length)return {source:'usb',serial,configurations:[],active:null,devices:[],hubs:[],files:{}};
   const out={};for(const f of files.slice(0,20)){try{const xml=await sh(`cat '/sdcard/FIRST/${f.replace(/'/g,'')}'`);if(/<Robot\b/.test(xml))out[f.replace(/\.xml$/i,'')]=xml;}catch{}}
   const names=Object.keys(out);if(!names.length)return {source:'usb',serial,configurations:[],active:null,devices:[],hubs:[],files:{}};
@@ -292,18 +325,66 @@ async function readUsb({run}={}){
   return {source:'usb',serial,configurations:names,active:{name,...(active&&out[active]?{}:{guessed:true})},xml:out[name],...parsed,blocks,files:out};}
 // Whether a Control Hub is on the USB cable and has allowed this computer, without touching it: Send to robot's USB choice.
 async function usbStatus({run}={}){
-  const listed=(await adb(['devices'],{run,timeout:5000})).split(/\r?\n/).slice(1).map(l=>l.trim().split(/\s+/)).filter(x=>x[0]),ready=listed.find(x=>x[1]==='device');
+  const listed=await usbList(run,5000),ready=listed.find(x=>x[1]==='device');
   return ready?{found:true,serial:ready[0]}:{found:false,message:listed.length?(listed[0][1]==='unauthorized'?'Allow this computer in the REV Hardware Client.':`The Control Hub on USB is ${listed[0][1]}.`):'Not plugged in.'};}
+// Tries to bring a lost Control Hub back without a replug. A hub ADB lists as offline gets its link reset; with nothing listed at
+// all, ADB's own server may be stuck (after the computer sleeps, say), so it is restarted, unless it is serving a Driver Hub.
+let usbRecovered=0;
+async function usbRecover({run,now=Date.now()}={}){if(now-usbRecovered<30000)return {did:null};usbRecovered=now;
+  const listed=await usbList(run,5000);if(listed.some(x=>x[1]==='device'))return {did:null};
+  if(listed.some(x=>x[1]==='offline')){await adb(['reconnect','offline'],{run,timeout:5000}).catch(()=>{});return {did:'reconnect'};}
+  if(listed.length||/\bmodel:Driver_Hub\b/.test(await adb(['devices','-l'],{run,timeout:5000})))return {did:null};
+  stopUsbRelay();usbPorts=null;await adb(['kill-server'],{run,timeout:5000}).catch(()=>{});await adb(['start-server'],{run,timeout:10000}).catch(()=>{});return {did:'restart'};}
+// The first checks of a USB connection: the ADB tool, and a Control Hub that has allowed this computer.
+async function usbCheck({run}={}){const steps=[];let version;try{version=await adb(['version'],{run,timeout:5000});}catch(e){return [{name:'USB tool (ADB)',ok:false,detail:'Not found. Install the REV Hardware Client, which includes it.'}];}
+  steps.push({name:'USB tool (ADB)',ok:true,detail:/version ([\d.]+)/.exec(version)?.[1]||'found'});const status=await usbStatus({run});
+  steps.push(status.found?{name:'Control Hub on USB-C',ok:true,detail:String(status.serial)}:{name:'Control Hub on USB-C',ok:false,detail:status.message==='Not plugged in.'?'Not found. Use a data cable (some only charge) with the robot on.':status.message});return steps;}
 // The robot's web server (8080: OnBot Java, Blocks, Program & Manage), its WebSocket (8081, the port after it), the
-// Deck USB link (20885, src/onbot/DeckUsbLink.java: the Driver Station over the cable) and Deck Debug's port (20886) on four ports of this computer, kept while the hub stays plugged in: Send to robot uploads and
+// USB relay (20885, usbLink below: the Driver Station over the cable) and Deck Debug's port (20886) on four ports of this computer, kept while the hub stays plugged in: Send to robot uploads and
 // builds over it, and the robot's own dashboard opens on it, with this computer on any Wi-Fi.
 let usbPorts=null;
 async function usbForward({run}={}){
-  const listed=(await adb(['devices'],{run})).split(/\r?\n/).slice(1).map(l=>l.trim().split(/\s+/)).filter(x=>x[0]),ready=listed.find(x=>x[1]==='device');
+  const listed=await usbList(run),ready=listed.find(x=>x[1]==='device');
   if(!ready)throw Error(listed.length?(listed[0][1]==='unauthorized'?'The Control Hub is on USB but has not allowed this computer yet: look for the prompt in the REV Hardware Client.':`The Control Hub on USB is ${listed[0][1]}.`):'No Control Hub on USB. Plug its USB-C port into this computer with a data cable (some cables only charge).');
-  const serial=ready[0];if(usbPorts?.serial===serial){try{const r=await request('127.0.0.1','GET','/java/build/status',undefined,{port:usbPorts.port,timeout:4000});if(r.status===200)return usbPorts;}catch{}}
+  const serial=ready[0];if(usbPorts?.serial===serial){try{if((await adb(['-s',serial,'forward','--list'],{run})).includes(`tcp:${usbPorts.port} tcp:8080`))return usbPorts;}catch{}}
   const port=18000+3*Math.floor(Math.random()*600);await adb(['-s',serial,'forward',`tcp:${port}`,'tcp:8080'],{run});await adb(['-s',serial,'forward',`tcp:${port+1}`,'tcp:8081'],{run});
   await adb(['-s',serial,'forward',`tcp:${port+2}`,'tcp:20885'],{run});await adb(['-s',serial,'forward',`tcp:${port+3}`,`tcp:${DEBUG_PORT}`],{run});usbPorts={serial,port,link:port+2,debug:port+3};return usbPorts;}
-// The Deck USB link's source, which Send to robot over USB installs beside the code (OnBot Java builds it with the rest).
-const USB_LINK_FILE='org/firstinspires/ftc/teamcode/DeckUsbLink.java',usbLinkSource=()=>fs.readFileSync(path.join(__dirname,'onbot','DeckUsbLink.java'),'utf8');
-module.exports={runDebug,DEBUG_FILE,DEBUG_OP_MODE,debugSource,rcHubs,usbForward,usbStatus,usbLinkSource,USB_LINK_FILE,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,formEncode,checkHost};
+// The Driver Station over the cable works on any Control Hub with nothing installed on it. ADB forwards TCP but not UDP,
+// so a small relay (src/usb-relay/DeckUsbRelay.java) runs on the hub as ADB's own unprivileged shell user, from a temporary
+// file that is deleted once it has started. It ends when the cable is pulled or Deck closes (its standard input closes).
+// The Robot Controller app, team code, configurations and firmware are not touched (R706). A hub that already answers on
+// the port, as an older Deck's OnBot Java link does, needs no relay.
+const RELAY_DEX=path.join(__dirname,'usb-relay','classes.dex'),RELAY_REMOTE='/data/local/tmp/deck-usb-relay.dex';
+let usbRelayChild=null,usbRelaySerial=null;
+function stopUsbRelay(){const child=usbRelayChild;usbRelayChild=null;usbRelaySerial=null;if(!child)return;try{child.stdin.end();}catch{}try{child.kill();}catch{}}
+async function usbRelay(serial,{run,start=spawn}={}){
+  if(usbRelayChild&&usbRelaySerial===serial&&usbRelayChild.exitCode===null)return;stopUsbRelay();
+  const sh=cmd=>adb(['-s',serial,'shell',cmd],{run});
+  if(/:5195 [0-9A-F:]+ 0A /i.test(await sh('cat /proc/net/tcp /proc/net/tcp6 2>/dev/null')))return;
+  // Inside the packaged app the file is in an archive only Deck can read, so ADB pushes a copy.
+  const local=path.join(os.tmpdir(),`deck-usb-relay-${process.pid}.dex`);fs.writeFileSync(local,fs.readFileSync(RELAY_DEX));
+  try{await adb(['-s',serial,'push',local,RELAY_REMOTE],{run,timeout:20000});}finally{fs.rmSync(local,{force:true});}
+  const child=start(adbPath(),['-s',serial,'shell',`CLASSPATH=${RELAY_REMOTE} app_process /system/bin DeckUsbRelay`],{stdio:['pipe','pipe','pipe'],windowsHide:true});
+  try{await new Promise((ok,fail)=>{let said='';const limit=setTimeout(()=>fail(Error('The Control Hub did not start the USB relay.')),15000),done=f=>v=>{clearTimeout(limit);f(v);};
+      child.stdout.on('data',d=>{if(/ready/.test(String(d)))done(ok)();});child.stderr?.on('data',d=>{said+=d;});child.once('error',done(fail));child.once('exit',()=>done(fail)(Error(`The Control Hub could not run the USB relay.${said?' '+said.trim():''}`)));});}
+  catch(e){try{child.kill();}catch{}throw e;}finally{adb(['-s',serial,'shell',`rm -f ${RELAY_REMOTE}`],{run}).catch(()=>{});}
+  child.stdin.on('error',()=>{});child.once('exit',()=>{if(usbRelayChild===child){usbRelayChild=null;usbRelaySerial=null;}});usbRelayChild=child;usbRelaySerial=serial;}
+// The Robot Controller app listens for Driver Stations on UDP 20884 (:5194 in /proc/net/udp), on the hub's own address; the
+// relay's socket is the one on loopback. If the app has stopped or crashed it is started, as a hub does when it powers on,
+// and the wait covers the 40 s or so it takes (and a restart after saving a configuration).
+const controllerListening=table=>/^\s*\d+:\s+(?![0-9A-F]*0100007F:)[0-9A-F]+:5194 /im.test(String(table));
+async function usbController(serial,{run,wait=70000,pause=500}={}){const sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),on=async()=>controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null'));if(await on())return false;
+  await sh('am start -n com.qualcomm.ftcrobotcontroller/org.firstinspires.ftc.robotcontroller.internal.PermissionValidatorWrapper').catch(()=>{});
+  for(const end=Date.now()+wait;Date.now()<end;){await delay(pause);if(await on())return true;}
+  throw Error('The Robot Controller app on this Control Hub is not running and did not start. Restart the robot, then try again.');}
+// After Torque Debug is built: if the Robot Controller stops within the time a crash on new OnBot Java code takes (under 30 s
+// seen, from Sinister in the team's build), it would crash again each time it starts. So that build and Torque Debug's source
+// are taken off, the app is started again, and this says so. The team's own sources stay.
+async function usbDebugGuard({run,watch=40000,pause=2000}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run});
+  for(const end=Date.now()+watch;Date.now()<end;await delay(pause)){if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
+    await delay(5000);if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
+    await sh(`rm -f /sdcard/FIRST/java/src/${DEBUG_FILE}; rm -rf /sdcard/FIRST/java/build/jars/* /sdcard/FIRST/java/build/classes/*`);await usbController(serial,{run});
+    throw Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took it off again and restarted the app. Nothing else changed.');}}
+// Sets up the ports, the Robot Controller and the relay: what the Driver Station link needs.
+async function usbLink(options){const ports=await usbForward(options);await usbController(ports.serial,options);await usbRelay(ports.serial,options);return ports;}
+module.exports={runDebug,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbDebugGuard,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,formEncode,checkHost};

@@ -50,14 +50,14 @@ test('the virtual hub catches wiring and compile mistakes that would fail on a r
 });
 
 test('IMU-only and unsupported drivetrains are refused for positional export on a Control Hub with a clear reason',()=>{
-  assert.throws(()=>F.hardware({drivetrain:'swerve',length:17,width:17,driveRpm:500},'odometry'),/mecanum and tank-style/);assert.equal(F.hardware({drivetrain:'tank6',length:17,width:17,driveRpm:500},'odometry').drive.kind,'tank');
+  assert.throws(()=>F.hardware({drivetrain:'swerve',length:17,width:17,driveRpm:500},'odometry'),/mecanum and tank drivetrains/);assert.equal(F.hardware({drivetrain:'tank2',length:17,width:17,driveRpm:500},'odometry').drive.kind,'tank');
   assert.throws(()=>F.hardware({length:17,width:17,driveRpm:500},'gyro'),/IMU-only setups export timed commands/);
   const h=F.hardware({length:17,width:17,driveRpm:500},'encoders');assert.equal(h.drive.ticksPerRev,336);assert.ok(Math.abs(h.drive.ticksPerInch-336/(Math.PI*104/25.4))<1e-9);
   assert.deepEqual(Object.values(h.drive.motors).map(m=>m.mount),[-1,1,-1,1]);
 });
 // Tank-style robots: the exported hardware adapter on two or four motors, turning in place
 // to face each straight leg, with drive encoders or odometry pods.
-for(const [drivetrain,localization] of [['tank','encoders'],['tank2','encoders'],['tracks','odometry']])
+for(const [drivetrain,localization] of [['tank','encoders'],['tank2','encoders'],['tank','odometry']])
   test(`exported Control Hub OpMode drives a ${drivetrain} robot with ${F.SUPPORTED[localization]} on the virtual hub`,{skip},async()=>{
     let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-tank-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
     try{const start={x:24,y:24,heading:0},robot={drivetrain,length:17,width:17,heightIn:5,driveRpm:500,intakeIn:0},pins=[{x:100,y:24},{x:100,y:100,wait:.5,action:'Score'}];

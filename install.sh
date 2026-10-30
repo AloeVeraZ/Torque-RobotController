@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Deck Driver Station one-line installer for Steam Deck / Linux x64 and Apple Silicon Macs:
-#   curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.sh | bash
 # Downloads the latest stable release from GitHub, checks its SHA-256, and runs the bundled installer.
 # No sudo. DECK_DOWNLOAD_ONLY=1 stops after the verified download.
 set -euo pipefail
 if (( $# )); then echo 'Installation uses Main only. Choose Testing from Updates after installing.' >&2; exit 2; fi
-repo="AloeVeraZ/SteamDeck-RobotController"
+repo="AloeVeraZ/Torque-RobotController"
 
 # The latest-release redirect excludes prereleases. Use versioned assets so
 # existing Main releases do not need version-free filename aliases.
 echo 'Finding the latest Main release ...'
 release_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest")"
-if [[ ! "$release_url" =~ ^https://github\.com/AloeVeraZ/SteamDeck-RobotController/releases/tag/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+if [[ ! "$release_url" =~ ^https://github\.com/AloeVeraZ/Torque-RobotController/releases/tag/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
   echo 'No valid Main release was found. Testing builds are not installed by this command.' >&2; exit 1
 fi
 version="${BASH_REMATCH[1]}"

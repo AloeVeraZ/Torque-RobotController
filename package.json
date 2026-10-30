@@ -1,12 +1,13 @@
 {
   "name": "deck-driver-station",
   "productName": "Torque",
-  "version": "2.4.26",
+  "version": "2.4.27",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AloeVeraZ/SteamDeck-RobotController.git"
+    "url": "https://github.com/AloeVeraZ/Torque-RobotController.git"
   },
   "updateChannel": "testing",
+  "bugReportUrl": "",
   "testingReleaseTargets": ["windows"],
   "mainReleaseTargets": ["windows"],
   "private": true,

@@ -35,8 +35,8 @@ function render(){
   const v=s.battery?.volts,tile=$('#volts-tile'),known=Number.isFinite(v);
   if(known)minVolts=minVolts===null?v:Math.min(minVolts,v);
   tile.className='tile volts'+(known?v>=12?'':v>=11?' caution':' danger':' none');
-  $('#volts').textContent=known?`${v.toFixed(2)} V`:connected&&s.battery?'No sensor':'';$('#volts-min').textContent=minVolts!==null?`( ${minVolts.toFixed(2)} V )`:'';
-  const rc=s.rcBattery;$('#rc-battery').hidden=!(prefs.showRcBattery&&rc&&Number.isFinite(rc.percent));if(rc)$('#rc-battery').textContent=`RC: ${rc.percent.toFixed(1)}%`;
+  $('#volts').textContent=known?`${v.toFixed(2)} V`:connected&&s.battery?'No sensor':'—';$('#volts-min').textContent=minVolts!==null?`Low ${minVolts.toFixed(2)} V`:'';
+  const rc=s.rcBattery;$('#rc-battery').hidden=!(prefs.showRcBattery&&rc&&Number.isFinite(rc.percent));if(rc)$('#rc-battery').textContent=`Hub ${Math.round(rc.percent)}%`;
   const m=selected?opMode(selected.name)||selected:null;
   $('#opmode-label').textContent=m?m.name:'Select Op Mode';$('#opmode-hint').hidden=!!m;$('#opmode-name').classList.toggle('chosen',!!m);
   for(const id of ['#auto-list','#teleop-list','#opmode-name'])$(id).disabled=!connected||busy;
@@ -48,8 +48,8 @@ function render(){
   $('#timer-switch').checked=timerOn;$('#timer-switch').disabled=state==='running';
   $('#config').textContent=s.activeConfig?.name?`${s.activeConfig.name}${s.activeConfig.dirty?' *':''}`:'<No Config Set>';
   const name=s.activeOpMode===STOP?'':s.activeOpMode;
-  const statusText=!connected?(s.connection==='rejected'?'Status : Another Driver Station is connected to this robot':`Status : Looking for robot at ${info.host||'its address'}`)
-    :s.robotState==='EMERGENCY_STOP'?'Status : EMERGENCY STOP':state==='running'?`Status : Running ${name}`:state==='init'?`Status : Initialized ${name}`:'Status : Robot is stopped';
+  const statusText=!connected?(s.connection==='rejected'?'Another Driver Station is connected to this robot':`Looking for robot at ${info.host||'its address'}`)
+    :s.robotState==='EMERGENCY_STOP'?'EMERGENCY STOP':state==='running'?`Running ${name}`:state==='init'?`Initialized ${name}`:'Robot is stopped';
   // Live regions announce changes, not every heartbeat/telemetry packet.
   if($('#status-line').textContent!==statusText)$('#status-line').textContent=statusText;
   const sys=$('#system-message'),message=s.systemError||s.systemWarning||'';sys.hidden=!message;if(sys.textContent!==message)sys.textContent=message;sys.className='system '+(s.systemError?'error':'warning');
@@ -58,8 +58,8 @@ function render(){
 }
 function renderBattery(){
   const text=$('#ds-battery-text'),fill=$('#ds-battery-fill');
-  if(!dsBattery){text.textContent='DS: —';fill.style.width='0';return;}
-  text.textContent=`DS: ${Math.round(dsBattery.level*100)}%`;fill.style.width=`${Math.round(dsBattery.level*100)}%`;
+  if(!dsBattery){text.textContent='—';fill.style.width='0';return;}
+  text.textContent=`${Math.round(dsBattery.level*100)}%`;fill.style.width=`${Math.round(dsBattery.level*100)}%`;
 }
 function renderTelemetry(t){
   lastTelemetry=t.updated;const box=$('#telemetry');box.className='lines'+(t.format==='MONOSPACE'?' monospace':'');
@@ -186,6 +186,8 @@ $('#menu-manage').onclick=()=>menu(()=>{Promise.resolve(host.programAndManage?.(
 $('#menu-camera').onclick=()=>menu(openCamera);
 $('#menu-about').onclick=()=>menu(()=>{session.requestAbout();const r=session.state.robot;showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobocol: ${session.identity.version}${r?.sdk?`\nRobot Controller SDK: ${r.sdk}`:''}\n\nWaiting for the Robot Controller’s details…`);});
 $('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 in the app header, then press any button on that controller.\n\nFor a two-controller robot, select Two controllers in Settings, then click Controller 2 to assign or swap it.\n\nBuilt-in controls are preferred for Controller 1; other devices use the first detected controller.'));
+$('#ds-close').hidden=!host?.closeRobot;$('#ds-fullscreen').hidden=!host?.fullscreen;
+$('#ds-close').onclick=()=>Promise.resolve(host.closeRobot()).catch(e=>toast(e.message));$('#ds-fullscreen').onclick=()=>Promise.resolve(host.fullscreen()).catch(e=>toast(e.message));
 $('#camera-image').onclick=()=>session.requestFrame();$('#camera-close').onclick=closeCamera;
 $('#auto-list').onclick=()=>openPicker('AUTONOMOUS');$('#teleop-list').onclick=()=>openPicker('TELEOP');
 $('#opmode-name').onclick=()=>openPicker(selected?.flavor==='AUTONOMOUS'?'AUTONOMOUS':'TELEOP');
@@ -203,8 +205,10 @@ document.addEventListener('keydown',e=>{
 });
 
 async function boot(){
-  if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Status : Open this robot from Torque Settings.';return;}
+  if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Open this robot from Torque Settings.';return;}
   try{info={...info,...await host.info()};}catch{}
+  const applyTheme=t=>{if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;};
+  applyTheme(info.theme);host.onTheme?.(applyTheme);document.body.classList.toggle('fullscreen',!!info.fullscreen);host.onFullscreen?.(on=>document.body.classList.toggle('fullscreen',on));
   window.deckControllerAssignments=()=>Array.from(navigator.getGamepads?.()||[]).slice(0,2).map(p=>p?{id:p.id,index:p.index,mapping:p.mapping,connected:true}:null);
   $('#pad-1').title='Click, then press a button to assign controller 1';
   $('#ds-name').textContent=dsName();document.title=`${info.name||'FTC Robot'} · ${dsName()}`;
@@ -213,6 +217,8 @@ async function boot(){
   host.onActive?.(on=>{inputsOn=on;pollGamepads();});
   session.on('state',queueRender);
   window.DeckDsPages.init({session,host,toast,prefs,savePrefs,dsName,restart:restartRobot});
+  // Setup's Configure Robot button opens the same page as this Driver Hub's three-dot menu.
+  host.onOpen?.(page=>{if(page==='configure')window.DeckDsPages.configure();});if(info.open==='configure')window.DeckDsPages.configure();
   // The autonomous the simulator's Send to robot just built is selected once the robot lists it, unless one is chosen first.
   let sent=info.select||null;
   session.on('state',s=>{if(!sent)return;if(selected||s.opModeState!=='stopped'){sent=null;return;}const m=opMode(sent);if(m){selected=m;sent=null;toast(`${m.name} is selected: Deck just sent it to the robot.`);queueRender();}});

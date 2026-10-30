@@ -1,44 +1,44 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>FTC Driver Station</title><link rel="stylesheet" href="../tokens.css"><link rel="stylesheet" href="ds.css"><link rel="stylesheet" href="../motion-theme.css"><link rel="stylesheet" href="../touch.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>FTC Driver Station</title><link rel="stylesheet" href="../tokens.css"><link rel="stylesheet" href="ds.css"><link rel="stylesheet" href="../touch.css"></head>
 <body>
 <header class="bar">
-  <div class="brand" title="Torque"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="7" width="26" height="20" rx="6"/><circle cx="11.5" cy="16" r="3" class="eye"/><circle cx="20.5" cy="16" r="3" class="eye"/><path d="M11 22h10M16 7V3" class="line"/><circle cx="16" cy="3" r="1.6"/></svg><span id="ds-name">Driver Station</span></div>
+  <div class="brand"><span id="ds-name">Driver Station</span></div>
   <div id="link-banner" class="banner searching"><span id="link-text">Searching for Robot</span></div>
-  <div class="net"><div><span>Network:</span> <b id="network">—</b></div><div><span>Ping:</span> <b id="ping">No Heartbeat</b></div></div>
+  <div class="net"><div><span>Network</span> <b id="network">—</b></div><div><span>Ping</span> <b id="ping">No Heartbeat</b></div></div>
   <div id="signal" class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-  <button id="pad-1" class="pad" title="Click, then press a button to assign controller 1"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 1</span></button>
-  <button id="pad-2" class="pad" title="Click, then press a button to assign controller 2"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 2</span></button>
-  <button id="ds-more" class="more" aria-label="Driver Station menu" aria-expanded="false">•••</button>
+  <div class="pads"><button id="pad-1" class="pad" title="Click, then press a button to assign controller 1"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 1</span></button>
+  <button id="pad-2" class="pad" title="Click, then press a button to assign controller 2"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 2</span></button></div>
+  <button id="ds-close" class="bar-btn">Close robot</button>
+  <button id="ds-fullscreen" class="bar-icon" title="Fullscreen robot view" aria-label="Fullscreen robot view"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg></button>
+  <button id="ds-more" class="bar-icon more" aria-label="Driver Station menu" aria-expanded="false">⋯</button>
   <div id="ds-menu" class="menu" hidden>
-    <button id="menu-settings">Settings</button><button id="menu-restart">Restart Robot</button><button id="menu-configure">Configure Robot</button><button id="menu-manage">Program &amp; Manage</button><button id="menu-inspect">Self Inspect</button><button id="menu-camera">Camera Stream</button><button id="menu-gamepads">Gamepad assignment</button><button id="menu-about">About</button>
+    <button id="menu-settings">Settings</button><button id="menu-restart">Restart Robot</button><button id="menu-configure">Configure Robot</button><button id="menu-manage">Program &amp; Manage<span class="leaves" aria-hidden="true">↗</span></button><button id="menu-inspect">Self Inspect</button><button id="menu-camera">Camera Stream</button><button id="menu-gamepads">Gamepad assignment</button><button id="menu-about">About</button>
   </div>
 </header>
 <main class="grid">
+  <section class="stats" aria-label="Readouts">
+    <div class="tile practice"><span class="label">Practice timer<small id="practice-phase"></small></span><div class="value"><b id="practice-time">2:30</b><button id="practice-play" class="round-play" aria-label="Start practice timer"><i id="practice-icon" class="play"></i></button></div></div>
+    <div class="tile config"><span class="label">Configuration</span><div class="value"><b id="config">&lt;No Config Set&gt;</b></div></div>
+    <div class="tile ds-batt"><span class="label">This device</span><div class="value"><b id="ds-battery-text">—</b><span class="batt small"><i id="ds-battery-fill"></i></span></div></div>
+    <div id="volts-tile" class="tile volts"><span class="label">Robot battery<small id="rc-battery" hidden></small></span><div class="value"><b id="volts">—</b><small id="volts-min"></small></div></div>
+  </section>
   <section class="left">
-    <div class="row">
-      <div class="tile practice"><span class="label">Practice Timer</span><div class="clock"><b id="practice-time">2:30</b><button id="practice-play" class="round-play" aria-label="Start practice timer"><i id="practice-icon" class="play"></i></button></div><small id="practice-phase"></small></div>
-      <div class="tile config"><svg viewBox="0 0 24 40" aria-hidden="true"><rect x="2" y="1" width="20" height="38" rx="3"/><rect x="5" y="6" width="14" height="22" class="screen"/><rect x="8" y="11" width="8" height="7" rx="1.5"/><path d="M12 9v2M9.5 20h5" class="line"/></svg><span id="config">&lt;No Config Set&gt;</span></div>
-    </div>
     <div class="opbar">
       <button id="auto-list" class="tri" aria-label="Autonomous op modes" title="Autonomous"><i></i></button>
-      <button id="opmode-name" class="opname"><span id="opmode-label">Select Op Mode</span><small id="opmode-hint">← Autonomous | TeleOp →</small></button>
+      <button id="opmode-name" class="opname"><span id="opmode-label">Select Op Mode</span><small id="opmode-hint">From Auto or TeleOp</small></button>
       <button id="teleop-list" class="tri" aria-label="TeleOp op modes" title="TeleOp"><i></i></button>
     </div>
     <div class="stage">
-      <button id="main-action" class="go init" disabled><i id="main-icon"></i><b id="main-label">INIT</b></button>
+      <div class="actions"><button id="main-action" class="go init" disabled><i id="main-icon"></i><b id="main-label">INIT</b></button><button id="abort" class="abort" aria-label="Stop op mode" hidden><i></i></button></div>
       <div class="side">
         <button id="timer" class="stopwatch" title="Autonomous 30 second timer" aria-label="Autonomous 30 second timer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2.5M9.5 2.5h5M18.5 6.5l1.5-1.5"/></svg><span id="timer-text"></span></button>
+        <span class="side-label">Stop Autonomous after 30 s</span>
         <label class="switch" title="Stop the Autonomous op mode after 30 seconds"><input type="checkbox" id="timer-switch" aria-label="Autonomous timer"><i></i></label>
-        <button id="abort" class="abort" aria-label="Stop op mode" hidden><i></i></button>
       </div>
     </div>
   </section>
   <section class="right">
-    <div class="row">
-      <div class="tile ds-batt"><span id="ds-battery-text">DS: —</span><span class="batt small"><i id="ds-battery-fill"></i></span></div>
-      <div id="volts-tile" class="tile volts"><span class="batt big"><b>−</b><b>+</b></span><div><b id="volts"></b><small id="volts-min"></small></div><small id="rc-battery" hidden></small></div>
-    </div>
-    <div class="status"><h2 class="status-heading">Robot status &amp; telemetry</h2>
-      <p id="status-line" role="status">Status : Robot is stopped</p>
+    <div class="status"><h2 class="status-heading">Robot status</h2>
+      <p id="status-line" role="status">Robot is stopped</p>
       <p id="system-message" class="system" role="alert" hidden></p>
       <div id="telemetry" class="lines" aria-live="polite"></div>
       <figure id="camera" class="camera" hidden><img id="camera-image" alt="Robot camera frame"><figcaption>Tap the image for a new frame · <button id="camera-close" class="link">Close camera</button></figcaption></figure>

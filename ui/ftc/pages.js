@@ -45,7 +45,9 @@ async function run(doing,task){if(working)return;working=true;status(doing);for(
 function refreshButtons(){if(edit)return;for(const b of document.querySelectorAll('#page-body [data-needs-robot], #page-actions [data-needs-robot]'))b.disabled=!connected();
   for(const b of document.querySelectorAll('#page-body [data-active]'))b.disabled=b.disabled||b.dataset.active==='1';}
 async function readList(){const list=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS'));files=(Array.isArray(list)?list:[]).filter(c=>c&&typeof c.name==='string'&&c.name).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));}
-async function loadList(){edit=null;renderList();if(!connected()){status('Connect to the robot to configure it. Its configurations are kept on the Robot Controller.','warning');return;}
+async function loadList(){edit=null;renderList();
+  // Opened as the link comes up, it waits a moment for the robot.
+  if(!connected()){status('Connecting to the robot…');try{await until(s=>s.connection==='connected',10000,'not connected');}catch{status('Connect to the robot to configure it. Its configurations are kept on the Robot Controller.','warning');return;}renderList();}
   await run('Reading the robot’s configurations…',readList);renderList();}
 function renderList(){
   $('#page-title').textContent='Configure Robot';const active=ctx.session.state.activeConfig?.name||'';
@@ -55,21 +57,22 @@ function renderList(){
   if(!files.length)list.append(el('p','cfg-empty',connected()?'This robot has no saved configurations. Press New to scan the robot’s hubs and make one.':'Not connected to the robot.'));
   for(const f of files){const row=el('div','cfg-row'+(f.name===active?' active':''));row.setAttribute('role','listitem');const name=el('div','cfg-name');name.append(el('b','',f.name));if(f.name===active)name.append(el('small','','Active'));
     const fixed=f.location&&f.location!=='LOCAL_STORAGE';if(fixed)name.append(el('small','muted','Built into the robot app'));
-    const buttons=el('div','cfg-buttons'),e=button('Edit','cfg-btn',()=>void openEditor(f)),a=button('Activate','cfg-btn',()=>void activate(f)),d=button('Delete','cfg-btn danger',()=>void remove(f)),g=button('Get pinout','cfg-btn pinout',()=>void pinoutOf(f));
-    for(const b of [e,a,d,g])b.dataset.needsRobot='';a.dataset.active=f.name===active?'1':'0';if(fixed){e.disabled=d.disabled=true;delete e.dataset.needsRobot;delete d.dataset.needsRobot;}
-    buttons.append(e,a,d,g);row.append(name,buttons);list.append(row);}
+    const buttons=el('div','cfg-buttons'),e=button('Edit','cfg-btn',()=>void openEditor(f)),a=button('Activate','cfg-btn',()=>void activate(f)),d=button('Delete','cfg-btn danger',()=>void remove(f)),g=button('Get pinout','cfg-btn pinout',()=>void pinoutOf(f)),u=button('Use in Setup','cfg-btn',()=>void useInSetup(f));
+    for(const b of [e,a,d,g,u])b.dataset.needsRobot='';a.dataset.active=f.name===active?'1':'0';if(fixed){e.disabled=d.disabled=true;delete e.dataset.needsRobot;delete d.dataset.needsRobot;}
+    buttons.append(u,e,a,d,g);row.append(name,buttons);list.append(row);}
   $('#page-body').replaceChildren(head,list);refreshButtons();
 }
+// Setup, Simulate and Calibrate take this configuration's hubs, motors, servos and sensors.
+async function useInSetup(f){let xml='';await run(`Reading “${f.name}”…`,async()=>{xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(f));C.parse(xml);});if(!xml)return;
+  ctx.host.useConfiguration?.({name:f.name,xml});ctx.toast(`Setup, Simulate and Calibrate now use “${f.name}”.`,4000);}
 const nameCheck=v=>!C.validName(v)?'Use letters, digits, spaces, - and _ (up to 40), starting with a letter or digit.':files.some(f=>f.name.toLowerCase()===v.toLowerCase())?`The robot already has a configuration named “${v}”.`:'';
 // New, as the Driver Hub's New then Scan: the hubs the robot finds, the Control Hub's IMU on its I2C bus 0 as "imu".
 async function newConfiguration(){
-  const name=await ask2({title:'New configuration',text:'Name the configuration. Deck scans the robot for its Control Hub and any Expansion Hubs; then press Edit to say what is on each port.',input:C.configurationName('robot',files.map(f=>f.name)),ok:'Create',check:nameCheck});if(!name)return;
+  const name=await ask2({title:'New configuration',text:'Name the configuration. Deck scans the robot for its Control Hub, Expansion Hubs and Servo Hubs; then press Edit to add hubs that are not plugged in yet and say what is on each port.',input:C.configurationName('robot',files.map(f=>f.name)),ok:'Create',check:nameCheck});if(!name)return;
   await run(`Scanning the robot for hubs…`,async()=>{
-    const serials=C.lynxSerials(await ask('CMD_SCAN','',20000)),portals=[];
-    for(const serial of serials){const p=C.lynxModules(await ask('CMD_DISCOVER_LYNX_MODULES',serial,20000));if(p.modules.length)portals.push(p);}
     // The robot has its Control Hub open, so the scan leaves that IMU UNKNOWN; its web server says which one it is.
-    if(C.unknownImus(portals)&&ctx.host.rcHubs){try{portals.splice(0,portals.length,...C.withImus(portals,await ctx.host.rcHubs()));}catch{}}
-    if(!portals.length)throw Error('The scan found no Control Hub or Expansion Hub. Check the hubs are powered and connected, then try again.');
+    const portals=await scanPortals();
+    if(!portals.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
     const imus=[];for(const p of portals){const parent=p.modules.find(m=>m.parent),tag=parent&&C.IMU_TAGS[parent.imu];if(tag&&p.serial==='(embedded)')imus.push({name:'imu',tag,device:'imu',port:0,bus:0,module:{portal:p.serial,address:parent.address,name:'Control Hub'}});}
     status(`Saving “${name}”…`);await save(name,C.newConfiguration(portals,imus));await readList();changed=true;
     ctx.toast(`“${name}” is saved with ${portals.reduce((n,p)=>n+p.modules.length,0)} hub${portals.reduce((n,p)=>n+p.modules.length,0)===1?'':'s'}. Press Edit to set its ports.`,4500);});
@@ -98,14 +101,7 @@ async function remove(f){
 // Control Hub's RS485 wire sits in the Control Hub Portal); a hub lists Motors, Servos, Digital Devices, Analog Input
 // Devices and I2C Bus 0 to 3, the same on a Control Hub and an Expansion Hub; each lists its ports.
 // Device types and their names as the Driver Hub's lists show them (FTC SDK 12.0 @MotorType/@ServoType/@DeviceProperties).
-const TYPES={motor:C.EDIT_TYPES.motor.map(([t,l])=>[t,t==='Motor'?'Unspecified Motor':l]),
-  servo:[['Servo','Servo'],['ContinuousRotationServo','Continuous Rotation Servo'],['ServoFullRange','Servo (full range)'],['RevBlinkinLedDriver','REV Blinkin LED Driver'],['RevSPARKMini','REV SPARK Mini Motor Controller']],
-  digital:[['DigitalDevice','Digital Device'],['Led','LED'],['RevTouchSensor','REV Touch Sensor']],
-  analog:[['AnalogInput','Analog Input'],['OpticalDistanceSensor','Optical Distance Sensor'],['ModernRoboticsAnalogTouchSensor','MR Analog Touch Sensor']],
-  i2c:[['AdafruitBNO055IMU','Adafruit IMU'],['AdafruitColorSensor','Adafruit RGB Color Sensor'],['AndyMarkIMU','AndyMark IMU'],['AndyMarkColor','AndyMark Proximity & Color Sensor'],['AndyMarkTOF','AndyMark 2m TOF Lidar'],
-    ['ControlHubImuBHI260AP','REV Internal IMU (BHI260AP)'],['LynxEmbeddedIMU','REV Internal IMU (BNO055)'],['RevExternalImu','REV External IMU'],['OctoQuadFTC','DigitalChickenLabs OctoQuad'],['HuskyLens','DFRobot HuskyLens'],
-    ['goBILDAPinpoint','goBILDA Pinpoint Odometry Computer'],['MaxSonarI2CXL','MaxBotix MaxSonar I2CXL'],['ModernRoboticsI2cColorSensor','MR Color Sensor'],['ModernRoboticsI2cRangeSensor','MR Range Sensor'],
-    ['KauaiLabsNavxMicro','navX Micro'],['REV_VL53L0X_RANGE_SENSOR','REV 2m Distance Sensor'],['RevColorSensorV3','REV Color Sensor V3'],['LynxColorSensor','REV Color/Range Sensor'],['SparkFunOTOS','SparkFun OTOS'],['QWIIC_LED_STICK','SparkFun Qwiic LED Stick']]};
+const TYPES=C.DEVICE_TYPES;
 const familyOf=tag=>{for(const [f,list] of Object.entries(TYPES))if(list.some(([t])=>t===tag))return f;return C.familyOfTag(tag);};
 const TITLES={motor:'Motors',servo:'Servos',digital:'Digital Devices',analog:'Analog Input Devices'},SINGULAR={motor:'motor',servo:'servo',digital:'digital device',analog:'analog input'};
 const sameHub=(d,h)=>d.module&&d.module.portal===h.portal&&d.module.address===h.address&&!!d.module.servoHub===(h.tag==='ServoHub');
@@ -115,10 +111,26 @@ const portalName=serial=>serial==='(embedded)'?'Control Hub Portal':`Expansion H
 let robotId=null;const robotKey=async()=>robotId||=await robotName()||null;
 async function notesFor(name,xml){const own=C.notesOf(xml);if(Object.keys(own).length||!ctx.host.wiringNotes)return own;try{const robot=await robotKey();return robot?C.cleanNotes(await ctx.host.wiringNotes({robot,name})):{};}catch{return {};}}
 async function keepNotes(name,notes){try{const robot=await robotKey();if(robot)await ctx.host.wiringNotes?.({robot,name,notes});}catch{}}
+// Every hub the robot finds right now: its scan, corrected by the hubs its web server has open. Never starts anything.
+async function scanPortals(){
+  const serials=C.lynxSerials(await ask('CMD_SCAN','',20000)),found=[];
+  for(const serial of serials)found.push(await C.discover(()=>ask('CMD_DISCOVER_LYNX_MODULES',serial,20000)));
+  let live=[];if(ctx.host.rcHubs){try{live=await ctx.host.rcHubs();}catch{}}
+  const portals=C.withLiveHubs(found,live).filter(p=>p.modules.length);
+  return C.unknownImus(portals)?C.withImus(portals,live):portals;}
+// The hubs the Robot Controller has open, from its web server: nothing on the RS485 wire is touched. A scan asks every hub
+// again, and a real Servo Hub has failed to answer during one ("Failed to determine the REV product number"), so opening a
+// configuration never scans; Scan for new hubs does, when asked.
+async function openHubs(){if(!ctx.host.rcHubs)return [];const live=await ctx.host.rcHubs(),serials=[...new Set(live.map(h=>h?.parentSerial).filter(s=>typeof s==='string'))];
+  return C.withLiveHubs(serials.map(serial=>({serial,modules:[]})),live).filter(p=>p.modules.length);}
 async function openEditor(f){
-  let xml='',notes={};await run(`Reading “${f.name}”…`,async()=>{xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(f));C.parse(xml);notes=await notesFor(f.name,xml);});if(!xml)return;
+  let xml='',notes={},scan=null;await run(`Reading “${f.name}” and checking what is plugged in…`,async()=>{xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(f));C.parse(xml);notes=await notesFor(f.name,xml);try{const found=await openHubs();if(found.length)scan=found;}catch{}});if(!xml)return;
   const {devices,hubs}=C.parse(xml),lynx=hubs.filter(h=>Number.isFinite(h.address)&&(h.tag==='LynxModule'||h.tag==='ServoHub'));
-  edit={file:f,xml,hubs:lynx,portals:[...new Set(lynx.map(h=>h.portal))],view:[],dirty:false,devices:devices.filter(d=>d.module).map(d=>({...d,...(notes[d.name]||{}),family:familyOf(d.tag)})),other:devices.filter(d=>!d.module)};
+  // connected: the hubs found plugged in, null when the robot could not be asked.
+  const onHubs=devices.filter(d=>d.module),match=C.matchHubs(lynx,scan,onHubs);
+  edit={file:f,xml,hubs:match.hubs,portals:[...new Set(match.hubs.map(h=>h.portal))],view:[],dirty:match.added.length+match.fixed.length>0,connected:scan?match.connected:null,devices:onHubs.map(d=>({...d,...(notes[d.name]||{}),family:familyOf(d.tag)})),other:devices.filter(d=>!d.module)};
+  const said=[...(match.added.length?[`Found ${match.added.join(', ')} plugged in and added it.`]:[]),...(match.fixed.length?[`Corrected ${match.fixed.join(', ')} to what the robot reports.`]:[]),...match.wrong.map(w=>`${w.name} is really a ${w.is}. Move the devices on it, then open this again.`)];
+  if(said.length)ctx.toast(`${said.join(' ')}${edit.dirty?' Press Save to keep this.':''}`,6000);
   $('#page-back').onclick=()=>editBack();renderEditor();
 }
 function editBack(){if(edit.view.length){edit.view.pop();status('');renderEditor();}else void leaveEditor();}
@@ -129,26 +141,8 @@ async function leaveEditor(){if(edit?.dirty&&!await ask2({title:'Discard changes
 // computer), with Deck's drawing until it arrives or when there is none --------------------------------------------------
 const photoCache=new Map();
 function photo(tag){if(!tag||!A.photoOf(tag)||!ctx.host.devicePhoto)return Promise.resolve(null);
-  if(!photoCache.has(tag))photoCache.set(tag,Promise.resolve(ctx.host.devicePhoto(tag)).then(url=>url?shrink(url,A.photoOf(tag).mask):null).catch(()=>null).then(v=>{if(!v)photoCache.delete(tag);return v;}));
+  if(!photoCache.has(tag))photoCache.set(tag,Promise.resolve(ctx.host.devicePhoto(tag)).then(url=>url?P.shrink(url,A.photoOf(tag).mask):null).catch(()=>null).then(v=>{if(!v)photoCache.delete(tag);return v;}));
   return photoCache.get(tag);}
-// A photo on white with the store's stamps (mask: [x, y, w, h] fractions) painted out and, when it is a part on a white
-// backdrop, trimmed to the part with a small margin so every part fills its frame alike. At most 480 px on its long
-// side, as a JPEG: small enough to go into an exported pinout.
-function shrink(url,mask=[]){return new Promise(done=>{const img=new Image();img.onload=()=>{
-  const W=img.naturalWidth,H=img.naturalHeight,s0=Math.min(1,1000/Math.max(W,H)),w=Math.max(1,Math.round(W*s0)),h=Math.max(1,Math.round(H*s0)),work=document.createElement('canvas');work.width=w;work.height=h;
-  const g=work.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);for(const [x,y,mw,mh] of mask)g.fillRect(x*w,y*h,mw*w,mh*h);
-  let box=[0,0,w,h];try{box=partBox(g.getImageData(0,0,w,h))||box;}catch{}
-  const pad=Math.round(Math.max(box[2],box[3])*.05),cw=box[2]+2*pad,ch=box[3]+2*pad,s=Math.min(1,480/Math.max(cw,ch)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(cw*s));c.height=Math.max(1,Math.round(ch*s));
-  const o=c.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,c.width,c.height);o.drawImage(work,box[0],box[1],box[2],box[3],pad*s,pad*s,box[2]*s,box[3]*s);try{done(c.toDataURL('image/jpeg',.9));}catch{done(url);}};
-  img.onerror=()=>done(null);img.src=url;});}
-// The part's bounding box [x, y, w, h] in a photo whose edges are mostly white, else null (a photo on its own backdrop
-// is kept whole). Rows and columns with only a stray pixel or two count as white.
-function partBox({data,width:w,height:h}){
-  const ink=(x,y)=>{const i=(y*w+x)*4;return Math.min(data[i],data[i+1],data[i+2])<236;};
-  let edge=0,n=0;for(let x=0;x<w;x+=4){edge+=ink(x,0)+ink(x,h-1);n+=2;}for(let y=0;y<h;y+=4){edge+=ink(0,y)+ink(w-1,y);n+=2;}if(edge>n*.25)return null;
-  const rows=new Uint32Array(h),cols=new Uint32Array(w);for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(ink(x,y)){rows[y]++;cols[x]++;}
-  const min=2,first=a=>a.findIndex(v=>v>min),last=a=>a.length-1-[...a].reverse().findIndex(v=>v>min),x0=first(cols),y0=first(rows);if(x0<0||y0<0)return null;
-  const x1=last(cols),y1=last(rows);return [x0,y0,x1-x0+1,y1-y0+1];}
 // A device's picture: its drawing at once, its product photo when that arrives.
 function figure(tag,cls=''){const f=el('span',`dev-fig ${cls}`);if(!tag){f.classList.add('empty');return f;}f.innerHTML=A.svg(tag,{title:false});
   void photo(tag).then(url=>{if(!url)return;const img=el('img');img.alt='';img.src=url;f.replaceChildren(img);f.classList.add('photo');});return f;}
@@ -212,8 +206,16 @@ function renderEditor(){
     if(e.other.length)body.push(el('h3','cfg-heading','Other devices'),el('p','cfg-none',`${e.other.map(d=>`${d.name} (${d.tag})`).join(', ')}: kept as they are.`));}
   else if(!hub){body.push(el('h3','cfg-heading',`Hubs in ${portalName(v.portal)}`));
     // The Control Hub first, then the hubs on its RS485 wire by address.
-    e.hubs.map((h,i)=>[h,i]).sort(([a],[b])=>Number(b.parent)-Number(a.parent)||(a.tag==='ServoHub')-(b.tag==='ServoHub')||a.address-b.address).forEach(([h,i])=>{if(h.portal!==v.portal)return;const n=e.devices.filter(d=>sameHub(d,h)).length;body.push(entry(h.name,`${h.tag==='ServoHub'?'Servo Hub':h.parent?'Control Hub':'Expansion Hub'} · address ${h.address} · ${count(n,'device')}`,()=>go({portal:v.portal,hub:i})));});
-    if(v.portal==='(embedded)'&&!e.hubs.some(h=>h.portal===v.portal&&!h.parent&&h.tag==='LynxModule'))body.push(el('p','cfg-none','No Expansion Hub in this configuration. Connect it to the Control Hub’s RS485 port, then make a New configuration so the scan finds it.'));}
+    e.hubs.map((h,i)=>[h,i]).sort(([a],[b])=>Number(b.parent)-Number(a.parent)||(a.tag==='ServoHub')-(b.tag==='ServoHub')||a.address-b.address).forEach(([h,i])=>{if(h.portal!==v.portal)return;const n=e.devices.filter(d=>sameHub(d,h)).length;body.push(entry(h.name,`${h.tag==='ServoHub'?'Servo Hub':h.parent?'Control Hub':'Expansion Hub'} · address ${h.address} · ${n?count(n,'device'):'nothing set up on it yet'}${e.connected?(e.connected.has(C.hubKey(h.portal,h.address))?' · connected':' · not found on the robot'):''}`,()=>go({portal:v.portal,hub:i})));});
+    // A hub on the RS485 chain can be written in before it is plugged in; the robot warns it is missing until it is.
+    const addHub=(word,tag)=>button(`Add ${word}`,'cfg-btn cfg-add',()=>{const h=C.newHub(e.hubs,tag,v.portal);if(!h){status('Every RS485 address from 1 to 10 is taken.','error');return;}e.hubs.push(h);e.dirty=true;renderEditor();});
+    // A hub that is plugged in stays: only one the robot did not find can be taken out, and if the robot could not be asked, only after saying so.
+    for(const h of [...e.hubs])if(h.portal===v.portal&&!h.parent&&!e.devices.some(d=>sameHub(d,h))&&!e.connected?.has(C.hubKey(h.portal,h.address)))body.push(button(`Remove ${h.name}`,'cfg-btn danger',async()=>{if(!e.connected&&!await ask2({title:`Remove ${h.name}?`,text:'Deck could not check what is plugged in. If this hub is connected, keep it here: the robot needs it in its configuration to use it.',ok:'Remove'}))return;e.hubs.splice(e.hubs.indexOf(h),1);e.dirty=true;renderEditor();}));
+    body.push(button('Scan for new hubs','cfg-btn cfg-add',()=>void run('Scanning the robot for hubs…',async()=>{const found=await scanPortals();if(!found.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
+      const m=C.matchHubs(e.hubs,found,e.devices);e.hubs.splice(0,e.hubs.length,...m.hubs);e.connected=m.connected;e.portals=[...new Set(e.hubs.map(h=>h.portal))];if(m.added.length+m.fixed.length)e.dirty=true;
+      ctx.toast(m.added.length?`Found ${m.added.join(', ')}. Press Save to keep it.`:'No new hubs found.',4500);renderEditor();})));
+    body.push(addHub('an Expansion Hub','LynxModule'),addHub('a Servo Hub','ServoHub'));
+    if(e.hubs.filter(h=>h.portal===v.portal&&!h.parent&&h.tag==='LynxModule').length>1)body.push(el('p','cfg-none','A competition robot may have only one Expansion Hub with its Control Hub (R701).'));}
   else if(!v.family){
     const families=hub.tag==='ServoHub'?['servo']:['motor','servo','digital','analog'];
     for(const f of families){const n=e.devices.filter(d=>on(d)&&d.family===f).length;body.push(entry(TITLES[f],`Ports 0–${C.PORT_COUNT[f]-1} · ${n} configured`,()=>go({...v,family:f})));}
@@ -245,10 +247,10 @@ async function saveEdit(){
   let xml;try{
     // An I2C device's port is its place on its bus.
     const out=[];for(const h of e.hubs)for(let bus=0;bus<4;bus++)e.devices.filter(d=>sameHub(d,h)&&d.family==='i2c'&&d.bus===bus).sort((a,b)=>a.port-b.port).forEach((d,i)=>out.push({...d,port:i}));
-    xml=C.withNotes(C.rebuild(e.xml,[...e.devices.filter(d=>d.family!=='i2c'),...out].map(({name,tag,port,bus,module})=>({name,tag,port,...(bus!==undefined?{bus}:{}),module}))),notesFrom(e.devices));
+    xml=C.withNotes(C.rebuild(e.xml,[...e.devices.filter(d=>d.family!=='i2c'),...out].map(({name,tag,port,bus,module})=>({name,tag,port,...(bus!==undefined?{bus}:{}),module})),e.hubs),notesFrom(e.devices));
   }catch(err){status(err.message,'error');return;}
   let ok=false;await run(`Saving “${e.file.name}”…`,async()=>{await save(e.file.name,xml);await keepNotes(e.file.name,notesFrom(e.devices));ok=true;});
-  if(ok){changed=true;e.dirty=false;ctx.toast(`Saved “${e.file.name}”. It is the active configuration; the robot restarts when you leave Configure Robot.`,4500);edit=null;$('#page-back').onclick=()=>{if(onBack)onBack();else close();};await loadList();}
+  if(ok){ctx.host.useConfiguration?.({name:e.file.name,xml});changed=true;e.dirty=false;ctx.toast(`Saved “${e.file.name}”. It is the active configuration; the robot restarts when you leave Configure Robot.`,4500);edit=null;$('#page-back').onclick=()=>{if(onBack)onBack();else close();};await loadList();}
 }
 
 // ---- Pinout: a configuration as a wiring diagram (pinout.js), with the product photos of what is in it, to read here
@@ -289,14 +291,12 @@ function renderPinout(unsaved){
   for(const b of tools.querySelectorAll('button'))b.setAttribute('aria-label',{'−':'Zoom out','+':'Zoom in'}[b.textContent]||b.textContent);
   $('#page-body').replaceChildren(...notes,tools,view);requestAnimationFrame(()=>zoom(p.zoom));
 }
-const toBase64=blob=>new Promise((done,fail)=>{const r=new FileReader();r.onload=()=>done(String(r.result).split(',')[1]);r.onerror=()=>fail(r.error);r.readAsDataURL(blob);});
 async function savePinout(kind){
   const p=pin;if(!p)return;const file=`${p.name} pinout`;
   try{let blob;
     if(kind==='svg')blob=new Blob([p.sheet.svg],{type:'image/svg+xml'});
-    else{const img=new Image();img.src=p.url;await img.decode();const scale=Math.min(2,8000/Math.max(p.sheet.width,p.sheet.height)),c=document.createElement('canvas');c.width=Math.round(p.sheet.width*scale);c.height=Math.round(p.sheet.height*scale);
-      c.getContext('2d').drawImage(img,0,0,c.width,c.height);blob=await new Promise(done=>c.toBlob(done,'image/png'));if(!blob)throw Error('The picture is too large to save as a PNG. Save it as an SVG.');}
-    if(ctx.host.saveFile){const where=await ctx.host.saveFile({name:file,kind,data:kind==='svg'?p.sheet.svg:await toBase64(blob)});if(where)ctx.toast(`Saved ${where}`,4500);return;}
+    else blob=await P.png(p.url,p.sheet);
+    if(ctx.host.saveFile){const where=await ctx.host.saveFile({name:file,kind,data:kind==='svg'?p.sheet.svg:await P.base64(blob)});if(where)ctx.toast(`Saved ${where}`,4500);return;}
     const a=el('a');a.href=URL.createObjectURL(blob);a.download=`${file}.${kind}`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
   }catch(e){ctx.toast(e.message,4500);}
 }

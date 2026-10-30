@@ -17,15 +17,16 @@
   const ROLE_SAYS={flywheel:/^(shooter|flywheel|fly|launcher|launch|shoot)$/,feeder:/^(feed|feeder|indexer|index|kicker|kick|transfer|push|pusher|gate)$/,turret:/^(turret|turntable)$/,hood:/^hood$/,roller:/^(intake|roller|sweeper)$/};
   const words=name=>g('DeckRobotConfig').tokens(name);
   const dirsOf=t=>t.filter(w=>DIRS.has(w)).map(w=>w==='centre'?'center':w).sort().join(' ');
-  // Which hub of Setup ('control', 'expansion' or 'servoHub') a configured device is on, from the configuration's hubs.
+  // The configuration's hubs under Setup's ids: control, expansion, expansion2.. by address, servoHub, servoHub2.. by address.
   function hubsOf(config){
     const lynx=(config.hubs||[]).filter(h=>h.tag==='LynxModule'&&Number.isFinite(h.address)),servo=(config.hubs||[]).filter(h=>h.tag==='ServoHub'&&Number.isFinite(h.address));
     const control=lynx.find(h=>h.parent)||lynx.find(h=>h.address===173)||lynx[0]||null,others=lynx.filter(h=>h!==control).sort((a,b)=>a.address-b.address);
-    return {control,expansion:others[0]||null,extra:others.slice(1),servoHub:servo[0]||null};}
-  function placeOf(dev,hubs){const m=dev.module;if(!m)return null;const same=h=>h&&h.address===m.address&&(h.portal||'')===(m.portal||'');
-    const hub=m.servoHub?(same(hubs.servoHub)?'servoHub':null):same(hubs.control)?'control':same(hubs.expansion)?'expansion':null;if(!hub)return null;
+    const ids=[...(control?[['control',control]]:[]),...others.map((h,i)=>[g('DeckHardware').hubId('expansion',i+1),h]),...[...servo].sort((a,b)=>a.address-b.address).map((h,i)=>[g('DeckHardware').hubId('servoHub',i+1),h])];
+    return {control,ids,expansion:others[0]||null,servoHub:ids.find(([id])=>id==='servoHub')?.[1]||null};}
+  function placeOf(dev,hubs){const m=dev.module;if(!m)return null;const hub=hubs.ids.find(([,h])=>h.address===m.address&&(h.portal||'')===(m.portal||'')&&(h.tag==='ServoHub')===!!m.servoHub)?.[0];if(!hub)return null;
     return dev.bus!==undefined?{hub,bus:dev.bus}:Number.isInteger(dev.port)?{hub,port:dev.port}:null;}
-  const kindsFor=row=>ROLE_KINDS[row.role]||ACT_KINDS[row.need]||[row.need];
+  // A moving part runs on whatever the robot has it on: the robot's configuration decides motor or servo, and which servo.
+  const kindsFor=row=>/^kin\./.test(row.key)&&row.role!=='sensor'?['motor','servo','crservo']:ROLE_KINDS[row.role]||ACT_KINDS[row.need]||[row.need];
   // How well a robot device fits one of Setup's rows: 0 is no match. A drive motor matches on its direction words alone
   // (frontLeft, FL, left_front_drive); anything else on the words its name shares with the row's name and label, never
   // across sides (leftLift is not rightLift).
@@ -76,8 +77,7 @@
     out.sensing={localization:loc||project.sensors?.localization||null,hubImu:devices.some(d=>d.kind==='imu')};
     if(!chassis&&loc&&project.controller==='ftc'&&project.sensors?.localization!==loc){out.localization=loc;p={...project,sensors:{...project.sensors,localization:loc}};}
     const rows=W.state(p).rows.filter(r=>r.role!=='pod'&&(!chassis||W.stepOf(r.key)==='robot'&&!['pinpoint','otos'].includes(r.role)));
-    out.hubs.expansion=hubs.expansion?{address:hubs.expansion.address}:false;if(hubs.servoHub)out.hubs.servoHub={address:hubs.servoHub.address};
-    if(hubs.extra.length)out.notes.push(`Setup wires one Expansion Hub; ${hubs.extra.map(h=>h.name).join(', ')} ${hubs.extra.length===1?'is':'are'} left out.`);
+    out.hubs.expansion=false;for(const [id,h] of hubs.ids)if(id!=='control')out.hubs[id]={address:h.address};
     // Every fitting pair, best first; each row and each device is used once.
     const hintOf=row=>{const k=g('DeckHardware').parseKey(row.key),part=k?.list?p.mechanisms?.[k.list]?.[k.index]:null;
       return [...(row.parts||[]),['pollen','nectar'].includes(part?.pieces)?part.pieces:''].flatMap(n=>words(String(n).replace(/\s*<\d+>$/,''))).filter(w=>w.length>2&&!DIRS.has(w)&&!/\d/.test(w));};
@@ -101,7 +101,9 @@
   function apply(project,result){
     const H=g('DeckHardware'),W=g('DeckWiring'),C=g('DeckSimConfig'),MECH=g('DeckMechanisms'),K=g('DeckKinematics'),p=structuredClone(project);
     if(result.localization)p.sensors={...p.sensors,localization:result.localization};
-    let w=p.robot.wiring;w=W.setHub(w,'expansion',!!result.hubs.expansion,result.hubs.expansion?.address);if(result.hubs.servoHub)w=W.setHub(w,'servoHub',true,result.hubs.servoHub.address);
+    // The robot's configuration says which hubs there are; Setup's choice of layout and Servo Power Modules stay.
+    const was=H.wiringOf({wiring:p.robot.wiring}).hubs,count=H.hubIds({hubs:result.hubs}).length-1,lone=result.hubs.expansion&&count===1;
+    let w=H.sanitizeWiring({...H.wiringOf({wiring:p.robot.wiring}),hubs:{...result.hubs,...(was.spm?{spm:was.spm}:{}),layout:lone?'stack':'custom'}});
     const devices={...(p.robot.devices||{})};
     for(const a of result.assign){const k=H.parseKey(a.key);if(!k)continue;
       if(a.sensor){w=H.sanitizeWiring({...H.wiringOf({wiring:w}),sensors:H.wiringOf({wiring:w}).sensors.map(s=>s.id===a.sensor?{...s,name:a.name,...(a.hub?{hub:a.hub,...(a.bus!==undefined?{bus:a.bus}:{port:a.port})}:{})}:s)});continue;}
@@ -110,7 +112,7 @@
         if(a.kind&&k.list==='intakes'&&/^motor2?$/.test(k.field))part.device=a.kind==='crservo'?'crservo':'motor';
         if(a.kind&&k.field==='indexer')part.indexerKind={motor:'motor',crservo:'crservo',servo:'pusher'}[a.kind];
         if(a.kind&&k.field==='turretMotor')p.mechanisms.turret.kind=a.kind==='servo'?'servo':a.kind==='crservo'?'crservo':'motor';}}
-      else if(k.kin){const second=/-2$/.test(k.kin),act=p.kinematics.actuators.find(x=>x.id===k.kin||second&&x.id+'-2'===k.kin);if(act){if(second&&act.id!==k.kin)act.device2=a.name;else act.device=a.name;}}
+      else if(k.kin){const second=/-2$/.test(k.kin),act=p.kinematics.actuators.find(x=>x.id===k.kin||second&&x.id+'-2'===k.kin);if(act){if(second&&act.id!==k.kin)act.device2=a.name;else act.device=a.name;if(a.kind){const was=act.kind;act.kind={motor:'dcmotor',servo:'servo',crservo:'crservo'}[a.kind]||act.kind;if(act.kind!==was)delete act.model;}}}
       if(a.hub&&a.family)w=W.setPort(w,a.key,a.family==='i2c'?`${a.hub}:${a.bus}`:`${a.hub}:${a.port}`,a.family);
       if(a.model)w=W.setModel(w,a.key,a.model);}
     if(result.sensors.length){const cur=H.wiringOf({wiring:w}),ids=new Set(cur.sensors.map(s=>s.id)),add=[];
@@ -122,7 +124,7 @@
   // One sentence for the status line, and one line a match for the list under it.
   function summary(result){const n=result.assign.length+result.sensors.length;
     return n?`Set up from the Control Hub: ${n} device${n===1?'':'s'} matched${result.missing.length?`, ${result.missing.length} Setup device${result.missing.length===1?'':'s'} not on the robot`:''}${result.unused.length?`, ${result.unused.length} on the robot Setup has nothing for`:''}.`:'Nothing on the Control Hub matches what this setup has. Name its devices as the robot does (frontLeft, lift, claw…), or add the mechanisms first.';}
-  function lines(result){const where=a=>a.hub?` · ${a.hub==='control'?'Control Hub':a.hub==='expansion'?'Expansion Hub':'Servo Hub'} ${a.bus!==undefined?`I2C bus ${a.bus}`:`port ${a.port}`}`:'';
+  function lines(result){const where=a=>a.hub?` · ${g('DeckHardware').hubName(a.hub,{hubs:result.hubs})} ${a.bus!==undefined?`I2C bus ${a.bus}`:`port ${a.port}`}`:'';
     const s=result.sensing,sensing=s?.localization==='fused'?`Sensing: the Pinpoint reads its 2 goBILDA odometry pods and turns with its own IMU${s.hubImu?'; the Control Hub’s IMU is used too, as the heading backup if the Pinpoint stops answering':''}`:s?.localization==='optical'?`Sensing: the OTOS tracks position with its own IMU${s.hubImu?'; the Control Hub’s IMU is on the robot too':''}`:s?.hubImu?'Sensing: the Control Hub’s built-in IMU measures turning':'';
     return [...(sensing?[{level:'ok',text:sensing}]:[]),...result.assign.map(a=>({level:a.exact?'ok':'guess',text:`${a.label} → “${a.name}”${where(a)}${a.shared?` (the same motor as ${a.shared.toLowerCase()}: belted together)`:a.was!==a.name?` (was “${a.was}”)`:''}`})),
       ...result.sensors.map(s=>({level:'ok',text:`New sensor on ${s.forLabel} → “${s.name}”${where(s)}`})),
@@ -130,5 +132,23 @@
       ...result.missing.map(m=>({level:'missing',text:`${m.label} (“${m.name}”) is not on the robot: Send to robot can add it`})),
       ...result.unused.map(u=>({level:'unused',text:`“${u.name}” (${u.kind}${u.where?', '+u.where:''}) is on the robot; nothing in Setup uses it`})),
       ...result.notes.map(t=>({level:'missing',text:t}))];}
-  return {plan,apply,summary,lines,score,hubsOf,readout};
+  // The configuration with every hub the robot reported that it does not list, so all of them get Setup's ids together.
+  // portals: RobotConfig.lynxModules answers.
+  function withScan(config,portals){const hubs=[...(config?.hubs||[])],has=(a,portal)=>hubs.some(h=>h.address===a&&(h.portal||'')===(portal||''));
+    for(const p of portals||[]){for(const m of p.modules||[])if(!has(m.address,p.serial))hubs.push({name:m.parent?'Control Hub':`Expansion Hub ${m.address}`,address:m.address,tag:'LynxModule',portal:p.serial,parent:!!m.parent});
+      for(const h of p.servoHubs||[])if(!has(h.address,p.serial))hubs.push({name:`Servo Hub ${h.address}`,address:h.address,tag:'ServoHub',portal:p.serial,parent:false});}
+    return {devices:[],...config,hubs};}
+  // One line on a hub: what the robot reported and what its configuration says. null until the robot was asked.
+  // checking: answers are still coming, so a hub not seen yet is not called missing. missing: Scan finished without it.
+  function hubSeen(address,{scanned,configured,checking}){if(!scanned)return null;const on=scanned.includes(address),in_=configured.includes(address);
+    if(!on&&checking)return {level:'',text:'Checking…'};
+    return on&&in_?{level:'ok',text:'Connected'}:on?{level:'warn',text:'Connected, not in the configuration'}:in_?{level:'bad',text:'In the configuration, not found',missing:true}:{level:'warn',text:'Not found',missing:true};}
+  // A hub's address and kind say which hub it is unless two of one kind look alike. Returns the kinds to tell apart.
+  function needsTest(wiring){const D=g('DeckHardware'),w=D.wiringOf({wiring});return ['expansion','servoHub'].filter(kind=>D.hubsOfKind(w.hubs,kind).length>1);}
+  // The test: for each hub that could be mistaken for another, one output to move, a motor first, then a servo. read: the
+  // hub's read-out (readout()). A hub with nothing configured on it has nothing to move (device null).
+  function testSteps(read,wiring){const D=g('DeckHardware'),w=D.wiringOf({wiring}),rank={motor:0,crservo:1,servo:2},cmd={motor:'M',crservo:'C',servo:'S'};
+    return needsTest(w).flatMap(kind=>D.hubsOfKind(w.hubs,kind).map(hub=>{const d=(read||[]).filter(x=>x.hub===hub&&rank[x.kind]!==undefined).sort((a,b)=>rank[a.kind]-rank[b.kind]||a.port-b.port)[0];
+      return {hub,kind,address:w.hubs[hub].address,device:d?{name:d.name,kind:d.kind,port:d.port,command:cmd[d.kind]}:null};}));}
+  return {plan,apply,summary,lines,score,hubsOf,placeOf,readout,withScan,hubSeen,needsTest,testSteps};
 });

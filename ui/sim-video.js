@@ -17,6 +17,12 @@
     if(!out.auto&&!out.teleop&&out.all&&!frames.some(f=>f.practice))out.auto=out.all.slice();
     return out;
   }
+  // The frames a video of the run covers. An autonomous on its own ends a second after the robot finishes rather than
+  // when its period's clock runs out, as a live recording does; a run with a teleop is kept whole.
+  function editable(frames){
+    const end=frames.find(f=>f.result)?.result;if(!end||frames.some(f=>['transition','teleop'].includes(f.practice?.phase)))return frames;
+    return frames.filter(f=>f.time<=end.time+1);
+  }
   const clock=s=>{const t=Math.max(0,Math.ceil(s-1e-6));return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;};
   // The top of the picture: the period and its clock, the run's name, and the points when it scores.
   function caption(f,{name='',start=0}={}){
@@ -72,5 +78,5 @@
     function close(){clearTimeout(timer);if(recorder&&recorder.state!=='inactive'){recorder.onstop=null;recorder.stop();}recorder=null;track?.stop();track=null;}
     return {begin,stop,close,recording:()=>!!recorder,ext:()=>kind?.ext||'webm'};
   }
-  return {SECTIONS,VIEWS,pickType,sections,caption,detail,title,create};
+  return {SECTIONS,VIEWS,pickType,sections,editable,caption,detail,title,create};
 });

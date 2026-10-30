@@ -28,3 +28,5 @@ details.input-help summary{min-height:44px}
 .picker-head .icon{width:44px;height:44px}
 #robot-fullscreen-exit{width:48px;height:48px}
 @media(max-width:640px){body>header:not(.bar){height:64px}#drive-view{height:calc(100dvh - 76px)}.brand{display:none}.header-right{gap:2px}.network-chip{max-width:44px}.browser-toolbar{padding-inline:4px}.browser-actions button{padding:8px}button.controller{min-width:44px!important}.tab{min-width:58px}.browser-toolbar #close-page{padding-inline:8px}}
+/* Four tabs on a phone: the row scrolls sideways when the screen is too narrow. */
+@media(max-width:640px){body>header:not(.bar) nav{flex:1 1 0;min-width:0;overflow-x:auto;scrollbar-width:none}nav .tab{flex:none}}

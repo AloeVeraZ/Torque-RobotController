@@ -1,46 +1,89 @@
-/* MotionModule palette and bundled OFL fonts, shared by the app and FTC view. */
+/* Torque's one design language. Every screen, shell and Driver Station alike, reads these
+   tokens; robot websites such as Program & Manage keep their own styles. */
 @font-face{font-family:Inter;font-style:normal;font-weight:300 700;font-display:swap;src:url('fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
 :root {
   color-scheme: dark;
-  --bg: #080808;
-  --surface: #111214;
-  --raised: #17181b;
-  --well: #0b0c0e;
-  --control: #1b1c1f;
-  --line: #292a2c;
-  --line-strong: #45464a;
-  --edge-top: #3b3b3a;
-  --text: #f7f4ed;
-  --muted: #b4b1a9;
-  --quiet: #96938d;
-  --accent: #7ba8d8;
-  --accent-text: #9dccff;
-  --accent-bg: #17202a;
+  --bg: #0a0a0a;
+  --surface: #121212;
+  --raised: #1c1c1c;
+  --well: #0d0d0d;
+  --control: #222;
+  --hover: #282828;
+  --line: #222;
+  --line-strong: #333;
+  --edge-top: var(--line);
+  --input-hover: #444;
+  --placeholder: #5c5c5c;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --quiet: #737373;
+  --accent: #f5f5f5;
+  --accent-text: #f5f5f5;
+  --accent-bg: #1c1c1c;
+  --accent-hover: #d4d4d4;
+  --accent-active: #bdbdbd;
+  --accent-fill: var(--accent);
+  --on-accent: #0a0a0a;
   --connected: #45cf9a;
   --connected-bg: #14231e;
+  --success: var(--connected);
   --warning: #f0c063;
   --warning-bg: #2a2418;
   --danger: #ff8189;
   --danger-bg: #2b1a1c;
-  --radius: 16px;
+  --go: #22c55e;
+  --on-go: #05160c;
+  --stop: #dc2626;
+  --on-stop: #fff;
+  --radius: 12px;
+  --radius-panel: 12px;
+  --radius-control: 8px;
+  --radius-detail: 6px;
   --space: 16px;
+  --bar-height: 52px;
+  --page-gutter: 24px;
+  --page-max: 1320px;
   --font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-display: var(--font);
   --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  --shadow: 0 12px 40px #0006;
-  --accent-fill: linear-gradient(180deg,#86b1df,#6b9acd);
-  --grid-major: #91c8ff0c;
-  --grid-minor: #ffffff04;
+  --shadow: 0 16px 48px #000a;
+  --backdrop: #000c;
+  --grid-major: transparent;
+  --grid-minor: transparent;
+}
+/* Light theme: chosen in Settings, or followed from the system when set to System. */
+:root[data-theme=light] {
+  color-scheme: light;
+  --bg: #f7f7f7; --surface: #fff; --raised: #efefef; --well: #f7f7f7; --control: #e8e8e8;
+  --line: #e6e6e6; --line-strong: #d4d4d4; --text: #0a0a0a; --muted: #525252; --quiet: #737373;
+  --accent: #0a0a0a; --accent-text: #0a0a0a; --accent-bg: #efefef; --on-accent: #fafafa;
+  --accent-hover: #262626; --accent-active: #404040; --hover: #e2e2e2; --input-hover: #a3a3a3; --placeholder: #a3a3a3;
+  --backdrop: #0006; --shadow: 0 16px 48px #0002;
+  --connected: #16a34a; --connected-bg: #dcfce7; --warning: #a16207; --warning-bg: #fef9c3; --danger: #dc2626; --danger-bg: #fee2e2;
+  --go: #16a34a; --on-go: #fff;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme=dark]) {
+    color-scheme: light;
+    --bg: #f7f7f7; --surface: #fff; --raised: #efefef; --well: #f7f7f7; --control: #e8e8e8;
+    --line: #e6e6e6; --line-strong: #d4d4d4; --text: #0a0a0a; --muted: #525252; --quiet: #737373;
+    --accent: #0a0a0a; --accent-text: #0a0a0a; --accent-bg: #efefef; --on-accent: #fafafa;
+    --accent-hover: #262626; --accent-active: #404040; --hover: #e2e2e2; --input-hover: #a3a3a3; --placeholder: #a3a3a3;
+    --backdrop: #0006; --shadow: 0 16px 48px #0002;
+    --connected: #16a34a; --connected-bg: #dcfce7; --warning: #a16207; --warning-bg: #fef9c3; --danger: #dc2626; --danger-bg: #fee2e2;
+    --go: #16a34a; --on-go: #fff;
+  }
 }
 *, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-color: var(--line-strong) transparent; }
 [hidden] { display: none !important; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .45; }
 button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
 :where(button, a, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-::selection { background: #31598b; color: #fff; }
+::selection { background: var(--accent); color: var(--on-accent); }
 @media (prefers-reduced-motion: no-preference) {
   button, a, input, select { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
 }

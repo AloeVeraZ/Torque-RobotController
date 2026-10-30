@@ -93,18 +93,19 @@
     'indexer:motor':'In Mechanisms, set the feeder to a motor or a continuous servo.','indexer:crservo':'In Mechanisms, set the feeder to a motor or a continuous servo.',
     'servo:crservo':'A ramp or kicker moves on a servo: set it to "Servo" in Configure Robot.','hood:crservo':'The hood moves on a servo: set it to "Servo" in Configure Robot.',
     'need touch:digital':'Set it to "REV Touch Sensor" in Configure Robot, or pick a limit switch for it in Deck.','need digital:touch':'Set it to "Digital Device" in Configure Robot, or pick a REV Touch Sensor for it in Deck.'};
-  // The hub Setup means on this robot: control is the parent hub (the Control Hub), expansion the first other hub, servoHub
-  // the first Servo Hub, a number the hub at that address. modules: [{portal, address, name, parent, servoHub?}].
-  function hubFor(hub,modules){const all=modules||[],lynx=hubOrder(all.filter(m=>!m.servoHub));
-    if(Number.isInteger(hub))return all.find(m=>m.address===hub)||null;if(hub==='control')return lynx[0]||null;if(hub==='expansion')return lynx[1]||null;
-    if(hub==='servoHub')return all.filter(m=>m.servoHub).sort((a,b)=>a.address-b.address)[0]||null;return null;}
-  const HUB_WORDS={control:'the Control Hub',expansion:'an Expansion Hub',servoHub:'a Servo Hub'};
+  // The hub Setup means on this robot: control is the parent hub (the Control Hub), expansion, expansion2.. the other hubs
+  // by address, servoHub, servoHub2.. the Servo Hubs by address, a number the hub at that address.
+  // modules: [{portal, address, name, parent, servoHub?}].
+  function hubFor(hub,modules){const all=modules||[],lynx=hubOrder(all.filter(m=>!m.servoHub)),nth=/^(expansion|servoHub)([2-9]|10)?$/.exec(String(hub)),n=Number(nth?.[2]||1);
+    if(Number.isInteger(hub))return all.find(m=>m.address===hub)||null;if(hub==='control')return lynx[0]||null;if(nth?.[1]==='expansion')return lynx[n]||null;
+    if(nth?.[1]==='servoHub')return all.filter(m=>m.servoHub).sort((a,b)=>a.address-b.address)[n-1]||null;return null;}
+  const hubWord=hub=>/^expansion/.test(hub)?'an Expansion Hub':/^servoHub/.test(hub)?'a Servo Hub':hub==='control'?'the Control Hub':null;
   const modulesIn=config=>(config?.hubs||[]).filter(h=>Number.isFinite(h.address)).map(h=>({portal:h.portal,address:h.address,name:h.name,parent:h.parent,...(h.tag==='ServoHub'?{servoHub:true}:{})}));
   // Where Setup has a device, when the robot's configuration has it somewhere else.
   function movedFrom(n,found,config){
     const w=n.wired;if(!w||typeof w!=='object'||!found.module)return null;const want=hubFor(w.hub,modulesIn(config)),family=portFamily(n.device||n.need),i2c=family==='i2c'||found.bus!==undefined;
     const port=i2c?w.bus??w.port:w.port,same=want&&want.address===found.module.address&&want.portal===found.module.portal&&(i2c?found.bus===port:found.port===port);if(same||!Number.isInteger(port))return null;
-    return {hub:w.hub,...(i2c?{bus:port}:{port}),label:`${want?want.name:HUB_WORDS[w.hub]||`hub ${w.hub}`} ${i2c?`I2C bus ${port}`:`${family} port ${port}`}`};}
+    return {hub:w.hub,...(i2c?{bus:port}:{port}),label:`${want?want.name:hubWord(w.hub)||`hub ${w.hub}`} ${i2c?`I2C bus ${port}`:`${family} port ${port}`}`};}
   // A plain sentence for one row of the check.
   function explain(row){
     if(row.duplicate)return `"${row.name}" is also the name Deck uses for ${row.duplicate.toLowerCase()}. Each device needs its own name.`;
@@ -186,7 +187,7 @@
     if(!parent)return {assignments,problems:['The robot configuration has no Control Hub or Expansion Hub.']};
     for(const add of adds){if(!add.wired||typeof add.wired!=='object'||add.device==='imu'||fixed.has(add.name)||failed.has(add.name))continue;
       const family=portFamily(add.device),module=hubFor(add.wired.hub,modules),i2c=family==='i2c',port=i2c?add.wired.bus??add.wired.port:add.wired.port,at=module?(i2c?{module,port:0,bus:port}:{module,port}):null;
-      if(!module){problems.push(`${add.label}: Setup has it on ${HUB_WORDS[add.wired.hub]||`hub ${add.wired.hub}`}, which the robot does not have.`);failed.add(add.name);continue;}
+      if(!module){problems.push(`${add.label}: Setup has it on ${hubWord(add.wired.hub)||`hub ${add.wired.hub}`}, which the robot does not have.`);failed.add(add.name);continue;}
       const n=i2c?PORTS.i2c:module.servoHub?(family==='servo'?PORTS.servo:0):PORTS[family]||0;
       if(!(Number.isInteger(port)&&port>=0&&port<n)){problems.push(`${add.label}: ${module.name} has no ${i2c?'I2C bus':family+' port'} ${port}.`);failed.add(add.name);continue;}
       if(!i2c&&!portsOf(family,module,add,false).includes(port)){problems.push(`${add.label}: ${add.channels==='even'?'it reads only on even analog channels (0 and 2)':'it reads only on odd digital channels (1, 3, 5 and 7)'}; Setup has it on ${portLabel({...at,device:add.device})}.`);failed.add(add.name);continue;}
@@ -248,7 +249,7 @@
   }
   // A configuration for a robot that has none, from a scan of its hubs: every hub found, named as Configure Robot names
   // them, with the planned devices.
-  const moduleName=(portal,m)=>portal.serial==='(embedded)'&&m.parent?'Control Hub':`Expansion Hub ${m.address}`;
+  const moduleName=(portal,m)=>m.name||(portal.serial==='(embedded)'&&m.parent?'Control Hub':`Expansion Hub ${m.address}`);
   // The SDK writes a hub's motors, then its servos, analog inputs, PWM outputs, digital devices and I2C devices, each in
   // port order (WriteXMLFileHandler, FTC SDK 12.0). A portal's Servo Hubs ({address, name?}) follow its hubs.
   const FAMILY_ORDER={motor:0,servo:1,analog:2,pwm:3,digital:4,i2c:5},written=(a,b)=>FAMILY_ORDER[portFamily(a.device)]-FAMILY_ORDER[portFamily(b.device)]||(a.bus??0)-(b.bus??0)||a.port-b.port;
@@ -275,14 +276,15 @@
     const found=portals?.find(p=>p.serial===h.portal)?.modules.find(m=>m.address===h.address);
     return {portal:h.portal,address:h.address,name:h.name,parent:h.parent,...(found?{imu:found.imu}:portals?{missing:true}:{})};});
   // A whole configuration with no robot to scan: the Control Hub's own board (address 173), an Expansion Hub on its
-  // RS485 port at the address Setup gives (wiring.hubs.expansion) and a Servo Hub (wiring.hubs.servoHub), with each
+  // RS485 port at each address Setup gives (wiring.hubs.expansion, expansion2..) and Servo Hubs (servoHub, servoHub2..), with each
   // device on the port Setup or Deck's plan gave it (DeckHardware.placed rows: {name, label, device, model?, xmlType?,
   // pwm?, channels?, fast?, setting?, hub?, port?, bus?, via?}; a row with no port is planned here). A sensor read
   // through a motor's port (via) has no line of its own. imu: the Control Hub's IMU, BHI260 (every Control Hub since
   // September 2022) or BNO055. Returns {xml, assignments, problems}; a device that found no port is left out.
   function configurationFor(rows,wiring,{imu='BHI260'}={}){
-    const h=wiring?.hubs||{},address=(v,d)=>Number.isInteger(v)&&v>0&&v<255&&v!==173?v:d,exp=h.expansion?address(h.expansion.address,2):null,sh=h.servoHub?address(h.servoHub.address,3):null;
-    const portal={serial:'(embedded)',modules:[{address:173,parent:true,imu},...(exp?[{address:exp,parent:false,imu:'NONE'}]:[])],servoHubs:sh&&sh!==exp?[{address:sh}]:[]};
+    const h=wiring?.hubs||{},address=(v,d)=>Number.isInteger(v)&&v>0&&v<255&&v!==173?v:d,of=(test,d)=>Object.keys(h).filter(k=>test.test(k)&&h[k]).map(k=>address(h[k].address,d)).sort((a,b)=>a-b);
+    const exp=of(/^expansion(\d+)?$/,2),servo=of(/^servoHub(\d+)?$/,3).filter(a=>!exp.includes(a));
+    const portal={serial:'(embedded)',modules:[{address:173,parent:true,imu},...exp.map(a=>({address:a,parent:false,imu:'NONE'}))],servoHubs:servo.map(a=>({address:a}))};
     const adds=(rows||[]).filter(r=>r&&r.name&&r.device&&!r.via).map(r=>({name:r.name,label:r.label||r.name,device:r.device,...(r.setting?{setting:r.setting}:{}),...Object.fromEntries(CARRY.slice(1).filter(k=>r[k]!==undefined&&r[k]!==null&&r[k]!==false).map(k=>[k,r[k]])),
       ...(r.hub?{wired:{hub:r.hub,...(r.bus!==undefined?{bus:r.bus}:{port:r.port})}}:r.wired&&typeof r.wired==='object'?{wired:r.wired}:{})}));
     const {assignments,problems}=planPorts(adds,{modules:modulesFromScan([portal])});
@@ -296,12 +298,44 @@
   }
   const validName=name=>typeof name==='string'&&/^[A-Za-z0-9_][\w -]{0,39}$/.test(name)&&name.trim()===name;
   // The robot's answers to CMD_SCAN (ScannedDevices: {map: [{key: serial, value: UsbDeviceType}]}) and
-  // CMD_DISCOVER_LYNX_MODULES (LynxModuleMetaList: {serialNumber, modules: [{moduleAddress, isParent, imuType}]}).
+  // CMD_DISCOVER_LYNX_MODULES (LynxModuleMetaList: {serialNumber, modules: [{moduleAddress, isParent, imuType, revProductNumber}]}).
+  // A Servo Hub answers on the RS485 chain too, with its own product number (LynxConstants.SERVO_HUB_PRODUCT_NUMBER, FTC SDK 12.0).
   const lynxSerials=scan=>{const v=JSON.parse(scan);return (Array.isArray(v?.map)?v.map:[]).filter(e=>e?.value==='LYNX_USB_DEVICE'&&typeof e.key==='string').map(e=>e.key);};
-  function lynxModules(list){const v=JSON.parse(list);return {serial:String(v?.serialNumber??''),modules:(Array.isArray(v?.modules)?v.modules:[]).filter(m=>Number.isInteger(m?.moduleAddress)).map(m=>({address:m.moduleAddress,parent:!!m.isParent,imu:typeof m.imuType==='string'?m.imuType:'UNKNOWN'}))};}
+  // Everything else the scan found on USB (a webcam): [{serial, type}].
+  const otherUsb=scan=>{const v=JSON.parse(scan);return (Array.isArray(v?.map)?v.map:[]).filter(e=>typeof e?.key==='string'&&typeof e.value==='string'&&e.value!=='LYNX_USB_DEVICE').map(e=>({serial:e.key,type:e.value}));};
+  const SERVO_HUB_PRODUCT=1120341;
+  function lynxModules(list){const v=JSON.parse(list),all=(Array.isArray(v?.modules)?v.modules:[]).filter(m=>Number.isInteger(m?.moduleAddress)),servo=all.filter(m=>m.revProductNumber===SERVO_HUB_PRODUCT);
+    return {serial:String(v?.serialNumber??''),modules:all.filter(m=>m.revProductNumber!==SERVO_HUB_PRODUCT).map(m=>({address:m.moduleAddress,parent:!!m.isParent,imu:typeof m.imuType==='string'?m.imuType:'UNKNOWN'})),...(servo.length?{servoHubs:servo.map(m=>({address:m.moduleAddress}))}:{})};}
   // While the robot has a hub open (it always has a Control Hub's own board), FTC SDK 12.0's scan answers its IMU as
   // UNKNOWN. The Robot Controller's web server knows it: /js/rcInfo.json revHubNamesAndVersions, [{parentSerial,
   // moduleAddress, imuType: BHI260AP, BNO055 or NONE}]. withImus fills the scan's UNKNOWN IMUs from that list.
+  // Discovery takes about 1.2 s an answer and any answer can miss hubs, empty or partial, even after a full one (seen on a
+  // Control Hub, FTC SDK 12.0, about one in four), but it never invents one. So the answers are added up, until one adds
+  // nothing. expect: addresses the robot has open; one still missing gets a few more asks before it counts as gone.
+  // ask(): one CMD_DISCOVER_LYNX_MODULES answer. onAnswer(hubs so far): after each answer, to show them at once.
+  async function discover(ask,{tries=8,expect=[],onAnswer}={}){
+    const key=p=>[...p.modules.map(m=>m.address),...(p.servoHubs||[]).map(h=>'s'+h.address)].sort().join();let all=null;
+    for(let i=0;i<tries;i++){const p=lynxModules(await ask()),was=all?key(all):'';if(!all)all={...p,modules:[],servoHubs:[]};
+      for(const h of p.servoHubs||[]){all.modules=all.modules.filter(m=>m.address!==h.address);if(!all.servoHubs.some(s=>s.address===h.address))all.servoHubs.push(h);}
+      for(const m of p.modules){const had=all.modules.find(x=>x.address===m.address);if(had){if(had.imu==='UNKNOWN')had.imu=m.imu;}else if(!all.servoHubs.some(s=>s.address===m.address))all.modules.push({...m});}
+      onAnswer?.(tidy(all));if(key(all)&&key(all)===was&&(i>=3||expect.every(a=>[...all.modules,...all.servoHubs].some(h=>h.address===a))))break;}
+    return tidy(all);}
+  const tidy=({servoHubs,...p})=>({...p,modules:p.modules.map(m=>({...m})),...(servoHubs.length?{servoHubs:servoHubs.map(h=>({...h}))}:{})});
+  // The hubs the Robot Controller has open, by portal: known in a few milliseconds, before discovery has answered.
+  const openHubs=hubs=>withLiveHubs([...new Set((Array.isArray(hubs)?hubs:[]).map(h=>h?.parentSerial).filter(s=>typeof s==='string'))].map(serial=>({serial,modules:[]})),hubs);
+  // The configuration without one hub and the devices on it. address and tag say which hub; portal when there are several.
+  function removeHub(xml,{address,tag,portal}){const {devices,hubs}=parse(xml),same=h=>h.address===address&&(!tag||h.tag===tag)&&(!portal||h.portal===portal),gone=hubs.filter(same);if(!gone.length)return {xml,devices:[]};
+    const on=d=>d.module&&gone.some(h=>d.module.portal===h.portal&&d.module.address===h.address&&!!d.module.servoHub===(h.tag==='ServoHub')),keep=devices.filter(d=>d.module&&!on(d));
+    const out=rebuild(xml,keep.map(({name,tag,port,bus,module})=>({name,tag,port,...(bus!==undefined?{bus}:{}),module})),hubs.filter(h=>!same(h)));
+    return {xml:withNotes(out,Object.fromEntries(Object.entries(notesOf(xml)).filter(([name])=>keep.some(d=>d.name===name)))),devices:devices.filter(on)};}
+  // Hubs the Robot Controller already has open (/js/rcInfo.json revHubNamesAndVersions) answered it, so they are there.
+  // Its product number also corrects the scan: a scan can fail to read one (FTC SDK 12.0 logs "Failed to determine the REV
+  // product number", seen with a real Servo Hub), and a hub with no number would pass for an Expansion Hub.
+  function withLiveHubs(portals,hubs,{add=true}={}){return portals.map(p=>{const out={...p,modules:[...p.modules],...(p.servoHubs?{servoHubs:[...p.servoHubs]}:{})};
+    for(const h of Array.isArray(hubs)?hubs:[]){const moved=h?.parentSerial===p.serial&&h.revProductNumber===SERVO_HUB_PRODUCT&&out.modules.some(m=>m.address===h.moduleAddress&&!m.parent);if(moved)out.modules=out.modules.filter(m=>m.address!==h.moduleAddress);
+      if(!add&&!moved)continue;if(h?.parentSerial!==p.serial||!Number.isInteger(h.moduleAddress)||out.modules.some(m=>m.address===h.moduleAddress)||out.servoHubs?.some(s=>s.address===h.moduleAddress))continue;
+      if(h.revProductNumber===SERVO_HUB_PRODUCT)(out.servoHubs??=[]).push({address:h.moduleAddress});else out.modules.push({address:h.moduleAddress,parent:h.moduleAddress===173,imu:imuOf(String(h.imuType||''))||'UNKNOWN'});}
+    return out;});}
   const imuOf=t=>/^BHI260/i.test(t)?'BHI260':/^BNO055/i.test(t)?'BNO055':/^NONE$/i.test(t)?'NONE':null;
   const withImus=(portals,hubs)=>portals.map(p=>({...p,modules:p.modules.map(m=>{if(m.imu!=='UNKNOWN')return m;
     const h=(Array.isArray(hubs)?hubs:[]).find(h=>h?.parentSerial===p.serial&&h.moduleAddress===m.address),imu=imuOf(String(h?.imuType||''));return imu?{...m,imu}:m;})}));
@@ -329,18 +363,47 @@
     servo:[['Servo','Servo'],['ServoFullRange','Servo, full range (500–2500 µs)'],['ContinuousRotationServo','Continuous rotation servo'],['RevBlinkinLedDriver','REV Blinkin LED driver'],['RevSPARKMini','REV SPARK Mini']],
     analog:[['AnalogInput','Analog input'],['OpticalDistanceSensor','Optical distance sensor']],digital:[['DigitalDevice','Digital device'],['RevTouchSensor','REV Touch Sensor'],['Led','LED']],
     i2c:[['RevColorSensorV3','REV Color Sensor V3'],['REV_VL53L0X_RANGE_SENSOR','REV 2m Distance Sensor'],['goBILDAPinpoint','goBILDA Pinpoint'],['SparkFunOTOS','SparkFun OTOS'],['OctoQuadFTC','OctoQuad'],['HuskyLens','HuskyLens'],['ControlHubImuBHI260AP','Control Hub IMU (BHI260AP)'],['LynxEmbeddedIMU','Hub IMU (BNO055)']]};
+  // What each port offers, named as the Driver Hub's lists show them (FTC SDK 12.0 @MotorType/@ServoType/@DeviceProperties).
+  // These are the only parts Configure offers.
+  const DEVICE_TYPES={motor:EDIT_TYPES.motor.map(([t,l])=>[t,t==='Motor'?'Unspecified Motor':l]),
+  servo:[['Servo','Servo'],['ContinuousRotationServo','Continuous Rotation Servo'],['RevBlinkinLedDriver','REV Blinkin LED Driver'],['RevSPARKMini','REV SPARK Mini Motor Controller']],
+  digital:[['DigitalDevice','Digital Device'],['Led','LED'],['RevTouchSensor','REV Touch Sensor']],
+  analog:[['AnalogInput','Analog Input'],['OpticalDistanceSensor','Optical Distance Sensor'],['ModernRoboticsAnalogTouchSensor','MR Analog Touch Sensor']],
+  i2c:[['AdafruitBNO055IMU','Adafruit IMU'],['AdafruitColorSensor','Adafruit RGB Color Sensor'],['AndyMarkIMU','AndyMark IMU'],['AndyMarkColor','AndyMark Proximity & Color Sensor'],['AndyMarkTOF','AndyMark 2m TOF Lidar'],
+    ['ControlHubImuBHI260AP','REV Internal IMU (BHI260AP)'],['LynxEmbeddedIMU','REV Internal IMU (BNO055)'],['RevExternalImu','REV External IMU'],['OctoQuadFTC','DigitalChickenLabs OctoQuad'],['HuskyLens','DFRobot HuskyLens'],
+    ['goBILDAPinpoint','goBILDA Pinpoint Odometry Computer'],['MaxSonarI2CXL','MaxBotix MaxSonar I2CXL'],['ModernRoboticsI2cColorSensor','MR Color Sensor'],['ModernRoboticsI2cRangeSensor','MR Range Sensor'],
+    ['KauaiLabsNavxMicro','navX Micro'],['REV_VL53L0X_RANGE_SENSOR','REV 2m Distance Sensor'],['RevColorSensorV3','REV Color Sensor V3'],['LynxColorSensor','REV Color/Range Sensor'],['SparkFunOTOS','SparkFun OTOS'],['QWIIC_LED_STICK','SparkFun Qwiic LED Stick']]};
   const PORT_COUNT={motor:4,servo:6,analog:4,digital:8,i2c:4};
+  // A configuration's hubs against what is plugged in right now. portals: the scan (lynxModules, withLiveHubs). A hub the
+  // scan found and the configuration lacks is added; one written down as the wrong kind is corrected unless it has devices
+  // on it (wrong: those, for the team to move). connected: hubKey of each hub found.
+  const hubKey=(portal,address)=>`${portal}|${address}`;
+  function matchHubs(hubs,portals,devices=[]){const out=(hubs||[]).map(h=>({...h})),added=[],fixed=[],wrong=[],connected=new Set(),word=tag=>tag==='ServoHub'?'Servo Hub':'Expansion Hub';
+    for(const p of portals||[])for(const f of [...p.modules.map(m=>({address:m.address,tag:'LynxModule',parent:!!m.parent})),...(p.servoHubs||[]).map(h=>({address:h.address,tag:'ServoHub',parent:false}))]){connected.add(hubKey(p.serial,f.address));
+      const h=out.find(x=>x.portal===p.serial&&x.address===f.address);
+      if(!h){const hub={name:f.parent&&p.serial==='(embedded)'?'Control Hub':`${word(f.tag)} ${f.address}`,address:f.address,tag:f.tag,portal:p.serial,parent:f.parent};out.push(hub);added.push(hub.name);continue;}
+      if(h.tag===f.tag)continue;if(devices.some(d=>d.module&&d.module.portal===p.serial&&d.module.address===f.address)){wrong.push({name:h.name,is:word(f.tag)});continue;}
+      if(h.name===`${word(h.tag)} ${h.address}`)h.name=`${word(f.tag)} ${h.address}`;h.tag=f.tag;fixed.push(h.name);}
+    return {hubs:out,added,fixed,wrong,connected};}
+  // Webcams in a configuration: under <Robot>, on no hub, known by their serial number, as Configure Robot writes them.
+  const webcamsOf=xml=>[...elements(xml)].filter(e=>!e.close&&e.tag==='Webcam').map(e=>({name:e.attrs.name,serial:e.attrs.serialNumber||''}));
+  function withWebcams(xml,list){const clean=String(xml).replace(/[ \t]*<Webcam\b[^>]*?\/>[ \t]*\r?\n?/g,'').replace(/[ \t]*<Webcam\b[^>]*>\s*<\/Webcam>[ \t]*\r?\n?/g,'');
+    return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n${(list||[]).map(c=>`    <Webcam name="${escape(c.name)}" serialNumber="${escape(c.serial)}" />\n`).join('')}`);}
+  // A hub to add to a portal, for hubs a scan cannot find yet (not plugged in, or a Servo Hub): its default address when
+  // free, else the next free one of 1-10 (the SDK's range), named as Configure Robot names them. Null when all are taken.
+  function newHub(hubs,tag,portal='(embedded)'){const used=new Set((hubs||[]).map(h=>h.address)),first=tag==='ServoHub'?3:2,address=[first,1,2,3,4,5,6,7,8,9,10].find(a=>!used.has(a));if(address===undefined)return null;
+    return {name:`${tag==='ServoHub'?'Servo Hub':'Expansion Hub'} ${address}`,address,tag,portal,parent:false};}
   // An LED is on the port family of its type: a digital LED, a Blinkin on a servo port, a Qwiic LED Stick on I2C.
   const familyOfTag=tag=>{for(const [f,list] of Object.entries(EDIT_TYPES))if(list.some(([t])=>t===tag))return f;return tag==='QWIIC_LED_STICK'?'i2c':portFamily(kindOf(tag));};
   // The configuration with its devices replaced by `devices` ({name, tag, port, bus?, module: {portal, address,
-  // servoHub?}}), hubs and anything outside a hub (a webcam, a Limelight) kept as they were.
-  function rebuild(xml,devices){
-    const {hubs}=parse(xml),portals=[];for(const h of hubs){let p=portals.find(x=>x.serial===h.portal);if(!p){p={serial:h.portal,modules:[],servoHubs:[]};portals.push(p);}
-      if(h.tag==='ServoHub')p.servoHubs.push({address:h.address,name:h.name});else p.modules.push({address:h.address,parent:h.parent});}
+  // servoHub?}}), anything outside a hub (a webcam, a Limelight) kept as it was. hubs: the hubs to write, when they changed.
+  function rebuild(xml,devices,newHubs){
+    const hubs=newHubs||parse(xml).hubs,portals=[];for(const h of hubs){let p=portals.find(x=>x.serial===h.portal);if(!p){p={serial:h.portal,modules:[],servoHubs:[]};portals.push(p);}
+      if(h.tag==='ServoHub')p.servoHubs.push({address:h.address,name:h.name});else p.modules.push({address:h.address,parent:h.parent,name:h.name});}
     for(const d of devices||[])if(!validName(d.name))throw Error(`“${d.name}” cannot be a device name: use letters, digits, spaces, - and _.`);
     const names=new Set();for(const d of devices||[]){if(names.has(d.name.toLowerCase()))throw Error(`Two devices are named “${d.name}”.`);names.add(d.name.toLowerCase());}
     const out=newConfiguration(portals,(devices||[]).map(d=>({...d,device:d.bus!==undefined?'i2c':familyOfTag(d.tag)})));
-    const outside=elements(xml).filter(e=>!e.close&&e.attrs.name&&!CONTAINERS.has(e.tag)&&!within(e,HUBS)).map(e=>'    '+xml.slice(e.start,xml.indexOf('>',e.start)+1).replace(/\s*>$/,'').replace(/\/$/,'').trim()+' />');
+    const outside=[...elements(xml)].filter(e=>!e.close&&e.attrs.name&&!CONTAINERS.has(e.tag)&&!within(e,HUBS)).map(e=>'    '+xml.slice(e.start,xml.indexOf('>',e.start)+1).replace(/\s*>$/,'').replace(/\/$/,'').trim()+' />');
     return outside.length?out.replace(/(<Robot[^>]*>)/,'$1\n'+outside.join('\n')):out;}
   // ---- Deck's wiring notes: what a configuration cannot say (a motor's gearbox, whether its encoder cable is plugged in),
   // kept in the configuration as one XML comment the SDK skips: <!-- Deck wiring: {"frontLeft":{"gear":"13.7:1","encoder":false}} -->.
@@ -356,6 +419,6 @@
     for(const [name,n] of Object.entries(notes||{})){const k={};if(typeof n?.gear==='string'&&n.gear)k.gear=n.gear;if(typeof n?.encoder==='boolean')k.encoder=n.encoder;if(Object.keys(k).length)keep[name]=k;}
     if(!Object.keys(keep).length)return clean;const json=JSON.stringify(keep).replace(/-/g,'\\u002d').replace(/[<>&;]/g,c=>'\\u00'+c.charCodeAt(0).toString(16));
     return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n    <!-- Deck wiring: ${json} -->\n`);}
-  return {notesOf,cleanNotes,withNotes,EDIT_TYPES,PORT_COUNT,familyOfTag,rebuild,javaFor,javaOf,variableOf,parse,kindOf,check,explain,fits,tokens,KINDS,PORTS,MOTOR_TYPES,IMU_TAGS,missingDevices,planPorts,portChoices,movePort,withType,portLabel,portFamily,portKeyOf:keyOf,portsTaken,tagFor,hubFor,
-    addDevices,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,lynxModules,withImus,unknownImus,deviceXml};
+  return {notesOf,cleanNotes,withNotes,EDIT_TYPES,DEVICE_TYPES,PORT_COUNT,familyOfTag,rebuild,javaFor,javaOf,variableOf,parse,kindOf,check,explain,fits,tokens,KINDS,PORTS,MOTOR_TYPES,IMU_TAGS,missingDevices,planPorts,portChoices,movePort,withType,portLabel,portFamily,portKeyOf:keyOf,portsTaken,tagFor,hubFor,
+    addDevices,newHub,matchHubs,hubKey,discover,withLiveHubs,openHubs,removeHub,webcamsOf,withWebcams,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,otherUsb,lynxModules,withImus,unknownImus,deviceXml};
 });
