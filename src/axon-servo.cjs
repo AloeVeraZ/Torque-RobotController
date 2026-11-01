@@ -86,30 +86,32 @@ class Programmer{
 
 // ---- settings
 // Values are in the servo's own raw units, so reading and writing one back can never drift through rounding. Each field says
-// what it means in plain words (what) and how its raw number reads to a person (format, drawn by ui/axon-programmer.js).
+// what it means twice: short sits beside the control, and what is the fuller version on the hint line when it is pointed at.
+// format says how its raw number reads to a person (drawn by ui/axon-programmer.js).
 const POWER='How hard the motor may push, as a share of full power. Lower it if the servo stalls on a Control Hub: Axon suggests about 66% (MAX) or 75% (MINI) at 4.8 V, and 85% at 6 V from a Servo Power Module or Servo Hub.';
 const SENSITIVITY='How small a change in the signal the servo reacts to. Higher reacts to smaller changes but can buzz while holding still. Lower is calmer but less exact. Axon calls this the dead-band.';
 const LOST='What the servo does if the signal stops while it still has power, such as when a wire comes loose. Release goes limp, Keep Position holds where it is, and Go Neutral moves to center.';
 const DAMPING='Slows the servo as it arrives so it does not overshoot. Axon tunes this at the factory and advises against changing it. Change it only if the servo overshoots or oscillates.';
-const GROUP_NOTES={'Overload protection':'When the servo stalls, it cuts its own power in up to three stages so the motor does not burn out. Axon recommends keeping the factory values or something more careful.'};
+const OVERLOAD='When the servo stalls, it cuts its own power in up to three stages so the motor does not burn out. Axon recommends keeping the factory values or something more careful.';
 const INVERT='Reverses which way the servo turns for the same command. Counter-clockwise is the default.';
 const PROPTL='How long the servo may hold full power before it starts limiting itself. Continuous rotation has no three-stage overload protection, so this is its only stall protection.';
 const BEEP='Plays a sound when the servo powers up.';
+const POWER_SHORT='Caps how hard it pushes',DAMPING_SHORT='Stops overshoot. Factory tuned',SENSITIVITY_SHORT='Smallest change it reacts to',SOFT_SHORT='Gentler start at power-on',INVERT_SHORT='Reverses the direction',LOST_SHORT='If the signal stops',BEEP_SHORT='Beep at power-up',PROPTL_SHORT='Full power time before limit';
 const LOST_OPTIONS=['Release','Keep Position','Go Neutral'],bit=(flags,mask,on)=>on?flags|mask:flags&~mask&255,be16=(b,at,v)=>{b[at]=v>>8&255;b[at+1]=v&255;};
 const changed=(now,basis,key)=>now[key]!==basis[key];
-const overloadFields=(tMax,pMin,format)=>[1,2,3].flatMap(n=>[{key:`ol${n}t`,label:`Level ${n}: after`,group:'Overload protection',kind:'range',min:0,max:tMax,format,what:`How long the servo must stay stalled before level ${n} starts.`},{key:`ol${n}p`,label:`Level ${n}: power`,group:'Overload protection',kind:'range',min:pMin,max:255,format:'pct',what:`How much power the servo may use once level ${n} starts.`}]);
+const overloadFields=(tMax,pMin,format)=>[1,2,3].flatMap(n=>[{key:`ol${n}t`,label:`Level ${n} after`,group:'Overload protection',kind:'range',min:0,max:tMax,format,short:`Stall time before level ${n}`,what:`How long the servo must stay stalled before level ${n} starts. ${OVERLOAD}`},{key:`ol${n}p`,label:`Level ${n} power`,group:'Overload protection',kind:'range',min:pMin,max:255,format:'pct',short:`Power limit during level ${n}`,what:`How much power the servo may use once level ${n} starts. ${OVERLOAD}`}]);
 const V1_RANGES=[[0x3BD0,0x0BF6],[0x323E,0x1588],[0x2D75,0x1A51],[0x191F,0x0AC4],[0x0B3E,0x031C]];
 const SENS_V2=[150,100,50,25];
 
 // 95-byte block. Offsets come from the V1 app's decode and encode.
 const v1Servo={title:'V1 servo mode',family:'v1',mode:'servo',fields:[
-    {key:'angle',label:'Servo Angle',group:'Travel',kind:'range',min:1,max:255,step:5,format:'angle',what:'How far the servo may turn in total. 255 is 355 degrees and the factory value is about 180.'},
-    {key:'neutral',label:'Neutral',group:'Travel',kind:'range',min:-127,max:127,format:'plain',what:'Moves the center position a little. Axon warns that large changes can have side effects.'},
-    {key:'range',label:'Pulse Range',group:'Travel',kind:'choice',options:['500-2500 µs','900-2100 µs','1100-1900 µs','Narrow (450-1050 µs)','SSR (130-470 µs)'],what:'The signal the servo expects. An FTC hub sends 500-2500 µs, so leave this there on a robot.'},
-    {key:'pwm',label:'PWM Power',group:'Response',kind:'range',min:100,max:255,format:'pct',what:POWER},{key:'damping',label:'Damping',group:'Response',kind:'range',min:50,max:600,step:10,format:'plain',what:DAMPING},
-    {key:'sens',label:'Sensitivity',group:'Response',kind:'choice',options:['Ultra High','High','Medium','Low'],what:SENSITIVITY},{key:'softstart',label:'Soft Start',group:'Response',kind:'switch',what:'Limits how fast the servo accelerates just after power-on, so it does not jump.'},
-    {key:'inversion',label:'Inversion',group:'Response',kind:'switch',what:INVERT},{key:'lostppm',label:'Lose PPM',group:'Response',kind:'choice',options:LOST_OPTIONS,what:LOST},
-    {key:'olp',label:'Overload protection',group:'Overload protection',kind:'switch',what:'Lowers the power when the servo stalls, so the motor does not burn out.'},...overloadFields(103,74,'olV1')],
+    {key:'angle',label:'Servo Angle',group:'Travel',kind:'range',min:1,max:255,format:'angle',short:'Total travel, up to 355°',what:'How far the servo may turn in total. 255 is 355 degrees and the factory value is about 180.'},
+    {key:'neutral',label:'Neutral',group:'Travel',kind:'range',min:-127,max:127,format:'plain',short:'Shifts the center position',what:'Moves the center position a little. Axon warns that large changes can have side effects.'},
+    {key:'range',label:'Pulse Range',group:'Travel',kind:'choice',options:['500-2500','900-2100','1100-1900','Narrow','SSR'],short:'Keep 500-2500 on an FTC hub',what:'The signal the servo expects, in µs. Narrow is 450-1050 and SSR is 130-470. An FTC hub sends 500-2500, so leave this there on a robot.'},
+    {key:'pwm',label:'PWM Power',group:'Response',kind:'range',min:100,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'damping',label:'Damping',group:'Response',kind:'range',min:50,max:600,format:'plain',short:DAMPING_SHORT,what:DAMPING},
+    {key:'sens',label:'Sensitivity',group:'Response',kind:'choice',options:['Ultra High','High','Medium','Low'],short:SENSITIVITY_SHORT,what:SENSITIVITY},{key:'softstart',label:'Soft Start',group:'Response',kind:'switch',short:SOFT_SHORT,what:'Limits how fast the servo accelerates just after power-on, so it does not jump.'},
+    {key:'inversion',label:'Inversion',group:'Response',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'lostppm',label:'Lose PPM',group:'Response',kind:'choice',options:LOST_OPTIONS,short:LOST_SHORT,what:LOST},
+    {key:'olp',label:'Enabled',group:'Overload protection',kind:'switch',short:'Cuts power when stalled',what:OVERLOAD},...overloadFields(103,74,'olV1')],
   decode(b){const f=b[0x25],s=b[0x0C]>>4,alt=(b[0x26]&0x40)!==0,us=((b[0]<<8)|b[1])*8/49;
     return {softstart:f&0x10?1:0,inversion:f&2?1:0,olp:f&0x80?1:0,lostppm:f&0x40?(f&0x20?2:1):0,range:f&8?3:f&4?4:us>2450?0:us>2005?1:2,angle:b[4],neutral:b[6]-128,sens:s>1?Math.min(s-1,3):0,pwm:alt?b[0x13]:b[0x12],damping:alt?(b[0x27]<<8)|b[0x28]:(b[0x0A]<<8)|b[0x0B],ol1p:b[0x35],ol1t:b[0x36],ol2p:b[0x37],ol2t:b[0x38],ol3p:b[0x39],ol3t:b[0x3A]};},
   encode(b,now,was){let f=b[0x25];
@@ -128,7 +130,7 @@ const v1Servo={title:'V1 servo mode',family:'v1',mode:'servo',fields:[
     ['ol1p','ol1t','ol2p','ol2t','ol3p','ol3t'].forEach((k,i)=>{if(changed(now,was,k))b[0x35+i]=now[k];});},
   sanity(block){const b=block.data,max=(b[0]<<8)|b[1],min=(b[2]<<8)|b[3];if(max<=min||max===0xFFFF)return `pulse timing bytes look wrong (${hex(b.subarray(0,4))})`;if(b[4]===0&&b[5]===0)return 'servo angle is zero';return null;}};
 const v1Cr={title:'V1 continuous rotation',family:'v1',mode:'cr',fields:[
-    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:100,max:255,format:'pct',what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:0,max:255,step:5,format:'tenth',what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',what:INVERT}],
+    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:100,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:0,max:255,format:'tenth',short:PROPTL_SHORT,what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',short:INVERT_SHORT,what:INVERT}],
   decode:b=>({inversion:b[0x25]&2?1:0,pwm:b[0x12],proptl:b[0x36]}),
   encode(b,now,was){if(changed(now,was,'inversion')){const on=!!now.inversion;if(on!==((b[0x25]&2)!==0)){b[0x25]=bit(b[0x25],2,on);b[0x25]^=1;}}if(changed(now,was,'pwm'))b[0x12]=now.pwm;if(changed(now,was,'proptl'))b[0x36]=now.proptl;},
   sanity:()=>null};
@@ -138,14 +140,14 @@ const v1Cr={title:'V1 continuous rotation',family:'v1',mode:'cr',fields:[
 // Bytes 0 and 7 are shown but never written: see docs/AXON.md.
 const v2Name=b=>{const user=b.subarray(32,44).toString('latin1').replace(/[*\0]+$/,'');return user==='USER_DEF'?b.subarray(47,59).toString('latin1').replace(/[*\0]+$/,''):user;};
 const v2Servo={title:'V2 servo mode',family:'v2',mode:'servo',fields:[
-    {key:'left',label:'Left Range',group:'Travel',kind:'range',min:10,max:255,step:5,format:'plain',what:'How far the servo may travel to the left of center. The factory value is 250. Lower it if a mechanism would hit something.'},
-    {key:'right',label:'Right Range',group:'Travel',kind:'range',min:10,max:255,step:5,format:'plain',what:'How far the servo may travel to the right of center. The factory value is 250. Lower it if a mechanism would hit something.'},
-    {key:'neutral',label:'Neutral',group:'Travel',kind:'range',min:-25,max:25,format:'signedUs',what:'Moves the center position a little, in microseconds of signal.'},
-    {key:'signal',label:'Signal Type (Refresh Rate)',group:'Travel',kind:'choice',options:['Normal','SANWA SR','FUTABA SR','FUTABA UR'],what:'The kind of signal the servo expects. An FTC hub sends Normal, so leave this there on a robot.'},
-    {key:'pwm',label:'PWM Power',group:'Response',kind:'range',min:25,max:255,format:'pct',what:POWER},{key:'damping',label:'Damping',group:'Response',kind:'range',min:1,max:255,step:5,format:'plain',what:DAMPING},
-    {key:'sens',label:'Sensitivity',group:'Response',kind:'choice',options:['Low','Medium','High','Ultra High'],what:SENSITIVITY},{key:'softstart',label:'Soft Start',group:'Response',kind:'range',min:1,max:11,format:'level',what:'Limits how fast the servo accelerates just after power-on, so it does not jump. Level 11 is the factory value.'},
-    {key:'lostppm',label:'Lose PPM',group:'Response',kind:'choice',options:LOST_OPTIONS,what:LOST},{key:'inversion',label:'Inversion',group:'Response',kind:'switch',what:INVERT},{key:'beep',label:'Power-on Sound',group:'Response',kind:'switch',what:BEEP},
-    {key:'name',label:'Model Name',group:'Name',kind:'text',what:'A name stored on the servo, up to 12 characters. It helps you tell servos apart.'},...overloadFields(156,26,'olV2')],
+    {key:'left',label:'Left Range',group:'Travel',kind:'range',min:10,max:255,format:'plain',short:'Travel limit left of center',what:'How far the servo may travel to the left of center. The factory value is 250. Lower it if a mechanism would hit something.'},
+    {key:'right',label:'Right Range',group:'Travel',kind:'range',min:10,max:255,format:'plain',short:'Travel limit right of center',what:'How far the servo may travel to the right of center. The factory value is 250. Lower it if a mechanism would hit something.'},
+    {key:'neutral',label:'Neutral',group:'Travel',kind:'range',min:-25,max:25,format:'signedUs',short:'Shifts the center position',what:'Moves the center position a little, in microseconds of signal.'},
+    {key:'signal',label:'Signal Type',group:'Travel',kind:'choice',options:['Normal','SANWA SR','FUTABA SR','FUTABA UR'],short:'Keep Normal on an FTC hub',what:'The kind of signal the servo expects. An FTC hub sends Normal, so leave this there on a robot.'},
+    {key:'pwm',label:'PWM Power',group:'Response',kind:'range',min:25,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'damping',label:'Damping',group:'Response',kind:'range',min:1,max:255,format:'plain',short:DAMPING_SHORT,what:DAMPING},
+    {key:'sens',label:'Sensitivity',group:'Response',kind:'choice',options:['Low','Medium','High','Ultra High'],short:SENSITIVITY_SHORT,what:SENSITIVITY},{key:'softstart',label:'Soft Start',group:'Response',kind:'range',min:1,max:11,format:'level',short:SOFT_SHORT,what:'Limits how fast the servo accelerates just after power-on, so it does not jump. Level 11 is the factory value.'},
+    {key:'lostppm',label:'Lose PPM',group:'Response',kind:'choice',options:LOST_OPTIONS,short:LOST_SHORT,what:LOST},{key:'inversion',label:'Inversion',group:'Response',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'beep',label:'Power-on Sound',group:'Response',kind:'switch',short:BEEP_SHORT,what:BEEP},
+    {key:'name',label:'Model Name',group:'',kind:'text',short:'Stored on the servo',what:'A name stored on the servo, up to 12 characters. It helps you tell servos apart.'},...overloadFields(156,26,'olV2')],
   decode(b){const f=b[20];return {damping:b[1],sens:b[2]>100?0:b[2]>50?1:b[2]>25?2:3,pwm:b[6],right:b[8],left:b[9],softstart:b[10]>10?11:b[10],ol1p:b[12],ol2p:b[13],ol3p:b[14],ol1t:b[15],ol2t:b[16],ol3t:b[17],inversion:f&1,lostppm:f&0x40?(f&8?2:1):0,
       signal:f&0x10?2:f&0x80&&b[18]===220?1:f&0x80&&b[18]===143?3:0,neutral:(b[22]|(b[23]<<8))<<16>>16,beep:b[26]&1,name:v2Name(b)};},
   encode(b,now,was){if(changed(now,was,'damping'))b[1]=now.damping;if(changed(now,was,'sens'))b[2]=SENS_V2[now.sens];if(changed(now,was,'pwm'))b[6]=now.pwm;if(changed(now,was,'right'))b[8]=now.right;if(changed(now,was,'left'))b[9]=now.left;
@@ -160,16 +162,16 @@ const v2Servo={title:'V2 servo mode',family:'v2',mode:'servo',fields:[
     if(changed(now,was,'name')){const text=Buffer.from(now.name||'','latin1');for(let i=0;i<12;i++)b[32+i]=i<text.length?text[i]:0x2A;}},
   sanity(block){const b=block.data;if(b[0]===0)return 'the first parameter byte is zero';for(let i=47;i<59;i++)if(b[i]!==0&&(b[i]<32||b[i]>126))return 'the factory name is not readable text';return null;}};
 const v2Cr={title:'V2 continuous rotation',family:'v2',mode:'cr',fields:[
-    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:25,max:255,format:'pct',what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:1,max:250,step:5,format:'tenth',what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',what:INVERT},{key:'beep',label:'Power-on Sound',group:'Continuous rotation',kind:'switch',what:BEEP},
+    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:25,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:1,max:250,format:'tenth',short:PROPTL_SHORT,what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'beep',label:'Power-on Sound',group:'Continuous rotation',kind:'switch',short:BEEP_SHORT,what:BEEP},
     // Advanced. Axon's app hides this on its continuous rotation page, but both V2 CR firmware files read byte 2 at start and
     // treat a smaller control error as no error, and the factory value for this firmware is Medium. Same byte, same four values as servo mode.
-    {key:'sens',label:'Stop band (Sensitivity)',group:'Advanced',kind:'choice',advanced:true,options:['Low: widest','Medium: factory','High','Ultra High: narrowest'],what:'How wide the stop zone is around the center signal. If the servo creeps when it should be stopped, move to a wider band. If it ignores small commands, move to a narrower one. Axon\'s software does not show this in continuous rotation, but this firmware reads it.'}],
+    {key:'sens',label:'Stop Band',group:'Advanced',kind:'choice',advanced:true,options:['Low','Medium','High','Ultra High'],short:'Low is widest, factory Medium',what:'How wide the stop zone is around the center signal. If the servo creeps when it should be stopped, move to a wider band. If it ignores small commands, move to a narrower one. Axon\'s software does not show this in continuous rotation, but this firmware reads it.'}],
   decode:b=>({pwm:b[6],proptl:b[15],inversion:b[20]&1,beep:b[26]&1,sens:b[2]>100?0:b[2]>50?1:b[2]>25?2:3}),
   encode(b,now,was){if(changed(now,was,'pwm'))b[6]=now.pwm;if(changed(now,was,'proptl'))b[15]=now.proptl;if(changed(now,was,'inversion'))b[20]=bit(b[20],1,now.inversion);if(changed(now,was,'beep'))b[26]=bit(b[26],1,now.beep);if(changed(now,was,'sens'))b[2]=SENS_V2[now.sens];},
   sanity:()=>null};
 const schemaFor=(family,mode)=>family==='v1'?(mode==='cr'?v1Cr:v1Servo):(mode==='cr'?v2Cr:v2Servo);
 // The schema a page can draw: no functions.
-const schemaView=s=>({title:s.title,family:s.family,mode:s.mode,fields:s.fields,notes:GROUP_NOTES});
+const schemaView=s=>({title:s.title,family:s.family,mode:s.mode,fields:s.fields});
 
 // Raw bytes shown in Advanced that are read and left alone, with what is and is not known about them.
 const UNCONFIRMED='The servo\'s control code uses this, but Axon documents nothing about it and keeps it on a locked page. A wrong value could make the servo oscillate, so Torque never writes it.',v2Unconfirmed=[{at:0,name:'SysAmp',why:UNCONFIRMED},{at:7,name:'MinPower',why:UNCONFIRMED}];

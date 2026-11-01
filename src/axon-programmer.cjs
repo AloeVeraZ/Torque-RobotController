@@ -1,5 +1,5 @@
 'use strict';
-// Calibrate's Axon programmer, in the main process: owns the programmer on one loop so a USB timeout can never freeze the
+// The Axon Programmer tab, in the main process: owns the programmer on one loop so a USB timeout can never freeze the
 // window, and only while the page asks (start and stop). Moved from Axon Bridge's Worker.cs. It polls the programmer and servo,
 // runs one job at a time, and tells the page what it sees with onState. USB itself is the small helper in src/axon-usb, which
 // is Windows only: Node has no HID without a native module, and Torque's releases are Windows only for now.
@@ -149,6 +149,8 @@ class AxonService{
   defaults(){return this.job('defaults','Restoring factory settings...',async p=>{const ok=await p.factoryDefault();this.say(ok?'Factory settings restored.':'The servo refused the factory reset.',ok?'good':'bad');
     if(ok){await delay(200);const s=await p.status();this.servo=s;if(S.servoEditable(s)){this.readAttempts=0;await this.readNow(s);}}return {ok};});}
   closeRivals(){this.rivalsAt=0;return this.transport.closeRivals?.();}
+  // A model's factory settings, drawn greyed out until a servo is plugged in. No USB.
+  preview(code,mode){const model=S.modelByCode(code);if(!model||(mode!=='servo'&&mode!=='cr'))throw Error('Torque has no firmware for that servo.');const schema=S.schemaFor(model.family,mode);return {schema:S.schemaView(schema),values:schema.decode(S.factoryBlock(model,mode))};}
 
   // ---- settings files. The page gets values to review; nothing goes to the servo until it is applied.
   loadSettings(data,fileName){

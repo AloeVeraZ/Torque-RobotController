@@ -386,11 +386,11 @@ handle('cursor',(x,y)=>{
 app.on('will-quit',()=>{try{cursorHelper?.kill();}catch{}});
 handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open the Simulation view first.');return simulation.call(method,args);});
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
-// Calibrate → Axon: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that page shows.
+// Setup & Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
 const axonService=()=>axon||=new axonProgrammer.AxonService({firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
   fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
 handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
-  if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
+  if(action==='preview')return s.preview(data?.code,data?.mode);if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
   if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='defaults')return s.defaults();if(action==='close-rivals')return void await s.closeRivals();
   if(action==='firmware-status')return s.firmwareStatus(data?.code,data?.mode);if(action==='download')return s.download(data?.code,data?.mode);if(action==='flash')return s.flash(data||{});
   if(action==='choose-firmware'){const r=await dialog.showOpenDialog(win,{title:'Choose Axon firmware',filters:[{name:'Axon firmware',extensions:['sfw','sfm']}],properties:['openFile']});return r.canceled?null:s.chooseFirmware(data?.code,data?.mode,r.filePaths[0]);}

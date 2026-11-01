@@ -52,6 +52,11 @@ test('V2 continuous rotation: Axon\'s four settings, and the stop band Advanced 
   assert.ok(!S.schemaFor('v1','servo').fields.some(f=>f.advanced)&&!S.schemaFor('v1','cr').fields.some(f=>f.advanced)&&!S.schemaFor('v2','servo').fields.some(f=>f.advanced),'no other schema offers anything extra');
 });
 
+test('every setting explains itself, and a model\'s factory values can be previewed with no USB',()=>{
+  for(const [f,m] of [['v1','servo'],['v1','cr'],['v2','servo'],['v2','cr']])for(const field of S.schemaFor(f,m).fields){assert.ok(field.short&&field.short.length<=30,`${f} ${m} ${field.key}: "${field.short}" must fit beside the control`);assert.ok(field.what&&field.what.length>field.short.length,`${f} ${m} ${field.key} needs a longer explanation`);}
+  const s=new AxonService({transport:{supported:true}}),p=s.preview('max2','cr');assert.equal(p.schema.title,'V2 continuous rotation');assert.deepEqual([p.values.pwm,p.values.proptl,p.values.sens],[255,30,1]);assert.equal(s.preview('mini1','servo').values.pwm,200);assert.throws(()=>s.preview('nope','cr'),/no firmware/);assert.throws(()=>s.preview('max2','swerve'),/no firmware/);
+});
+
 test('the hidden factory-tuning bytes are never offered, and bad values never reach a servo',()=>{
   for(const [f,m] of [['v1','servo'],['v1','cr'],['v2','servo'],['v2','cr']])for(const key of ['sysamp','minpower'])assert.throws(()=>S.checkChanges(S.schemaFor(f,m),{[key]:50}),/no setting/);
   const s=S.schemaFor('v2','servo');

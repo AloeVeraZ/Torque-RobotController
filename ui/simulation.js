@@ -296,7 +296,7 @@ public class MyAuto implements DeckAutonomous {
   // One tab, three steps: Setup says what electronics the robot has, Configure says what is plugged into them and what each
   // is called, and Calibrate debugs and tunes them on the robot. Setup and Configure share an app view; all show these steps.
   const flowArrow='<svg class="ui-icon flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17M14 6l6 6-6 6"/></svg>';
-  const flowSteps=`<nav class="flow-steps" aria-label="Setup and Calibrate steps"><button type="button" data-flow="setup"><span class="flow-num" aria-hidden="true">1</span>Setup</button>${flowArrow}<button type="button" data-flow="configure"><span class="flow-num" aria-hidden="true">2</span>Configure</button>${flowArrow}<button type="button" data-flow="calibrate"><span class="flow-num" aria-hidden="true">3</span>Calibrate</button></nav>`;
+  const flowSteps=`<nav class="flow-steps" aria-label="Setup and Calibrate steps"><button type="button" data-flow="setup"><span class="flow-num" aria-hidden="true">1</span>Setup</button>${flowArrow}<button type="button" data-flow="configure"><span class="flow-num" aria-hidden="true">2</span>Configure</button>${flowArrow}<button type="button" data-flow="calibrate"><span class="flow-num" aria-hidden="true">3</span>Calibrate</button><button type="button" class="flow-axon" data-flow="axon">Axon Programmer</button></nav>`;
   // Setup (its own app view): the electronics on the robot and what is plugged into them, typed in or read from the Control
   // Hub's configuration. Simulate and Calibrate work from this.
   if(setupRoot)setupRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-grid" id="rs-step-setup"><div class="cal-flow">
@@ -311,7 +311,7 @@ public class MyAuto implements DeckAutonomous {
     </div><div class="cal-side" id="rs-electronics">
       <section class="cal-card" aria-labelledby="rs-hubs-title"><h2 id="rs-hubs-title">Electronics</h2><div id="rs-hubs"></div><div id="rs-problems"></div></section>
     </div></div>
-    <div id="rs-step-configure" class="rs-configure" hidden></div></div>
+    <div id="rs-step-configure" class="rs-configure" hidden></div><div id="rs-step-axon" class="rs-axon" hidden></div></div>
     <dialog id="rs-active-confirm" aria-labelledby="rs-active-title"><form method="dialog"><h2 id="rs-active-title"></h2><p id="rs-active-text"></p><div class="button-row"><button id="rs-active-yes" class="primary" type="button">Yes, make it active</button><button id="rs-active-no" class="secondary" type="button">No</button></div></form></dialog>`;
   // Calibrate (its own app view): send the code with its check TeleOp, run the guided check, and the other things to
   // measure on the real robot. It uses this setup and the same Send to robot panel, moved here while it shows.
@@ -320,7 +320,7 @@ public class MyAuto implements DeckAutonomous {
     <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
     <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera" hidden><section class="cal-card" id="cal-camera"></section></div>
     <div id="cal-panel-calibrate" role="tabpanel" aria-labelledby="cal-tab-calibrate" data-cal-top-panel="calibrate" hidden>
-    <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button><button type="button" role="tab" id="cal-tab-axon" data-cal-tab="axon" aria-controls="cal-panel-axon">Axon</button></div>
+    <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
     <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><div class="cal-grid"><div class="cal-flow">
       <section class="cal-card" aria-labelledby="cal-hub-title"><h2 id="cal-hub-title">Control Hub</h2><p class="hint">Plug it in by USB-C with the robot on. Torque reads every motor, servo and sensor from its active configuration.</p>
         <div class="button-row"><button id="cal-hub-setup" class="primary" type="button">Set up from the Control Hub</button></div><p id="cal-hub-status" class="hint" role="status"></p><ul id="cal-hub-result" class="sim-hub-result" hidden></ul></section>
@@ -337,8 +337,7 @@ public class MyAuto implements DeckAutonomous {
     </div><div class="cal-side" id="cal-electronics">
       <section class="cal-card" aria-labelledby="cal-hubs-title"><h2 id="cal-hubs-title">What the Control Hub reports</h2><div id="cal-hubs"></div></section>
     </div></div></div>
-    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div>
-    <div id="cal-panel-axon" role="tabpanel" aria-labelledby="cal-tab-axon" data-cal-panel="axon" hidden></div></div></div>`;
+    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div></div></div>`;
   const graph=$('#simulation-field'),robotGlyph=$('#field-robot'),estimateShape=$('#sim-estimate'),targetMark=$('#sim-target'),elementsLayer=$('#sim-elements');
   function svg(tag,attributes,text){const node=document.createElementNS(ns,tag);for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);if(text!==undefined)node.textContent=text;return node;}
   let fieldArtKey='';
@@ -2000,7 +1999,7 @@ public class MyAuto implements DeckAutonomous {
   const hubDropped=document.createElement('dialog');hubDropped.id='hub-dropped';hubDropped.setAttribute('role','alertdialog');hubDropped.setAttribute('aria-labelledby','hub-dropped-title');hubDropped.innerHTML='<h2 id="hub-dropped-title">Your Control Hub dropped</h2><p>The USB connection to the Control Hub was lost. Unplug its USB-C cable from this computer, plug it back in, and check the robot is on. Torque reconnects by itself.</p><button id="hub-dropped-ok" type="button">OK</button>';document.body.append(hubDropped);
   hubDropped.addEventListener('cancel',e=>e.preventDefault());hubDropped.querySelector('button').onclick=()=>hubDropped.close();
   let hubOnUsb=false,hubMisses=0;
-  function hubWatch(){const on=setupShown||calibrating;if(on&&!setupTimer){hubOnUsb=false;hubMisses=0;void setupWatch();setupTimer=setInterval(()=>void setupWatch(),3000);}else if(!on&&setupTimer){clearInterval(setupTimer);setupTimer=null;}}
+  function hubWatch(){const on=(setupShown&&flowStep!=='axon')||calibrating;if(on&&!setupTimer){hubOnUsb=false;hubMisses=0;void setupWatch();setupTimer=setInterval(()=>void setupWatch(),3000);}else if(!on&&setupTimer){clearInterval(setupTimer);setupTimer=null;}}
   const setupAskActive=name=>new Promise(done=>{const d=$('#rs-active-confirm'),unsaved=configEditor?.dirty();if(d.open)return done(false);const answer=v=>{d.oncancel=d.onkeydown=null;d.close();done(v);};$('#rs-active-title').textContent=`Make “${name}” your active configuration?`;$('#rs-active-text').textContent=`The robot restarts to use it, and Configure shows it.${unsaved?` Your changes to “${configEditor.current()}” are not saved and will be lost.`:''}`;$('#rs-active-yes').onclick=()=>answer(true);$('#rs-active-no').onclick=()=>answer(false);d.oncancel=ev=>{ev.preventDefault();answer(false);};d.onkeydown=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();answer(false);}};d.showModal();$('#rs-active-no').focus();});
   // Only the active configuration is ever on the Configure screen. Anything else has to become active first, and the team says so.
   async function setupSwitch(name,{go=false}={}){const show=()=>{if(go){flowStep='configure';flowMarks();}setupRender();};
@@ -2029,7 +2028,10 @@ public class MyAuto implements DeckAutonomous {
   // Setup's step shows done once the Control Hub has been read.
   let flowStep='setup';
   function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?'calibrate':flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);b.toggleAttribute('data-done',b.dataset.flow==='setup'&&!!project.calibration?.hub?.readout);}
-    if(setupRoot){$('#rs-step-setup').hidden=flowStep!=='setup';$('#rs-step-configure').hidden=flowStep!=='configure';}}
+    if(setupRoot){$('#rs-step-setup').hidden=flowStep!=='setup';$('#rs-step-configure').hidden=flowStep!=='configure';$('#rs-step-axon').hidden=flowStep!=='axon';}}
+  // The Axon Programmer tab: its programmer is only touched while the tab shows, and the Control Hub's USB watch rests meanwhile.
+  const axonShown=()=>window.DeckAxon?.shown(setupShown&&flowStep==='axon');
+  window.DeckAxon?.install($('#rs-step-axon'),native?api:null);
   function setupRender(){if(!setupRoot||setupRoot.hidden)return;hubDefaults();flowMarks();const W=window.DeckWiring,HS=window.DeckHubSetup,st=W.state(project),ftc=project.controller==='ftc';
     $('#rs-read').disabled=!ftc||setupBusy;$('#rs-scan').disabled=!ftc||setupBusy||!setupRobot;$('#rs-scan').title=setupRobot?'':'Connect to the robot first';$('#rs-robot-card').hidden=!ftc;$('#rs-configs-card').hidden=!ftc;setupConfigs();
     if(!configEditor)configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:setupSave,photo:tag=>api.devicePhoto(tag),names:()=>setupRead?.configurations||[],pick:name=>void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:()=>setupRobot?.scanned?project.calibration?.hub?.scan?.others||[]:null,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(st,{ids:'rc-',only:['spm']})}</div>`:''}});setupFollowActive();configEditor.render();
@@ -3300,10 +3302,7 @@ public class MyAuto implements DeckAutonomous {
   }
   function calTabs(attr,panel,key){for(const b of $$(`[data-${attr}]`)){const on=b.getAttribute(`data-${attr}`)===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$(`[data-${panel}]`))p.hidden=p.getAttribute(`data-${panel}`)!==key;}
   // Electronics or Mechanisms opens the Calibrate tab they are in; Debug is its own.
-  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);axonShown();}
-  // Axon's programmer is only touched while its page shows.
-  const axonShown=()=>window.DeckAxon?.shown(calibrating&&calTop==='calibrate'&&calTab==='axon');
-  window.DeckAxon?.install($('#cal-panel-axon'),native?api:null);
+  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);}
   for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const row=$$(`[data-${attr}]`),other=row[(row.indexOf(b)+(e.key==='ArrowRight'?1:row.length-1))%row.length];calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
@@ -3550,8 +3549,8 @@ public class MyAuto implements DeckAutonomous {
   // The setup bar's right-click menu works here too.
   calRoot?.addEventListener('contextmenu',e=>{const b=e.target.closest('[data-setup-id],#sim-setup');if(!b)return;e.preventDefault();const r=b.getBoundingClientRect();setupMenu(b.dataset.setupId||project.setupId,e.clientX||r.left+16,e.clientY||r.bottom);});
   $('#cal-open-sim').onclick=()=>void api.page?.('simulation');
-  return {flow(step){if(step!=='calibrate'){flowStep=step;setupRender();}flowMarks();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
-    calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();hubWatch();axonShown();},
+  return {flow(step){if(step!=='calibrate'){flowStep=step;setupRender();}flowMarks();hubWatch();axonShown();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();axonShown();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
+    calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();hubWatch();},
     activate(value){
     if(value)reliableNote();
     if(value){sendHome.append($('#sim-send'));if(setupBar&&setupHome)setupHome.before(setupBar);}

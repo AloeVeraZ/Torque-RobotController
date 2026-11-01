@@ -1,6 +1,6 @@
 # Programming Axon servos
 
-Setup & Calibrate → Calibrate → the Calibrate tab → Axon → **Axon Programmer**. Torque programs Axon servos a team already owns, through Axon's own V2 programmer. It is the [Axon Bridge](#where-this-came-from) app moved into Torque. It does not replace Axon's hardware: a team still buys the servo and the programmer. Torque is not made by or affiliated with Axon Robotics.
+Setup & Calibrate → **Axon Programmer**, the tab at the far right. Torque programs Axon servos a team already owns, through Axon's own V2 programmer. It is the [Axon Bridge](#where-this-came-from) app moved into Torque. It does not replace Axon's hardware: a team still buys the servo and the programmer. Torque is not made by or affiliated with Axon Robotics.
 
 > **Not yet tested on real hardware.** No programmer was plugged in while this was built. Everything below has run against a simulated programmer built to the protocol in Axon's official apps. Whether the V2 programmer passes traffic to a V1 servo can only be proven by plugging one in, and Axon's documents say it does not.
 
@@ -15,13 +15,22 @@ Close Axon Software MK2 and Axon Bridge first. They poll the same programmer, an
 
 Program servos on the bench, with the programmer off the robot.
 
-## The five steps
+## The tab
 
-1. **Plug in the programmer.** Torque checks that it really answers as a V2 programmer. An old V1 programmer is named as such: it cannot be used.
-2. **Read the servo.** Plug it into the top row of pins on the left of the programmer, with the grey signal wire on the right. Torque powers the pins and reads the servo by itself. Reading changes nothing.
-3. **Choose its mode and settings.** Servo mode moves to a position and holds it. Continuous rotation spins, and the signal sets speed and direction. Every setting says what it does.
-4. **Apply the changes.** Torque lists what will change first. Nothing reaches the servo before this.
-5. **Confirm it took.** Torque reads the servo back and shows what you asked for beside what the servo reports.
+It is laid out like Axon Bridge, in Torque's look, and fits a 1280x800 screen without the page scrolling. Long lists scroll inside their own panel.
+
+| Where | What it does |
+|---|---|
+| Top | That the V2 programmer is needed, and chips for the programmer, the servo and the voltage and current |
+| 1 Servo | V1 MAX, V1 MINI, V2 MINI, V2 MAX. Plug a servo into the top row of pins on the left of the programmer, grey signal wire on the right, and Torque powers the pins, reads it and marks it Plugged in. Reading changes nothing |
+| 2 Mode | Servo Mode moves to and holds a position. CR Mode is continuous rotation: the signal sets speed and direction. Now marks the mode it is in |
+| 3 Settings | Every setting, with a short note beside it. Point at one for the longer version on the line at the bottom of the panel. A dot marks a change not applied yet. With no servo, it previews that model's factory values, greyed out |
+| Plugged-in servo | What the servo and programmer report |
+| Read, Defaults, Open, Save | Read again, restore factory settings, and open or save a settings file |
+| What happened | What you asked for beside what the servo reports after each write, then the log |
+| Bottom | One line saying what is going on and what comes next, and the Apply button |
+
+Nothing reaches the servo before Apply. Torque then reads it back, and the banner says **Confirmed** or **It did not take**.
 
 Switching mode writes Axon's official firmware for that mode, as Axon's own apps do. It takes about a minute. It also resets the servo's settings to Axon's factory values for that mode, because the firmware file carries them, so save a settings file first if you want them back.
 
@@ -36,14 +45,14 @@ Switching mode writes Axon's official firmware for that mode, as Axon's own apps
 | V2 servo mode | Left and Right Range, Neutral, Signal Type, PWM Power, Damping, Sensitivity, Soft Start, Lose PPM, Inversion, Power-on Sound, Model Name, three overload levels |
 | V2 continuous rotation | PWM Power, ProPTL, Inversion, Power-on Sound |
 
-Restore factory settings, Open settings file and Save settings file are there too. Settings files are `.svo` for V1 and `.svp` for V2, and Axon's apps open them.
+Defaults, Open and Save are there too. Settings files are `.svo` for V1 and `.svp` for V2, and Axon's apps open them.
 
 **Advanced** is one button. It adds:
 
 - **Stop band on V2 continuous rotation**, the one setting beyond Axon's app. If a continuous rotation servo creeps when it should be stopped, widen it. If it ignores small commands, narrow it.
-- Factory values beside each setting, and a list of what differs from them.
+- The factory value beside each setting, and a list of what differs from it.
 - Everything else the programmer and servo report: USB IDs, status reports, the handshake reply, and every settings byte.
-- **Recover**, for a servo that stopped showing up after an interrupted mode switch.
+- **Recover**, for a servo that stopped showing up after an interrupted mode switch. It writes the servo and mode picked at the top.
 - The USB log. Torque keeps it in its data folder as `axon-usb.log`, which is what to send if a servo misbehaves.
 
 ### Why the stop band, and what it rests on
@@ -85,7 +94,7 @@ Before anything is erased, Torque checks the file against the servo's hardware I
 | `src/axon-usb/AxonUsb.cs` and `.exe` | Raw HID, which Node cannot reach without a native module. Axon Bridge's `Hid.cs` behind a line protocol on stdin and stdout. It exits when stdin closes. Rebuild with `tools/build-axon-usb.cjs`, which uses the C# compiler that ships with Windows |
 | `src/axon-servo.cjs` | The protocol, settings maps, servo models, firmware files and flash sequence, moved from `Protocol.cs`, `Params.cs` and `Firmware.cs`. Field meanings live here, and `checkChanges` refuses anything that is not a known field with an allowed value |
 | `src/axon-programmer.cjs` | The service in the main process, moved from `Worker.cs`. One loop, one job at a time. USB runs only while the Axon guide is on screen |
-| `ui/axon-programmer.js` and `.css` | The page. It draws what the service reports and sends back only the changes asked for |
+| `ui/axon-programmer.js` and `.css` | The tab, drawn in the Setup view as `#rs-step-axon`. It draws what the service reports and sends back only the changes asked for |
 
 A write reads the servo first, changes only the bytes of edited settings, writes, reads back and compares. V2 servos store bytes 0-43 only: their date and factory name are read-only.
 
@@ -107,4 +116,10 @@ Neither proves real hardware behaves like the simulator. The first time a real p
 
 ## Where this came from
 
-Axon Bridge is the Windows app this was moved from, kept at `%LOCALAPPDATA%\Programs\Axon Bridge`. Its protocol was read out of Axon's two official apps and its firmware files. Differences from Axon Bridge: SysAmp and MinPower are read-only here, continuous rotation gains the stop band, settings use dropdowns, and firmware must match a pinned hash when downloaded.
+Axon Bridge is the Windows app this was moved from, kept at `%LOCALAPPDATA%\Programs\Axon Bridge`. Its protocol was read out of Axon's two official apps and its firmware files. Differences from Axon Bridge:
+
+- SysAmp and MinPower are reported, not sliders, and continuous rotation gains the stop band in Advanced.
+- Each setting has a short note beside it, as well as Axon Bridge's hint line.
+- Once Torque recognises a servo, the other models lock, so the wrong one cannot be picked. Axon Bridge lets you pick it and then warns.
+- The Enter and Esc shortcuts are not copied: Enter also picks a value in a list and Esc also closes one, so a student could apply a change by accident. Apply and Discard are buttons.
+- Confirmations are Torque's own dialogs, and firmware must match a pinned hash when downloaded.

@@ -86,7 +86,7 @@ Tune your robot step by step using real readings from your Control Hub.
 - **Set up from the hub:** one button maps your devices into your robot setup.
 - **Guided tuning:** Torque checks each mechanism in order: direction, units, zero, range, then control. Each step has to pass before the next one starts, so a bad reading can't throw off later steps.
 - **Keep the results:** get your tuned values as a ready-to-use Java file.
-- **Program Axon servos:** set V1 and V2 Axon servos to servo or continuous rotation mode and change their settings, through Axon's V2 programmer. [Guide](docs/AXON.md)
+- **Program Axon servos:** the Axon Programmer tab sets V1 and V2 Axon servos to servo or continuous rotation mode and changes their settings, through Axon's V2 programmer. [Guide](docs/AXON.md)
 
 ![Live debug listing each motor, servo and sensor on the Control Hub](docs/media/calibrate-live.jpg)
 
