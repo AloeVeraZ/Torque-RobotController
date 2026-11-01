@@ -1,6 +1,6 @@
 'use strict';
 const BugReport=require('./bug-report.cjs');
-const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog}=require('electron');
+const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog,net}=require('electron');
 const fs=require('node:fs'),path=require('node:path');const {execFile}=require('node:child_process');const {promisify}=require('node:util');const {createHash,randomUUID}=require('node:crypto');
 const {Library,normalizeUrl,cleanSsid}=require('./library.cjs');const {Network}=require('./network.cjs');const {RobotProxy}=require('./robot-proxy.cjs');const {FtcSocket,UsbFtcSocket,probeFtc,findFtc}=require('./ftc.cjs');
 const {Updater,prepareInstall,launchInstall}=require('./updater.cjs');const {shortcut}=require('./shortcuts.cjs');let build={};try{build=JSON.parse(fs.readFileSync(path.join(__dirname,'../build.json'),'utf8'));}catch{}const meta=require('../package.json');let updater;
@@ -29,7 +29,7 @@ const LEGACY_NAME='Deck Driver Station';
 if(!process.env.DECK_DATA_DIR){const legacy=path.join(app.getPath('appData'),LEGACY_NAME);if(fs.existsSync(legacy)&&!fs.existsSync(path.join(app.getPath('appData'),'Torque')))app.setPath('userData',legacy);}
 // Offline simulator: a utility process started by the Simulation view, never connected to a robot.
 const {DevicePhotos}=require('./device-photos.cjs');let devicePhotos=null;const photos=()=>devicePhotos||=new DevicePhotos(path.join(app.getPath('userData'),'device-photos'));
-const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs');
+const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs');let axon=null;
 if(process.env.DECK_DATA_DIR){fs.mkdirSync(process.env.DECK_DATA_DIR,{recursive:true});app.setPath('userData',process.env.DECK_DATA_DIR);}
 // UI checks on GPU-less CI displays: Chromium's software WebGL, which it no longer falls back to on its own.
 if(process.env.DECK_TEST_SOFTWARE_GL==='1')app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -386,6 +386,17 @@ handle('cursor',(x,y)=>{
 app.on('will-quit',()=>{try{cursorHelper?.kill();}catch{}});
 handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open the Simulation view first.');return simulation.call(method,args);});
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
+// Calibrate → Axon: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that page shows.
+const axonService=()=>axon||=new axonProgrammer.AxonService({firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
+  fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
+handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
+  if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
+  if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='defaults')return s.defaults();if(action==='close-rivals')return void await s.closeRivals();
+  if(action==='firmware-status')return s.firmwareStatus(data?.code,data?.mode);if(action==='download')return s.download(data?.code,data?.mode);if(action==='flash')return s.flash(data||{});
+  if(action==='choose-firmware'){const r=await dialog.showOpenDialog(win,{title:'Choose Axon firmware',filters:[{name:'Axon firmware',extensions:['sfw','sfm']}],properties:['openFile']});return r.canceled?null:s.chooseFirmware(data?.code,data?.mode,r.filePaths[0]);}
+  if(action==='open-settings'){const r=await dialog.showOpenDialog(win,{title:'Open servo settings',filters:[{name:'Servo settings',extensions:[ext()]}],properties:['openFile']});return r.canceled?null:s.loadSettings(fs.readFileSync(r.filePaths[0]),path.basename(r.filePaths[0]));}
+  if(action==='save-settings'){const file=s.packSettings(data?.changes),r=await dialog.showSaveDialog(win,{title:'Save servo settings',defaultPath:path.join(app.getPath('documents'),`${s.state().servo.name||'servo'}.${ext()}`),filters:[{name:'Servo settings',extensions:[ext()]}]});if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,file);return {name:path.basename(r.filePath)};}
+  throw Error('Unknown Axon action.');});
 // Send to robot (Simulation → Run & review → Export): reads a Control Hub's configuration (and scans its hubs to add
 // devices), saves a new configuration with the devices it lacks, and uploads and builds the exported OnBot Java over its
 // Wi-Fi. It never starts an op mode. robots lists the saved FTC robots to pick from.
@@ -515,6 +526,7 @@ app.whenReady().then(async()=>{
     if(!closeAsked&&process.env.DECK_HEADLESS!=='1'&&!win.webContents.isDestroyed()){e.preventDefault();closeAsked=true;
       const ask=Promise.race([win.webContents.executeJavaScript('window.deckUnfinishedSetup?.()??null',true),new Promise(r=>setTimeout(r,1500,null))]).catch(()=>null);
       void ask.then(async name=>{if(win.isDestroyed())return;
+        if(axon?.flashing){const r=await dialog.showMessageBox(win,{type:'warning',buttons:['Keep running','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Firmware update running',message:'An Axon servo is being updated.',detail:'Closing now can leave the servo needing Recover. It takes about a minute.'});if(r.response!==1){closeAsked=false;return;}}
         if(typeof name==='string'){const r=await dialog.showMessageBox(win,{type:'question',buttons:['Keep setting up','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Setup not finished',
           message:`You haven’t finished setting up “${name}”.`,detail:'Your changes are saved. Finish the Robot, Robot controller and Mechanisms steps, then go to Path planning to plan its route.'});
           if(r.response!==1){closeAsked=false;return;}}
@@ -523,4 +535,4 @@ app.whenReady().then(async()=>{
     robotKeyboard?.close();});win.on('closed',()=>{robotExitView?.webContents.close();robotExitView=null;});
   pollTimer=setInterval(()=>{if(!network.busy)void refreshNetwork().then(()=>autoOpenFtc());},5000);pollTimer.unref();
 });
-let closing=false;app.on('before-quit',e=>{robotLink.stopUsbRelay();simulation?.stop();robotCheck?.stop();robotDebug?.stop();if(closing)return;e.preventDefault();closing=true;clearInterval(pollTimer);void closeRobot().finally(()=>app.quit());});app.on('window-all-closed',()=>app.quit());
+let closing=false;app.on('before-quit',e=>{robotLink.stopUsbRelay();axon?.quit();simulation?.stop();robotCheck?.stop();robotDebug?.stop();if(closing)return;e.preventDefault();closing=true;clearInterval(pollTimer);void closeRobot().finally(()=>app.quit());});app.on('window-all-closed',()=>app.quit());

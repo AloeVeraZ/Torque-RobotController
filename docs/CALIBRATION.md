@@ -2,10 +2,11 @@
 
 Calibrate (the third view in the header) turns a robot configuration into tuned mechanisms. It rests on one rule from the research behind it: **a mechanism can only be calibrated against something that measures what it did.** A motor's encoder counts its speed or position, an Axon's feedback wire or an absolute encoder tells a servo's angle, a limit switch marks zero. Where nothing measures a part, there is nothing to tune: only where its positions are.
 
-The view has the saved-setup bar on top (pick, make, open and save setups) and two tabs:
+The view has the saved-setup bar on top (pick, make, open and save setups) and three tabs:
 
 - **Electronics**: **Live debug**, Send to robot and the guided check, with what the Control Hub reports on the right: what is connected to each port and every motor, servo and sensor. Those stay hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
 - **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read.
+- **Axon**: programs Axon servos through Axon's V2 programmer. See [Programming Axon servos](AXON.md).
 
 Code: `ui/sim-tune.js` (templates, gates, unit transforms, fits; pure and unit-tested in `tests/sim-tune.test.cjs`), `ui/sim-debug.js` (the Live debug panel), the calibrate section of `ui/simulation.js` (the flow), `src/onbot/TorqueDebug.java` (the robot side), `runDebug` in `src/robot-link.cjs` (the link). `tests/robot-setup-app.cjs` part C runs the whole chain against the simulated hub's stand-in (`startDebugServer` in `tools/ftc-sim.cjs`).
 

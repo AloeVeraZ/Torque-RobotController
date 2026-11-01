@@ -1,0 +1,35 @@
+/* Calibrate → Axon. Built from the shared tokens and the cal-card steps; colour here is only ever hardware state. */
+.axon-entry{max-width:640px}
+.axon-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}.axon-head h2{margin:0;font-size:15px}
+.axon-level{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0}.axon-level .hint{margin:0}
+.driver-station .axon-head button{flex:none;min-height:40px;padding:0 14px;border:0;border-radius:var(--radius-control);background:var(--raised);color:var(--text)}
+.axon-grid{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+.axon-step>.cal-body>h2{margin-top:3px}.axon-step .cal-num{border-color:var(--line-strong);color:var(--muted)}
+.axon-step[data-state=now] .cal-num{border-color:var(--accent);color:var(--accent-text)}
+.axon-step[data-state=done] .cal-num{border-color:var(--connected);color:var(--connected)}
+.axon-step[data-state=bad] .cal-num{border-color:var(--danger);color:var(--danger)}
+.axon-status{display:flex;gap:8px;margin:8px 0;font-size:13px}.axon-status>i{flex:none;width:9px;height:9px;margin-top:4px;border-radius:50%;background:var(--quiet)}.axon-status strong{display:block;font-weight:600}.axon-status span span{display:block;margin-top:2px;color:var(--muted)}
+.axon-status[data-tone=good]>i{background:var(--connected)}.axon-status[data-tone=warn]>i{background:var(--warning)}.axon-status[data-tone=bad]>i{background:var(--danger)}
+.axon-pick{margin:8px 0;max-width:320px}.driver-station .axon-pick>label,.driver-station .axon-recover-row label{margin:0}.driver-station .axon-pick select,.driver-station .axon-recover-row select,.driver-station .axon-field select,.driver-station .axon-field input[type=text]{width:100%;min-height:40px;margin:0}
+.axon-mode-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:0 0 10px}
+.driver-station .axon-mode{display:grid;gap:4px;align-content:start;min-height:0;padding:12px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--well);color:var(--text);text-align:left;font-weight:400}
+.driver-station .axon-mode:hover:not(:disabled){background:var(--hover)}.driver-station .axon-mode[aria-pressed=true]{background:var(--raised);border-color:var(--line-strong);box-shadow:0 0 0 1px var(--line-strong)}
+.axon-mode strong{font-size:13px;font-weight:600}.axon-mode span{font-size:12px;color:var(--muted)}.axon-mode em{margin-left:4px;font-style:normal;font-size:11px;color:var(--connected)}
+.axon-fields{display:grid;gap:10px;margin:0 0 6px}
+.axon-field{display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);gap:12px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}.axon-field:first-child{border-top:0;padding-top:2px}.axon-field>.hint{margin:0;font-size:12px}
+.axon-field-control{display:grid;gap:4px;min-width:0}.driver-station .axon-field-control>label{margin:0;font-size:12px;font-weight:600}.axon-field em{font-style:normal;font-weight:600;font-size:11px;color:var(--warning)}
+.axon-factory{display:block;margin-top:4px;color:var(--quiet);font-size:11px}
+.driver-station .axon-switch{display:flex;flex-wrap:nowrap;justify-content:flex-start;align-items:center;gap:8px;min-height:40px;margin:0;font-weight:400;font-size:13px}.driver-station .axon-switch input{width:18px;height:18px;margin:0}
+.axon-file-row{margin-top:10px}
+.axon-changes{margin:0 0 10px;padding-left:18px;font-size:13px}.axon-changes li{margin:2px 0}
+.axon-confirm{margin-top:10px}
+#axon-progress{display:block;width:100%;height:6px;margin:6px 0 2px;accent-color:var(--accent)}
+.axon-table{width:100%;margin:8px 0;border-collapse:collapse;font-size:12px}.axon-table th,.axon-table td{padding:6px 8px 6px 0;border-bottom:1px solid var(--line);text-align:left;font-weight:400;vertical-align:top}.axon-table thead th{color:var(--muted);font-weight:600}.axon-table tbody th{font-weight:600}
+.axon-table td[data-took=true]{color:var(--connected)}.axon-table td[data-took=false]{color:var(--danger);font-weight:600}
+.axon-rows{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:4px 12px;margin:0;font-size:12px}.axon-rows dt{color:var(--muted)}.axon-rows dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.axon-bytes{max-height:220px;margin:6px 0 0;padding:8px;overflow:auto;border-radius:var(--radius-detail);background:var(--well);font:11px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.axon-log{display:grid;gap:4px;margin:0;padding:0;list-style:none;font-size:12px;color:var(--muted)}.axon-log li[data-tone=good]{color:var(--connected)}.axon-log li[data-tone=warn]{color:var(--warning)}.axon-log li[data-tone=bad]{color:var(--danger)}
+.axon-limits{margin:0;padding-left:18px;font-size:12px;color:var(--muted)}.axon-limits li{margin:6px 0}.axon-limits strong{color:var(--text);font-weight:600}
+.axon-recover-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 8px}
+#axon-usb>summary{cursor:pointer;font-size:15px;font-weight:600}
+@media (max-width:860px){.axon-grid{grid-template-columns:minmax(0,1fr)}.axon-field{grid-template-columns:minmax(0,1fr)}.axon-level{width:100%;justify-content:space-between;margin-left:0}}

@@ -320,7 +320,7 @@ public class MyAuto implements DeckAutonomous {
     <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
     <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera" hidden><section class="cal-card" id="cal-camera"></section></div>
     <div id="cal-panel-calibrate" role="tabpanel" aria-labelledby="cal-tab-calibrate" data-cal-top-panel="calibrate" hidden>
-    <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
+    <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button><button type="button" role="tab" id="cal-tab-axon" data-cal-tab="axon" aria-controls="cal-panel-axon">Axon</button></div>
     <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><div class="cal-grid"><div class="cal-flow">
       <section class="cal-card" aria-labelledby="cal-hub-title"><h2 id="cal-hub-title">Control Hub</h2><p class="hint">Plug it in by USB-C with the robot on. Torque reads every motor, servo and sensor from its active configuration.</p>
         <div class="button-row"><button id="cal-hub-setup" class="primary" type="button">Set up from the Control Hub</button></div><p id="cal-hub-status" class="hint" role="status"></p><ul id="cal-hub-result" class="sim-hub-result" hidden></ul></section>
@@ -337,7 +337,8 @@ public class MyAuto implements DeckAutonomous {
     </div><div class="cal-side" id="cal-electronics">
       <section class="cal-card" aria-labelledby="cal-hubs-title"><h2 id="cal-hubs-title">What the Control Hub reports</h2><div id="cal-hubs"></div></section>
     </div></div></div>
-    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div></div></div>`;
+    <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div>
+    <div id="cal-panel-axon" role="tabpanel" aria-labelledby="cal-tab-axon" data-cal-panel="axon" hidden></div></div></div>`;
   const graph=$('#simulation-field'),robotGlyph=$('#field-robot'),estimateShape=$('#sim-estimate'),targetMark=$('#sim-target'),elementsLayer=$('#sim-elements');
   function svg(tag,attributes,text){const node=document.createElementNS(ns,tag);for(const [key,value] of Object.entries(attributes))node.setAttribute(key,value);if(text!==undefined)node.textContent=text;return node;}
   let fieldArtKey='';
@@ -3299,8 +3300,11 @@ public class MyAuto implements DeckAutonomous {
   }
   function calTabs(attr,panel,key){for(const b of $$(`[data-${attr}]`)){const on=b.getAttribute(`data-${attr}`)===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$(`[data-${panel}]`))p.hidden=p.getAttribute(`data-${panel}`)!==key;}
   // Electronics or Mechanisms opens the Calibrate tab they are in; Debug is its own.
-  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);}
-  for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const other=$$(`[data-${attr}]`).find(x=>x!==b);calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
+  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);axonShown();}
+  // Axon's programmer is only touched while its page shows.
+  const axonShown=()=>window.DeckAxon?.shown(calibrating&&calTop==='calibrate'&&calTab==='axon');
+  window.DeckAxon?.install($('#cal-panel-axon'),native?api:null);
+  for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const row=$$(`[data-${attr}]`),other=row[(row.indexOf(b)+(e.key==='ArrowRight'?1:row.length-1))%row.length];calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
   function calRender(){if(!calRoot||calRoot.hidden)return;calElectronics();calMechanisms();calGates();const h=calHubHash();if(liveDebug&&h!==calLayout){calLayout=h;liveDebug.layout();}}
@@ -3547,7 +3551,7 @@ public class MyAuto implements DeckAutonomous {
   calRoot?.addEventListener('contextmenu',e=>{const b=e.target.closest('[data-setup-id],#sim-setup');if(!b)return;e.preventDefault();const r=b.getBoundingClientRect();setupMenu(b.dataset.setupId||project.setupId,e.clientX||r.left+16,e.clientY||r.bottom);});
   $('#cal-open-sim').onclick=()=>void api.page?.('simulation');
   return {flow(step){if(step!=='calibrate'){flowStep=step;setupRender();}flowMarks();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
-    calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();hubWatch();},
+    calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();hubWatch();axonShown();},
     activate(value){
     if(value)reliableNote();
     if(value){sendHome.append($('#sim-send'));if(setupBar&&setupHome)setupHome.before(setupBar);}
