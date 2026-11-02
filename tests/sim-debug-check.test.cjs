@@ -49,6 +49,15 @@ test('a Robot Controller that crashes on Torque Debug gets it taken off and is s
   let removed=false;const bad=fake(calls=>{removed=calls.some(c=>/rm -f/.test(c));return calls.some(c=>/am start/.test(c))?on:'';});await assert.rejects(L.usbDebugGuard({run:bad.run,watch:30000,pause:5}),/crashed when it loaded Torque Debug/);assert.ok(removed);assert.ok(bad.calls.some(c=>/rm -f \/sdcard\/FIRST\/java\/src\/TorqueDebug\.java/.test(c)));assert.ok(bad.calls.some(c=>/am start/.test(c)));
 });
 
+test('with nobody pressing anything, the Robot Controller is never started: a scan answers at once, a check only waits for it',async()=>{
+  const on='  1: 012BA8C0:5194 00000000:0000 07',fake=table=>{const calls=[];return {calls,run:(f,args,o,done)=>{const a=args.join(' ');calls.push(a);if(/^devices/.test(a))return done(null,'List of devices attached\nABC\tdevice\n','');if(/cat \/proc\/net\/udp/.test(a))return done(null,table(calls),'');return done(null,'','');}};};
+  const down=fake(()=>''),began=Date.now();await assert.rejects(L.usbController('ABC',{run:down.run,noStart:true,wait:0}),/app on this Control Hub is not answering/);assert.ok(Date.now()-began<1000,'at once');assert.ok(!down.calls.some(c=>/am start/.test(c)),'nothing started');assert.equal(down.calls.length,1,'one look');
+  const later=fake(calls=>calls.length>=3?on:'');assert.equal(await L.usbController('ABC',{run:later.run,noStart:true,wait:2000,pause:5}),true,'it can wait for the app to come up by itself');assert.ok(!later.calls.some(c=>/am start/.test(c)));
+  const up=fake(()=>on);assert.equal(await L.usbController('ABC',{run:up.run,noStart:true,wait:0}),false,'already listening: nothing to do');assert.equal(await L.usbControllerUp('ABC',{run:up.run}),true);assert.equal(await L.usbControllerUp('ABC',{run:down.run}),false);
+  const pressed=fake(calls=>calls.some(c=>/am start/.test(c))?on:'');assert.equal(await L.usbController('ABC',{run:pressed.run,pause:5}),true);assert.ok(pressed.calls.some(c=>/am start/.test(c)),'a press still starts it');
+  await assert.rejects(L.usbLink({run:fake(()=>'').run,noStart:true,wait:0}),/not answering/,'the whole link, as a scan asks for it');
+});
+
 test('the Robot Controller counts as listening on its own address, not the relay’s loopback one',()=>{
   const on='  157: 0000000000000000FFFF0000012BA8C0:5194 00000000000000000000000000000000:0000 07 00000000:00000000',relay='  12: 0100007F:5194 00000000:0000 07',relay6='  12: 0000000000000000FFFF00000100007F:5194 000:0000 07';
   assert.ok(L.controllerListening(on));assert.ok(!L.controllerListening(relay));assert.ok(!L.controllerListening(relay6));assert.ok(!L.controllerListening(''));assert.ok(L.controllerListening(relay+'\n'+on));

@@ -157,9 +157,10 @@
     if(typeof v==='string')return v.length<=200?v:v.slice(0,200);if(depth>5||v===null||typeof v!=='object')return undefined;
     if(Array.isArray(v))return v.slice(0,64).map(x=>clean(x,depth+1)).filter(x=>x!==undefined);
     const out={};for(const [k,x] of Object.entries(v).slice(0,200)){if(!/^[\w.:-]{1,80}$/.test(k))continue;const c=clean(x,depth+1);if(c!==undefined)out[k]=c;}return out;}
-  const sanitize=raw=>{const c=clean(raw&&typeof raw==='object'?raw:{});return {...(c.hub&&typeof c.hub==='object'?{hub:c.hub}:{}),mechs:c.mechs&&typeof c.mechs==='object'&&!Array.isArray(c.mechs)?c.mechs:{}};};
+  const sanitize=raw=>{const c=clean(raw&&typeof raw==='object'?raw:{});return {...(c.hub&&typeof c.hub==='object'?{hub:c.hub}:{}),...(c.lens&&typeof c.lens==='object'&&!Array.isArray(c.lens)?{lens:c.lens}:{}),mechs:c.mechs&&typeof c.mechs==='object'&&!Array.isArray(c.mechs)?c.mechs:{}};};
   // The constants file for the team's code: each calibrated mechanism's units, zero, limits and gains, as Java.
-  function constants(list,{packageName='org.firstinspires.ftc.teamcode',className='DeckCalibration',when=''}={}){
+  // lens: project.calibration.lens, {camera: {size: {fx, fy, cx, cy}}}, one-tag estimates from Calibrate → Camera. The simulated webcam's are left out.
+  function constants(list,{packageName='org.firstinspires.ftc.teamcode',className='DeckCalibration',when='',lens}={}){
     const id=s=>String(s).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'').toUpperCase()||'MECHANISM',n=v=>finite(v)?String(+(+v).toPrecision(6)):'0';
     const body=list.map(({name,template,rec})=>{const p=id(name),t=rec?.transform||{},lines=[`    // ${name}: ${TEMPLATES[template]?.name||template}`];
       if(finite(t.cpr))lines.push(`    public static final double ${p}_COUNTS_PER_UNIT = ${n(toRaw(1,{...t,offset:0})-toRaw(0,{...t,offset:0}))};`,`    public static final double ${p}_ZERO_OFFSET = ${n(t.offset||0)};`,`    public static final int ${p}_DIRECTION = ${t.sign===-1?-1:1};`);
@@ -169,6 +170,7 @@
       if(rec?.threshold)lines.push(`    public static final double ${p}_THRESHOLD = ${n(rec.threshold.value)}, ${p}_HYSTERESIS = ${n(rec.threshold.hysteresis)};`);
       if(rec?.positions)for(const [k,v] of Object.entries(rec.positions))lines.push(`    public static final double ${p}_${id(k)} = ${n(v)};`);
       return lines.join('\n');}).join('\n\n');
-    return `package ${packageName};\n\n/** Calibrated in Torque${when?` (${when})`:''}. Units are each mechanism's own (degrees or mm); gains are power per unit. */\npublic final class ${className} {\n    private ${className}() {}\n\n${body}\n}\n`;}
+    const lenses=Object.entries(lens||{}).filter(([k])=>k!=='sim').flatMap(([k,sizes])=>Object.entries(sizes||{}).map(([size,l])=>{const p=`LENS_${id(k)}_${id(size)}`;return `    // ${k} at ${size}: a one-tag estimate. new AprilTagProcessor.Builder().setLensIntrinsics(${p}_FX, ${p}_FY, ${p}_CX, ${p}_CY)\n    public static final double ${p}_FX = ${n(l.fx)}, ${p}_FY = ${n(l.fy)}, ${p}_CX = ${n(l.cx)}, ${p}_CY = ${n(l.cy)};`;})).join('\n\n');
+    return `package ${packageName};\n\n/** Calibrated in Torque${when?` (${when})`:''}. Units are each mechanism's own (degrees or mm); gains are power per unit. */\npublic final class ${className} {\n    private ${className}() {}\n\n${[body,lenses].filter(Boolean).join('\n\n')}\n}\n`;}
   return {KINDS,GATES,TEMPLATES,TYPE_TEMPLATE,ILLEGAL,feedbackOf,templateOf,gateStates,toUnits,toRaw,perTurnOf,fitLine,holdBand,velocityFit,ratioFit,stepInfo,threshold,shortest,simulate,suggest,hash,sanitize,constants};
 });

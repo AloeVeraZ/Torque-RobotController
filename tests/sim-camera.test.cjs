@@ -27,10 +27,18 @@ test('Torque Debug’s camera over the link: named in its device list, frames on
     assert.equal(images,0,'no picture until asked');assert.ok(d.camera(true));await until(()=>images>=3,'three pictures in a row');assert.ok(size>1000);d.camera(false);
     assert.ok(d.send('V\t5\t255'));assert.ok(d.send('D\t2'));await until(()=>last.cam.exp===5&&last.cam.gain===255&&last.cam.dec===2,'settings applied');assert.deepEqual(debug.camera(),{exposure:5,gain:255,decimation:2,feet:4});
     await until(()=>last.cam.tags.length===1,'a tag read');assert.equal(last.cam.tags[0].id,584);
-    assert.ok(d.send('V\tauto'));await until(()=>last.cam.exp===null,'back to automatic');}
+    assert.ok(d.send('V\tauto'));await until(()=>last.cam.exp===null,'back to automatic');
+    // Lens numbers: a frame says which it uses, and the range reported follows them. Null until sent, so a Torque Debug too old to take them can be told by the field being absent.
+    assert.equal(last.cam.lens,null);await until(()=>last.cam.tags.length===1,'a tag read');assert.ok(Math.abs(last.cam.tags[0].r-48*Cam.FALLBACK_FX/Cam.SIM_FX)<.01,'read through the SDK’s guess');
+    assert.ok(d.send(`K\t${Cam.SIM_FX}\t${Cam.SIM_FX}\t320\t240`));await until(()=>last.cam.lens?.[0]===Cam.SIM_FX,'the lens took');assert.deepEqual(last.cam.lens,[Cam.SIM_FX,Cam.SIM_FX,320,240]);await until(()=>last.cam.tags[0]?.r===48,'the right distance');
+    assert.ok(d.send('K\toff'));await until(()=>last.cam.lens===null,'back to the SDK’s own');}
   finally{d.stop();await d.ended.catch(()=>{});}
 });
 
 test('Torque Debug’s source has the camera commands and stays free of a package and nested classes',()=>{
-  const src=L.debugSource('TorqueDebug-18.30-10-30-26');for(const s of ['VisionPortal.Builder','AprilTagProcessor.Builder','case "V": case "D":','"cameras"','portal.close()'])assert.ok(src.includes(s),s);assert.doesNotMatch(src,/^package /m);
+  const src=L.debugSource('TorqueDebug-18.30-10-30-26');for(const s of ['VisionPortal.Builder','AprilTagProcessor.Builder','case "V": case "D": case "K":','"cameras"','open.close()','setLensIntrinsics(lens[0], lens[1], lens[2], lens[3])','\\"lens\\":'])assert.ok(src.includes(s),s);assert.doesNotMatch(src,/^package /m);
+  // The camera is always let go. Stopping closes whichever portal is current, one closing never goes around that, and a stop during a reopen leaves no new portal holding the camera.
+  assert.match(src,/void closePortal\(\) \{\s*synchronized \(portalLock\) \{\s*VisionPortal open = portal;\s*if \(open == null \|\| open == closedPortal\) return;\s*closedPortal = open;\s*open\.close\(\);/);
+  assert.match(src,/\} finally \{\s*running = false;[\s\S]{0,300}?closePortal\(\);\s*close\(\);/,'stopping closes it');assert.doesNotMatch(src,/\bportal\.close\(\)/,'everything goes through closePortal');
+  assert.match(src,/closePortal\(\);\s*Thread\.sleep\(500\);\s*if \(!running\) return;\s*openCamera\(\);\s*if \(!running\) \{ closePortal\(\); return; \}/,'a reopen checks before it opens, and closes what it opened if stopped meanwhile');
 });

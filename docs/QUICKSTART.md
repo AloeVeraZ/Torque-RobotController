@@ -96,9 +96,10 @@ can retain website sessions; HTTP authentication may ask again after reopening.
 
 ### Setup & Calibrate
 
-One tab, three steps. **1 Setup** picks the robot control system, checks the connection over USB-C or Wi-Fi, and **Scan** shows what is connected, as Configure Robot's Scan does on a Driver Hub. **Available configurations** lists the ones on the robot, to edit, activate, delete or make new. **2 Configure** edits one, port by port on each hub, with only the parts a Control Hub allows. **3 Calibrate** works on the real robot. Over USB-C this needs ADB, which the REV Hardware Client installs.
+One tab, three steps. **1 Setup** picks the robot control system, checks the connection over USB-C or Wi-Fi, and shows what is connected, as Configure Robot's Scan does on a Driver Hub. Over USB-C it follows what you plug in by itself; over Wi-Fi, press **Scan**. **Available configurations** lists the ones on the robot, to edit, activate, delete or make new. **2 Configure** edits one, port by port on each hub, with only the parts a Control Hub allows. What is on the Control Hub's USB ports is at the top: a webcam shows with its serial number and an **Add** button, and reaches the robot when you press **Save**, like every other change. **3 Calibrate** works on the real robot. Over USB-C this needs ADB, which the REV Hardware Client installs.
 
-**Calibrate** has a **Debug** tab with **Live debug**, and a **Calibrate** tab with two more.
+**Calibrate** has four tabs, in the order you work through them: **Camera**, **USB devices**, **Debug** and **Calibrate**.
+**Camera** lists every camera in the active configuration or plugged into the Control Hub, and starts live debug itself to show the picture. **USB devices** lists the rest of what is on the hub's USB ports, with what the rules say about each. **Debug** has **Live debug**, and **Calibrate**, the very end, has two more tabs.
 **Electronics** reads the Control Hub (Set up from the Control Hub over USB-C), shows every motor, servo and
 sensor with its port, and runs the guided check. In **Live debug**, put Torque Debug on the robot once, start it, and every
 port reads live while motors and continuous servos run only while you hold their slider. **Mechanisms** unlocks

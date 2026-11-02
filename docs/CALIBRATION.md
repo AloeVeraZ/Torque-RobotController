@@ -2,10 +2,14 @@
 
 Calibrate (the third view in the header) turns a robot configuration into tuned mechanisms. It rests on one rule from the research behind it: **a mechanism can only be calibrated against something that measures what it did.** A motor's encoder counts its speed or position, an Axon's feedback wire or an absolute encoder tells a servo's angle, a limit switch marks zero. Where nothing measures a part, there is nothing to tune: only where its positions are.
 
-The view has the saved-setup bar on top (pick, make, open and save setups) and two tabs:
+The view has the saved-setup bar on top (pick, make, open and save setups) and four tabs, left to right in the order a team works. It opens on the first:
 
-- **Electronics**: **Live debug**, Send to robot and the guided check, with what the Control Hub reports on the right: what is connected to each port and every motor, servo and sensor. Those stay hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
-- **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read.
+- **Camera**: a webcam's view, its AprilTags and its settings. Its list has every camera in the active configuration and every camera on the Control Hub's USB, which it follows by itself over USB-C. The Robot Controller can only open cameras in its active configuration, so one that is only plugged in says so and has a button to the top of Configure, where it is added and saved. Camera's own Start live debug and Put Torque Debug on the robot are the Debug tab's, with the same questions first. It also checks the camera picked, measures a lens with one tag, and shows a Limelight's status in place of a picture.
+- **USB devices**: everything else on the hub's USB ports, port by port, with what the rules say about each and what to do. See [USB devices on a Control Hub](USB-DEVICES.md).
+- **Debug**: **Live debug**.
+- **Calibrate**, once everything else is set up, with two tabs of its own:
+  - **Electronics**: Send to robot and the guided check, with what the Control Hub reports on the right: what is connected to each port and every motor, servo and sensor. Those stay hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
+  - **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read.
 
 Axon servos have their own tab, Axon Programmer, at the far right of the same row of steps. See [Programming Axon servos](AXON.md).
 
@@ -80,6 +84,6 @@ Live debug drives every motor and servo port and reads every encoder, switch, an
 - The robot-side loop for a step test takes gains in raw counts (Torque converts from mechanism units); the team's generated autonomous does not use these gains yet: the constants file is for the team's own code.
 - Burst capture (full-rate samples buffered on the robot) is not used; step tests read the 50 Hz stream.
 - OctoQuad, Limelight and Servo Hub devices are not read by Torque Debug yet.
-- Calibrate → Camera (`ui/sim-camera.js`) shows the first webcam in the configuration through Torque Debug's VisionPortal, and has a simulated webcam that needs no hardware. The simulation is a model of the FTC docs' advice on exposure, gain and decimation, and the real path has only run against `tools/ftc-sim.cjs`, never a real webcam. A Limelight is listed by Scan but has no live view.
+- Calibrate → Camera (`ui/sim-camera.js`) shows the first webcam in the configuration through Torque Debug's VisionPortal, and has a simulated webcam that needs no hardware when no real camera is configured or plugged in. The simulation is a model of the FTC docs' advice on exposure, gain and decimation, and the real path has only run against `tools/ftc-sim.cjs`, never a real webcam. A Limelight has a status panel and no live view, tested only against stand-ins: see [USB-DEVICES.md](USB-DEVICES.md).
 - The virtual Control Hub does not hide true values or add the hub's quirks, so calibration cannot yet be scored against the simulator.
 - Custom debug sockets at competitions were not researched: treat Live debug as pit and practice equipment.

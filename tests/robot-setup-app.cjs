@@ -27,6 +27,8 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     .replace('            <goBILDA5202SeriesMotor name="indexer" port="1" />\n','').replace('            <goBILDA5202SeriesMotor name="turret" port="2" />\n','');
   const robot=await startUdpRobot({address:ROBOT,configurations:[{name:'competition',xml}]}),onbot=await startOnBotJava({address:ROBOT,port:8080,buildMs:300,built:listBuilt(robot.sim)});
   const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-robot-setup-')),env={...process.env,DECK_HEADLESS:'1',DECK_CONTROLLER_TEST:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  // This test's robot is the simulated one. A real Control Hub on this computer's USB takes no part: with this in ADB's place, nothing can talk to it.
+  env.ADB=process.platform==='win32'?path.join(process.env.SystemRoot||'C:\\Windows','System32','where.exe'):'/bin/false';
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root,`--remote-debugging-port=${DEBUG_PORT}`,`--deck-sim-open=${path.join(root,'examples/biobuzz-red-auto.json')}`,'--deck-sim-tab=run'],env});
   const errors=[];let drive=null,debug=null;
   try{

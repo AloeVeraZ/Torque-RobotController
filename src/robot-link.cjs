@@ -162,7 +162,7 @@ function runCheck(host,opMode,{onUpdate=()=>{},limit=20*60e3,timeout=8000,socket
     pad(p){if(!running)return;const down=PAD.filter(([i])=>p?.buttons?.[i]?.pressed).map(([,name])=>name);
       if(down.length){clearTimeout(release);held=true;ds.setGamepad(1,{id:1,timestamp:Date.now(),...Object.fromEntries(down.map(name=>[name,true]))});}
       else if(held){held=false;ds.setGamepad(1,{id:1,timestamp:Date.now()});}},
-    stop(){finish('stopped');}};
+    stop(why='stopped'){finish(why);}};
 }
 const PAD=[[0,'a'],[1,'b'],[2,'x'],[3,'y'],[12,'dpad_up'],[13,'dpad_down'],[14,'dpad_left'],[15,'dpad_right']];
 
@@ -211,7 +211,7 @@ function runDebug(host,{onManifest=()=>{},onFrame=()=>{},onCamera=()=>{},limit=6
   return {ended,
     send(line){if(!sock||sock.destroyed||typeof line!=='string'||!line||line.length>400||/[\r\n]/.test(line))return false;sock.write(line+'\n');return true;},
     camera(on){wantCamera=!!on;return !!station;},
-    stop(){finish('stopped');}};
+    stop(why='stopped'){finish(why);}};
 }
 
 // ---- OnBot Java, over HTTP on port 8080
@@ -297,7 +297,7 @@ const {execFile,spawn}=require('node:child_process'),os=require('node:os');
 function adbPath(){const fsx=require('node:fs'),cands=[process.env.ADB,process.platform==='win32'?path.join(process.env['ProgramFiles(x86)']||'C:\\Program Files (x86)','REV Robotics','REV Hardware Client','android-tools','adb.exe'):null,
     process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'Android','Sdk','platform-tools','adb.exe'):null,process.env.ANDROID_HOME?path.join(process.env.ANDROID_HOME,'platform-tools',process.platform==='win32'?'adb.exe':'adb'):null].filter(Boolean);
   return cands.find(f=>fsx.existsSync(f))||'adb';}
-const adb=(args,{timeout=10000,run=execFile}={})=>new Promise((resolve,reject)=>run(adbPath(),args,{timeout,maxBuffer:8*1024*1024,windowsHide:true,encoding:'utf8'},(e,out,err)=>e?reject(Object.assign(Error(e.code==='ENOENT'?'ADB was not found. Install the REV Hardware Client (it brings ADB) or Android platform-tools.':(String(err||e.message).trim()||e.message)),{code:e.code})):resolve(String(out))));
+const adb=(args,{timeout=10000,run=execFile}={})=>new Promise((resolve,reject)=>run(adbPath(),args,{timeout,maxBuffer:8*1024*1024,windowsHide:true,encoding:'utf8'},(e,out,err)=>e?reject(Object.assign(Error(e.code==='ENOENT'?'Torque could not find its USB tool. Install the REV Hardware Client, which includes it.':(String(err||e.message).trim()||e.message)),{code:e.code})):resolve(String(out))));
 // GET a path of the robot's web server forwarded to this computer's port (it hangs up on a kept-alive request).
 const getLocal=(port,p,timeout=5000)=>new Promise((resolve,reject)=>{const req=http.get({host:'127.0.0.1',port,path:p,timeout,headers:{'User-Agent':'Deck Driver Station','Accept':'*/*','Connection':'close'}},res=>{let body='';res.setEncoding('utf8');res.on('data',c=>body+=c);res.on('end',()=>res.statusCode===200?resolve(body):reject(Error(`HTTP ${res.statusCode}`)));});req.on('timeout',()=>req.destroy(Error('timed out')));req.on('error',reject);});
 // Blocks' hardware names: "frontleftAsDcMotor" is the device "frontleft" as a DcMotor (hub modules left out).
@@ -355,10 +355,15 @@ async function usbForward({run}={}){
 // The Robot Controller app, team code, configurations and firmware are not touched (R706). A hub that already answers on
 // the port, as an older Deck's OnBot Java link does, needs no relay.
 const RELAY_DEX=path.join(__dirname,'usb-relay','classes.dex'),RELAY_REMOTE='/data/local/tmp/deck-usb-relay.dex';
-let usbRelayChild=null,usbRelaySerial=null;
-function stopUsbRelay(){const child=usbRelayChild;usbRelayChild=null;usbRelaySerial=null;if(!child)return;try{child.stdin.end();}catch{}try{child.kill();}catch{}}
-async function usbRelay(serial,{run,start=spawn}={}){
-  if(usbRelayChild&&usbRelaySerial===serial&&usbRelayChild.exitCode===null)return;stopUsbRelay();
+let usbRelayChild=null,usbRelaySerial=null,usbRelayOpening=null;
+function stopUsbRelay(){const child=usbRelayChild;usbRelayChild=null;usbRelaySerial=null;usbRelayOpening=null;if(!child)return;try{child.stdin.end();}catch{}try{child.kill();}catch{}}
+// The cable was pulled: the ports and relay kept for that hub went with it, so plugging it back in starts clean.
+function usbForget(serial){const mine=s=>!!s&&String(s).toLowerCase()===String(serial).toLowerCase();if(mine(usbPorts?.serial)||mine(usbRelaySerial)){stopUsbRelay();usbPorts=null;}}
+// Two callers at once (a scan and Start live debug) share one start: a second relay could not bind the port, and would say the relay failed.
+function usbRelay(serial,options){if(usbRelayOpening?.serial===serial)return usbRelayOpening.ready;
+  const ready=usbRelayStart(serial,options).finally(()=>{if(usbRelayOpening?.ready===ready)usbRelayOpening=null;});usbRelayOpening={serial,ready};return ready;}
+async function usbRelayStart(serial,{run,start=spawn}={}){
+  if(usbRelayChild&&usbRelaySerial===serial&&usbRelayChild.exitCode===null)return;if(usbRelayChild)stopUsbRelay();
   const sh=cmd=>adb(['-s',serial,'shell',cmd],{run});
   if(/:5195 [0-9A-F:]+ 0A /i.test(await sh('cat /proc/net/tcp /proc/net/tcp6 2>/dev/null')))return;
   // Inside the packaged app the file is in an archive only Deck can read, so ADB pushes a copy.
@@ -371,11 +376,14 @@ async function usbRelay(serial,{run,start=spawn}={}){
   child.stdin.on('error',()=>{});child.once('exit',()=>{if(usbRelayChild===child){usbRelayChild=null;usbRelaySerial=null;}});usbRelayChild=child;usbRelaySerial=serial;}
 // The Robot Controller app listens for Driver Stations on UDP 20884 (:5194 in /proc/net/udp), on the hub's own address; the
 // relay's socket is the one on loopback. If the app has stopped or crashed it is started, as a hub does when it powers on,
-// and the wait covers the 40 s or so it takes (and a restart after saving a configuration).
+// and the wait covers the 40 s or so it takes (and a restart after saving a configuration). noStart: nobody pressed anything, so nothing is started, which matters most for
+// a build that crashes the app each time it starts; it only waits, and wait: 0 answers at once.
 const controllerListening=table=>/^\s*\d+:\s+(?![0-9A-F]*0100007F:)[0-9A-F]+:5194 /im.test(String(table));
-async function usbController(serial,{run,wait=70000,pause=500}={}){const sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),on=async()=>controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null'));if(await on())return false;
-  await sh('am start -n com.qualcomm.ftcrobotcontroller/org.firstinspires.ftc.robotcontroller.internal.PermissionValidatorWrapper').catch(()=>{});
+const usbControllerUp=async(serial,{run}={})=>controllerListening(await adb(['-s',serial,'shell','cat /proc/net/udp /proc/net/udp6 2>/dev/null'],{run}));
+async function usbController(serial,{run,wait=70000,pause=500,noStart=false}={}){const sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),on=()=>usbControllerUp(serial,{run});if(await on())return false;
+  if(!noStart)await sh('am start -n com.qualcomm.ftcrobotcontroller/org.firstinspires.ftc.robotcontroller.internal.PermissionValidatorWrapper').catch(()=>{});
   for(const end=Date.now()+wait;Date.now()<end;){await delay(pause);if(await on())return true;}
+  if(noStart)throw Error('The Robot Controller app on this Control Hub is not answering. Press Scan to start it, or restart the robot.');
   throw Error('The Robot Controller app on this Control Hub is not running and did not start. Restart the robot, then try again.');}
 // After Torque Debug is built: if the Robot Controller stops within the time a crash on new OnBot Java code takes (under 30 s
 // seen, from Sinister in the team's build), it would crash again each time it starts. So that build and Torque Debug's source
@@ -387,4 +395,4 @@ async function usbDebugGuard({run,watch=40000,pause=2000}={}){const {serial}=awa
     throw Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took it off again and restarted the app. Nothing else changed.');}}
 // Sets up the ports, the Robot Controller and the relay: what the Driver Station link needs.
 async function usbLink(options){const ports=await usbForward(options);await usbController(ports.serial,options);await usbRelay(ports.serial,options);return ports;}
-module.exports={runDebug,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbDebugGuard,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,formEncode,checkHost};
+module.exports={adb,runDebug,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,formEncode,checkHost};

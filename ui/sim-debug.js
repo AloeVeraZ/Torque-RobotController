@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  // Calibrate → Electronics → Live debug. Torque Debug (src/onbot/TorqueDebug.java) runs on the robot and streams every
+  // Calibrate → Debug → Live debug. Torque Debug (src/onbot/TorqueDebug.java) runs on the robot and streams every
   // motor encoder, servo, digital and analog input and I2C sensor in its configuration; this panel lays them out hub by
   // hub and port by port as Setup wired them (DeckWiring rows, matched by device name), reads them live, and drives the
   // outputs: motors and continuous servos hold-to-run (the slider springs back to 0 and the robot's watchdog stops them if
@@ -30,12 +30,14 @@
       <div data-debug-hubs class="cal-debug-hubs"></div>
       <div class="cal-debug-tools" data-debug-tools hidden><section><h3 class="cal-group-title">Timeline</h3><p class="hint">Click any reading to plot it; each line is scaled to its own range. Last ${SPAN} s.</p><canvas data-debug-chart height="160"></canvas><div data-debug-legend class="cal-debug-legend"></div></section></div>`;
     const q=s=>host.querySelector(s);
-    const status=(text,kind='')=>{q('[data-debug-status]').textContent=text;q('[data-debug-dot]').className=`dot${kind?' '+kind:''}`;};
+    let said={text:'Not connected',kind:''};
+    const status=(text,kind='')=>{said={text,kind};q('[data-debug-status]').textContent=text;q('[data-debug-dot]').className=`dot${kind?' '+kind:''}`;};
     // ---- the parameters, set before Torque Debug goes on the robot and kept for the device check
-    const C=()=>root.DeckDebugCheck,PARAMS='torque-debug-params';
+    // The Camera tab shows this same box when a student starts from there, so it is found by reference and goes back home when closed.
+    const C=()=>root.DeckDebugCheck,PARAMS='torque-debug-params',paramsBox=q('[data-debug-params]'),paramsHome=()=>q('.cal-debug-actions').after(paramsBox);
     let params=(()=>{try{return C().sanitize(JSON.parse(localStorage.getItem(PARAMS)||'null'));}catch{return C().sanitize(null);}})();
     function paramsPaint(){const c=C(),p=params,bad=c.problem(p),opts=(list,now,unit)=>list.map(v=>`<option value="${v}"${v===now?' selected':''}>${v}${unit}</option>`).join('');
-      q('[data-debug-params]').innerHTML=`<h3>Before it goes on the robot</h3><p class="hint">Torque Debug uses every device in the robot’s active configuration, so what you set up in Configure is what it checks.</p>
+      paramsBox.innerHTML=`<h3>Before it goes on the robot</h3><p class="hint">Torque Debug uses every device in the robot’s active configuration, so what you set up in Configure is what it checks.</p>
         <div class="cal-fields"><div class="cal-field"><label for="cal-debug-motor">Motor speed</label><select id="cal-debug-motor" data-param="motor">${opts(c.motorChoices(p.over),p.motor,'%')}</select></div><div class="cal-field"><label for="cal-debug-servo-a">Servo angle 1</label><select id="cal-debug-servo-a" data-param="servoA">${opts(c.servoChoices(),p.servoA,'°')}</select></div><div class="cal-field"><label for="cal-debug-servo-b">Servo angle 2</label><select id="cal-debug-servo-b" data-param="servoB">${opts(c.servoChoices(),p.servoB,'°')}</select></div></div>
         <label class="check"><input type="checkbox" data-param="over"${p.over?' checked':''}> Allow motor speeds above 40%</label>${p.over?'<p class="cal-debug-warn">Not recommended. Check nothing can hit a hard stop, and keep the robot on blocks.</p>':''}
         <p class="hint"><b>Servos</b> move between the two angles, at least ${c.MIN_APART}° apart; continuous servos turn one way, then the other.</p><p class="hint"><b>Analog:</b> rotate it until Torque tells you to stop with a tone, then let go. You get 3 seconds.</p><p class="hint"><b>Digital:</b> press it and let go, twice. One that is already active is let go first.</p><p class="hint"><b>I2C:</b> nothing to do. Each bus shows whether its device is connected.</p>${bad?`<p class="cal-debug-bad" role="alert">${esc(bad)}</p>`:''}
@@ -149,18 +151,22 @@
       if(e.ended||e.error){checkStop();running=false;starting=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();}}
     if(native&&api.onRobotDebug)api.onRobotDebug(event);
     function buttons(){q('[data-debug-start]').textContent=running||starting?'Stop live debug':'Start live debug';q('[data-debug-stopall]').disabled=!running;q('[data-debug-install]').disabled=running||starting;}
+    // The Control Hub left the cable: what was on its way to it will only fail, in words about ports and sockets, so that is not shown.
+    let unplugs=0,installing=false;function unplugged(){unplugs++;if(!starting&&!installing)return;starting=false;status('Lost the robot connection','');buttons();checkPaint();onChange();}
     async function start(){
       if(!native)return status('Live debug needs the installed app.','error');if(running||starting)return stop();
-      const {host:to,label}=link();starting=true;buttons();status(`Starting Torque Debug on ${label}…`);
-      try{await api.robotLink('debug-start',{host:to});running=true;}catch(e){status(e.message,'error');}finally{starting=false;buttons();checkPaint();onChange();}}
+      const {host:to,label}=link(),was=unplugs;starting=true;buttons();status(`Starting Torque Debug on ${label}…`);
+      try{await api.robotLink('debug-start',{host:to});if(was===unplugs)running=true;}catch(e){if(was===unplugs)status(e.message,'error');}finally{starting=false;buttons();checkPaint();onChange();}}
     async function stop(){checkStop();for(const s of host.querySelectorAll('[data-hold]'))s.value=0;await api.robotLink('debug-stop').catch(()=>{});running=false;buttons();checkPaint();onChange();}
     q('[data-debug-start]').onclick=()=>void start();
     q('[data-debug-stopall]').onclick=()=>{checkStop();for(const s of host.querySelectorAll('[data-hold]'))s.value=0;for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;void send('X');};
-    async function install(){const {host:to,label}=link(),b=q('[data-debug-install]');b.disabled=true;status(`Putting Torque Debug on ${label} and building…`);
-      try{const r=await api.robotLink('debug-install',{host:to});status(r?.built===false?`The robot could not build Torque Debug: ${r.errors?.[0]?.message||r.errors?.[0]||'see its OnBot Java page'}`:`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,r?.built===false?'error':'');return r?.built!==false;}catch(e){status(e.message,'error');return false;}finally{b.disabled=false;buttons();}}
-    q('[data-debug-install]').onclick=()=>{paramsPaint();q('[data-debug-params]').hidden=false;};
-    q('[data-debug-params]').addEventListener('click',e=>{if(e.target.closest('[data-debug-cancel]'))q('[data-debug-params]').hidden=true;else if(e.target.closest('[data-debug-go]')){q('[data-debug-params]').hidden=true;checkPaint();void install();}});
-    q('[data-debug-params]').addEventListener('change',e=>{const k=e.target.dataset.param;if(!k)return;params=C().sanitize({...params,[k]:k==='over'?e.target.checked:+e.target.value});try{localStorage.setItem(PARAMS,JSON.stringify(params));}catch{}paramsPaint();});
+    async function install(){const {host:to,label}=link(),b=q('[data-debug-install]'),was=unplugs;b.disabled=true;installing=true;status(`Putting Torque Debug on ${label} and building…`);
+      try{const r=await api.robotLink('debug-install',{host:to});if(was!==unplugs)return false;status(r?.built===false?`The robot could not build Torque Debug: ${r.errors?.[0]?.message||r.errors?.[0]||'see its OnBot Java page'}`:`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,r?.built===false?'error':'');return r?.built!==false;}catch(e){if(was===unplugs)status(e.message,'error');return false;}finally{installing=false;b.disabled=false;buttons();}}
+    // What Put Torque Debug on the robot opens: nothing is built until Put it on the robot is pressed. into: where it shows, here unless said.
+    function offerInstall(into){paramsPaint();if(into)into.append(paramsBox);else paramsHome();paramsBox.hidden=false;}
+    q('[data-debug-install]').onclick=()=>offerInstall();
+    paramsBox.addEventListener('click',e=>{const go=e.target.closest('[data-debug-go]');if(!go&&!e.target.closest('[data-debug-cancel]'))return;paramsBox.hidden=true;paramsHome();if(go){checkPaint();void install();}});
+    paramsBox.addEventListener('change',e=>{const k=e.target.dataset.param;if(!k)return;params=C().sanitize({...params,[k]:k==='over'?e.target.checked:+e.target.value});try{localStorage.setItem(PARAMS,JSON.stringify(params));}catch{}paramsPaint();});
     // Hold-to-run: the slider sends while held and springs back to 0 when let go (pointer up, key up, focus lost).
     let held=null,sentAt=0;
     const holdSend=(el,force)=>{const now=performance.now();if(!force&&now-sentAt<40)return;sentAt=now;void send(`${el.dataset.hold}\t${el.dataset.name}\t${(+el.value).toFixed(3)}`);};
@@ -194,7 +200,7 @@
       return {changes};}
     // Readings over a while (for captures and ramps): the values of every frame in the next ms milliseconds.
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
-    return {event,layout,start,install,stop,send,pulse:pulseWatch,record,running:()=>running,latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    return {event,layout,start,install,offerInstall,stop,unplugged,send,pulse:pulseWatch,record,running:()=>running,state:()=>({running,starting,installing,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning};
 })(typeof globalThis==='object'?globalThis:this);

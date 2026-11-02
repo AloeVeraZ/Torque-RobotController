@@ -145,7 +145,8 @@ window.DeckAxon=(()=>{
   }
   function render(){
     if(!root)return;
-    if(snap&&servo().key!==lastServoKey){lastServoKey=servo().key;pending={};formEpoch++;target=null;result=null;if(servo().present)picked=null;ask=null;}
+    // A new servo starts clean. A mode switch is the one change that announces itself: its answer and the servo's new state can arrive in either order, and it stays.
+    if(snap&&servo().key!==lastServoKey){lastServoKey=servo().key;pending={};formEpoch++;target=null;if(!(result?.mode&&servo().present&&result.mode===servo().mode))result=null;if(servo().present)picked=null;ask=null;}
     const button=$('axon-level');button.textContent=level==='advanced'?'Back to Simple':'Show Advanced';button.setAttribute('aria-pressed',String(level==='advanced'));
     renderChips();renderCards();renderSettings();renderHint();renderSide();renderBar();syncAsk();
   }
@@ -171,7 +172,8 @@ window.DeckAxon=(()=>{
   async function doFlash({code,mode,extra={}},allowUnknownName=false){
     closeAsk();render();
     try{result=await axon('flash',{code,mode,recovery:!!extra.recovery,allowUnknownName});}
-    catch(e){if(e.code==='NAME_UNKNOWN'){ask={title:'Servo name unavailable',text:e.message,more:'Write the firmware anyway?',buttons:[['Write it anyway','flash-anyway'],['Cancel','cancel-ask']],code,mode,extra};return;}throw e;}
+    // An error's code does not cross into the page, only its words.
+    catch(e){if(/name could not be read/.test(e.message)){ask={title:'Servo name unavailable',text:e.message,more:'Write the firmware anyway?',buttons:[['Write it anyway','flash-anyway'],['Cancel','cancel-ask']],code,mode,extra};return;}throw e;}
     if(result?.ok){target=null;pending={};formEpoch++;}
   }
   const actions={

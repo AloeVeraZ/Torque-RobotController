@@ -302,8 +302,8 @@ public class MyAuto implements DeckAutonomous {
   if(setupRoot)setupRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-grid" id="rs-step-setup"><div class="cal-flow">
       <section class="cal-card" aria-labelledby="rs-control-title"><h2 id="rs-control-title">Robot control system</h2><div class="sim-big-toggle">${segmented('controller',{ftc:'FTC · Control Hub',motionmodule:'Other robot'},'Robot control system')}</div></section>
       <section class="cal-card" id="rs-robot-card" aria-labelledby="rs-robot-title"><h2 id="rs-robot-title">Your robot</h2><p id="rs-plug" class="rs-plug" role="status"><i class="dot"></i><span>Plug the Control Hub in by USB-C, or join its Wi-Fi, with the robot on.</span></p>
-        <ul id="rs-checks" class="rs-checks" hidden></ul><p id="rs-status" class="hint" role="status"></p><p id="rs-matched" hidden></p>
-        <div class="button-row"><button id="rs-read" class="secondary" type="button">Check again</button><button id="rs-scan" class="primary" type="button">Scan</button></div></section>
+        <ul id="rs-checks" class="rs-checks" hidden></ul><p id="rs-status" class="hint" role="status"></p><p id="rs-scan-stuck" class="hint" role="status" hidden></p><p id="rs-matched" hidden></p>
+        <div class="button-row"><button id="rs-read" class="secondary" type="button">Check again</button><button id="rs-scan" class="secondary" type="button">Scan</button></div></section>
       <section class="cal-card" id="rs-configs-card" aria-labelledby="rs-configs-title"><h2 id="rs-configs-title">Available configurations</h2><div id="rs-configs" class="rs-configs" role="list"></div>
         <form id="rs-new-form" class="rs-new" hidden><label class="sr-only" for="rs-new-name">New configuration’s name</label><input id="rs-new-name" placeholder="Configuration name" maxlength="40" spellcheck="false"><button class="primary" type="submit">Create</button><button id="rs-new-cancel" class="secondary" type="button">Cancel</button></form>
         <div class="button-row"><button id="rs-new" class="secondary" type="button">New configuration</button></div></section>
@@ -316,9 +316,10 @@ public class MyAuto implements DeckAutonomous {
   // Calibrate (its own app view): send the code with its check TeleOp, run the guided check, and the other things to
   // measure on the real robot. It uses this setup and the same Send to robot panel, moved here while it shows.
   if(calRoot)calRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-head"><p id="cal-saved" class="hint" role="status"></p><button id="cal-open-sim" class="secondary" type="button">Open in Simulate</button><button id="cal-save" class="primary" type="button">Save</button></div>
-    <div class="cal-tabs" role="tablist" aria-label="Debug or calibrate"><button type="button" role="tab" id="cal-tab-debug" data-cal-top="debug" aria-controls="cal-panel-debug">Debug</button><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera">Camera</button><button type="button" role="tab" id="cal-tab-calibrate" data-cal-top="calibrate" aria-controls="cal-panel-calibrate">Calibrate</button></div>
-    <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
-    <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera" hidden><section class="cal-card" id="cal-camera"></section></div>
+    <div class="cal-tabs" role="tablist" aria-label="Calibrate steps, in order"><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera">Camera</button><button type="button" role="tab" id="cal-tab-usb" data-cal-top="usb" aria-controls="cal-panel-usb">USB devices</button><button type="button" role="tab" id="cal-tab-debug" data-cal-top="debug" aria-controls="cal-panel-debug">Debug</button><button type="button" role="tab" id="cal-tab-calibrate" data-cal-top="calibrate" aria-controls="cal-panel-calibrate">Calibrate</button></div>
+    <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera"><section class="cal-card" id="cal-camera"></section></div>
+    <div id="cal-panel-usb" role="tabpanel" aria-labelledby="cal-tab-usb" data-cal-top-panel="usb" hidden><section class="cal-card" id="cal-usb"></section></div>
+    <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug" hidden><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
     <div id="cal-panel-calibrate" role="tabpanel" aria-labelledby="cal-tab-calibrate" data-cal-top-panel="calibrate" hidden>
     <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
     <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><div class="cal-grid"><div class="cal-flow">
@@ -1384,9 +1385,12 @@ public class MyAuto implements DeckAutonomous {
   // Send to robot reaches the robot one of two ways: the Control Hub's USB cable, or the robot's own Wi-Fi. Each time the
   // panel shows, the app looks for both (src/main.cjs detect) and picks what it finds, USB first; a pick by hand is kept.
   // The hidden #sim-send-robot holds the chosen address ("usb" or the robot's host) for the send and the guided check.
-  const link={usb:null,wifi:null,choice:null,looking:null};
-  function detectLink(){if(!native||!api.robotLink)return Promise.resolve();if(link.looking)return link.looking;
-    link.looking=(async()=>{try{const d=await api.robotLink('detect');link.usb=d.usb;link.wifi=d.wifi;}catch(e){link.usb={found:false,message:e.message};link.wifi=null;}finally{link.looking=null;showLink();mechanismsPanel();robotPanel();}})();showLink();return link.looking;}
+  const link={usb:null,wifi:null,choice:null,looking:null,at:0};
+  // hubLive: what the USB watch last pushed, while it runs (hubPushed below). setupGen goes up each time the Control Hub leaves the cable,
+  // so anything started before that can tell, and neither its late answer nor its late error reaches the screen.
+  let hubLive=null,setupGen=0,robotSending=0;const HUB_UNPLUGGED='The Control Hub was unplugged. Plug it back in and try again.';
+  function detectLink(){if(!native||!api.robotLink)return Promise.resolve();if(link.looking)return link.looking;link.at=Date.now();
+    link.looking=(async()=>{try{const d=await api.robotLink('detect');link.usb=hubLive?.status??d.usb;link.wifi=d.wifi;}catch(e){link.usb=hubLive?.status??{found:false,message:e.message};link.wifi=null;}finally{link.looking=null;showLink();mechanismsPanel();robotPanel();}})();showLink();return link.looking;}
   const linkChoice=()=>link.choice||(link.usb?.found?'usb':link.wifi?.robot?'wifi':'usb');
   function showLink(){
     const usb=link.usb,wifi=link.wifi,choice=linkChoice(),looking=!!link.looking&&!usb;
@@ -1400,7 +1404,8 @@ public class MyAuto implements DeckAutonomous {
   $('#sim-link-look').onclick=()=>{link.choice=null;void detectLink();};
   async function crossCheck(){if(!$('#sim-send').hidden)await detectLink();}
   async function sendPanel(){
-    const box=$('#sim-send');box.hidden=!native||!api.robotLink||$('#sim-export-onbot').hidden;if(!box.hidden&&!link.usb&&!link.looking)void detectLink();
+    // On Simulate, with the USB watch resting, it looks again now and then. detectLink draws the robot panel, which comes back here, so never without the wait.
+    const box=$('#sim-send');box.hidden=!native||!api.robotLink||$('#sim-export-onbot').hidden;if(!box.hidden&&!link.looking&&(!link.usb||active&&!hubLive&&Date.now()-link.at>15000))void detectLink();
   }
   // One line per device name: whether the robot has it, and for one it lacks, its devices to choose from (or, for a
   // name it has no device for, adding it to the robot's configuration).
@@ -1420,13 +1425,13 @@ public class MyAuto implements DeckAutonomous {
   const pickedNames=()=>Object.fromEntries($$('#sim-send-devices select').map(s=>[sendState?.result?.rows[+s.dataset.row]?.name,s.value]).filter(([mine,theirs])=>mine&&theirs));
   // scan: also scan the robot's hubs, which adding devices needs.
   async function readRobot(scan=false){
-    const host=$('#sim-send-robot').value,label=$('#sim-send-robot').selectedOptions[0]?.textContent||host;status('#sim-send-status',`Reading the configuration of ${label}…`);$('#sim-send-confirm').hidden=true;
-    try{const robot=host==='usb'?{...await api.robotLink('read-usb'),usb:true}:await api.robotLink('read',{host,scan});sendState={host,label,robot,result:RobotConfig.check(robotNeeds(),robot)};showCheck();showPlan();
+    const host=$('#sim-send-robot').value,label=$('#sim-send-robot').selectedOptions[0]?.textContent||host,gen=setupGen;status('#sim-send-status',`Reading the configuration of ${label}…`);$('#sim-send-confirm').hidden=true;
+    try{const robot=host==='usb'?{...await api.robotLink('read-usb'),usb:true}:await api.robotLink('read',{host,scan});if(host==='usb'&&gen!==setupGen)return null;sendState={host,label,robot,result:RobotConfig.check(robotNeeds(),robot)};showCheck();showPlan();
       if(!robot.active){status('#sim-send-status',`The robot has no active configuration${robot.configurations.length?` (it has ${robot.configurations.join(', ')}: you can activate one on the Driver Station, in Configure Robot)`:''}. Send to robot makes one for this code.`);return sendState;}
       const bad=sendState.result.rows.filter(r=>r.status!=='ok'||r.duplicate).length;
       status('#sim-send-status',bad?`${bad} of ${sendState.result.rows.length} device names do not match the configuration “${robot.active.name}”. Pick the robot's own names below, or let Send to robot add the devices.`:`Every device name matches the configuration “${robot.active.name}” (${sendState.result.rows.length} devices).${sendState.result.unused.length?` Not used by this code: ${sendState.result.unused.map(d=>d.name).join(', ')}.`:''}`);
       return sendState;}
-    catch(e){sendState=null;showCheck();showPlan();status('#sim-send-status',e.message);return null;}
+    catch(e){sendState=null;showCheck();showPlan();status('#sim-send-status',host==='usb'&&gen!==setupGen?HUB_UNPLUGGED:e.message);return null;}
   }
   // The picked robot names go into the setup: drive and sensor names (Robot controller) and mechanism names (Mechanisms).
   function usePicks(chosen){const m=structuredClone(project.mechanisms),devices={...(project.robot.devices||{})},base=deviceDefaults();let robotChanged=false,count=0;
@@ -1493,7 +1498,7 @@ public class MyAuto implements DeckAutonomous {
     if(makePlan()?.scan){status('#sim-send-status',`Scanning the hubs of ${check.label}…`);check=await readRobot(true);if(!check)return;}
     check.plan=makePlan();check.fileNames=Object.keys(out.files).map(f=>f.split('/').pop());showPlan();summary();$('#sim-send-confirm').hidden=false;$('#sim-send-yes').focus();};
   $('#sim-send-no').onclick=()=>{$('#sim-send-confirm').hidden=true;status('#sim-send-status','Nothing was sent.');};
-  $('#sim-send-yes').onclick=async()=>{const s=sendState;if(!s?.fileNames)return;const plan=s.plan?.assignments?.length?s.plan:null,chosen=pickedNames();$('#sim-send-confirm').hidden=true;$('#sim-send-go').disabled=true;
+  $('#sim-send-yes').onclick=async()=>{const s=sendState;if(!s?.fileNames)return;const plan=s.plan?.assignments?.length?s.plan:null,chosen=pickedNames(),gen=setupGen;$('#sim-send-confirm').hidden=true;$('#sim-send-go').disabled=true;robotSending++;
     try{
       if(usePicks(chosen))await ready();
       if(plan){status('#sim-send-status',`Saving the configuration “${plan.name}” on ${s.label}…`);
@@ -1507,7 +1512,7 @@ public class MyAuto implements DeckAutonomous {
       status('#sim-send-status',r.built?`${saved}Built on the robot in ${r.seconds} s. ${plan?'Plug in the devices listed below, then on':'On'} the Driver Station, run “${opModes[1]||'the check TeleOp'}” (TeleOp) first to test each device, then “${opModes[0]||'the autonomous'}” (Autonomous).${picked}${kept}`
         :`${saved}Uploaded, but the robot could not build it${r.errors.length?`: ${r.errors.slice(0,3).map(e=>`${e.file} line ${e.line}: ${e.message}`).join('; ')}`:'.'} An error in any OnBot Java file stops the whole build, including files Deck did not send.`);
       sendState={...s,result:null,fileNames:null};showCheck();showPlan(true);}
-    catch(e){status('#sim-send-status',e.message);}finally{$('#sim-send-go').disabled=false;}};
+    catch(e){status('#sim-send-status',s.host==='usb'&&gen!==setupGen?HUB_UNPLUGGED:e.message);}finally{robotSending--;$('#sim-send-go').disabled=false;}};
   if(native&&api.onRobotLink)api.onRobotLink(({stage,file})=>status('#sim-send-status',stage==='uploading'?`Uploading ${file}…`:'Building on the robot… (this takes up to a minute)'));
   // ------------------------------------------------------------------ guided check
   // The check TeleOp, run from here (src/robot-link.cjs runCheck): Deck starts it on the robot, shows each step with its
@@ -1920,18 +1925,20 @@ public class MyAuto implements DeckAutonomous {
   // From Mechanisms (Configure from Control Hub) the result shows there, under what Configure from CAD found; from
   // Calibrate → Electronics or the Setup view, under its button.
   // One configuration into the project: hubs, names, ports, sensors, and what Calibrate shows as read from the hub.
-  function useHubConfig(config,{name,serial,source='usb',guessed=false},out,list){
+  // background: nobody on the Simulate page asked for this, so a simulation running there stays as it is. Simulate loads what is current each time it opens.
+  function useHubConfig(config,{name,serial,source='usb',guessed=false,background=false},out,list){
     const HS=window.DeckHubSetup,chassis=!!project.robotPreset,result=HS.plan(project,config,{only:chassis?'chassis':undefined}),next=HS.apply(project,result);
     for(const k of ['robot','sensors','mechanisms','kinematics'])project[k]=next[k];inputValue('#sim-localization',project.sensors.localization);
-    save();robotPanel();mechanismsPanel();reload();calHubRead({source,name,...(serial?{serial}:{}),readout:HS.readout(config),config:{name,devices:config.devices||[],hubs:config.hubs||[]}});
+    save();robotPanel();mechanismsPanel();if(active&&!background)reload();calHubRead({source,name,...(serial?{serial}:{}),readout:HS.readout(config),config:{name,devices:config.devices||[],hubs:config.hubs||[]}});
     status(out,`“${name}”${guessed?' (the newest; the robot did not say which is active)':source==='usb'?' (active)':''}${serial?` on Control Hub ${serial}`:''}${chassis?', chassis only':''}. ${HS.summary(result)}`);
     list.replaceChildren(...HS.lines(result).map(l=>{const li=document.createElement('li');li.className='sim-hub-'+l.level;li.textContent=l.text;return li;}));list.hidden=!list.children.length;setupRender();calRender();}
   async function hubSetup(from){
     const out=from==='setup'?'#rs-status':'#cal-hub-status',list=$(from==='setup'?'#rs-result':'#cal-hub-result'),buttons=[$('#cal-hub-setup'),$('#rs-read')];
     if(project.controller!=='ftc')return status(out,'Set up from the Control Hub is for an FTC Control Hub: choose it in Setup.');
     if(!native||!api.robotLink)return status(out,'Setting up from the Control Hub needs the desktop app, with the Control Hub plugged into this computer by USB.');
-    for(const b of buttons)b.disabled=true;list.hidden=true;status(out,'Reading the Control Hub on USB…');
-    try{let read;try{read=await api.robotLink('read-usb');}catch(e){return status(out,`Plug the Control Hub into this computer with its USB-C data cable, turn the robot on and press this again. (${e.message})`);}
+    for(const b of buttons)b.disabled=true;list.hidden=true;status(out,'Reading the Control Hub on USB…');const gen=setupGen;
+    try{let read;try{read=await api.robotLink('read-usb');}catch(e){return status(out,gen!==setupGen?HUB_UNPLUGGED:`Plug the Control Hub into this computer with its USB-C data cable, turn the robot on and press this again. (${e.message})`);}
+      if(gen!==setupGen)return status(out,HUB_UNPLUGGED);
       const name=read.active?.name||read.configurations[0];if(!name||!read.files?.[name])return status(out,'The Control Hub has no configuration yet. Make one in Configure Robot on the Driver Station (name each motor, servo and sensor), then press this again.');
       let config;try{config=RobotConfig.parse(read.files[name]);}catch(e){return status(out,e.message);}
       setupRead=read;useHubConfig(config,{name,serial:read.serial,guessed:!!read.active?.guessed},out,list);}
@@ -1941,80 +1948,185 @@ public class MyAuto implements DeckAutonomous {
   // configuration, which says what is on each port; a hub cannot sense that by itself. A test is offered only when two hubs
   // of one kind could be mistaken for each other.
   let setupShown=false,setupRead=null,setupRobot=null,setupConn=null,setupTried=null,setupBusy=false,setupTimer=null,hubTest=null,configEditor=null,setupChecking=null,setupAutoFor=null,setupAutoTries=0,setupAgain=0;
+  // What the last Scan found on the Control Hub's USB (a webcam, a Limelight), kept with the setup. Over the USB-C cable Torque reads the hub's ports itself as well, and .devices is
+  // what is on them now (DeckUsbKinds.classifyAll, undefined until read; Wi-Fi never has it). Setup, Configure and Camera all read this, so they cannot disagree; null when no hub is
+  // connected to say. hubUsbChanged draws whatever shows it, and Configure keeps its unsaved edits.
+  const hubUsb=()=>{if(!setupConn)return null;const others=project.calibration?.hub?.scan?.others,rows=setupConn.host==='usb'?hubUsbRows:null;return rows?Object.assign([...(others||[])],{devices:rows,stuck:hubScanStuck()}):others||null;};
+  function hubUsbChanged(){if(setupShown)setupRender();if(calibrating){liveCamera?.refresh();usbDevices?.refresh();}}
+  // ---- What main reads of the hub's ports (src/hub-usb.cjs), pushed with the USB watch. hubUsbRead: {serial, devices, addresses, at}. hubFound: the last scan's answer and when it began.
+  // hubCovers: what the last scan that answered was asked about. Whenever that is not what is plugged in now it scans: that one rule takes in a change during a scan, a scan that failed,
+  // and a change while nobody was looking, with nothing to remember. A scan never runs off these tabs, and only ever one: setupBusy. Scans nobody pressed for start nothing on the robot, and after
+  // HUB_SCAN_TRIES failures they stop, with one line to say so, until something changes: what a scan can see, or the Robot Controller app starting to listen (hubRcLook).
+  let hubUsbRead=null,hubUsbRows=null,hubUsbAsks=0,hubUsbAsking=false,hubFound=null,hubCovers=null,hubScanTimer=null,hubScanFails=0,hubScanWhy='',hubRcUp=null,hubRcAt=0,hubRcAsking=false,hubLime=null;const hubUsbBorn=new Map(),HUB_SCAN_AGAIN=[3000,6000,12000,30000],HUB_SCAN_TRIES=HUB_SCAN_AGAIN.length+1,HUB_LIME_AGAIN=[2000,4000,8000,16000];
+  const HUB_RC_QUIET='The Robot Controller app is not answering, so Torque has stopped asking it. To try again, press Scan in Setup. That also starts the app if it has stopped.';
+  const hubScanStuck=()=>hubScanFails>=HUB_SCAN_TRIES?hubScanWhy||HUB_RC_QUIET:null;
+  const hubUsbKey=d=>`${d.path}|${d.dev??''}`,hubUsbTabs=()=>(setupShown&&flowStep!=='axon')||calibrating,hubScanSet=()=>hubUsbRead?window.DeckUsbKinds.scanSet(hubUsbRead.devices,hubUsbRead.addresses):null;
+  // A scan speaks only for what was there when it began; a device newer than that has no answer yet. The Limelight's answer stays undefined until it has been asked.
+  function hubUsbClassify(){hubUsbRows=hubUsbRead?window.DeckUsbKinds.classifyAll(hubUsbRead.devices,d=>({scan:hubFound&&hubFound.began>=(hubUsbBorn.get(hubUsbKey(d))??Infinity)?hubFound:undefined,limelight:hubLime?.answer})):null;}
+  function hubUsbUpdate(list){if(hubUsbRead?.at===list.at&&hubUsbRead.serial===list.serial)return;if(hubUsbRead&&hubUsbRead.serial!==list.serial)hubUsbForget();const was=hubScanSet(),keys=new Set(list.devices.map(hubUsbKey)),now=Date.now();hubUsbRead=list;
+    for(const k of hubUsbBorn.keys())if(!keys.has(k))hubUsbBorn.delete(k);for(const k of keys)if(!hubUsbBorn.has(k))hubUsbBorn.set(k,now);
+    hubLimeFollow();hubUsbClassify();void hubLimeAsk();
+    // Settling: another change starts the wait again, and is a new reason to try after failures.
+    if(hubScanSet()!==was){clearTimeout(hubScanTimer);hubScanTimer=null;hubScanFails=0;}hubUsbChanged();hubScanLook();}
+  // Answers whether there was anything to forget.
+  function hubUsbForget(){const had=!!hubUsbRead;clearTimeout(hubScanTimer);clearTimeout(hubLime?.timer);hubUsbRead=hubUsbRows=hubFound=hubCovers=hubScanTimer=hubLime=hubRcUp=null;hubScanFails=0;hubUsbAsks=0;hubUsbBorn.clear();return had;}
+  // Asked if nothing has come by itself yet, a few times for each connection.
+  async function hubUsbAsk(){if(hubUsbAsking||hubUsbRead||hubUsbAsks>=3||!hubUsbTabs()||setupConn?.host!=='usb')return;hubUsbAsking=true;hubUsbAsks++;let got=null;try{got=await api.robotLink('hub-usb');}catch{}hubUsbAsking=false;if(got?.devices&&!hubUsbRead&&setupConn?.host==='usb'&&hubUsbTabs())hubUsbUpdate(got);}
+  // A USB network device: is it a Limelight? It is asked when it appears and again when the hub gets an address from it. Its network comes up before its software does, so an ask that
+  // finds nothing is tried a few more times over half a minute, and until then it says Checking rather than calling a Limelight something else.
+  function hubLimeFollow(){const nets=hubUsbRead.devices.filter(d=>window.DeckUsbKinds.scanKind(d)==='network').map(hubUsbKey),key=nets.length?JSON.stringify([nets,hubUsbRead.addresses||[]]):null;if((hubLime?.key??null)===key)return;clearTimeout(hubLime?.timer);hubLime=key?{key,tries:0,answer:undefined,timer:null,asking:false}:null;}
+  async function hubLimeAsk(){const me=hubLime;if(!me||me.answer!==undefined||me.asking||me.timer||!hubUsbTabs())return;me.asking=true;let got=null;try{got=await api.robotLink('limelight',{});}catch{}me.asking=false;if(hubLime!==me)return;
+    if(got?.status&&typeof got.status==='object')me.answer=got;else if(me.tries>=HUB_LIME_AGAIN.length)me.answer={status:null};else{me.timer=setTimeout(()=>{me.timer=null;void hubLimeAsk();},HUB_LIME_AGAIN[me.tries++]);return;}
+    hubUsbClassify();hubUsbChanged();}
+  // After a settling second, or longer after failures. Anything that may have made it possible calls this; it does nothing if it is already waiting or there is nothing to do.
+  function hubScanLook(){if(hubScanTimer||hubScanFails>=HUB_SCAN_TRIES||!hubUsbTabs()||!hubUsbRead||hubScanSet()===hubCovers)return;hubScanTimer=setTimeout(hubScanRun,hubScanFails?HUB_SCAN_AGAIN[hubScanFails-1]:1000);}
+  // What is using the robot, or building on it, and must not be disturbed by a scan nobody pressed for. A scan's link would also fool the check that Torque Debug did not crash the app.
+  const hubRobotBusy=()=>{const d=liveDebug?.state?.();return !!(liveDebug?.running()||d?.starting||d?.installing||robotSending);};
+  async function hubScanRun(){hubScanTimer=null;const c=setupConn;if(hubScanFails>=HUB_SCAN_TRIES||!hubUsbTabs()||!hubUsbRead||hubScanSet()===hubCovers||project.controller!=='ftc'||(c&&c.host!=='usb'))return;
+    // Not yet: no connection, a read or scan under way, the robot in use, or on Setup the read and the first scan that come with plugging in. Calibrate has no read to wait for.
+    if(!c||setupBusy||hubRobotBusy()||(setupShown&&(setupRobot?.id!==c.id||!setupRead||setupAutoFor!==c.id)))return hubScanLook();
+    await setupScan({auto:true,silent:true});}
+  // Stopped asking: a quick read of the hub now and then, which starts nothing, sees the app begin to listen. Then a couple more tries, since a build that crashes keeps doing that.
+  async function hubRcLook(){if(hubScanFails<HUB_SCAN_TRIES||hubRcAsking||setupConn?.host!=='usb'||Date.now()-hubRcAt<15000)return;hubRcAsking=true;hubRcAt=Date.now();let up=null;try{up=await api.robotLink('hub-rc-up');}catch{}hubRcAsking=false;
+    const began=up===true&&hubRcUp===false;if(typeof up==='boolean')hubRcUp=up;if(!began||hubScanFails<HUB_SCAN_TRIES||!hubUsbTabs())return;hubScanFails=HUB_SCAN_TRIES-2;hubUsbChanged();void hubScanRun();}
+  // From Calibrate → Camera to the cameras at the top of Configure.
+  async function configureUsb(serial){flowStep='configure';flowMarks();await api.page('setup');for(let i=0;i<40&&setupRoot.hidden;i++)await new Promise(r=>setTimeout(r,25));setupRender();configEditor?.showUsb(serial);}
   const setupPlug=(text,on)=>{const p=$('#rs-plug');p.querySelector('span').textContent=text;p.querySelector('i').className=`dot${on?' live':''}`;};
   const setupNote=text=>status('#rs-status',text);
   // Over USB-C if a Control Hub is plugged in, else over the robot's Wi-Fi. Reading a configuration asks no hub anything; only Scan does.
   function setupChecks(steps){const list=$('#rs-checks');list.replaceChildren(...steps.map(s=>{const li=document.createElement('li');li.className=s.ok?'ok':'bad';li.append(Object.assign(document.createElement('b'),{textContent:s.name}),Object.assign(document.createElement('span'),{textContent:s.detail||''}));return li;}));list.hidden=!steps.length;}
-  async function setupRead_({check=false}={}){if(setupBusy||project.controller!=='ftc'||!setupConn)return;setupBusy=true;const conn=setupConn;setupRender();
+  // What is running holds setupBusy, and whoever wants a turn waits for it rather than being dropped. setupPress: presses waiting, which the buttons show as busy. A scan nobody pressed for says
+  // nothing, so on its own it leaves the buttons as they were: pressing one waits for it. Waiters check again as they wake (the while around setupIdle), since only one of them gets the turn.
+  let setupPress=0;const setupWaiters=[],setupIdle=()=>new Promise(r=>setupWaiters.push(r)),setupFree=()=>{setupBusy=false;for(const r of setupWaiters.splice(0))r();},setupLooksBusy=()=>(setupBusy&&!setupScanning?.silent)||setupPress>0;
+  // press: a button was pressed for this, which may start the Robot Controller app if it has stopped. Nothing else may.
+  async function setupRead_({check=false,press=false}={}){const asked=setupGen;while(setupBusy)await setupIdle();if(asked!==setupGen||project.controller!=='ftc'||!setupConn)return;setupBusy=true;const conn=setupConn,gen=setupGen;setupRender();
     try{setupPlug('Control Hub found. Reading what is connected…',true);setupNote('');
-      const read=conn.host==='usb'?await api.robotLink('read-usb'):await api.robotLink('read-all',{host:conn.host}),name=read.active?.name||read.configurations[0],xml=name?read.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]},had=setupRobot?.id===conn.id?setupRobot:null;
-      setupRead=read;setupRobot={id:conn.id,serial:read.serial||conn.host,configured:config.hubs.map(h=>h.address),...(had?.scanned?{portals:had.portals,scanned:had.scanned}:{})};
-      useHubConfig(window.DeckHubSetup.withScan(config,had?.portals),{name:name||'no configuration',...(read.serial?{serial:read.serial}:{}),guessed:!!read.active?.guessed},'#rs-matched',document.createElement('ul'));
+      const read=conn.host==='usb'?await api.robotLink('read-usb'):await api.robotLink('read-all',{host:conn.host});if(gen!==setupGen)return;
+      const name=read.active?.name||read.configurations[0],xml=name?read.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]},had=setupRobot?.id===conn.id?setupRobot:null;
+      setupRead=read;setupRobot={id:conn.id,serial:read.serial||conn.host,configured:config.hubs.map(h=>h.address),...(had?.scanned?{portals:had.portals,scanned:had.scanned,hubsKey:had.hubsKey}:{})};
+      useHubConfig(window.DeckHubSetup.withScan(config,had?.portals),{name:name||'no configuration',...(read.serial?{serial:read.serial}:{}),guessed:!!read.active?.guessed,background:true},'#rs-matched',document.createElement('ul'));
       if(!name)setupNote('The robot has no configuration yet. Press New configuration to make one from what Scan finds.');
       setupPlug(`Control Hub ${setupRobot.serial} connected over ${conn.host==='usb'?'USB-C':'Wi-Fi'}.`,true);
       // Android is up before the Robot Controller app: its answer on which configuration is active comes a little later.
       setupAgain=read.active?.guessed?setupAgain+1:0;
-      if(check){setupChecks([{name:'Checking the connection…',ok:true}]);setupChecking=api.robotLink('check',{host:conn.host}).then(setupChecks,e=>setupChecks([{name:'Talk to the robot',ok:false,detail:e.message}])).finally(()=>{setupChecking=null;});}}
-    catch(e){setupRobot=null;if(/still starting/.test(e.message)){setupTried=null;setupPlug(e.message,true);}else setupPlug(`Could not read the Control Hub. ${e.message}`,false);}
-    finally{setupBusy=false;setupRender();}}
+      if(check){setupChecks([{name:'Checking the connection…',ok:true}]);const checking=api.robotLink('check',{host:conn.host,...(press?{}:{noStart:true})}).then(steps=>{if(gen===setupGen)setupChecks(steps);},e=>{if(gen===setupGen)setupChecks([{name:'Talk to the robot',ok:false,detail:e.message}]);}).finally(()=>{if(setupChecking===checking)setupChecking=null;});setupChecking=checking;}}
+    catch(e){if(gen!==setupGen)return;setupRobot=null;setupAutoFor=null;if(/still starting/.test(e.message)){setupTried=null;setupPlug(e.message,true);}
+      // Just plugged in, ADB can say it is not there yet or not ready. That is only a wait: the next look reads it.
+      else if(hubOnUsb&&/No Control Hub on USB|has not allowed|on USB is /.test(e.message)){setupTried=null;setupPlug('Control Hub plugged in. Waiting for it to answer…',true);}
+      else setupPlug(`Could not read the Control Hub. ${e.message}`,false);}
+    finally{if(gen===setupGen){setupFree();setupRender();}}}
   // Scan: what answers on the robot now, as Configure Robot's Scan does. It adds what it found to the hubs Setup uses.
   // What Scan has so far: the hubs the robot has open at once, then each answer from the cable. Setup only takes new hubs when the list changes.
   let setupScanning=null;
-  function setupScanned({portals,others},checking){const scan=setupScanning;if(!scan||!setupRobot)return;const name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]};
-    setupRobot.portals=portals;setupRobot.checking=checking;setupRobot.scanned=portals.flatMap(p=>[...p.modules.map(m=>m.address),...(p.servoHubs||[]).map(h=>h.address)]);
-    project.calibration.hub={...project.calibration.hub,scan:{expansion:portals.reduce((n,p)=>n+p.modules.filter(m=>!m.parent).length,0),servoHub:portals.reduce((n,p)=>n+(p.servoHubs||[]).length,0),others:others??project.calibration.hub?.scan?.others??[],at:new Date().toISOString()}};
-    const key=[...setupRobot.scanned].sort().join();if(key===scan.key)return setupRender();scan.key=key;
-    useHubConfig(window.DeckHubSetup.withScan(config,portals),{name:name||'no configuration',...(setupRead.serial?{serial:setupRead.serial}:{})},'#rs-matched',document.createElement('ul'));}
-  async function setupScan({auto=false}={}){if(setupBusy||!setupRobot||!setupRead)return;const quiet=auto&&setupAutoTries>1;let answered=false;setupBusy=true;setupScanning={key:null};setupRobot.scanned??=[];setupRobot.checking=true;if(!quiet)setupRender();
-    try{if(setupChecking)await setupChecking;setupPlug('Scanning for hubs and devices…',true);setupScanned(await api.robotLink('scan',{host:setupConn.host}),false);answered=true;calSave();
-      setupPlug(`Control Hub ${setupRobot.serial} connected over ${setupConn.host==='usb'?'USB-C':'Wi-Fi'}.`,true);}
-    catch(e){if(setupRobot)setupRobot.checking=false;if(auto&&setupAutoTries<12){setupAutoFor=null;setupPlug('Waiting for the Robot Controller app to answer…',true);}else setupPlug(`The scan did not finish. ${e.message}`,false);}
-    finally{setupScanning=null;setupBusy=false;if(!quiet||answered)setupRender();}}
+  // On Calibrate nothing has been read from the robot, so a scan only says what is on its USB and its hubs. Off these tabs, Drive and Simulate above all, nothing it says touches anything.
+  // A scan nobody pressed for takes only its final answer, and changes the project only if the hubs really differ from those already taken: setupRobot.hubsKey.
+  function setupScanned({portals,others},checking){const scan=setupScanning;if(!scan||!hubUsbTabs()||(scan.silent&&checking))return;
+    if(setupRobot){setupRobot.portals=portals;setupRobot.checking=checking;setupRobot.scanned=portals.flatMap(p=>[...p.modules.map(m=>m.address),...(p.servoHubs||[]).map(h=>h.address)]);}
+    const usbWas=JSON.stringify(project.calibration.hub?.scan?.others??null);project.calibration.hub={...project.calibration.hub,scan:{expansion:portals.reduce((n,p)=>n+p.modules.filter(m=>!m.parent).length,0),servoHub:portals.reduce((n,p)=>n+(p.servoHubs||[]).length,0),others:others??project.calibration.hub?.scan?.others??[],at:new Date().toISOString()}};if(JSON.stringify(project.calibration.hub.scan.others)!==usbWas)hubUsbChanged();
+    if(!setupRobot)return;const name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null,config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]};
+    const key=[...setupRobot.scanned].sort().join();if(key===scan.key||(scan.silent&&key===setupRobot.hubsKey))return setupRender();scan.key=setupRobot.hubsKey=key;
+    useHubConfig(window.DeckHubSetup.withScan(config,portals),{name:name||'no configuration',...(setupRead.serial?{serial:setupRead.serial}:{}),background:true},'#rs-matched',document.createElement('ul'));}
+  // auto: nobody pressed anything, so it starts nothing on the robot. silent: asked for by something plugged in. It says nothing either way, and hubScanLook tries again if it fails.
+  // A press waits its turn; what is not pressed for comes back later by itself.
+  async function setupScan({auto=false,silent=false}={}){const pressed=!auto&&!silent;if(pressed&&setupConn&&setupRobot&&setupRead&&setupBusy){const asked=setupGen;setupPress++;setupPlug('Scanning for hubs and devices…',true);setupRender();while(setupBusy)await setupIdle();setupPress--;setupRender();if(asked!==setupGen)return;}
+    if(setupBusy||!setupConn||(!silent&&(!setupRobot||!setupRead)))return;const quiet=silent||(auto&&setupAutoTries>1),gen=setupGen,covers=hubScanSet(),began=Date.now();setupBusy=true;setupScanning={key:null,silent};if(setupRobot&&!silent){setupRobot.scanned??=[];setupRobot.checking=true;}if(!quiet)setupRender();
+    // With no answer, nothing has been found or not found.
+    const unanswered=()=>{if(!setupRobot)return;setupRobot.checking=false;if(!setupRobot.scanned?.length)delete setupRobot.scanned;};
+    try{if(setupChecking)await setupChecking;if(gen!==setupGen)return;if(!silent)setupPlug('Scanning for hubs and devices…',true);const found=await api.robotLink('scan',{host:setupConn.host,...(pressed?{}:{noStart:true})});if(gen!==setupGen)return;
+      // The student left for Drive or Simulate while it ran: its answer goes nowhere, and the scan comes again on coming back.
+      if(!hubUsbTabs()){unanswered();if(auto&&!silent)setupAutoFor=null;return;}
+      setupScanned(found,false);calSave();
+      hubFound={portals:found.portals,others:found.others||[],began};hubCovers=covers;hubScanFails=0;hubUsbClassify();hubUsbChanged();
+      if(setupRobot)setupPlug(`Control Hub ${setupRobot.serial} connected over ${setupConn.host==='usb'?'USB-C':'Wi-Fi'}.`,true);}
+    catch(e){if(gen!==setupGen)return;unanswered();
+      if(silent){hubScanFails++;if(/app on this Control Hub is not answering/.test(e.message)){hubRcUp=false;hubScanWhy='';}else{hubRcUp=true;hubScanWhy=/^(Another Driver Station|Close the robot in Drive|The guided check)/.test(e.message)?e.message:'';}if(hubScanStuck())hubUsbChanged();}
+      else if(auto&&setupAutoTries<12){setupAutoFor=null;setupPlug('Waiting for the Robot Controller app to answer…',true);}else setupPlug(`The scan did not finish. ${e.message}`,false);}
+    finally{if(gen===setupGen){setupScanning=null;setupFree();setupRender();hubScanLook();}}}
   // A hub Scan did not find: out of the active configuration on the robot, with the devices set up on it, and out of Setup.
-  async function setupRemoveHub(id){if(setupBusy||!setupRobot||!setupRead)return;const hub=window.DeckHardware.wiringOf(project.robot).hubs[id],label=window.DeckHardware.hubName(id,{hubs:window.DeckHardware.wiringOf(project.robot).hubs}),name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null;if(!hub)return;
+  async function setupRemoveHub(id){if(!setupRobot||!setupRead)return;const hub=window.DeckHardware.wiringOf(project.robot).hubs[id],label=window.DeckHardware.hubName(id,{hubs:window.DeckHardware.wiringOf(project.robot).hubs}),name=setupRead.active?.name||setupRead.configurations[0],xml=name?setupRead.files?.[name]:null;if(!hub)return;
     const tag=window.DeckHardware.hubKind(id)==='servoHub'?'ServoHub':'LynxModule',out=xml?RobotConfig.removeHub(xml,{address:hub.address,tag}):{xml,devices:[]};
     if(out.xml===xml)return useHubConfig(window.DeckHubSetup.withScan(xml?RobotConfig.parse(xml):{devices:[],hubs:[]},setupRobot.portals),{name:name||'no configuration'},'#rs-matched',document.createElement('ul'));
     if(out.devices.length&&!confirm(`${label} has ${out.devices.length===1?'1 device':`${out.devices.length} devices`} set up on it: ${out.devices.map(d=>d.name).join(', ')}. Remove the hub and ${out.devices.length===1?'it':'them'} from “${name}”?`))return;
     if(configEditor?.current()===name&&configEditor.dirty()&&!confirm(`Your changes to “${name}” in Configure are not saved. Discard them?`))return;
     await setupAct(`Removing ${label} from “${name}”. The robot restarts…`,async()=>{await api.robotLink('configure',{host:setupConn.host,name,xml:out.xml,replace:true});if(configEditor?.current()===name)configEditor.open(name,out.xml,setupRobot?.portals);});}
-  async function setupWatch(){const watched=()=>setupShown||calibrating;if(!watched()||setupBusy||!native||!api.robotLink)return;let d;try{d=await api.robotLink('detect');}catch(e){d={usb:{found:false,message:e.message}};}if(!watched())return;
-    if(d.usb?.found){hubOnUsb=true;hubMisses=0;}else if(hubOnUsb&&project.controller==='ftc'){hubMisses++;if(hubMisses===1){await api.robotLink('usb-recover').catch(()=>{});return;}hubOnUsb=false;hubMisses=0;if(!hubDropped.open){hubDropped.showModal();window.DeckDebugCheck?.chime();}}
-    const conn=d.usb?.found?{id:'usb:'+d.usb.serial,host:'usb'}:d.wifi?.robot&&d.wifi.reachable!==false?{id:'wifi:'+d.wifi.host,host:d.wifi.host}:null;
-    if(!conn){setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;if(setupRobot){setupRobot=null;setupRead=null;setupChecks([]);setupRender();}setupPlug(d.usb?.message&&!/Not plugged/.test(d.usb.message)?d.usb.message:'Plug the Control Hub in by USB-C, or join its Wi-Fi, with the robot on.',false);return;}
-    setupConn=conn;if(setupShown&&setupRobot?.id!==conn.id&&setupTried!==conn.id){setupTried=conn.id;await setupRead_({check:true});}
+  // Each look: one at a time, and a change that came while asking asks again. Wi-Fi has nothing to push, so a timer keeps this going;
+  // with the USB watch up, none of it runs ADB. Where the watch is down, a hub that stops answering gets one chance to come back.
+  let hubAsking=false,hubAskAgain=false,hubNudged;
+  async function setupWatch(){const watched=()=>setupShown||calibrating;if(!watched()||setupBusy||!native||!api.robotLink)return;if(hubAsking){hubAskAgain=true;return;}hubAsking=true;let d;try{d=await api.robotLink('detect');}catch(e){d={usb:{found:false,message:e.message}};}finally{hubAsking=false;}
+    if(hubAskAgain){hubAskAgain=false;return setupWatch();}if(!watched()||setupBusy)return;
+    // What the watch last pushed is newer than this answer.
+    const usb=hubLive?.status??d.usb,pushing=hubLive?.usb||hubLive?.adb?.running;
+    // The watch saw the hub and has not said it left, so ADB is only restarting, and what it answers now says nothing: the watch waits that out and then tells. If the watch itself stays dark, asking takes over.
+    if(hubPushedOn&&!hubLive?.hub&&!usb?.found&&(pushing||Date.now()-hubDarkAt<HUB_DARK_MS))return;hubLinkFollow(usb,d.wifi);
+    if(usb?.found){hubOnUsb=true;hubMisses=0;}else if(!pushing&&hubOnUsb&&project.controller==='ftc'){hubMisses++;if(hubMisses===1){await api.robotLink('usb-recover').catch(()=>{});return;}hubLeft();}
+    // On the cable, and ADB stuck on it (after the computer sleeps, say): one nudge each time it is plugged in, offline soon, and not listed only once Android has had time to start.
+    const stuck=usb?.plugged&&usb.state!=='unauthorized'&&usb.state!=='update';
+    if(pushing&&stuck&&hubNudged!==usb.state&&Date.now()-hubPlugAt>(usb.state==='offline'?5000:60000)){hubNudged=usb.state;void api.robotLink('usb-recover').catch(()=>{});}
+    const conn=usb?.found?{id:'usb:'+usb.serial,host:'usb'}:d.wifi?.robot&&d.wifi.reachable!==false?{id:'wifi:'+d.wifi.host,host:d.wifi.host}:null;
+    if(!conn){setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;if(setupRobot){setupRobot=null;setupRead=null;setupChecks([]);setupRender();}if(hubUsbForget())hubUsbChanged();
+      setupPlug(usb?.plugged?(stuck&&Date.now()-hubPlugAt>90000?'Control Hub plugged in, but it is not answering. Check the robot is on, or unplug it and plug it back in.':usb.message):usb?.message&&!/Not plugged/.test(usb.message)?usb.message:HUB_PLUG,!!usb?.plugged);return;}
+    const had=setupConn;setupConn=conn;if(!had)hubUsbChanged();void hubUsbAsk();void hubLimeAsk();hubScanLook();void hubRcLook();if(setupShown&&setupRobot?.id!==conn.id&&setupTried!==conn.id){setupTried=conn.id;await setupRead_({check:true});}
     else if(setupShown&&setupRobot?.id===conn.id&&setupAgain>0&&setupAgain<8)await setupRead_();
     // Plugged in: it scans by itself, once for each time the hub is connected.
-    if(setupShown&&setupRobot?.id===conn.id&&setupAutoFor!==conn.id&&!setupBusy&&(setupAgain===0||setupAgain>=8)){setupAutoFor=conn.id;setupAutoTries++;await setupScan({auto:true});}}
-  // Runs one action on a configuration, then reads the robot again.
-  async function setupAct(doing,task){if(setupBusy||!setupConn)return;setupBusy=true;setupNote(doing);setupRender();let ok=false;if(setupChecking)await setupChecking;try{await task();ok=true;setupNote('');}catch(e){setupNote(e.message);}finally{setupBusy=false;}if(ok)await setupRead_();else setupRender();}
+    if(setupShown&&setupRobot?.id===conn.id&&setupAutoFor!==conn.id&&!setupBusy&&!hubRobotBusy()&&(setupAgain===0||setupAgain>=8)){setupAutoFor=conn.id;setupAutoTries++;await setupScan({auto:true});}}
+  // One press that changes something on the robot, in its turn, then the robot read again. What must not happen unless the robot took it, such as closing a draft, goes at the end of task.
+  // Throws what went wrong, in words for the student, and HUB_UNPLUGGED if the hub left meanwhile.
+  async function setupDo(task){if(!setupConn)throw Error(HUB_UNPLUGGED);const gen=setupGen;setupPress++;setupRender();while(setupBusy)await setupIdle();setupPress--;if(gen!==setupGen||!setupConn){setupRender();throw Error(HUB_UNPLUGGED);}setupBusy=true;setupRender();
+    try{if(setupChecking)await setupChecking;if(gen!==setupGen)throw Error(HUB_UNPLUGGED);await task();}catch(e){if(gen!==setupGen)throw Error(HUB_UNPLUGGED);setupFree();setupRender();throw e;}
+    if(gen!==setupGen)return;setupFree();await setupRead_();}
+  // The same with what it is doing on the screen, and what went wrong too. Answers whether it happened.
+  async function setupAct(doing,task){const gen=setupGen;setupNote(doing);try{await setupDo(()=>{setupNote(doing);return task();});return true;}catch(e){if(gen===setupGen)setupNote(e.message);return false;}}
   function setupConfigs(){const box=$('#rs-configs'),names=[...(setupRead?.configurations||[])].sort((a,b)=>a.localeCompare(b)),active=setupRead?.active?.name;
-    box.replaceChildren(...names.map(name=>{const row=document.createElement('div'),on=name===active,b=(text,act,off)=>{const x=Object.assign(document.createElement('button'),{type:'button',className:act==='delete'?'secondary danger':'secondary',textContent:text,disabled:setupBusy||!!off});x.dataset.cfg=act;x.dataset.name=name;x.setAttribute('aria-label',`${text} ${name}`);return x;};
+    box.replaceChildren(...names.map(name=>{const row=document.createElement('div'),on=name===active,b=(text,act,off)=>{const x=Object.assign(document.createElement('button'),{type:'button',className:act==='delete'?'secondary danger':'secondary',textContent:text,disabled:setupLooksBusy()||!!off});x.dataset.cfg=act;x.dataset.name=name;x.setAttribute('aria-label',`${text} ${name}`);return x;};
       row.className='rs-config'+(on?' active':'');row.setAttribute('role','listitem');const title=document.createElement('div');title.append(Object.assign(document.createElement('b'),{textContent:name}));if(on)title.append(Object.assign(document.createElement('span'),{className:'rs-pill ok',textContent:'Active'}));
       row.append(title,b('Edit','edit'),b('Activate','activate',on),b('Delete','delete'));return row;}));
     if(!names.length){const p=Object.assign(document.createElement('p'),{className:'hint',textContent:setupRobot?'This robot has no saved configurations.':'Connect to the robot to see its configurations.'});box.replaceChildren(p);}
-    $('#rs-new').disabled=setupBusy||!setupRobot;}
+    $('#rs-new').disabled=setupLooksBusy()||!setupRobot;}
   // Opens one configuration in Configure: from its Edit button in Setup, or from the list beside Configure's Save.
-  // A Control Hub that was connected and is gone: in the middle of the screen until OK is pressed. Only on the tabs that work with
-  // the hub (Setup, Configure, Calibrate); never while driving. ADB gets one chance to bring it back first.
-  const hubDropped=document.createElement('dialog');hubDropped.id='hub-dropped';hubDropped.setAttribute('role','alertdialog');hubDropped.setAttribute('aria-labelledby','hub-dropped-title');hubDropped.innerHTML='<h2 id="hub-dropped-title">Your Control Hub dropped</h2><p>The USB connection to the Control Hub was lost. Unplug its USB-C cable from this computer, plug it back in, and check the robot is on. Torque reconnects by itself.</p><button id="hub-dropped-ok" type="button">OK</button>';document.body.append(hubDropped);
+  // A Control Hub that was connected and is gone: in the middle of the screen until OK is pressed or it is plugged back in. Only on the
+  // tabs that work with the hub (Setup, Configure, Calibrate); never while driving.
+  const hubDropped=document.createElement('dialog');hubDropped.id='hub-dropped';hubDropped.setAttribute('role','alertdialog');hubDropped.setAttribute('aria-labelledby','hub-dropped-title');hubDropped.innerHTML='<h2 id="hub-dropped-title">Your Control Hub dropped</h2><p>The USB connection to the Control Hub was lost. Plug its USB-C cable back into this computer and check the robot is on. Torque reconnects by itself.</p><button id="hub-dropped-ok" type="button">OK</button>';document.body.append(hubDropped);
   hubDropped.addEventListener('cancel',e=>e.preventDefault());hubDropped.querySelector('button').onclick=()=>hubDropped.close();
-  let hubOnUsb=false,hubMisses=0;
-  function hubWatch(){const on=(setupShown&&flowStep!=='axon')||calibrating;if(on&&!setupTimer){hubOnUsb=false;hubMisses=0;void setupWatch();setupTimer=setInterval(()=>void setupWatch(),3000);}else if(!on&&setupTimer){clearInterval(setupTimer);setupTimer=null;}}
+  const HUB_PLUG='Plug the Control Hub in by USB-C, or join its Wi-Fi, with the robot on.';
+  let hubOnUsb=false,hubMisses=0,hubPushedOn=false,hubPlugAt=0,hubDarkAt=0;const HUB_DARK_MS=15000;
+  // Send to robot's choices follow the cable too. Only those: Simulate's panels are heavy to draw, are not on these tabs, and look for themselves when they show (detectLink).
+  function hubLinkFollow(usb,wifi=link.wifi){if(JSON.stringify(link.usb)===JSON.stringify(usb)&&JSON.stringify(link.wifi)===JSON.stringify(wifi))return;link.usb=usb;link.wifi=wifi;showLink();}
+  // It left the cable: everything about it goes now, whatever was going on. A read or scan still out there is abandoned (setupGen).
+  function hubLeft(){hubOnUsb=false;hubPushedOn=false;hubMisses=0;setupGen++;setupFree();setupScanning=null;setupChecking=null;setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;setupRobot=null;setupRead=null;setupChecks([]);setupNote('');
+    if(hubTest){hubTest=null;void liveDebug?.stop();}liveDebug?.unplugged();setupPlug(HUB_PLUG,false);hubLinkFollow({found:false,message:'Not plugged in.'});
+    if(sendState?.host==='usb'){sendState=null;showCheck();showPlan();$('#sim-send-confirm').hidden=true;status('#sim-send-status',HUB_UNPLUGGED);}
+    hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();window.DeckDebugCheck?.chime();}setupRender();hubUsbChanged();}
+  // What the USB watch pushes (src/usb-watch.cjs): Windows's word on the cable first, then ADB's, and this comes at once whatever else is busy.
+  function hubPushed(s){if(!s||!setupTimer)return;hubLive=s;const there=!!s.hub,seeing=s.usb||s.adb?.running;hubDarkAt=seeing?0:hubDarkAt||Date.now();
+    if(there&&!hubPushedOn){hubPushedOn=true;hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}
+    // Only the watch's own word that the hub left. A list with no hub in it says nothing by itself: ADB's first after its server restarts is often empty. A Driver Hub found out never was a Control Hub,
+    // and a hub leaving update mode is restarting: they just go.
+    else if(!there&&hubPushedOn&&s.drop){hubPushedOn=false;hubOnUsb=false;if(s.drop==='unplugged')hubLeft();}
+    // Nothing is known yet as the watch starts, which is not the same as nothing being there.
+    if(s.hubUsb)hubUsbUpdate(s.hubUsb);else if(!there&&seeing&&hubUsbForget())hubUsbChanged();
+    // Only the hub's own ports changed: the hub itself is as it was.
+    if(s.why==='hub-usb')return;
+    if(s.status)hubLinkFollow(s.status);void setupWatch();
+    // For usb-watch.log: when the page drew it.
+    if(s.why==='+'||s.why==='-')requestAnimationFrame(()=>void api.robotLink('usb-watch',{shown:s.seq,at:Date.now()}).catch(()=>{}));}
+  if(native&&api.onUsbWatch)api.onUsbWatch(hubPushed);
+  function hubWatch(){const on=(setupShown&&flowStep!=='axon')||calibrating;if(on&&!setupTimer){hubOnUsb=false;hubMisses=0;hubPushedOn=false;hubLive=null;hubDarkAt=0;if(hubScanWhy)hubScanFails=0;setupTimer=setInterval(()=>void setupWatch(),3000);if(native&&api.robotLink)void api.robotLink('usb-watch',{on:true}).then(hubPushed,()=>{});void setupWatch();}
+    else if(!on&&setupTimer){clearInterval(setupTimer);setupTimer=null;hubLive=null;hubPushedOn=false;clearTimeout(hubScanTimer);hubScanTimer=null;if(native&&api.robotLink)void api.robotLink('usb-watch',{on:false}).catch(()=>{});}}
   const setupAskActive=name=>new Promise(done=>{const d=$('#rs-active-confirm'),unsaved=configEditor?.dirty();if(d.open)return done(false);const answer=v=>{d.oncancel=d.onkeydown=null;d.close();done(v);};$('#rs-active-title').textContent=`Make “${name}” your active configuration?`;$('#rs-active-text').textContent=`The robot restarts to use it, and Configure shows it.${unsaved?` Your changes to “${configEditor.current()}” are not saved and will be lost.`:''}`;$('#rs-active-yes').onclick=()=>answer(true);$('#rs-active-no').onclick=()=>answer(false);d.oncancel=ev=>{ev.preventDefault();answer(false);};d.onkeydown=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();answer(false);}};d.showModal();$('#rs-active-no').focus();});
   // Only the active configuration is ever on the Configure screen. Anything else has to become active first, and the team says so.
   async function setupSwitch(name,{go=false}={}){const show=()=>{if(go){flowStep='configure';flowMarks();}setupRender();};
     if(name===setupRead?.active?.name)return show();
     if(!setupConn||!setupRead?.files?.[name])return setupNote(`Could not read “${name}”.`);
     if(!await setupAskActive(name)){configEditor?.render();return;}
-    if(configEditor?.dirty())configEditor.close();
-    await setupAct(`Making “${name}” active. The robot restarts…`,()=>api.robotLink('activate',{host:setupConn.host,name}));
+    // The draft goes only once the robot has taken the change the student agreed to lose it for.
+    if(!await setupAct(`Making “${name}” active. The robot restarts…`,async()=>{await api.robotLink('activate',{host:setupConn.host,name});if(configEditor?.dirty())configEditor.close();})){configEditor?.render();return;}
     // A restarting robot's web server can't say what is active yet, so ask until it says this one.
     for(let i=0;i<6&&setupRead?.active?.name!==name&&setupConn;i++){await new Promise(r=>setTimeout(r,2000));await setupRead_();}
-    if(setupRead?.active?.name!==name)setupNote(`The robot has not reported “${name}” as active yet. Press Check again in a moment.`);show();}
+    if(setupConn&&setupRead?.active?.name!==name)setupNote(`The robot has not reported “${name}” as active yet. Press Check again in a moment.`);show();}
   // What Configure holds follows the robot, except while there are changes to save.
   let editorRead=null;function setupFollowActive(){const name=setupRead?.active?.name,xml=name&&setupRead.files?.[name];if(!configEditor||!xml||configEditor.dirty())return;
     if(configEditor.current()!==name)configEditor.open(name,xml,setupRobot?.portals);else if(editorRead!==setupRead)configEditor.refresh(name,xml,setupRobot?.portals);editorRead=setupRead;}
-  const setupSave=async(name,xml)=>{await api.robotLink('configure',{host:setupConn.host,name,xml,replace:true});await setupRead_();};
+  const setupSave=(name,xml)=>setupDo(()=>api.robotLink('configure',{host:setupConn.host,name,xml,replace:true}));
   function setupTestHtml(){const HS=window.DeckHubSetup,D=window.DeckHardware,w=D.wiringOf(project.robot),kinds=HS.needsTest(w),word=k=>D.HUBS[k].name;if(!kinds.length)return '';
     const many=kinds.map(k=>`${D.hubsOfKind(w.hubs,k).length} ${word(k)}s`).join(' and ');
     if(!hubTest)return `<p class="hint">You have ${many}, and they look the same from here. Want to move one thing on each to see which is which?</p><div class="button-row"><button type="button" class="primary" data-hub-test="begin">Test them</button></div>`;
@@ -2032,11 +2144,11 @@ public class MyAuto implements DeckAutonomous {
   // The Axon Programmer tab: its programmer is only touched while the tab shows, and the Control Hub's USB watch rests meanwhile.
   const axonShown=()=>window.DeckAxon?.shown(setupShown&&flowStep==='axon');
   window.DeckAxon?.install($('#rs-step-axon'),native?api:null);
-  function setupRender(){if(!setupRoot||setupRoot.hidden)return;hubDefaults();flowMarks();const W=window.DeckWiring,HS=window.DeckHubSetup,st=W.state(project),ftc=project.controller==='ftc';
-    $('#rs-read').disabled=!ftc||setupBusy;$('#rs-scan').disabled=!ftc||setupBusy||!setupRobot;$('#rs-scan').title=setupRobot?'':'Connect to the robot first';$('#rs-robot-card').hidden=!ftc;$('#rs-configs-card').hidden=!ftc;setupConfigs();
-    if(!configEditor)configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:setupSave,photo:tag=>api.devicePhoto(tag),names:()=>setupRead?.configurations||[],pick:name=>void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:()=>setupRobot?.scanned?project.calibration?.hub?.scan?.others||[]:null,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(st,{ids:'rc-',only:['spm']})}</div>`:''}});setupFollowActive();configEditor.render();
+  function setupRender(){if(!setupRoot||setupRoot.hidden)return;hubDefaults();flowMarks();const W=window.DeckWiring,HS=window.DeckHubSetup,st=W.state(project),ftc=project.controller==='ftc',busy=setupLooksBusy(),stuck=setupConn?.host==='usb'&&hubScanStuck();
+    $('#rs-scan-stuck').hidden=!stuck;$('#rs-scan-stuck').textContent=stuck||'';$('#rs-read').disabled=!ftc||busy;$('#rs-scan').disabled=!ftc||busy||!setupRobot;$('#rs-scan').title=setupRobot?'':'Connect to the robot first';$('#rs-robot-card').hidden=!ftc;$('#rs-configs-card').hidden=!ftc;setupConfigs();
+    if(!configEditor)configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:setupSave,photo:tag=>api.devicePhoto(tag),names:()=>setupRead?.configurations||[],pick:name=>void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:hubUsb,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(st,{ids:'rc-',only:['spm']})}</div>`:''}});setupFollowActive();configEditor.render();
     if(!ftc){calHtml($('#rs-hubs'),'<p class="hint">This setup is for a robot without a Control Hub, so there are no hubs or ports to set here.</p>');calHtml($('#rs-problems'),'');$('#rs-test').hidden=true;return;}
-    calHtml($('#rs-hubs'),W.scanHtml(st,project.calibration?.hub?.scan||null,{busy:setupBusy,seen:setupRobot?.scanned?id=>HS.hubSeen(id==='control'?173:st.wiring.hubs[id].address,setupRobot):()=>null}));
+    const usb=hubUsb();calHtml($('#rs-hubs'),W.scanHtml(st,usb?project.calibration?.hub?.scan||null:null,{busy,rows:usb?.devices||null,seen:setupRobot?.scanned?id=>HS.hubSeen(id==='control'?173:st.wiring.hubs[id].address,setupRobot):()=>null}));
     calHtml($('#rs-problems'),st.problems.filter(x=>!x.keys.length).map(x=>`<p class="sim-wire-problem ${x.level}">${W_esc(x.text)}</p>`).join(''));
     const test=setupRobot?setupTestHtml():'';$('#rs-test').hidden=!test;calHtml($('#rs-test-body'),test);}
   async function hubTestAct(act){const HS=window.DeckHubSetup,set=next=>{hubTest=next;setupRender();};
@@ -2045,7 +2157,7 @@ public class MyAuto implements DeckAutonomous {
     if(act==='go'){if(!liveDebug)return;set({stage:'starting',text:'Putting the test on the robot and building it…'});await detectLink();
       if(!await liveDebug.install()){if(hubTest)status('#rs-status','The robot could not build the test program. Check OnBot Java for errors in its code.');return set(null);}
       if(!hubTest)return;set({stage:'starting',text:'Starting the test on the robot…'});await liveDebug.start();
-      try{await new Promise((ok,fail)=>{const end=Date.now()+15000,t=setInterval(()=>{if(liveDebug.latest().frame&&liveDebug.running()){clearInterval(t);ok();}else if(!hubTest||Date.now()>end){clearInterval(t);fail(Error('The robot did not start the test.'));}},200);});}catch(e){status('#rs-status',e.message);await liveDebug.stop().catch(()=>{});return set(null);}
+      try{await new Promise((ok,fail)=>{const end=Date.now()+15000,t=setInterval(()=>{if(liveDebug.latest().frame&&liveDebug.running()){clearInterval(t);ok();}else if(!hubTest||Date.now()>end){clearInterval(t);fail(Error('The robot did not start the test.'));}},200);});}catch(e){if(hubTest)status('#rs-status',e.message);await liveDebug.stop().catch(()=>{});return set(null);}
       return set({stage:'steps',steps:HS.testSteps(project.calibration.hub?.readout||[],project.robot.wiring),at:0});}
     if(act==='next')return set({...hubTest,at:hubTest.at+1,ran:false,note:''});
     if(act==='run'){const d=hubTest.steps[hubTest.at]?.device;if(!d||hubTest.running)return;set({...hubTest,running:true,note:'Moving…'});
@@ -2056,13 +2168,13 @@ public class MyAuto implements DeckAutonomous {
     window.DeckWiring.bind($('#rs-step-configure'),{project:()=>project,apply:after(applyWiring)});
     window.DeckWiring.bind($('#rs-test'),{project:()=>project,apply:after(applyWiring)});
     $('#rs-test').addEventListener('click',e=>{const b=e.target.closest('[data-hub-test]');if(b)void hubTestAct(b.dataset.hubTest);});
-    $('#rs-read').onclick=async()=>{setupTried=null;await setupWatch();if(setupConn&&!setupBusy&&setupRobot)await setupRead_({check:true});};
+    $('#rs-read').onclick=async()=>{setupTried=null;setupPress++;setupRender();while(setupBusy)await setupIdle();setupPress--;setupRender();await setupWatch();if(setupConn&&setupRobot)await setupRead_({check:true,press:true});};
     $('#rs-scan').onclick=()=>void setupScan();api.onRobotScan?.(p=>setupScanned(p,true));
     $('#rs-hubs').addEventListener('click',e=>{const b=e.target.closest('[data-hub-remove]');if(b)void setupRemoveHub(b.dataset.hubRemove);});
     $('#rs-configs').addEventListener('click',e=>{const b=e.target.closest('[data-cfg]');if(!b)return;const name=b.dataset.name,act=b.dataset.cfg;
       if(act==='edit')return void setupSwitch(name,{go:true});
       if(act==='activate')return void setupSwitch(name);
-      if(act==='delete'&&confirm(`Delete the configuration “${name}” from the robot?`))void setupAct(`Deleting “${name}”…`,async()=>{await api.robotLink('delete-config',{host:setupConn.host,name});if(configEditor.current()===name)configEditor.close();});});
+      if(act==='delete'&&confirm(`Delete the configuration “${name}” from the robot?${configEditor?.current()===name&&configEditor.dirty()?' Your unsaved changes to it in Configure go with it.':''}`))void setupAct(`Deleting “${name}”…`,async()=>{await api.robotLink('delete-config',{host:setupConn.host,name});if(configEditor.current()===name)configEditor.close();});});
     $('#rs-new').onclick=()=>{$('#rs-new-form').hidden=false;$('#rs-new').hidden=true;$('#rs-new-name').value=RobotConfig.configurationName('robot',setupRead?.configurations||[]);$('#rs-new-name').select();};
     const closeNew=()=>{$('#rs-new-form').hidden=true;$('#rs-new').hidden=false;};$('#rs-new-cancel').onclick=closeNew;
     $('#rs-new-form').onsubmit=e=>{e.preventDefault();const name=$('#rs-new-name').value.trim();if(!RobotConfig.validName(name))return setupNote('Use letters, digits, spaces, - and _ (up to 40), starting with a letter or digit.');if((setupRead?.configurations||[]).some(n=>n.toLowerCase()===name.toLowerCase()))return setupNote(`The robot already has a configuration named “${name}”.`);closeNew();
@@ -3271,7 +3383,7 @@ public class MyAuto implements DeckAutonomous {
   // (the flywheel's speed and what each shot costs it, the hood angle by flywheel speed, the turret, feeder, intakes and
   // moving parts); the simulation runs on them. What the check measures is read from the check TeleOp generated for the
   // setup: one line for each step it asks about.
-  let calibrating=false,calTop='debug',calTab='electronics';
+  let calibrating=false,calTop='camera',calTab='electronics';
   window.DeckPartPicker?.install({photo:native?tag=>api.devicePhoto(tag):null});
   const setupBar=$('.sim-setup-bar'),setupHome=setupBar?.nextElementSibling,reliable=document.createElement('div');reliable.id='sim-reliable';reliable.className='sim-reliable';reliable.setAttribute('role','status');reliable.hidden=true;reliable.innerHTML='<span></span><button type="button" class="secondary">Go to Setup &amp; Calibrate</button><button type="button" class="sim-reliable-close" aria-label="Close this note" title="Close">×</button>';setupBar?.after(reliable);
   const RELIABLE_CLOSED='torque-reliable-closed',reliableClosed=()=>{try{return new Set(JSON.parse(localStorage.getItem(RELIABLE_CLOSED)||'[]'));}catch{return new Set();}};
@@ -3301,8 +3413,8 @@ public class MyAuto implements DeckAutonomous {
     list.replaceChildren(...groups.length?groups.flatMap(([name,list])=>[Object.assign(document.createElement('li'),{className:'cal-group',textContent:`${name} · ${list.length}`}),...list.map(row)]):[calNote('This setup has no devices for the check to test.')]);
   }
   function calTabs(attr,panel,key){for(const b of $$(`[data-${attr}]`)){const on=b.getAttribute(`data-${attr}`)===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$(`[data-${panel}]`))p.hidden=p.getAttribute(`data-${panel}`)!==key;}
-  // Electronics or Mechanisms opens the Calibrate tab they are in; Debug is its own.
-  function calSelect(key){if(key==='debug'||key==='camera'||key==='calibrate')calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);}
+  // The tabs run in the order a team works: Camera, USB devices, Debug, and Calibrate last. Electronics or Mechanisms opens the Calibrate tab they are in.
+  function calSelect(key){if(['camera','usb','debug','calibrate'].includes(key))calTop=key;else{calTop='calibrate';calTab=key;}calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);}
   for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const row=$$(`[data-${attr}]`),other=row[(row.indexOf(b)+(e.key==='ArrowRight'?1:row.length-1))%row.length];calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
@@ -3408,10 +3520,11 @@ public class MyAuto implements DeckAutonomous {
   function calKey(m,rec){if(rec?.bind)return rec.bind;const a=m.sensors.find(s=>s.family==='analog'&&s.use==='position');if(a)return `a:${a.name}`;return m.row.family==='motor'?`m:${m.row.name}:${m.template==='T3'?'vel':'pos'}`:'';}
   const calCmd=m=>m.row.family==='motor'?'M':m.row.kind==='crservo'?'C':'S';
   const calUnit=(m,rec)=>m.template==='T3'?'RPM':rec?.transform?.unit==='mm'?'mm':'°';
-  const liveCamera=window.DeckCamera&&calRoot?window.DeckCamera.create({host:$('#cal-camera'),api,native,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='Webcam').map(d=>d.name)}):null;
+  const liveCamera=window.DeckCamera&&calRoot?window.DeckCamera.create({host:$('#cal-camera'),api,native,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='Webcam').map(d=>({name:d.name,serial:d.serial})),plugged:hubUsb,active:()=>{const n=project.calibration?.hub?.config?.name;return n&&n!=='no configuration'?n:null;},toConfigure:serial=>void configureUsb(serial),limelights:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='EthernetDevice'),lens:{all:()=>project.calibration?.lens,save:lens=>{project.calibration.lens=lens;calSave();}}}):null;
+  const usbDevices=window.DeckUsbDevices&&calRoot?window.DeckUsbDevices.create({host:$('#cal-usb'),api,native,usb:hubUsb,toCamera:serial=>{calSelect('camera');liveCamera?.select(serial);}}):null;
   function calUnitsNow(m,rec){const v=liveDebug?.values()||{},raw=v[calKey(m,rec)];return TU.toUnits(raw,rec?.transform||{});}
   const calFix=(v,d=2)=>finite(v)?(+v).toFixed(d):'—';
-  const calNeedLive=()=>`<p class="cal-note">This step moves the robot. Start Live debug in Electronics first (robot on blocks).</p><div class="button-row"><button type="button" class="secondary" data-cal-act="to-live">Go to Live debug</button></div>`;
+  const calNeedLive=()=>`<p class="cal-note">This step moves the robot. Start Live debug in the Debug tab first (robot on blocks).</p><div class="button-row"><button type="button" class="secondary" data-cal-act="to-live">Go to Live debug</button></div>`;
   function calGates(){
     const box=$('#cal-gates');if(!box)return;const hub=project.calibration.hub,hashNow=calHubHash(),fresh=!!hub&&hub.hash===hashNow,live=!!liveDebug?.running();
     const when=hub?new Date(hub.at).toLocaleString():'';
@@ -3517,9 +3630,9 @@ public class MyAuto implements DeckAutonomous {
     const chip=e.target.closest('[data-cal-gate]:not([data-cal-act])');if(chip){const id=chip.dataset.calMech;calOpen[id]=calOpen[id]===chip.dataset.calGate?null:chip.dataset.calGate;calGates();return;}
     const b=e.target.closest('[data-cal-act]');if(!b)return;const act=b.dataset.calAct,m=calMechList().find(x=>x.id===b.dataset.calMech),rec=m&&calRec(m.id),state=m&&(calTemp[m.id]??={});
     if(act==='to-hub'){calSelect('electronics');$('#cal-hub-setup').scrollIntoView({block:'center'});$('#cal-hub-setup').focus();return;}
-    if(act==='to-live'){calSelect('electronics');$('#cal-debug').scrollIntoView({block:'start'});$('[data-debug-start]')?.focus();return;}
+    if(act==='to-live'){calSelect('debug');$('#cal-debug').scrollIntoView({block:'start'});$('[data-debug-start]')?.focus();return;}
     if(act==='to-setup'){void api.page?.('simulation');return;}
-    if(act==='g8-java'){const list=calMechList().filter(x=>project.calibration.mechs[x.id]?.gates?.G8);calTemp.java=TU.constants(list.map(x=>({name:x.name,template:x.template,rec:project.calibration.mechs[x.id]})),{when:new Date().toLocaleDateString()});calGates();return;}
+    if(act==='g8-java'){const list=calMechList().filter(x=>project.calibration.mechs[x.id]?.gates?.G8);calTemp.java=TU.constants(list.map(x=>({name:x.name,template:x.template,rec:project.calibration.mechs[x.id]})),{when:new Date().toLocaleDateString(),lens:project.calibration.lens});calGates();return;}
     if(act==='g8-copy'){void navigator.clipboard?.writeText(calTemp.java||'');return;}
     if(!m)return;
     if(act==='pass'){calPass(m,b.dataset.calGate);return;}

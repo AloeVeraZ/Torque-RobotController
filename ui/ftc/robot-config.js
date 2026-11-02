@@ -49,7 +49,7 @@
     const devices=[],hubs=[];
     for(const e of elements(xml)){if(e.close)continue;const a=e.attrs,hub=within(e,HUBS),portal=within(e,PORTAL);
       if(HUBS.has(e.tag))hubs.push({name:a.name||e.tag,address:a.port!==undefined?Number(a.port):null,tag:e.tag,portal:portal?.attrs.serialNumber??'',parent:e.tag==='LynxModule'&&!!portal&&Number(portal.attrs.parentModuleAddress)===Number(a.port)});
-      else if(!CONTAINERS.has(e.tag)&&a.name)devices.push({name:a.name,tag:e.tag,kind:kindOf(e.tag),hub:hub?.attrs.name||null,...(a.port!==undefined?{port:Number(a.port)}:{}),...(a.bus!==undefined?{bus:Number(a.bus)}:{}),
+      else if(!CONTAINERS.has(e.tag)&&a.name)devices.push({name:a.name,tag:e.tag,kind:kindOf(e.tag),hub:hub?.attrs.name||null,...(a.serialNumber!==undefined?{serial:a.serialNumber}:{}),...(a.port!==undefined?{port:Number(a.port)}:{}),...(a.bus!==undefined?{bus:Number(a.bus)}:{}),
         ...(hub&&hub.attrs.port!==undefined?{module:{portal:portal?.attrs.serialNumber??'',address:Number(hub.attrs.port),...(hub.tag==='ServoHub'?{servoHub:true}:{})}}:{})});
     }
     return {devices,hubs};
@@ -230,6 +230,8 @@
   // The robot takes a configuration as CMD_SAVE_CONFIGURATION "<file>;<xml>" and splits it at every ";", so a
   // configuration with one anywhere (in a name, or in &amp; and the like) cannot be sent.
   function sendable(xml){if(xml.includes(';'))throw Error('A name in this configuration has ; & < > " or \' in it, which cannot be sent to the robot. Rename it in Configure Robot first.');return xml;}
+  // For a value nobody can rename: a camera's serial number.
+  const canSend=v=>!escape(v).includes(';');
   // The robot's own configuration with the planned devices added inside their hubs. Everything else is kept as it was.
   function addDevices(xml,assignments){
     parse(xml);const hubs=[],edits=[];
@@ -303,6 +305,9 @@
   const lynxSerials=scan=>{const v=JSON.parse(scan);return (Array.isArray(v?.map)?v.map:[]).filter(e=>e?.value==='LYNX_USB_DEVICE'&&typeof e.key==='string').map(e=>e.key);};
   // Everything else the scan found on USB (a webcam): [{serial, type}].
   const otherUsb=scan=>{const v=JSON.parse(scan);return (Array.isArray(v?.map)?v.map:[]).filter(e=>typeof e?.key==='string'&&typeof e.value==='string'&&e.value!=='LYNX_USB_DEVICE').map(e=>({serial:e.key,type:e.value}));};
+  // What a student calls a device of that type.
+  // A scan's ETHERNET_DEVICE is any USB network device with an address: the SDK does not check that it is a Limelight.
+  const usbLabel=type=>type==='WEBCAM'?'Webcam':type==='ETHERNET_DEVICE'?'Limelight or USB network device':String(type||'USB device').replace(/_/g,' ');
   const SERVO_HUB_PRODUCT=1120341;
   function lynxModules(list){const v=JSON.parse(list),all=(Array.isArray(v?.modules)?v.modules:[]).filter(m=>Number.isInteger(m?.moduleAddress)),servo=all.filter(m=>m.revProductNumber===SERVO_HUB_PRODUCT);
     return {serial:String(v?.serialNumber??''),modules:all.filter(m=>m.revProductNumber!==SERVO_HUB_PRODUCT).map(m=>({address:m.moduleAddress,parent:!!m.isParent,imu:typeof m.imuType==='string'?m.imuType:'UNKNOWN'})),...(servo.length?{servoHubs:servo.map(m=>({address:m.moduleAddress}))}:{})};}
@@ -389,6 +394,10 @@
   const webcamsOf=xml=>[...elements(xml)].filter(e=>!e.close&&e.tag==='Webcam').map(e=>({name:e.attrs.name,serial:e.attrs.serialNumber||''}));
   function withWebcams(xml,list){const clean=String(xml).replace(/[ \t]*<Webcam\b[^>]*?\/>[ \t]*\r?\n?/g,'').replace(/[ \t]*<Webcam\b[^>]*>\s*<\/Webcam>[ \t]*\r?\n?/g,'');
     return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n${(list||[]).map(c=>`    <Webcam name="${escape(c.name)}" serialNumber="${escape(c.serial)}" />\n`).join('')}`);}
+  // Limelights too: under <Robot>, on no hub. serial: the Scan key, holding the address it gave the hub. ipAddress: its own address. Not yet tried on a real one.
+  const limelightsOf=xml=>[...elements(xml)].filter(e=>!e.close&&e.tag==='EthernetDevice').map(e=>({name:e.attrs.name||'',serial:e.attrs.serialNumber||'',port:e.attrs.port!==undefined?Number(e.attrs.port):-1,ipAddress:e.attrs.ipAddress||''}));
+  function withLimelights(xml,list){const clean=String(xml).replace(/[ \t]*<EthernetDevice\b[^>]*?\/>[ \t]*\r?\n?/g,'').replace(/[ \t]*<EthernetDevice\b[^>]*>\s*<\/EthernetDevice>[ \t]*\r?\n?/g,'');
+    return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n${(list||[]).map(c=>`    <EthernetDevice name="${escape(c.name)}" serialNumber="${escape(c.serial)}" port="${Number.isFinite(c.port)?c.port:-1}" ipAddress="${escape(c.ipAddress)}" />\n`).join('')}`);}
   // A hub to add to a portal, for hubs a scan cannot find yet (not plugged in, or a Servo Hub): its default address when
   // free, else the next free one of 1-10 (the SDK's range), named as Configure Robot names them. Null when all are taken.
   function newHub(hubs,tag,portal='(embedded)'){const used=new Set((hubs||[]).map(h=>h.address)),first=tag==='ServoHub'?3:2,address=[first,1,2,3,4,5,6,7,8,9,10].find(a=>!used.has(a));if(address===undefined)return null;
@@ -420,5 +429,5 @@
     if(!Object.keys(keep).length)return clean;const json=JSON.stringify(keep).replace(/-/g,'\\u002d').replace(/[<>&;]/g,c=>'\\u00'+c.charCodeAt(0).toString(16));
     return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n    <!-- Deck wiring: ${json} -->\n`);}
   return {notesOf,cleanNotes,withNotes,EDIT_TYPES,DEVICE_TYPES,PORT_COUNT,familyOfTag,rebuild,javaFor,javaOf,variableOf,parse,kindOf,check,explain,fits,tokens,KINDS,PORTS,MOTOR_TYPES,IMU_TAGS,missingDevices,planPorts,portChoices,movePort,withType,portLabel,portFamily,portKeyOf:keyOf,portsTaken,tagFor,hubFor,
-    addDevices,newHub,matchHubs,hubKey,discover,withLiveHubs,openHubs,removeHub,webcamsOf,withWebcams,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,otherUsb,lynxModules,withImus,unknownImus,deviceXml};
+    addDevices,newHub,matchHubs,hubKey,discover,withLiveHubs,openHubs,removeHub,canSend,webcamsOf,withWebcams,limelightsOf,withLimelights,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,otherUsb,usbLabel,lynxModules,withImus,unknownImus,deviceXml};
 });

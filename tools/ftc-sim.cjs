@@ -208,7 +208,7 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}
   const m={deck:'debug',version:1,motors:of('motor'),servos:of('servo',d=>d.tag!=='ContinuousRotationServo'),crservos:of('servo',d=>d.tag==='ContinuousRotationServo'),digital:of('digital',d=>d.tag!=='RevTouchSensor'),touch:of('digital',d=>d.tag==='RevTouchSensor'),
     analog:of('analog').map(n=>({n,max:3.3})),i2c:devices.filter(d=>I2C[d.tag]).map(d=>({n:d.name,k:I2C[d.tag]})),hubs:[{n:'Control Hub',address:173,parent:true}]};
   // A webcam in the configuration: the SDK's camera as ui/sim-camera.js models it, one tag in view at 4 ft.
-  const Cam=require('../ui/sim-camera.js'),webcams=[...xml.matchAll(/<Webcam\b[^>]*\bname="([^"]*)"/g)].map(x=>x[1]);m.cameras=webcams;let camera={exposure:'auto',gain:100,decimation:3,feet:4},camNum=0;
+  const Cam=require('../ui/sim-camera.js'),webcams=[...xml.matchAll(/<Webcam\b[^>]*\bname="([^"]*)"/g)].map(x=>x[1]);m.cameras=webcams;let camera={exposure:'auto',gain:100,decimation:3,feet:4},camNum=0,lens=null;
   if(webcams.length&&sim){sim.camera=()=>Cam.simFrame(camNum++,.6);sim.command?.('CMD_STREAM_CHANGE','true');}
   const pos=m.motors.map(()=>0),power=m.motors.map(()=>0),at=m.motors.map(()=>0),cr=m.crservos.map(()=>0),servo=m.servos.map(()=>null),on=m.servos.map(()=>false),latched=m.servos.map(()=>false),commands=[];
   let client=null,heard=0,loop=null,t0=Date.now(),timer=null;const running=()=>/^TorqueDebug-/.test(sim.opMode||'')&&sim.opState==='running';
@@ -224,6 +224,7 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}
     else if(f[0]==='T'&&loop)loop.target=+f[1];
     else if(f[0]==='V')camera={...camera,...(f[1]==='auto'?{exposure:'auto'}:{exposure:+f[1],gain:+f[2]})};
     else if(f[0]==='D')camera={...camera,decimation:+f[1]};
+    else if(f[0]==='K')lens=f[1]==='off'?null:f.slice(1,5).map(Number);
     else if(f[0]==='X')stopAll();};
   const stopAll=()=>{loop=null;power.fill(0);cr.fill(0);m.servos.forEach((_,k)=>{if(!latched[k])on[k]=false;});};
   const tick=()=>{if(!running()){if(client){client.destroy();client=null;}stopAll();return;}
@@ -235,12 +236,12 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886}={}
     const frame={t:Date.now()-t0,loop:6.2,v:12.6,m:m.motors.map((n,k)=>[Math.round(pos[k]),Math.round(Math.sign(power[k])*Math.max(0,Math.abs(power[k])-.04)*2800/20)*20,power[k],Math.abs(power[k])*2,0]),
       s:m.servos.map((n,k)=>[servo[k],on[k]?1:0,latched[k]?1:0]),c:cr,d:m.digital.map(n=>/home|limit/i.test(n)?(home?0:1):1),touch:m.touch.map(()=>0),a:m.analog.map(()=>servo[0]!==null&&on[0]?+(servo[0]*3.3).toFixed(4):1.65),
       i:m.i2c.map(d=>({age:10,v:d.k==='color'?{r:.1,g:.1,b:.1,a:piece?.6:.05,d:piece?2:8}:d.k==='distance'?{d:piece?3:20}:d.k==='pinpoint'?{x:0,y:0,h:0,ex:0,ey:0,status:'READY'}:d.k==='otos'?{x:0,y:0,h:0}:{yaw:0,pitch:0,roll:0,wz:0}}))};
-    if(webcams.length){const hit=Math.random()<Cam.simRate(camera);frame.cam={state:'STREAMING',fps:Cam.fpsOf(camera.decimation),range:[1,100,0,255],exp:camera.exposure==='auto'?null:camera.exposure,gain:camera.exposure==='auto'?null:camera.gain,dec:camera.decimation,tags:hit?[{id:584,name:'Simulated tag',m:60,r:48,b:0,y:0}]:[]};}
+    if(webcams.length){const hit=Math.random()<Cam.simRate(camera);frame.cam={state:'STREAMING',fps:Cam.fpsOf(camera.decimation),range:[1,100,0,255],exp:camera.exposure==='auto'?null:camera.exposure,gain:camera.exposure==='auto'?null:camera.gain,dec:camera.decimation,lens,tags:hit?[{id:584,name:'Simulated tag',m:60,r:48*(lens?lens[0]:Cam.FALLBACK_FX)/Cam.SIM_FX,b:0,y:0,p:0}]:[]};}
     client.write(JSON.stringify(frame)+'\n');};
   const server=net.createServer(s=>{if(!running()){s.destroy();return;}if(client)client.destroy();client=s;heard=Date.now();t0=Date.now();s.setNoDelay(true);s.write(JSON.stringify(m)+'\n');
     let buffer='';s.on('data',c=>{heard=Date.now();buffer+=c;for(let k;(k=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,k);buffer=buffer.slice(k+1);if(line)apply(line);}});
     s.on('close',()=>{if(client===s){client=null;stopAll();}});s.on('error',()=>{});});
-  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,camera:()=>camera,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
+  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,camera:()=>camera,lens:()=>lens,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
 }
 module.exports={SimController,CheckScript,startUdpRobot,startOnBotJava,opModesIn,listBuilt,startDebugServer,OP_MODES,CONFIG_XML,SENSOR_CONFIG_XML,HUBS};
 if(require.main===module){const address=process.argv.slice(2).find(a=>!a.startsWith('--'))||'127.0.0.2';

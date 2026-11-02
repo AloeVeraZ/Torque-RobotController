@@ -95,10 +95,15 @@ public class TorqueDebug extends LinearOpMode {
     final List<WebcamName> webcams = new ArrayList<>();
     final List<String> webcamNames = new ArrayList<>();
     final ConcurrentLinkedQueue<String[]> cameraCommands = new ConcurrentLinkedQueue<>();
-    VisionPortal portal;
-    AprilTagProcessor aprilTag;
+    volatile VisionPortal portal;
+    final Object portalLock = new Object();
+    VisionPortal closedPortal;
+    volatile AprilTagProcessor aprilTag;
     volatile String cameraError, cameraRange = "null", camLast;
     volatile double camExposure = Double.NaN, camGain = Double.NaN, camDecimation = 3;
+    /** The lens numbers Torque sent: fx, fy, cx, cy. Null: the SDK's own for this camera, or its guess. */
+    volatile double[] camLens;
+    volatile boolean camOpening;
     long camAt;
 
     final ConcurrentLinkedQueue<String> commands = new ConcurrentLinkedQueue<>();
@@ -183,7 +188,7 @@ public class TorqueDebug extends LinearOpMode {
             running = false; stopOutputs(true);
             for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(0);
             for (CRServo s : crservos) s.setPower(0);
-            if (portal != null) portal.close();
+            closePortal();
             close();
         }
     }
@@ -204,6 +209,7 @@ public class TorqueDebug extends LinearOpMode {
     //   X                         stop: every output off, loops ended, servos limp unless latched
     //   V auto | V ms gain        the camera's exposure: automatic, or manual with a gain
     //   D decimation              how far the AprilTag processor reads against how fast
+    //   K fx fy cx cy | K off     the lens numbers AprilTag uses, or the SDK's own: the camera opens again to take them
     void apply(String line) {
         String[] f = line.split("\t", -1);
         if (f.length == 0 || f[0].isEmpty()) return;
@@ -219,7 +225,7 @@ public class TorqueDebug extends LinearOpMode {
                 case "Q": startLoop(f); break;
                 case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; } break;
                 case "X": stopOutputs(false); break;
-                case "V": case "D": cameraCommands.add(f); break;
+                case "V": case "D": case "K": cameraCommands.add(f); break;
                 default: break;
             }
         } catch (RuntimeException ignored) { }
@@ -325,46 +331,96 @@ public class TorqueDebug extends LinearOpMode {
     void startCamera() {
         if (webcams.isEmpty()) return;
         try {
-            aprilTag = new AprilTagProcessor.Builder().build();
-            portal = new VisionPortal.Builder().setCamera(webcams.get(0)).addProcessor(aprilTag).build();
+            openCamera();
             Thread t = new Thread(this::cameraThread, "Torque Debug camera"); t.setDaemon(true); t.start();
         } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); portal = null; aprilTag = null; }
     }
+    // AprilTag takes its lens numbers only as it is built.
+    void openCamera() {
+        double[] lens = camLens;
+        AprilTagProcessor.Builder tags = new AprilTagProcessor.Builder();
+        if (lens != null) tags.setLensIntrinsics(lens[0], lens[1], lens[2], lens[3]);
+        aprilTag = tags.build();
+        portal = new VisionPortal.Builder().setCamera(webcams.get(0)).addProcessor(aprilTag).build();
+    }
+    // Stopping can come while the camera thread opens a new portal. Whichever thread is last closes whichever portal is current, so none keeps the camera after the op mode ends.
+    void closePortal() {
+        synchronized (portalLock) {
+            VisionPortal open = portal;
+            if (open == null || open == closedPortal) return;
+            closedPortal = open;
+            open.close();
+        }
+    }
+    // Many cheap cameras have no gain control: their exposure still works, and the range says so with 0,0.
+    String gainRange(GainControl gain) { try { return gain.getMinGain() + "," + gain.getMaxGain(); } catch (RuntimeException e) { return "0,0"; } }
+    void setGain(GainControl gain, int g) { try { gain.setGain(g); camGain = g; } catch (RuntimeException ignored) { } }
     void cameraThread() {
         try {
-            while (running && portal.getCameraState() != VisionPortal.CameraState.STREAMING) Thread.sleep(50);
-            if (!running) return;
-            ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
-            GainControl gain = portal.getCameraControl(GainControl.class);
-            cameraRange = "[" + exposure.getMinExposure(TimeUnit.MILLISECONDS) + "," + exposure.getMaxExposure(TimeUnit.MILLISECONDS) + "," + gain.getMinGain() + "," + gain.getMaxGain() + "]";
+            boolean reopened = false;
             while (running) {
-                String[] f = cameraCommands.poll();
-                if (f == null) { Thread.sleep(20); continue; }
-                try {
-                    if ("D".equals(f[0])) { camDecimation = Double.parseDouble(f[1]); aprilTag.setDecimation((float) camDecimation); }
-                    else if ("auto".equals(f[1])) { exposure.setMode(ExposureControl.Mode.Auto); camExposure = Double.NaN; camGain = Double.NaN; }
-                    else {
-                        if (exposure.getMode() != ExposureControl.Mode.Manual) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); }
-                        long ms = Long.parseLong(f[1]); int g = Integer.parseInt(f[2]);
-                        exposure.setExposure(ms, TimeUnit.MILLISECONDS); Thread.sleep(20); gain.setGain(g); camExposure = ms; camGain = g;
-                    }
-                } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                while (running && portal.getCameraState() != VisionPortal.CameraState.STREAMING) Thread.sleep(50);
+                if (!running) return;
+                ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
+                GainControl gain = portal.getCameraControl(GainControl.class);
+                cameraRange = "[" + exposure.getMinExposure(TimeUnit.MILLISECONDS) + "," + exposure.getMaxExposure(TimeUnit.MILLISECONDS) + "," + gainRange(gain) + "]";
+                if (reopened) {
+                    try {
+                        aprilTag.setDecimation((float) camDecimation);
+                        if (!Double.isNaN(camExposure)) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); exposure.setExposure((long) camExposure, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, (int) camGain); }
+                    } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                }
+                camOpening = false;
+                boolean lensChanged = false;
+                while (running && !lensChanged) {
+                    String[] f = cameraCommands.poll();
+                    if (f == null) { Thread.sleep(20); continue; }
+                    try {
+                        if ("K".equals(f[0])) { camLens = "off".equals(f[1]) ? null : new double[] { Double.parseDouble(f[1]), Double.parseDouble(f[2]), Double.parseDouble(f[3]), Double.parseDouble(f[4]) }; lensChanged = true; }
+                        else if ("D".equals(f[0])) { camDecimation = Double.parseDouble(f[1]); aprilTag.setDecimation((float) camDecimation); }
+                        else if ("auto".equals(f[1])) { exposure.setMode(ExposureControl.Mode.Auto); camExposure = Double.NaN; camGain = Double.NaN; }
+                        else {
+                            if (exposure.getMode() != ExposureControl.Mode.Manual) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); }
+                            long ms = Long.parseLong(f[1]); int g = Integer.parseInt(f[2]);
+                            exposure.setExposure(ms, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, g); camExposure = ms;
+                        }
+                    } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                }
+                if (!running) return;
+                camOpening = true;
+                closePortal();
+                Thread.sleep(500);
+                if (!running) return;
+                openCamera();
+                if (!running) { closePortal(); return; }
+                reopened = true;
             }
         } catch (InterruptedException ignored) {
-        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); camOpening = false; }
     }
     String cameraJson() {
         StringBuilder b = new StringBuilder("{\"state\":");
-        if (portal == null) b.append("\"ERROR\"");
-        else b.append(str(String.valueOf(portal.getCameraState()))).append(",\"fps\":").append(num(portal.getFps()));
+        VisionPortal open = portal;
+        AprilTagProcessor tags = aprilTag;
+        boolean opening = camOpening;
+        if (open == null) b.append("\"ERROR\"");
+        else if (opening) b.append("\"OPENING\"");
+        else {
+            // The camera can close under this a moment after camOpening was read.
+            try { b.append(str(String.valueOf(open.getCameraState()))).append(",\"fps\":").append(num(open.getFps())); }
+            catch (RuntimeException e) { opening = true; b.append("\"OPENING\""); }
+        }
         b.append(",\"range\":").append(cameraRange).append(",\"exp\":").append(num(camExposure)).append(",\"gain\":").append(num(camGain)).append(",\"dec\":").append(num(camDecimation));
+        double[] lens = camLens;
+        b.append(",\"lens\":");
+        if (lens == null) b.append("null"); else b.append('[').append(num(lens[0])).append(',').append(num(lens[1])).append(',').append(num(lens[2])).append(',').append(num(lens[3])).append(']');
         if (cameraError != null) b.append(",\"error\":").append(str(cameraError));
         b.append(",\"tags\":[");
-        if (aprilTag != null) { boolean first = true; for (AprilTagDetection d : aprilTag.getDetections()) {
+        if (tags != null && !opening) { boolean first = true; for (AprilTagDetection d : tags.getDetections()) {
             if (!first) b.append(','); first = false;
             b.append("{\"id\":").append(d.id).append(",\"m\":").append(num(d.decisionMargin));
             if (d.metadata != null) b.append(",\"name\":").append(str(d.metadata.name));
-            if (d.ftcPose != null) b.append(",\"r\":").append(num(d.ftcPose.range)).append(",\"b\":").append(num(d.ftcPose.bearing)).append(",\"y\":").append(num(d.ftcPose.yaw));
+            if (d.ftcPose != null) b.append(",\"r\":").append(num(d.ftcPose.range)).append(",\"b\":").append(num(d.ftcPose.bearing)).append(",\"y\":").append(num(d.ftcPose.yaw)).append(",\"p\":").append(num(d.ftcPose.pitch));
             b.append('}');
         } }
         return b.append("]}").toString();

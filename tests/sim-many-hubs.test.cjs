@@ -145,6 +145,18 @@ test('the USB relay runs from a temporary file as the shell user: no install, de
   L.stopUsbRelay();assert.equal(a.children[0].exitCode,0);
 });
 
+test('two asking for the relay at once share one start: a second could not bind the port, and would say the relay failed',async t=>{
+  const a=fakeAdb();t.after(()=>L.stopUsbRelay());
+  await Promise.all([L.usbRelay('HUB1',{run:a.run,start:a.start}),L.usbRelay('HUB1',{run:a.run,start:a.start})]);assert.equal(a.children.length,1);assert.equal((a.calls.filter(c=>/\bpush\b/.test(c))).length,1);
+  await L.usbRelay('HUB1',{run:a.run,start:a.start});assert.equal(a.children.length,1,'and the one that is running stays');
+  L.stopUsbRelay();await L.usbRelay('HUB1',{run:a.run,start:a.start});assert.equal(a.children.length,2,'stopped, it can start again');
+});
+
+test('a relay that fails to start does not leave the next caller waiting on it',async t=>{
+  t.after(()=>L.stopUsbRelay());const a=fakeAdb(),bad=(f,args)=>{const c=new EventEmitter();c.stdout=new EventEmitter();c.stderr=new EventEmitter();c.stdin=new EventEmitter();c.stdin.end=()=>{};c.exitCode=null;c.kill=()=>{};setImmediate(()=>c.emit('exit',1));return c;};
+  await assert.rejects(L.usbRelay('HUB1',{run:a.run,start:bad}),/could not run the USB relay/);await L.usbRelay('HUB1',{run:a.run,start:a.start});assert.equal(a.children.length,1);
+});
+
 test('a hub already answering on the port needs no relay',async()=>{const a=fakeAdb({listening:true});await L.usbRelay('HUB1',{run:a.run,start:a.start});assert.equal(a.children.length,0);assert.ok(!a.calls.some(c=>/push/.test(c)));});
 
 test('the Control Hub Portal follows what is plugged in: a Servo Hub is found and named, and a failed product number cannot make it an Expansion Hub',()=>{
@@ -166,7 +178,7 @@ test('the Control Hub Portal follows what is plugged in: a Servo Hub is found an
 
 test('Setup shows what Scan found and offers nothing to change: counts, hubs, other USB devices',()=>{
   const st={wiring:W.setHubCount(W.setHubCount(null,'expansion',1),'servoHub',1),rows:[]};
-  const before=W.scanHtml(st,null);assert.ok(before.includes('Press Scan'));assert.ok(before.includes('<output>–</output>'));assert.doesNotMatch(before,/<select|<button|<input/);
+  const before=W.scanHtml(st,null);assert.ok(before.includes('press Scan'));assert.ok(before.includes('<output>–</output>'));assert.doesNotMatch(before,/<select|<button|<input/);
   const after=W.scanHtml(st,{expansion:1,servoHub:0,others:[{serial:'UVC:046D:0825',type:'WEBCAM'}]},{seen:id=>id==='servoHub'?{level:'bad',text:'In the configuration, not found'}:null});
   assert.doesNotMatch(after,/<select|<button|<input/,'read-only');assert.ok(after.includes('Webcam'));assert.ok(after.includes('In the configuration, not found'));
   assert.deepEqual(RC.otherUsb('{"map":[{"key":"(embedded)","value":"LYNX_USB_DEVICE"},{"key":"UVC:046D:0825","value":"WEBCAM"}]}'),[{serial:'UVC:046D:0825',type:'WEBCAM'}]);
