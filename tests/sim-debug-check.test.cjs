@@ -77,6 +77,15 @@ test('the Robot Controller counts as listening on its own address, not the relay
   assert.ok(L.controllerListening(on));assert.ok(!L.controllerListening(relay));assert.ok(!L.controllerListening(relay6));assert.ok(!L.controllerListening(''));assert.ok(L.controllerListening(relay+'\n'+on));
 });
 
+test('Debug says a device is there only when the hub heard it',()=>{
+  require('../ui/sim-debug.js');const L=globalThis.DeckLiveDebug;
+  assert.deepEqual(L.i2cState(1),['Connected','ok']);assert.deepEqual(L.i2cState(0),['Not answering: check its cable','warn']);assert.deepEqual(L.i2cState(-1),['Checking…','']);assert.deepEqual(L.i2cState(undefined),['In the configuration','']);
+  assert.deepEqual(L.strayI2c([0x28,0x29,0x31],[0x31],0),[0x29],'the hub’s own IMU is not a stray, and neither is what is configured');assert.deepEqual(L.strayI2c([0x28],[],1),[0x28],'on another bus 0x28 is someone’s sensor');assert.deepEqual(L.strayI2c(undefined,[],1),[]);
+  assert.equal(L.strayI2cWords([0x52]),'Something answers at 0x52, not in the configuration: often a REV Color Sensor V3.');assert.equal(L.strayI2cWords([0x41]),'Something answers at 0x41, not in the configuration.');
+  assert.deepEqual(L.strayAnalog([0,.001,1.65,3.2],[3]),[[2,1.65]],'empty ports read about 0 V, and a configured one says so on its own tile');assert.equal(L.strayAnalogWords([[2,1.65]]),'Something on analog port 2 reads 1.65 V, not in the configuration.');
+  const code=fs.readFileSync(path.join(__dirname,'../src/onbot/TorqueDebug.java'),'utf8');assert.match(code,/new LynxI2cReadSingleByteCommand\(hub, bus, at\)\.send\(\)/,'the hub asks directly: a sensor’s own read hands back zeros');
+});
+
 test('Setup shows an × only on a hub Scan did not find, and Configure shows its configuration, with the others to pick, beside Save',()=>{
   const W=require('../ui/sim-wiring.js'),st={wiring:W.setHubCount(W.setHubCount(null,'expansion',1),'servoHub',1),rows:[]},seen=id=>id==='servoHub'?{level:'bad',text:'In the configuration, not found',missing:true}:{level:'ok',text:'Connected'};
   const html=W.scanHtml(st,{expansion:1,servoHub:0,others:[]},{seen});assert.equal((html.match(/data-hub-remove=/g)||[]).length,1);assert.ok(html.includes('data-hub-remove="servoHub"'));assert.ok(W.scanHtml(st,{expansion:1,servoHub:0,others:[]},{seen,busy:true}).includes(' disabled>×'));

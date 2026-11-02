@@ -336,7 +336,7 @@ public class MyAuto implements DeckAutonomous {
       <section class="cal-card" id="cal-checklist" aria-labelledby="cal-checklist-title"><h2 id="cal-checklist-title">Also check on the robot</h2></section>
     </div><div class="cal-side" id="cal-electronics">
       <section class="cal-card" id="cal-usb" aria-labelledby="cal-usb-title"></section>
-      <section class="cal-card" aria-labelledby="cal-hubs-title"><h2 id="cal-hubs-title">What the Control Hub reports</h2><div id="cal-hubs"></div></section>
+      <section class="cal-card" aria-labelledby="cal-hubs-title"><h2 id="cal-hubs-title">What the configuration lists</h2><div id="cal-hubs"></div></section>
     </div></div></div>
     <div id="cal-panel-mechanisms" role="tabpanel" aria-labelledby="cal-tab-mechanisms" data-cal-panel="mechanisms" hidden><div id="cal-gates" class="cal-gates"></div><details class="cal-card cal-sim-settings"><summary>Settings the simulation runs on</summary><div id="cal-mechs" class="cal-mechs"></div></details></div></div></div>`;
   const graph=$('#simulation-field'),robotGlyph=$('#field-robot'),estimateShape=$('#sim-estimate'),targetMark=$('#sim-target'),elementsLayer=$('#sim-elements');
@@ -2185,9 +2185,8 @@ public class MyAuto implements DeckAutonomous {
     if(!s.device)return `<p>${of}</p><p class="hint">Nothing is configured on this hub, so there is nothing to move. Add a device in Configure Robot, or name this hub yourself.</p>${pick}<div class="button-row"><button type="button" class="primary" data-hub-test="next">Next</button><button type="button" class="secondary" data-hub-test="cancel">Stop</button></div>`;
     return `<p>${of}</p><p class="hint">Moves ${s.device.kind==='motor'?'motor':'servo'} port ${s.device.port}, “${W_esc(s.device.name)}”, for one second.</p><div class="button-row"><button type="button" class="primary" data-hub-test="run"${hubTest.running?' disabled':''}>${hubTest.ran?'Move it again':'Move it'}</button></div>${hubTest.note?`<p class="hint" role="status">${W_esc(hubTest.note)}</p>`:''}${pick}<div class="button-row"><button type="button" class="secondary" data-hub-test="next">Next</button><button type="button" class="secondary" data-hub-test="cancel">Stop</button></div>`;}
   const W_esc=v=>window.DeckWiring.esc(v);
-  // Setup's step shows done once the Control Hub has been read.
   let flowStep='setup';
-  function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?'calibrate':flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);b.toggleAttribute('data-done',b.dataset.flow==='setup'&&!!project.calibration?.hub?.readout);}
+  function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?'calibrate':flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);}
     if(setupRoot){$('#rs-step-setup').hidden=flowStep!=='setup';$('#rs-step-configure').hidden=flowStep!=='configure';$('#rs-step-axon').hidden=flowStep!=='axon';}}
   // The Axon Programmer tab: its programmer is only touched while the tab shows, and the Control Hub's USB watch rests meanwhile.
   const axonShown=()=>window.DeckAxon?.shown(setupShown&&flowStep==='axon');
@@ -3473,8 +3472,8 @@ public class MyAuto implements DeckAutonomous {
   function calElectronics(){
     flowMarks();const W=window.DeckWiring,st=W.state(project),ftc=project.controller==='ftc',hub=project.calibration.hub,read=ftc?hub?.readout||null:null;$('#cal-hub-setup').disabled=!ftc;
     // What is plugged in where shows only once it was read from the Control Hub: the port Deck would pick says nothing about the robot.
-    const from=read?`<p class="hint">Read from “${calEsc(hub.name||'the configuration')}”${hub.serial?` on Control Hub ${calEsc(hub.serial)}`:''}, ${calEsc(new Date(hub.at).toLocaleString())}. Plug it in and read it again after changing the wiring.</p>`:'';
-    calHtml($('#cal-hubs'),!ftc?'<p class="hint">This setup runs on a MotionModule, which has no hub ports. Choose FTC Control Hub in Simulate → Setup to set up a Control Hub.</p>':read?from+W.readoutHtml(read,st):'<p class="hint" data-cal-unread>Nothing read yet. Plug the Control Hub in by USB-C and press Set up from the Control Hub: what is connected to each port shows here, with the motors, servos and sensors.</p>');
+    const from=read?`<p class="hint">Read from “${calEsc(hub.name||'the configuration')}”${hub.serial?` on Control Hub ${calEsc(hub.serial)}`:''}, ${calEsc(new Date(hub.at).toLocaleString())}. This is what the configuration says, not what is plugged in: Debug shows which I2C and analog devices are really there.</p>`:'';
+    calHtml($('#cal-hubs'),!ftc?'<p class="hint">This setup runs on a MotionModule, which has no hub ports. Choose FTC Control Hub in Simulate → Setup to set up a Control Hub.</p>':read?from+W.readoutHtml(read,st):'<p class="hint" data-cal-unread>Nothing read yet. Plug the Control Hub in by USB-C and press Set up from the Control Hub: what its configuration has on each port shows here, with the motors, servos and sensors.</p>');
     
   }
   // A model or sensor picked here is not a change to what the hub reported, so a read that was current stays current.

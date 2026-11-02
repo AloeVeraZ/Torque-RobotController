@@ -1,9 +1,15 @@
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.lynx.LynxModule;
+import com.qualcomm.hardware.lynx.LynxNackException;
+import com.qualcomm.hardware.lynx.commands.core.LynxGetADCCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadSingleByteCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadStatusQueryCommand;
+import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -11,6 +17,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
+import com.qualcomm.robotcore.hardware.I2cAddr;
+import com.qualcomm.robotcore.hardware.I2cDeviceSynchDevice;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
@@ -39,11 +47,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Torque's live hardware debug (Calibrate → Camera and Debug). Deck installs this file with OnBot Java; it is
@@ -59,6 +70,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * stops everything too. Hub reads follow gm0: one bulk read per hub per loop; motor current and I2C sensors, which each
  * cost a transaction of their own, one device a loop in turn.
  *
+ * A sensor's own read hands back zeros when nothing is plugged in, so being able to read one says nothing. watchHub asks each
+ * hub directly what answers on its I2C buses and what its analog ports read, and that goes out with the readings.
+ *
  * No package: Sinister, in some Robot Controller builds, crashes the app on any OnBot Java class in one, by asking for it by a name with slashes
  * ("Invalid name: org/firstinspires/ftc/teamcode/TorqueDebug", seen on FTC SDK 12.0).
  */
@@ -69,6 +83,11 @@ public class TorqueDebug extends LinearOpMode {
     /** A motor drawing more than this for STALL_MS is cut until it is commanded again (a 312 RPM goBILDA stalls at 9.2 A). */
     static final double STALL_AMPS = 7.0;
     static final long STALL_MS = 400;
+    /** How the SDK describes where an I2C device is: "...; module 173; bus 1; addr7=0x29". */
+    static final Pattern I2C_PLACE = Pattern.compile("module (\\d+); bus (\\d+); addr7=0x([0-9a-fA-F]+)");
+    /** Every usable I2C address is tried once, then a few a turn: a sensor nobody configured shows within half a minute. What is configured or was found is asked every turn. */
+    static final int I2C_BUSES = 4, I2C_FIRST = 0x08, I2C_LAST = 0x77, I2C_SWEEP_EACH = 4, ANALOG_PORTS = 4, ANALOG_EVERY = 5;
+    static final long WATCH_MS = 200;
 
     // ---- devices, in the order the manifest lists them
     final List<String> motorNames = new ArrayList<>(), servoNames = new ArrayList<>(), crNames = new ArrayList<>(), digitalNames = new ArrayList<>(), touchNames = new ArrayList<>(), analogNames = new ArrayList<>(), i2cNames = new ArrayList<>(), i2cKinds = new ArrayList<>();
@@ -88,6 +107,12 @@ public class TorqueDebug extends LinearOpMode {
     long[] motorOverSince, motorAt, crAt;
     String[] i2cLast;
     long[] i2cAt;
+    /** Each I2C device's hub (its place in hubs), bus and address, or null if the SDK does not say. */
+    int[][] i2cPlace;
+    /** Whether each I2C device answered last: 1 yes, 0 no, -1 not asked yet. */
+    volatile int[] i2cOn;
+    /** What watchHub found, ready to go into a frame. */
+    volatile String hubWatch = "";
     /** A loop Deck runs on the robot (a step test): one actuator, one sensor, gains in the sensor's raw units. */
     TorqueDebugLoop loop;
 
@@ -139,13 +164,20 @@ public class TorqueDebug extends LinearOpMode {
         for (NormalizedColorSensor c : hardwareMap.getAll(NormalizedColorSensor.class)) addI2c(c, "color");
         // A colour sensor is a distance sensor too: it is one device, read once.
         for (DistanceSensor d : hardwareMap.getAll(DistanceSensor.class)) if (!(d instanceof NormalizedColorSensor)) addI2c(d, "distance");
+        // Anything else on an I2C bus has no reading here, but can still say whether it is there.
+        for (HardwareDevice d : hardwareMap) if (placeOf(d) != null) addI2c(d, "other");
         for (WebcamName w : hardwareMap.getAll(WebcamName.class)) { webcams.add(w); webcamNames.add(nameOf(w)); }
         List<VoltageSensor> volts = hardwareMap.getAll(VoltageSensor.class);
         battery = volts.isEmpty() ? null : volts.get(0);
 
         motorPower = new double[motors.size()]; motorAmps = new double[motors.size()]; motorCut = new boolean[motors.size()]; motorOverSince = new long[motors.size()]; motorAt = new long[motors.size()]; crAt = new long[crservos.size()];
         crPower = new double[crservos.size()]; crTold = new boolean[crservos.size()]; servoPos = new double[servos.size()]; servoOn = new boolean[servos.size()]; servoLatched = new boolean[servos.size()];
-        i2cLast = new String[i2c.size()]; i2cAt = new long[i2c.size()];
+        i2cLast = new String[i2c.size()]; i2cAt = new long[i2c.size()]; i2cPlace = new int[i2c.size()][]; i2cOn = new int[i2c.size()]; Arrays.fill(i2cOn, -1);
+        for (int k = 0; k < i2c.size(); k++) {
+            Matcher p = placeOf(i2c.get(k));
+            if (p == null) continue;
+            for (int h = 0; h < hubs.size(); h++) if (hubs.get(h).getModuleAddress() == Integer.parseInt(p.group(1))) i2cPlace[k] = new int[]{h, Integer.parseInt(p.group(2)), Integer.parseInt(p.group(3), 16)};
+        }
         for (int i = 0; i < motors.size(); i++) { motorAmps[i] = Double.NaN; motors.get(i).setPower(0); }
         for (int i = 0; i < servos.size(); i++) { servoPos[i] = Double.NaN; if (servos.get(i) instanceof PwmControl) ((PwmControl) servos.get(i)).setPwmDisable(); }
         manifest = manifest();
@@ -158,6 +190,8 @@ public class TorqueDebug extends LinearOpMode {
         telemetry.addData("Devices", "%d motors, %d servos, %d CR servos, %d digital, %d analog, %d I2C", motors.size(), servos.size(), crservos.size(), digitals.size() + touches.size(), analogs.size(), i2c.size());
         telemetry.update();
         waitForStart();
+        Thread watch = new Thread(this::watchHub, "Torque Debug hub watch");
+        watch.setDaemon(true); watch.start();
         long start = System.nanoTime(), lastFrame = 0, loops = 0, loopStart = System.nanoTime();
         double loopMs = 0, volts12 = Double.NaN;
         int turn = 0;
@@ -181,7 +215,7 @@ public class TorqueDebug extends LinearOpMode {
                 }
                 // One motor's current and one I2C sensor a loop, in turn.
                 if (!motors.isEmpty()) { int m = turn % motors.size(); motorAmps[m] = motors.get(m).getCurrent(CurrentUnit.AMPS); stall(m, now); }
-                if (!i2c.isEmpty()) { int k = turn % i2c.size(); i2cLast[k] = readI2c(k); i2cAt[k] = now; }
+                if (!i2c.isEmpty()) { int k = turn % i2c.size(); i2cLast[k] = i2cOn[k] == 0 ? null : readI2c(k); i2cAt[k] = now; }
                 if (battery != null && turn % 25 == 0) volts12 = battery.getVoltage();
                 turn++; loops++;
                 long t = System.nanoTime();
@@ -282,6 +316,78 @@ public class TorqueDebug extends LinearOpMode {
         for (int i = 0; i < servos.size(); i++) if (all || !servoLatched[i]) servoOn[i] = false;
     }
 
+    // ---- what is really plugged in
+    static Matcher placeOf(HardwareDevice d) {
+        try { Matcher m = I2C_PLACE.matcher(String.valueOf(d.getConnectionInfo())); return m.find() ? m : null; } catch (RuntimeException e) { return null; }
+    }
+
+    static boolean busy(LynxNackException e) {
+        LynxNack.StandardReasonCode why = e.getNack().getNackReasonCodeAsEnum();
+        return why == LynxNack.StandardReasonCode.I2C_MASTER_BUSY || why == LynxNack.StandardReasonCode.I2C_OPERATION_IN_PROGRESS;
+    }
+
+    /** The hub reads one byte from the address: only a device that is there can acknowledge it. */
+    boolean answers(LynxModule hub, int bus, int address) throws InterruptedException {
+        I2cAddr at = I2cAddr.create7bit(address);
+        try {
+            return hub.acquireI2cLockWhile(() -> {
+                for (;;) { try { new LynxI2cReadSingleByteCommand(hub, bus, at).send(); break; } catch (LynxNackException e) { if (!busy(e)) throw e; } }
+                for (;;) { try { return new LynxI2cReadStatusQueryCommand(hub, bus, 1).sendReceive().getBytes().length == 1; } catch (LynxNackException e) { if (!busy(e)) return false; } }
+            });
+        } catch (LynxNackException | RobotCoreException | RuntimeException e) { return false; }
+    }
+
+    double portVolts(LynxModule hub, int port) throws InterruptedException {
+        try { return new LynxGetADCCommand(hub, LynxGetADCCommand.Channel.user(port), LynxGetADCCommand.Mode.ENGINEERING).sendReceive().getValue() / 1000.0; } catch (LynxNackException | RuntimeException e) { return Double.NaN; }
+    }
+
+    void watchHub() {
+        int count = I2C_LAST - I2C_FIRST + 1, total = hubs.size() * I2C_BUSES * count, next = 0, beat = 0;
+        boolean[][][] wanted = new boolean[hubs.size()][I2C_BUSES][128], found = new boolean[hubs.size()][I2C_BUSES][128];
+        double[][] volts = new double[hubs.size()][ANALOG_PORTS];
+        for (double[] v : volts) Arrays.fill(v, Double.NaN);
+        for (int[] p : i2cPlace) if (p != null && p[1] < I2C_BUSES) wanted[p[0]][p[1]][p[2]] = true;
+        boolean swept = false;
+        try {
+            while (running) {
+                for (int h = 0; h < hubs.size(); h++) for (int bus = 0; bus < I2C_BUSES; bus++) for (int a = 0; a < 128; a++) if (wanted[h][bus][a] || found[h][bus][a]) found[h][bus][a] = answers(hubs.get(h), bus, a);
+                if (beat++ % ANALOG_EVERY == 0) for (int h = 0; h < hubs.size(); h++) for (int port = 0; port < ANALOG_PORTS; port++) volts[h][port] = portVolts(hubs.get(h), port);
+                int[] on = i2cOn.clone();
+                for (int k = 0; k < on.length; k++) {
+                    int[] p = i2cPlace[k];
+                    if (p == null || p[1] >= I2C_BUSES) continue;
+                    int now = found[p[0]][p[1]][p[2]] ? 1 : 0;
+                    // Plugged in after the robot started: the SDK tried to set it up then, and could not.
+                    if (on[k] == 0 && now == 1 && i2c.get(k) instanceof I2cDeviceSynchDevice && !"imu".equals(i2cKinds.get(k))) { try { ((I2cDeviceSynchDevice<?>) i2c.get(k)).initialize(); } catch (RuntimeException ignored) { } }
+                    on[k] = now;
+                }
+                i2cOn = on;
+                hubWatch = hubWatchJson(on, found, volts, swept);
+                for (int n = swept ? I2C_SWEEP_EACH : total; n > 0 && running; n--, next = (next + 1) % total) {
+                    int a = next % count, bus = next / count % I2C_BUSES, h = next / count / I2C_BUSES;
+                    found[h][bus][I2C_FIRST + a] = answers(hubs.get(h), bus, I2C_FIRST + a);
+                }
+                if (!swept) { swept = true; hubWatch = hubWatchJson(on, found, volts, true); }
+                Thread.sleep(WATCH_MS);
+            }
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    String hubWatchJson(int[] on, boolean[][][] found, double[][] volts, boolean swept) {
+        StringBuilder b = new StringBuilder(",\"on\":[");
+        for (int k = 0; k < on.length; k++) { if (k > 0) b.append(','); b.append(on[k]); }
+        b.append("],\"b\":[");
+        for (int h = 0; h < hubs.size(); h++) {
+            if (h > 0) b.append(',');
+            b.append("{\"h\":").append(hubs.get(h).getModuleAddress()).append(",\"swept\":").append(swept).append(",\"found\":[");
+            for (int bus = 0; bus < I2C_BUSES; bus++) { if (bus > 0) b.append(','); b.append('['); boolean first = true; for (int a = 0; a < 128; a++) if (found[h][bus][a]) { if (!first) b.append(','); first = false; b.append(a); } b.append(']'); }
+            b.append("],\"a\":[");
+            for (int port = 0; port < ANALOG_PORTS; port++) { if (port > 0) b.append(','); b.append(num(volts[h][port])); }
+            b.append("]}");
+        }
+        return b.append(']').toString();
+    }
+
     // ---- readings
     String readI2c(int k) {
         HardwareDevice d = i2c.get(k);
@@ -326,7 +432,7 @@ public class TorqueDebug extends LinearOpMode {
         for (int i = 0; i < analogs.size(); i++) { if (i > 0) b.append(','); b.append(num(analogs.get(i).getVoltage())); }
         b.append("],\"i\":[");
         for (int i = 0; i < i2c.size(); i++) { if (i > 0) b.append(','); b.append("{\"age\":").append(i2cLast[i] == null ? "null" : String.valueOf(now - i2cAt[i])).append(",\"v\":").append(i2cLast[i] == null ? "null" : i2cLast[i]).append('}'); }
-        b.append(']');
+        b.append(']').append(hubWatch);
         TorqueDebugLoop l = loop;
         if (l != null) b.append(",\"q\":{\"actuator\":").append(str(l.actuator)).append(",\"target\":").append(num(l.target)).append(",\"error\":").append(num(l.error)).append(",\"out\":").append(num(l.out)).append('}');
         if (!webcams.isEmpty()) { if (camLast == null || now - camAt >= 100) { camLast = cameraJson(); camAt = now; } b.append(",\"cam\":").append(camLast); }
@@ -493,7 +599,7 @@ public class TorqueDebug extends LinearOpMode {
         b.append(",\"analog\":[");
         for (int i = 0; i < analogs.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(analogNames.get(i))).append(",\"max\":").append(num(analogs.get(i).getMaxVoltage())).append('}'); }
         b.append("],\"i2c\":[");
-        for (int i = 0; i < i2c.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(i2cNames.get(i))).append(",\"k\":").append(str(i2cKinds.get(i))).append('}'); }
+        for (int i = 0; i < i2c.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(i2cNames.get(i))).append(",\"k\":").append(str(i2cKinds.get(i))); int[] p = i2cPlace[i]; if (p != null) b.append(",\"h\":").append(hubs.get(p[0]).getModuleAddress()).append(",\"b\":").append(p[1]).append(",\"a\":").append(p[2]); b.append('}'); }
         b.append("],\"hubs\":[");
         for (int i = 0; i < hubs.size(); i++) { LynxModule h = hubs.get(i); if (i > 0) b.append(','); b.append("{\"n\":").append(str(nameOf(h))).append(",\"address\":").append(h.getModuleAddress()).append(",\"parent\":").append(h.isParent()).append('}'); }
         return b.append("]}").toString();

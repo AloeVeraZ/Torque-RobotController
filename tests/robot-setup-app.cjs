@@ -123,6 +123,10 @@ Guided check said: ${await text('#sim-check-status').catch(()=>'')} | ${await te
     await page.click('#cal-tab-debug');await page.click('[data-debug-install]');await page.click('[data-debug-go]');await until(()=>robot.sim.opModes.some(m=>/^TorqueDebug-/.test(m.name)),30000,'Torque Debug built');
     await page.waitForFunction(()=>/TorqueDebug-[0-9.-]+ is on the robot/.test(document.querySelector('[data-debug-status]').textContent));
     await page.click('[data-debug-start]');await page.waitForSelector('#cal-debug [data-port="motor:intake"]',{timeout:20000});assert.match(robot.sim.opMode,/^TorqueDebug-/);
+    // What is really on a bus is what the hub heard, not that a read came back.
+    {const pill=name=>text(`#cal-debug [data-live="ib:${name}"]`);
+      await until(async()=>await pill('pinpoint')==='Connected',8000,'the Pinpoint answers');assert.equal(await pill('imu'),'Connected');
+      debug.absent.add('pinpoint');await until(async()=>await pill('pinpoint')==='Not answering: check its cable',8000,'unplugged, it says so');debug.absent.delete('pinpoint');await until(async()=>await pill('pinpoint')==='Connected',8000,'and back');}
     // The device check: every device listed; a motor runs at the chosen speed both ways and its encoder proves it.
     await page.waitForSelector('#cal-debug [data-check-row="intake"]');await page.click('#cal-debug [data-check-one="intake"]');await page.waitForSelector('#cal-debug [data-check-row="intake"][data-state="pass"]',{timeout:15000});assert.match(await page.locator('#cal-debug [data-check-row="intake"]').innerText(),/encoder counted/);
     await page.locator('#cal-debug [data-check]').evaluate(e=>e.scrollIntoView({block:'start'}));await page.screenshot({path:path.join(out,'c-device-check.png')});

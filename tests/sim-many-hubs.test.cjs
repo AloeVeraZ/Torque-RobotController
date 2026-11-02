@@ -176,9 +176,9 @@ test('the Control Hub Portal follows what is plugged in: a Servo Hub is found an
   assert.deepEqual(RC.matchHubs(hubs,null).hubs,hubs);
 });
 
-test('Setup shows what Scan found and offers nothing to change: hubs on one side, USB devices on the other',()=>{
+test('Setup shows what Scan found and offers nothing to change: how many of each, then one list',()=>{
   const st={wiring:W.setHubCount(W.setHubCount(null,'expansion',1),'servoHub',1),rows:[]};
-  const before=W.scanHtml(st,null);assert.ok(before.includes('press Scan'));assert.doesNotMatch(before,/<select|<button|<input/);assert.doesNotMatch(before,/<output>/,'no counts to read');
+  const before=W.scanHtml(st,null);assert.ok(before.includes('press Scan'));assert.doesNotMatch(before,/<select|<button|<input/);assert.deepEqual([...before.matchAll(/<output>([^<]*)</g)].map(x=>x[1]),['–','–','–','–'],'nothing to count yet');
   const after=W.scanHtml(st,{expansion:1,servoHub:0,others:[{serial:'UVC:046D:0825',type:'WEBCAM'}]},{seen:id=>id==='servoHub'?{level:'bad',text:'In the configuration, not found'}:null});
   assert.doesNotMatch(after,/<select|<button|<input/,'read-only');assert.ok(after.includes('Webcam'));assert.ok(after.includes('In the configuration, not found'));
   assert.deepEqual(RC.otherUsb('{"map":[{"key":"(embedded)","value":"LYNX_USB_DEVICE"},{"key":"UVC:046D:0825","value":"WEBCAM"}]}'),[{serial:'UVC:046D:0825',type:'WEBCAM'}]);

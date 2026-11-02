@@ -13,17 +13,17 @@ const col=(html,name)=>{const a=html.indexOf(`data-scan-col="${name}"`);assert.o
 const hubsSt=()=>({wiring:W.setHubCount(W.setHubCount(null,'expansion',1),'servoHub',1),rows:[]});
 const seen=()=>({level:'ok',text:'Connected'});
 
-test('Setup: the Control Hub and what is on the RS485 cable on the left, what is on USB on the right, with nothing to press for a hub',()=>{
+test('Setup: how many of each, then the Control Hub, what is on the RS485 cable and what is on USB, with nothing to press for a hub',()=>{
   const html=W.scanHtml(hubsSt(),{expansion:1,servoHub:1,others:[]},{seen,rows:usb([CAM]).devices,conn:{how:'USB-C',serial:'24677c4269e7e709'},configured:[]}),left=col(html,'hubs'),right=col(html,'usb');
-  assert.ok(left.indexOf('Control Hub')<left.indexOf('On the RS485 cable'));assert.match(left,/Over USB-C · Serial 24677c4269e7e709/);assert.match(left,/data-hub-row="expansion"[\s\S]*Address 2/);assert.match(left,/data-hub-row="servoHub"[\s\S]*Address 3/);assert.doesNotMatch(left,/<button/,'scanning adds them');
-  assert.match(right,/Webcam \(needs its lens measured\)/);assert.match(right,/Blue USB 3\.0 port · Ucamera001/);assert.match(right,/Not in the configuration/);assert.doesNotMatch(html,/802\.11ac|USB2\.0 Hub|xHCI/,'the hub’s own parts stay hidden');assert.doesNotMatch(html,/<output>/,'no grid of counts');
+  assert.ok(left.indexOf('data-hub-row="control"')<left.indexOf('data-hub-row="expansion"'));assert.ok(html.indexOf('data-scan-col="hubs"')<html.indexOf('data-scan-col="usb"'));assert.match(left,/Over USB-C · Serial 24677c4269e7e709/);assert.match(left,/data-hub-row="expansion"[\s\S]*Address 2/);assert.match(left,/data-hub-row="servoHub"[\s\S]*Address 3/);assert.doesNotMatch(left,/<button/,'scanning adds them');
+  assert.match(right,/Webcam \(needs its lens measured\)/);assert.match(right,/Blue USB 3\.0 port · Ucamera001/);assert.match(right,/Not in the configuration/);assert.doesNotMatch(html,/802\.11ac|USB2\.0 Hub|xHCI/,'the hub’s own parts stay hidden');assert.deepEqual([...html.matchAll(/<b>([^<]*)<\/b><p class="hint">[^<]*<\/p><div class="sim-wire-stepper"><output>([^<]*)</g)].map(m=>`${m[1]} ${m[2]}`),['Control Hub 1','Expansion Hubs 1','Servo Hubs 1','USB devices 1']);
 });
 test('Setup: what the configuration has, none found, and over Wi-Fi',()=>{
   const st={wiring:W.setHubCount(null,'expansion',0),rows:[]},html=W.scanHtml(st,{expansion:0,servoHub:0,others:[]},{rows:usb([CAM]).devices,conn:{how:'USB-C'},configured:[{name:'Webcam',tag:'Webcam',serial:'Ucamera001'}]});
-  assert.match(col(html,'usb'),/Configured as “Webcam”/);assert.match(col(html,'hubs'),/No Expansion Hub or Servo Hub was found on the cable/);
-  assert.match(W.scanHtml(st,null,{conn:{how:'USB-C'},checking:true}),/Looking on the cable/);
+  assert.match(col(html,'usb'),/Configured as “Webcam”/);assert.match(html,/Expansion Hubs<\/b><p class="hint">[^<]*<\/p><div class="sim-wire-stepper"><output>0</);assert.doesNotMatch(col(html,'hubs'),/data-hub-row="expansion"/);
+  assert.match(W.scanHtml(st,null,{conn:{how:'USB-C'},checking:true}),/Looking on the RS485 cable/);
   const wifi=W.scanHtml(st,{expansion:0,servoHub:0,others:[{serial:'Ucamera001',type:'WEBCAM'}]},{conn:{how:'Wi-Fi'}});assert.match(col(wifi,'usb'),/Webcam/);assert.match(col(wifi,'usb'),/Over Wi-Fi this is only what the robot’s own Scan can see/);assert.doesNotMatch(wifi,/Blue USB/);
-  assert.match(W.scanHtml(st,{expansion:0,servoHub:0,others:[]},{rows:[],conn:{how:'USB-C'}}),/Nothing is plugged into the Control Hub’s USB ports/);
+  assert.match(W.scanHtml(st,{expansion:0,servoHub:0,others:[]},{rows:[],conn:{how:'USB-C'}}),/USB devices<\/b><p class="hint">[^<]*<\/p><div class="sim-wire-stepper"><output>0</);
   assert.match(W.scanHtml(st,null,{auto:{text:'1 new USB device'},conn:{how:'USB-C'}}),/data-auto-offer><span>1 new USB device<\/span><button[^>]*data-auto-configure/);
   const usbHub=W.scanHtml(hubsSt(),{expansion:1,servoHub:1,others:[]},{seen,conn:{how:'USB-C'},onUsb:id=>id==='expansion'});assert.match(usbHub,/Address 2 · on USB, not the RS485 cable/);
 });

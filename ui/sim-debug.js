@@ -12,6 +12,17 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   const finite=Number.isFinite,fix=(v,d=2)=>finite(v)?(+v).toFixed(d):'—',H=()=>root.DeckHardware,W=()=>root.DeckWiring;
   const SPAN=10;// seconds of history the timeline keeps
+  // An analog port reading under this has nothing driving it: the empty ports of a real Control Hub read 0 to 0.001 V.
+  const ANALOG_EMPTY=.02;
+  // Who usually answers at an I2C address, from the FTC SDK's own drivers.
+  const I2C_USUAL={0x17:'a SparkFun OTOS',0x29:'a REV 2m or AndyMark TOF distance sensor, or an Adafruit color sensor',0x31:'a goBILDA Pinpoint',0x32:'a navX or HuskyLens',0x39:'a REV Color Sensor V2 or AndyMark color sensor',0x52:'a REV Color Sensor V3'};
+  // Whether a configured I2C device answered the hub (1, 0, -1 not asked yet, undefined the robot cannot say): [words, pill level].
+  const i2cState=on=>on===1?['Connected','ok']:on===0?['Not answering: check its cable','warn']:on===-1?['Checking…','']:['In the configuration',''];
+  // What answers on a bus that the configuration does not have. The hub's own IMU sits on its bus 0 whether it is configured or not.
+  const strayI2c=(found,known,bus)=>(found||[]).filter(a=>!known.includes(a)&&!(bus===0&&a===0x28));
+  const strayI2cWords=list=>list.map(a=>`Something answers at 0x${a.toString(16).padStart(2,'0')}, not in the configuration${I2C_USUAL[a]?`: often ${I2C_USUAL[a]}`:''}.`).join(' ');
+  const strayAnalog=(volts,known)=>(volts||[]).map((v,port)=>[port,v]).filter(([port,v])=>!known.includes(port)&&finite(v)&&v>ANALOG_EMPTY);
+  const strayAnalogWords=list=>list.map(([port,v])=>`Something on analog port ${port} reads ${fix(v)} V, not in the configuration.`).join(' ');
   // What an analog sensor's volts mean: degrees for angle sensors (an Axon's feedback runs backwards), else none.
   function analogMeaning(md,v,max){if(!md||!finite(v))return '';const span=md.voltage||max||3.3;
     if(md.kind==='axonFeedback')return `${fix((1-v/span)*360,1)}°`;
@@ -96,17 +107,18 @@
           <input type="range" min="-1" max="1" step="0.01" value="0" data-hold="C" data-name="${esc(name)}" aria-label="Hold to run ${esc(name)}"><dl><dt>Power</dt><dd data-live="c:${esc(name)}" data-plot-key="c:${esc(name)}">—</dd></dl></div>`;
         if(fam==='digital'){const md=row&&D.SENSOR_MODELS[row.model];return `<div class="cal-port" data-port="${esc(id)}"><div class="cal-port-head"><b>Digital ${port}</b><code>${esc(name)}</code></div><small>${label}</small>
           <div class="cal-lamp" data-live="d:${esc(name)}" data-plot-key="d:${esc(name)}" data-active-low="${md?.activeLow?1:0}">—</div><small data-live="d:${esc(name)}:edges"></small></div>`;}
-        return `<div class="cal-port" data-port="${esc(id)}"><div class="cal-port-head"><b>Analog ${port}</b><code>${esc(name)}</code></div><small>${label}</small>
+        return `<div class="cal-port" data-port="${esc(id)}"><div class="cal-port-head"><b>Analog ${port}</b><code>${esc(name)}</code></div><small>${label}</small><span class="rs-pill warn" data-live="a:${esc(name)}:plug" hidden></span>
           <meter min="0" max="${esc(m.analog.find(a=>a.n===name)?.max||3.3)}" data-live="a:${esc(name)}:bar"></meter><dl><dt>Volts</dt><dd data-live="a:${esc(name)}" data-plot-key="a:${esc(name)}">—</dd><dt>Means</dt><dd data-live="a:${esc(name)}:means">—</dd><dt>Seen</dt><dd data-live="a:${esc(name)}:seen">—</dd></dl></div>`;};
-      // I2C devices set themselves up, so each bus only says whether what is configured on it is answering.
-      const buses=(hub,on)=>{if(D.hubSpec(hub)?.i2c===0)return '';const row=b=>{const here=on.filter(d=>d.bus===b);return `<div class="cal-bus" data-bus="${esc(hub)}:${b}"><b>Bus ${b}</b>${here.map(d=>{used.add(`i2c:${d.name}`);return `<span class="cal-bus-device"><code>${esc(d.name)}</code>${live.i2c.includes(d.name)?`<span class="rs-pill" data-live="ib:${esc(d.name)}">Waiting…</span>`:'<span class="rs-pill">In the configuration; Torque Debug can\u2019t read this type</span>'}</span>`;}).join('')||'<span class="hint">Nothing configured</span>'}</div>`;};return `<div class="cal-port-group"><h4>I2C buses</h4><div class="cal-buses">${[0,1,2,3].map(row).join('')}</div></div>`;};
+      // I2C devices set themselves up, so each bus only says whether what is configured on it answers the hub, and what else does.
+      const hubAt=hub=>hub==='control'?173:wiring.hubs[hub]?.address,buses=(hub,on)=>{if(D.hubSpec(hub)?.i2c===0)return '';const row=b=>{const here=on.filter(d=>d.bus===b);return `<div class="cal-bus" data-bus="${esc(hub)}:${b}"><b>Bus ${b}</b>${here.map(d=>{used.add(`i2c:${d.name}`);return `<span class="cal-bus-device"><code>${esc(d.name)}</code>${live.i2c.includes(d.name)?`<span class="rs-pill" data-live="ib:${esc(d.name)}">Checking…</span>`:'<span class="rs-pill">In the configuration</span>'}</span>`;}).join('')||'<span class="hint">Nothing configured</span>'}<span class="rs-pill warn" data-live="ix:${hubAt(hub)}:${b}" hidden></span></div>`;};return `<div class="cal-port-group"><h4>I2C buses</h4><div class="cal-buses">${[0,1,2,3].map(row).join('')}</div></div>`;};
       const order=D.hubIds(wiring),hubs=[...new Set(['control',...read.filter(d=>d.hub).map(d=>d.hub)])].sort((x,y)=>(order.indexOf(x)+1||99)-(order.indexOf(y)+1||99));
-      const cards=read.length?hubs.map(hub=>{const on=read.filter(d=>d.hub===hub),html=[['motor','Motors'],['servo','Servos'],['analog','Analog'],['digital','Digital']].map(([fam,title])=>{const cells=on.filter(d=>familyOf(d)===fam).sort((x,y)=>x.port-y.port).map(d=>{const f=fam==='servo'&&live.crservo.includes(d.name)?'crservo':fam;return live[f]?.includes(d.name)?tile(f,d.name,d.port):`<div class="cal-port missing"><div class="cal-port-head"><b>${title.replace(/s$/,'')} ${d.port}</b><code>${esc(d.name)}</code></div><small>In the robot’s configuration, but Torque Debug is not reading it. Check its cable, then restart live debug.</small></div>`;});return cells.length?`<div class="cal-port-group"><h4>${title}</h4><div class="cal-ports">${cells.join('')}</div></div>`:'';}).join('')+buses(hub,on.filter(d=>d.bus!==undefined));
+      const cards=read.length?hubs.map(hub=>{const on=read.filter(d=>d.hub===hub),html=[['motor','Motors'],['servo','Servos'],['analog','Analog'],['digital','Digital']].map(([fam,title])=>{const cells=on.filter(d=>familyOf(d)===fam).sort((x,y)=>x.port-y.port).map(d=>{const f=fam==='servo'&&live.crservo.includes(d.name)?'crservo':fam;return live[f]?.includes(d.name)?tile(f,d.name,d.port):`<div class="cal-port missing"><div class="cal-port-head"><b>${title.replace(/s$/,'')} ${d.port}</b><code>${esc(d.name)}</code></div><small>In the robot’s configuration, but Torque Debug is not reading it. Check its cable, then restart live debug.</small></div>`;});return cells.length?`<div class="cal-port-group"><h4>${title}</h4><div class="cal-ports">${cells.join('')}</div></div>`:'';}).join('')+`<p class="cal-stray"><span class="rs-pill warn" data-live="ax:${hubAt(hub)}" data-ports="${on.filter(d=>familyOf(d)==='analog').map(d=>d.port).join(',')}" hidden></span></p>`+buses(hub,on.filter(d=>d.bus!==undefined));
         return `<section class="cal-hub"><h3>${esc(D.hubName(hub,wiring))}</h3>${html}</section>`;}):[];
       // What the robot reports that the read configuration did not list: read it again in Setup to place it on its port.
       const other=[...live.motor.map(n=>['motor',n]),...live.servo.map(n=>['servo',n]),...live.crservo.map(n=>['crservo',n]),...live.analog.map(n=>['analog',n]),...live.digital.map(n=>['digital',n])].filter(([f,n])=>!used.has(`${f}:${n}`));
-      if(other.length)cards.push(`<section class="cal-hub"><h3>On the robot</h3><div class="cal-ports">${other.map(([f,n])=>tile(f,n,'')).join('')}</div></section>`);
-      q('[data-debug-hubs]').innerHTML=`<p class="hint">Everything here comes from the robot’s active configuration. A port can be in the configuration with nothing plugged in: its motor won’t move and its sensor won’t change.</p>${cards.join('')}`;
+      const otherI2c=(m.i2c||[]).filter(d=>!used.has(`i2c:${d.n}`));
+      if(other.length||otherI2c.length)cards.push(`<section class="cal-hub"><h3>On the robot</h3>${other.length?`<div class="cal-ports">${other.map(([f,n])=>tile(f,n,'')).join('')}</div>`:''}${otherI2c.length?`<div class="cal-port-group"><h4>I2C</h4><div class="cal-buses">${otherI2c.map(d=>`<div class="cal-bus"><b>${d.b===undefined?'I2C':`Bus ${d.b}`}</b><span class="cal-bus-device"><code>${esc(d.n)}</code><span class="rs-pill" data-live="ib:${esc(d.n)}">Checking…</span></span></div>`).join('')}</div></div>`:''}</section>`);
+      q('[data-debug-hubs]').innerHTML=`<p class="hint">Everything here comes from the robot’s active configuration. I2C devices and analog ports show whether anything is really there. Motors, servos and digital ports can’t tell: a motor with nothing plugged in just won’t move.</p>${cards.join('')}`;
       q('[data-debug-tools]').hidden=false;
       for(const k of plot)host.querySelector(`[data-plot-key="${CSS.escape(k)}"]`)?.classList.add('plotted');
       paint(true);}
@@ -134,8 +146,11 @@
         else if(kind==='s'||kind==='c')el.textContent=fix(v[key],3);
         else if(kind==='d'){if(field==='edges'){el.textContent=edges[name]?`${edges[name]} changes`:'';continue;}const raw=v[`d:${name}`],low=el.dataset.activeLow==='1';el.textContent=raw===undefined?'—':`${raw?'HIGH':'LOW'}${low?` · ${raw?'released':'pressed'}`:''}`;el.dataset.on=raw===undefined?'':String(low?!raw:!!raw);}
         else if(kind==='a'){const val=v[`a:${name}`],row=byName.get(name),md=row&&D.SENSOR_MODELS[row.model];
-          if(field==='bar')el.value=finite(val)?val:0;else if(field==='means')el.textContent=analogMeaning(md,val,m.analog.find(a=>a.n===name)?.max)||'—';else if(field==='seen')el.textContent=seen[name]?`${fix(seen[name][0])}–${fix(seen[name][1])} V`:'—';else el.textContent=fix(val,3);}
-        else if(kind==='ib'){const r=f.i?.[m.i2c.findIndex(d=>d.n===name)],on=!!r?.v;el.textContent=on?'Connected':'Not answering';el.className=`rs-pill ${on?'ok':'warn'}`;}}
+          if(field==='plug'){const i=m.analog.findIndex(a=>a.n===name),recent=frames.slice(-100).map(x=>x.a?.[i]),low=recent.length>=25&&recent.every(x=>finite(x)&&x<=ANALOG_EMPTY);el.textContent='Reads 0 V: probably not plugged in';el.hidden=!low;}
+          else if(field==='bar')el.value=finite(val)?val:0;else if(field==='means')el.textContent=analogMeaning(md,val,m.analog.find(a=>a.n===name)?.max)||'—';else if(field==='seen')el.textContent=seen[name]?`${fix(seen[name][0])}–${fix(seen[name][1])} V`:'—';else el.textContent=fix(val,3);}
+        else if(kind==='ib'){const [words,level]=i2cState(f.on?.[m.i2c.findIndex(d=>d.n===name)]);el.textContent=words;el.className=`rs-pill ${level}`;}
+        else if(kind==='ix'){const bus=+field,stray=strayI2c(f.b?.find(x=>x.h===+name)?.found?.[bus],m.i2c.filter(d=>d.h===+name&&d.b===bus).map(d=>d.a),bus);el.textContent=strayI2cWords(stray);el.hidden=!stray.length;}
+        else if(kind==='ax'){const stray=strayAnalog(f.b?.find(x=>x.h===+name)?.a,el.dataset.ports.split(',').filter(Boolean).map(Number));el.textContent=strayAnalogWords(stray);el.hidden=!stray.length;}}
       chart();}
     function chart(){
       const canvas=q('[data-debug-chart]');if(!canvas||!plot.size||canvas.closest('[hidden]'))return;const w=canvas.clientWidth||600;if(canvas.width!==w)canvas.width=w;const h=canvas.height,g=canvas.getContext('2d');g.clearRect(0,0,w,h);
@@ -223,5 +238,5 @@
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
     return {event,layout,start,run,install,offerInstall,stop,unplugged,send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
-  root.DeckLiveDebug={create,analogMeaning};
+  root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

@@ -5,14 +5,26 @@ Calibrate (the third view in the header) turns a robot configuration into tuned 
 The view has three tabs, left to right in the order a team works. It opens on the first:
 
 - **Camera**: what a webcam sees, with everything that can be set right beside it. The picture shows by itself: see [Camera](#camera) below. Headed by the camera's name, with a row of names when there is more than one. A camera that is only plugged in says so and has Auto-configure, since the Robot Controller can only open cameras in its active configuration. Under the picture, one line says what needs doing or All good, and closed sections hold Details and Measure this lens. A Limelight's status takes the picture's place.
-- **Debug**: **Live debug**, with what is on the hub's USB ports above the motors and servos: whether a webcam is streaming and its frame rate, a Limelight's status, and what the rules say about the rest.
+- **Debug**: **Live debug**, with what is on the hub's USB ports above the motors and servos: whether a webcam is streaming and its frame rate, a Limelight's status, and what the rules say about the rest. I2C devices and analog ports show whether anything is really there: see [What is really plugged in](#what-is-really-plugged-in).
 - **Calibrate**, once everything else is set up, with two tabs of its own:
-  - **Electronics**: Send to robot and the guided check, with **USB devices** and what the Control Hub reports on the right. USB devices goes port by port through what each thing is, what it does, the rule and what to do, and a camera has a button to Camera ([USB devices on a Control Hub](USB-DEVICES.md)). What the Control Hub reports is what is connected to each port and every motor, servo and sensor. Those stay hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
+  - **Electronics**: Send to robot and the guided check, with **USB devices** and what the configuration lists on the right. USB devices goes port by port through what each thing is, what it does, the rule and what to do, and a camera has a button to Camera ([USB devices on a Control Hub](USB-DEVICES.md)). What the configuration lists is what it says is on each port, every motor, servo and sensor, not what is plugged in. It stays hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
   - **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read.
 
 Axon servos have their own tab, Axon Programmer, at the far right of the same row of steps. See [Programming Axon servos](AXON.md).
 
 Code: `ui/sim-tune.js` (templates, gates, unit transforms, fits; pure and unit-tested in `tests/sim-tune.test.cjs`), `ui/sim-debug.js` (the Live debug panel), the calibrate section of `ui/simulation.js` (the flow), `src/onbot/TorqueDebug.java` (the robot side), `runDebug` in `src/robot-link.cjs` (the link). `tests/robot-setup-app.cjs` part C runs the whole chain against the simulated hub's stand-in (`startDebugServer` in `tools/ftc-sim.cjs`).
+
+## What is really plugged in
+
+A sensor's own read hands back zeros when nothing answers, and the SDK raises no error, so being able to read a sensor says nothing. While Torque Debug runs, `watchHub` asks each hub directly:
+
+| Port | How Torque tells | What Debug says |
+|---|---|---|
+| **I2C** | The hub reads one byte from the address (`LynxI2cReadSingleByteCommand`, then `LynxI2cReadStatusQueryCommand`). Only a device that is there can acknowledge it. A configured device or one already found is asked 5 times a second. Every other address from 0x08 to 0x77 is tried once at the start, then 4 a turn, so a sensor nobody configured shows within about half a minute. | **Connected**, or **Not answering: check its cable**. A bus also says when something answers at an address the configuration does not have. A sensor plugged in after the robot started is set up again when it first answers. |
+| **Analog** | The port's voltage, read for every port once a second (`LynxGetADCCommand`). A real Control Hub's empty ports read 0 to 0.001 V. Under 0.02 V for 2 seconds counts as nothing driving the port. | **Reads 0 V: probably not plugged in**, which may also be a sensor truly at 0 V. A port the configuration does not have says when it reads something. |
+| **Motors, servos, digital** | They can't say. A motor or servo output has no feedback, and a digital port reads the same with a switch open as with nothing there. | Nothing. |
+
+Measured on a real Control Hub (FTC SDK 12.0) with nothing plugged in: bus 0's IMU answered, and an AndyMark TOF, an Adafruit color sensor and a navX configured on buses 1 to 3 did not. The loop took about 7 ms with this running. A device answering at the right address is not proof it is the right type of device.
 
 ## The pipeline: nine gates
 
