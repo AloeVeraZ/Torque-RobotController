@@ -41,6 +41,11 @@
   --radius-control: 8px;
   --radius-detail: 6px;
   --space: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
   --bar-height: 52px;
   --page-gutter: 24px;
   --page-max: 1320px;

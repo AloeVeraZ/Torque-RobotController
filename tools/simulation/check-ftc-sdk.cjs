@@ -1,6 +1,6 @@
 'use strict';
 // Developer check: the virtual Control Hub's FTC SDK stand-ins and the Control Hub exports against the
-// REAL FTC SDK and Pedro Pathing. Downloads RobotCore and Hardware 12.0.0 and Pedro Pathing core and revhub
+// REAL FTC SDK and Pedro Pathing. Downloads RobotCore, Hardware and Vision 12.0.0 and Pedro Pathing core and revhub
 // 3.0.2 (what the Pedro Quickstart pins) from Maven Central into a temporary folder, verifies their
 // published SHA-1, then:
 //   1. compiles single-file OnBot Java and multi-file Control Hub exports for every supported localizer, a turning route, a route with
@@ -15,7 +15,7 @@
 // Needs a built simulator (node tools/simulation/build.cjs) and network access.
 // Usage: node tools/simulation/check-ftc-sdk.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),https=require('node:https'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
-const root=path.join(__dirname,'../..'),VERSION='12.0.0',ARTIFACTS=['RobotCore','Hardware'],PEDRO='3.0.2';
+const root=path.join(__dirname,'../..'),VERSION='12.0.0',ARTIFACTS=['RobotCore','Hardware','Vision'],PEDRO='3.0.2';
 // The Pedro Quickstart's TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/Constants.java as it ships.
 const QUICKSTART_CONSTANTS=`package org.firstinspires.ftc.teamcode.pedro;
 
@@ -126,7 +126,7 @@ async function main(){
       .map(l=>l.trim().replace(/throws [^;]*;/,';').replace(/ ;$/,';').replace(/ (abstract|default|final|static|synchronized|native|volatile) /g,' ').replace(/\s+/g,' ').trim()));
     const name=l=>(l.match(/ ([\w$]+)(\(|;)/)||[])[1]+(l.includes('(')?'()':'');
     let checked=0,inherited=0;const missing=[];
-    for(const file of walk(path.join(root,'tools/simulation/java')).filter(f=>/[\\/](com|org)[\\/].*\.java$/.test(f))){
+    for(const file of walk(path.join(root,'tools/simulation/java')).filter(f=>/[\\/](com|org)[\\/].*\.java$/.test(f)&&!/[\\/]org[\\/]opencv[\\/]/.test(f))){
       const type=path.relative(path.join(root,'tools/simulation/java'),file).replace(/\.java$/,'').split(path.sep).join('.');
       const real=members(jars.join(path.delimiter),type);
       for(const m of members(classes,type)){checked++;if(real.has(m))continue;if(type.endsWith('.OpMode')&&INHERITED.has(name(m))){inherited++;continue;}missing.push(`${type}: ${m}`);}

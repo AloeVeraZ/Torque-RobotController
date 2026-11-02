@@ -176,9 +176,9 @@ test('the Control Hub Portal follows what is plugged in: a Servo Hub is found an
   assert.deepEqual(RC.matchHubs(hubs,null).hubs,hubs);
 });
 
-test('Setup shows what Scan found and offers nothing to change: counts, hubs, other USB devices',()=>{
+test('Setup shows what Scan found and offers nothing to change: hubs on one side, USB devices on the other',()=>{
   const st={wiring:W.setHubCount(W.setHubCount(null,'expansion',1),'servoHub',1),rows:[]};
-  const before=W.scanHtml(st,null);assert.ok(before.includes('press Scan'));assert.ok(before.includes('<output>–</output>'));assert.doesNotMatch(before,/<select|<button|<input/);
+  const before=W.scanHtml(st,null);assert.ok(before.includes('press Scan'));assert.doesNotMatch(before,/<select|<button|<input/);assert.doesNotMatch(before,/<output>/,'no counts to read');
   const after=W.scanHtml(st,{expansion:1,servoHub:0,others:[{serial:'UVC:046D:0825',type:'WEBCAM'}]},{seen:id=>id==='servoHub'?{level:'bad',text:'In the configuration, not found'}:null});
   assert.doesNotMatch(after,/<select|<button|<input/,'read-only');assert.ok(after.includes('Webcam'));assert.ok(after.includes('In the configuration, not found'));
   assert.deepEqual(RC.otherUsb('{"map":[{"key":"(embedded)","value":"LYNX_USB_DEVICE"},{"key":"UVC:046D:0825","value":"WEBCAM"}]}'),[{serial:'UVC:046D:0825',type:'WEBCAM'}]);
@@ -193,7 +193,7 @@ test('Configure edits the configuration itself: every port of every hub, legal p
   const e=CE.load('lunala',xml);assert.deepEqual(e.hubs.map(h=>h.name),['Control Hub','Expansion Hub 2','Servo Hub 3']);assert.equal(e.dirty,false);
   globalThis.DeckDeviceArt=require('../ui/ftc/device-art.js');
   // The hub list stays on the side; the hub picked shows its families, as a Driver Hub does.
-  assert.match(CE.hubsHtml(e),/Control Hub · address 173 · 1 device/);assert.match(CE.hubsHtml(e),/Servo Hub · address 3 · nothing set up yet/);
+  assert.match(CE.hubsHtml(e),/Address 173 · 1 device/);assert.match(CE.hubsHtml(e),/Address 3 · nothing set up yet/);
   const families=CE.familiesHtml(e);for(const word of ['Motors','Servos','Digital Devices','Analog Input Devices','I2C Bus 3'])assert.ok(families.includes(word),word);
   e.hub=2;assert.doesNotMatch(CE.familiesHtml(e),/I2C|Motors/,'a Servo Hub has only servos');assert.deepEqual(CE.trail({...e,family:'servo'}),['lunala','Control Hub Portal','Servo Hub 3','Servos']);e.hub=0;
   for(const [f,n] of [['motor',4],['servo',6],['analog',4],['digital',8]]){e.family=f;assert.equal((CE.portsHtml(e).match(/data-ce-type=/g)||[]).length,n,f);}

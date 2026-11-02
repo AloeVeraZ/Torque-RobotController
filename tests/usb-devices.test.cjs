@@ -20,23 +20,23 @@ test('each honest state says what it is',()=>{
   assert.match(U.html(usb(REAL.filter(d=>d.path!=='1-1'))),/data-usb-state="empty"/,'what is inside the hub does not count');
 });
 
-test('the real hub: the camera has one line pointing to the Camera tab, and what is inside the hub never shows',()=>{
+test('the real hub: the camera says what it is and has a way to the Camera tab, and what is inside the hub never shows',()=>{
   const html=U.html(usb(REAL),[]),blue=section(html,'usb3');
-  assert.match(blue,/data-usb-elsewhere="Ucamera001"/);assert.match(blue,/UVC Camera<\/b> is in the Camera tab/);assert.match(blue,/data-usb-to-camera="Ucamera001"/);assert.doesNotMatch(blue,/usb-card/,'no card');
+  assert.match(blue,/data-usb-elsewhere="Ucamera001"/);assert.match(blue,/Webcam · UVC Camera<\/b>/);assert.match(blue,/Allowed if it has one lens: R707A, R708A/);assert.match(blue,/distance is wrong until the lens is measured/,'what it does');assert.match(blue,/data-usb-to-camera="Ucamera001"/);assert.doesNotMatch(blue,/data-usb-device=/,'its checks are in Camera');
   assert.doesNotMatch(html,/802\.11ac|USB2\.0 Hub|xHCI/);assert.match(section(html,'usb2'),/Nothing plugged in/);assert.doesNotMatch(html,/data-usb-state="empty"/);
   assert.doesNotMatch(html,/section="usbc"/);assert.equal(section(html,'usbc'),'','a port nobody can use is not offered');
 });
 
 test('a device on each port, with FIRST’s reason on the USB 2.0 one and the rule on the chip',()=>{
   const list=[dev('10c4:ea60',[],{path:'1-1',product:'CP2102N'}),dev('2341:0043',['02/02/01/cdc_acm'],{path:'3-1.4',product:'Uno'})],html=U.html(usb(list),[]),blue=section(html,'usb3'),two=section(html,'usb2');
-  assert.match(blue,/HuskyLens, LiDAR adapter/);assert.match(blue,/Not on the manual’s USB list: R707, R702 Example 5/);assert.match(blue,/connect it by I2C/);assert.match(blue,/On the blue|data-usb-device="1-1"/);assert.doesNotMatch(blue,/Move this/);
+  assert.match(blue,/HuskyLens, LiDAR adapter/);assert.match(blue,/Not on the manual’s USB list: R707, R702 Example 5/);assert.match(blue,/This may be a HuskyLens: it works on an I2C port, not USB\./);assert.match(blue,/data-usb-i2c="HuskyLens"/);assert.doesNotMatch(blue,/connect it by I2C|A HuskyLens on I2C is allowed/,'said once');assert.match(blue,/On the blue|data-usb-device="1-1"/);assert.doesNotMatch(blue,/Move this/);
   assert.match(two,/Arduino/);assert.match(two,/Move this to the blue USB 3\.0 port\. A static shock on the USB 2\.0 port can knock out the robot&#39;s Wi-Fi\./);assert.match(two,/Sensors go on the hub&#39;s own ports/);assert.match(two,/The manual’s R707 list of what may connect by USB does not include it\. Ask your inspector if you are not sure\./);assert.doesNotMatch(two,/before inspection/,'the manual does not say that');
   assert.match(two,/<details class="usb-facts" data-usb-facts="3-1\.4"><summary>/,'closed');assert.match(two,/2341:0043/);assert.doesNotMatch(two.slice(0,two.indexOf('<details')),/2341|cdc_acm/,'no IDs above the fold');
 });
 
 test('what is not allowed says what to do instead',()=>{
   const say=(d,re)=>assert.match(U.html(usb([d]),[]),re);
-  say(dev('0471:13aa'),/Axon Programmer tab/);say(dev('046d:c21d',[]),/Plug it into the Driver Hub/);say(dev('2207:0017'),/Not on the manual’s USB list: R707, R901/);say(dev('03e7:2485'),/rs-pill bad">Not allowed on the robot: R702 Example 6/);
+  say(dev('0471:13aa'),/goes in the computer, not the robot/);say(dev('0471:13aa'),/data-usb-axon/);say(dev('046d:c21d',[]),/Plug it into the Driver Hub/);say(dev('2207:0017'),/Not on the manual’s USB list: R707, R901/);say(dev('03e7:2485'),/rs-pill bad">Not allowed on the robot: R702 Example 6/);
   const row=rowsOf([dev('2341:0043')])[0];assert.deepEqual(U.steps(row),["Sensors go on the hub's own ports."],'the steps are things to do');
 });
 
@@ -56,7 +56,7 @@ test('the chip keeps a condition the row has: a webcam Torque cannot see the len
 
 test('when Torque has stopped scanning by itself, it says so once, and the raw key of a camera stays out of sight',()=>{
   const stuck=Object.assign([],{devices:rowsOf(REAL),stuck:'The Robot Controller app is not answering.'});assert.equal((U.html(stuck,[]).match(/data-usb-stuck/g)||[]).length,1);assert.doesNotMatch(U.html(usb(REAL),[]),/data-usb-stuck/);
-  const blank=dev('046d:0825',CAM_IF,{path:'1-1',serial:'',product:''}),html=U.html(usb([blank]),[]);assert.match(html,/Webcam · Camera with no serial number<\/b> is in the Camera tab/);assert.doesNotMatch(html.replace(/data-usb-[a-z-]+="[^"]*"/g,''),/VendorProduct/);
+  const blank=dev('046d:0825',CAM_IF,{path:'1-1',serial:'',product:''}),html=U.html(usb([blank]),[]);assert.match(html,/Webcam · Camera with no serial number<\/b>/);assert.doesNotMatch(html.replace(/data-usb-[a-z-]+="[^"]*"/g,''),/VendorProduct/);
 });
 
 test('a splitter shows what is behind it, on either half of the blue port and on the USB 2.0 port',()=>{

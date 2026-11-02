@@ -103,11 +103,18 @@ async function writeConfiguration(host,{name,xml,replace=false}={},{timeout=8000
   },{timeout,socket});
 }
 
-// Every configuration the robot keeps, read as Configure Robot lists them: {configurations, active, files: {name: xml}}.
+// Every configuration the robot keeps, read as Configure Robot lists them: {configurations, active, files: {name: xml}}. deviceName: the robot's name, from its web server, when it says.
 async function readConfigurations(host,{timeout=8000,socket=null}={}){
   return session(host,async link=>{const {ask}=link,{files,active}=await configurations(link,timeout),out={};
     for(const f of files.slice(0,24)){try{const xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(configFile(f.name)));if(/<Robot\b/.test(xml))out[f.name]=xml;}catch{}}
-    return {source:'wifi',host,configurations:Object.keys(out),active:{name:active},files:out};},{timeout,socket});}
+    const deviceName=host==='usb'?null:await rcDeviceName(host);return {source:'wifi',host,configurations:Object.keys(out),active:{name:active},files:out,...(deviceName?{deviceName}:{})};},{timeout,socket});}
+const rcDeviceName=async host=>{try{const r=await request(checkHost(host),'GET','/js/rcInfo.json',undefined,{port:8080,timeout:4000}),name=r.status===200?JSON.parse(r.text).deviceName:null;return typeof name==='string'&&name?name:null;}catch{return null;}};
+// A configuration's wiring notes are a comment in its file, and the robot sends configurations without comments, so over Wi-Fi they cannot be read and a write would take them out of the file.
+// What the cable reads is kept on this computer (store: {get(robot, name), set(robot, name, notes)}), and what Wi-Fi reads gets it back. Notes this computer has never seen cannot come back.
+function notesThrough(read,store){const robot=read?.deviceName;if(!robot||!read.files)return read;
+  for(const [name,xml] of Object.entries(read.files)){const own=RobotConfig.notesOf(xml);if(Object.keys(own).length){store.set(robot,name,own);continue;}
+    if(read.source!=='wifi')continue;const kept=store.get(robot,name);if(kept&&Object.keys(kept).length)read.files[name]=RobotConfig.withNotes(xml,kept);}
+  return read;}
 // Makes a saved configuration the active one, as the Driver Station's Configure Robot does, then restarts the robot so
 // its hardware map is built from it.
 async function activateConfiguration(host,name,{timeout=8000,socket=null,restart=true}={}){
@@ -176,26 +183,47 @@ const PAD=[[0,'a'],[1,'b'],[2,'x'],[3,'y'],[12,'dpad_up'],[13,'dpad_down'],[14,'
 const DEBUG_PORT=20886,DEBUG_FILE='TorqueDebug.java',OLD_DEBUG_FILE='org/firstinspires/ftc/teamcode/DeckDebug.java',isDebugOpMode=m=>/^TorqueDebug\b/.test(m?.name||'');
 const two=n=>String(n).padStart(2,'0'),debugName=(at=new Date())=>`TorqueDebug-${two(at.getHours())}.${two(at.getMinutes())}-${two(at.getMonth()+1)}-${two(at.getDate())}-${two(at.getFullYear()%100)}`;
 const debugSource=(name=debugName())=>fs.readFileSync(path.join(__dirname,'onbot','TorqueDebug.java'),'utf8').replace('@TeleOp(name = "TorqueDebug"',`@TeleOp(name = "${name}"`);
-function connectRetry({host,port},ms){
-  const began=Date.now();
-  return new Promise((ok,fail)=>{const attempt=()=>{const s=net.connect({host,port},()=>{s.off('error',retry);ok(s);});const retry=e=>{s.destroy();if(Date.now()-began>ms)fail(Error(`Torque Debug did not open its port on the robot (${e.code||e.message}).`));else setTimeout(attempt,250);};s.once('error',retry);};attempt();});}
-function runDebug(host,{onManifest=()=>{},onFrame=()=>{},onCamera=()=>{},limit=60*60e3,timeout=8000,socket=null,connect=null}={}){
-  let finish=()=>{},stopping=false,sock=null,station=null,wantCamera=false;const done=new Promise(r=>{finish=why=>{stopping=true;r(why);};});
+// Whether the robot's copy is this one: its name only says when it went on, so everything else in the source has to match. opMode: the name it has there, which the robot has built only if it lists it.
+const debugBody=text=>String(text).replace(/\r\n/g,'\n').replace(/@TeleOp\(name = "[^"]*"/,'@TeleOp(name = "TorqueDebug"').trim(),debugNameIn=text=>/@TeleOp\(name = "([^"]*)"/.exec(String(text))?.[1]||null;
+async function debugCurrent(host,{client}={}){if(!client)client=await onBotClient(host);await webReady(client);const theirs=await client.read(DEBUG_FILE),current=theirs!==null&&debugBody(theirs)===debugBody(debugSource());return {current,opMode:current?debugNameIn(theirs):null};}
+// Whether the robot is free for what nobody pressed for, seen as a Driver Station sees it. session itself refuses when another Driver Station has the robot. A Torque Debug left running is nobody's work and holds the camera, so it goes.
+const debugIdle=(host,{timeout=8000,socket=null,settle=400}={})=>session(host,async({ds,until})=>{await until(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
+  // The robot says what is running on its next loop after the connection, which can be just after the list.
+  await delay(settle);if(ds.state.opModeState==='stopped')return true;if(!isDebugOpMode({name:ds.state.activeOpMode}))throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);
+  ds.stopOpMode();await until(s=>s.opModeState==='stopped',5000,'The robot did not stop the Torque Debug it was running.');return true;},{timeout,socket});
+// Until the op mode has said something. ADB takes a connection on this computer whether or not the hub's port is open yet and then hangs up, so being connected proves nothing: its first line, sent as soon as it accepts, does.
+// A connection that is taken and says nothing is given up with the rest of the time. stopped: a promise; once it resolves this gives up at once, with null.
+function connectRetry({host,port},ms,stopped){
+  return new Promise((ok,fail)=>{let s=null,again=null,over=false,why='it said nothing';
+    const drop=()=>{if(!s)return;s.off('error',retry);s.off('close',closed);s.off('data',heard);s.on('error',()=>{});s.destroy();s=null;},end=act=>{if(over)return;over=true;clearTimeout(limit);clearTimeout(again);act();},
+      retry=e=>{why=e?.code||e?.message||'it hung up';drop();if(!over)again=setTimeout(attempt,250);},closed=()=>retry(),
+      heard=first=>{const sock=s;sock.off('error',retry);sock.off('close',closed);sock.off('data',heard);s=null;end(()=>ok({sock,first}));},
+      attempt=()=>{if(over)return;s=net.connect({host,port});s.once('error',retry);s.once('close',closed);s.once('data',heard);},
+      limit=setTimeout(()=>{drop();end(()=>fail(Error(`Torque Debug did not open its port on the robot (${why}).`)));},ms);
+    stopped?.then(()=>{drop();end(()=>ok(null));});attempt();});}
+// opMode: the one to run, by its exact name; any Torque Debug without it.
+function runDebug(host,{onManifest=()=>{},onFrame=()=>{},onCamera=()=>{},limit=60*60e3,timeout=8000,socket=null,connect=null,opMode=null,startWait=20000}={}){
+  let finish=()=>{},stopping=false,sock=null,station=null,wantCamera=false,abandoned=false;const done=new Promise(r=>{finish=why=>{stopping=true;r(why);};});
   const ended=session(host,async({ds,until})=>{
-    await until(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
-    const mode=ds.state.opModes.find(isDebugOpMode)?.name;if(!mode)throw Error('The robot has no Torque Debug op mode yet. Put Torque Debug on the robot first.');
-    if(ds.state.opModeState!=='stopped'&&ds.state.activeOpMode!==mode)throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);
-    if(ds.state.opModeState==='stopped'){ds.initOpMode(mode);await until(s=>s.activeOpMode===mode&&s.opModeState==='init',10000,'The robot did not INIT Torque Debug.');}
-    if(!stopping&&ds.state.opModeState!=='running'){ds.startOpMode(mode);await until(s=>s.opModeState==='running',10000,'The robot did not START Torque Debug.');}
+    // A stop ends any wait for the robot at once, so whatever comes after the stop finds this session over and is not reached by a stop of its.
+    const step=(test,ms,message)=>Promise.race([until(test,ms,message),done]);let began=false;
+    await step(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});if(stopping)return done;
+    const mode=(opMode?ds.state.opModes.find(m=>m.name===opMode):ds.state.opModes.find(isDebugOpMode))?.name;if(!mode)throw Error('The robot has no Torque Debug op mode yet. Put Torque Debug on the robot first.');
+    if(ds.state.opModeState!=='stopped'&&ds.state.activeOpMode!==mode){if(!isDebugOpMode({name:ds.state.activeOpMode}))throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);
+      // Another build of Torque Debug, left running: it holds the camera, so it goes.
+      ds.stopOpMode();await step(s=>s.opModeState==='stopped',5000,'The robot did not stop the Torque Debug it was running.');}
+    if(!stopping&&ds.state.opModeState==='stopped'){began=true;ds.initOpMode(mode);await step(s=>s.activeOpMode===mode&&s.opModeState==='init',10000,'The robot did not INIT Torque Debug.');}
+    if(!stopping&&ds.state.opModeState!=='running'){began=true;ds.startOpMode(mode);await step(s=>s.opModeState==='running',10000,'The robot did not START Torque Debug.');}
     // The picture, as the Driver Station's Camera Stream asks for it: one frame, then the next once it has come. A stream that
     // is not up yet answers nothing, so the asking goes on.
     let ping=null,timer=null,offState=()=>{},asked=0,offFrame=ds.on('frame',bytes=>{onCamera(bytes);asked=0;if(wantCamera){asked=Date.now();ds.requestFrame();}});station=ds;const asking=setInterval(()=>{if(wantCamera&&Date.now()-asked>1000){asked=Date.now();ds.requestFrame();}},250);
     try{
-      if(!stopping){
-        sock=await connectRetry(connect||(host==='usb'?{host:'127.0.0.1',port:(await usbForward()).debug}:{host:checkHost(host),port:DEBUG_PORT}),6000);sock.setNoDelay(true);
+      const target=stopping?null:connect||(host==='usb'?{host:'127.0.0.1',port:(await usbForward()).debug}:{host:checkHost(host),port:DEBUG_PORT}),opened=target&&!stopping?await connectRetry(target,startWait,done):null;
+      if(opened){sock=opened.sock;sock.setNoDelay(true);
         let buffer='',first=true;
-        sock.on('data',chunk=>{buffer+=chunk.toString('utf8');for(let i;(i=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,i);buffer=buffer.slice(i+1);if(!line)continue;let value;try{value=JSON.parse(line);}catch{continue;}
-          if(first){first=false;onManifest(value);}else onFrame(value);}if(buffer.length>1e6)buffer='';});
+        const take=chunk=>{buffer+=chunk.toString('utf8');for(let i;(i=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,i);buffer=buffer.slice(i+1);if(!line)continue;let value;try{value=JSON.parse(line);}catch{continue;}
+          if(first){first=false;onManifest(value);}else onFrame(value);}if(buffer.length>1e6)buffer='';};
+        sock.on('data',take);take(opened.first);
         sock.on('close',()=>finish('lost'));sock.on('error',()=>{});
         ping=setInterval(()=>{if(!sock.destroyed)sock.write('P\n');},100);
         offState=ds.on('state',s=>{if(s.connection!=='connected')finish('lost');else if(s.opModeState==='stopped')finish('ended');});
@@ -204,14 +232,17 @@ function runDebug(host,{onManifest=()=>{},onFrame=()=>{},onCamera=()=>{},limit=6
     }finally{
       clearInterval(ping);clearTimeout(timer);clearInterval(asking);offFrame();station=null;wantCamera=false;offState();
       if(sock&&!sock.destroyed){try{sock.write('X\n');}catch{}sock.end();setTimeout(()=>sock.destroy(),300);}
-      if(ds.connected()&&ds.state.opModeState!=='stopped'){ds.stopOpMode();await until(s=>s.opModeState==='stopped',3000,'').catch(()=>{});}
+      // Asked to INIT and stopped before it said so: it still gets its stop. Given up on: nothing more goes to the robot, which may belong to someone else by now.
+      if(!abandoned&&ds.connected()&&(began||ds.state.opModeState!=='stopped')){ds.stopOpMode();await until(s=>s.opModeState==='stopped',3000,'').catch(()=>{});}
     }
   },{timeout,socket});
   ended.catch(()=>{});
   return {ended,
     send(line){if(!sock||sock.destroyed||typeof line!=='string'||!line||line.length>400||/[\r\n]/.test(line))return false;sock.write(line+'\n');return true;},
     camera(on){wantCamera=!!on;return !!station;},
-    stop(why='stopped'){finish(why);}};
+    stop(why='stopped'){finish(why);},
+    // Someone waited for the stop and has moved on: whatever is still under way here sends the robot nothing more.
+    abandon(){abandoned=true;finish('stopped');}};
 }
 
 // ---- OnBot Java, over HTTP on port 8080
@@ -261,19 +292,26 @@ class OnBotJava{
 }
 // Compiler errors from a build log: file, line and message for each.
 function buildErrors(log){
-  // javac writes "File.java:49: error: ..."; OnBot Java writes "File.java(49:9): ERROR: ...".
-  const out=[];for(const m of String(log).matchAll(/([\w./\\-]+\.java)(?::(\d+)(?::\d+)?:|\((\d+):\d+\):)\s*error:\s*([^\r\n]*)/gi))out.push({file:path.basename(m[1]),line:Number(m[2]??m[3]),message:m[4].trim()});
+  // javac writes "File.java:49: error: ..."; OnBot Java writes "File.java(49:9): ERROR: ...". Under "cannot find symbol" both indent a "symbol:" line, and that line is what says what is missing.
+  const out=[];for(const m of String(log).matchAll(/([\w./\\-]+\.java)(?::(\d+)(?::\d+)?:|\((\d+):\d+\):)\s*error:\s*([^\r\n]*)((?:\r?\n[ \t]+[^\r\n]*)*)/gi)){const symbol=/^\s*symbol:\s*(.+?)\s*$/m.exec(m[5]||'')?.[1];out.push({file:path.basename(m[1]),line:Number(m[2]??m[3]),message:`${m[4].trim()}${symbol?`: ${symbol}`:''}`});}
   return out.slice(0,20);
 }
+// One line for a build that failed. OnBot Java builds every file in src/ together, so a team's own broken file stops Torque's too: this says whose it is, and which.
+function buildProblem(errors){const list=errors||[],theirs=list.find(e=>e.file!==DEBUG_FILE),own=list[0];
+  if(theirs)return `Your file ${theirs.file} has an error on line ${theirs.line}: ${theirs.message}. OnBot Java builds every file together, so nothing new can go on the robot until that file is fixed. Torque did not change it.`;
+  if(own)return `Torque’s own program did not build on this robot (${own.file} line ${own.line}: ${own.message}). This is not your code. Check for a Torque update.`;
+  return 'The robot could not build. Open its OnBot Java page to see why.';}
 // Uploads the export's files and builds them. A file the robot already has with other contents is kept on this computer
 // first (backupDir); files listed in keep are written only when the robot does not have them yet. remove: files of Deck's own
 // that this replaces, deleted first.
+const onBotClient=async host=>host==='usb'?new OnBotJava('127.0.0.1',{port:(await usbForward()).port}):new OnBotJava(host);
+// Just after a new configuration the robot restarts, and its web server may refuse a connection for a moment.
+async function webReady(client){for(let attempt=0;;attempt++){try{return await client.available();}catch(e){if(!['ECONNREFUSED','ECONNRESET'].includes(e.code)||attempt>=8)throw e;await delay(1000);}}}
 async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},client}={}){
-  if(!client)client=host==='usb'?new OnBotJava('127.0.0.1',{port:(await usbForward()).port}):new OnBotJava(host);
+  if(!client)client=await onBotClient(host);
   const entries=Object.entries(files||{});if(!entries.length)throw Error('Nothing to send.');
   const backups=[],written=[],kept=[];
-  // Just after a new configuration the robot restarts, and its web server may refuse a connection for a moment.
-  for(let attempt=0;;attempt++){try{await client.available();break;}catch(e){if(!['ECONNREFUSED','ECONNRESET'].includes(e.code)||attempt>=8)throw e;await delay(1000);}}
+  await webReady(client);
   for(const file of remove)if(await client.read(file)!==null)await client.remove(file);
   for(const [file,text] of entries){
     if(typeof text!=='string'||text.length>4*1024*1024)throw Error(`${file} is not a source file.`);
@@ -318,11 +356,11 @@ async function readUsb({run}={}){
   const out={};for(const f of files.slice(0,20)){try{const xml=await sh(`cat '/sdcard/FIRST/${f.replace(/'/g,'')}'`);if(/<Robot\b/.test(xml))out[f.replace(/\.xml$/i,'')]=xml;}catch{}}
   const names=Object.keys(out);if(!names.length)return {source:'usb',serial,configurations:[],active:null,devices:[],hubs:[],files:{}};
   // The active configuration and Blocks' list, from the robot's web server over the cable; the newest file otherwise.
-  let active=null,blocks=[];const port=18000+Math.floor(Math.random()*2000);
-  try{await adb(['-s',serial,'forward',`tcp:${port}`,'tcp:8080'],{run});const info=JSON.parse(await getLocal(port,'/js/rcInfo.json'));if(typeof info.activeConfigName==='string')active=info.activeConfigName;
+  let active=null,blocks=[],deviceName=null;const port=18000+Math.floor(Math.random()*2000);
+  try{await adb(['-s',serial,'forward',`tcp:${port}`,'tcp:8080'],{run});const info=JSON.parse(await getLocal(port,'/js/rcInfo.json'));if(typeof info.activeConfigName==='string')active=info.activeConfigName;if(typeof info.deviceName==='string'&&info.deviceName)deviceName=info.deviceName;
     try{blocks=blocksHardware(await getLocal(port,'/hardware',10000));}catch{}}catch{}finally{adb(['-s',serial,'forward','--remove',`tcp:${port}`],{run}).catch(()=>{});}
   const name=active&&out[active]?active:names[0],parsed=RobotConfig.parse(out[name]);
-  return {source:'usb',serial,configurations:names,active:{name,...(active&&out[active]?{}:{guessed:true})},xml:out[name],...parsed,blocks,files:out};}
+  return {source:'usb',serial,configurations:names,active:{name,...(active&&out[active]?{}:{guessed:true})},xml:out[name],...parsed,blocks,files:out,...(deviceName?{deviceName}:{})};}
 // Whether a Control Hub is on the USB cable and has allowed this computer, without touching it: Send to robot's USB choice.
 async function usbStatus({run}={}){
   const listed=await usbList(run,5000),ready=listed.find(x=>x[1]==='device');
@@ -385,14 +423,19 @@ async function usbController(serial,{run,wait=70000,pause=500,noStart=false}={})
   for(const end=Date.now()+wait;Date.now()<end;){await delay(pause);if(await on())return true;}
   if(noStart)throw Error('The Robot Controller app on this Control Hub is not answering. Press Scan to start it, or restart the robot.');
   throw Error('The Robot Controller app on this Control Hub is not running and did not start. Restart the robot, then try again.');}
-// After Torque Debug is built: if the Robot Controller stops within the time a crash on new OnBot Java code takes (under 30 s
+// The Robot Controller app's crashes in Android's crash log (only read): each line holds its time and process, so a new crash is a line not seen before. Null when it cannot be read.
+const crashLines=log=>String(log).split(/\r?\n/).filter(l=>/(?:Process: |>>> )com\.qualcomm\.ftcrobotcontroller\b/.test(l));
+async function usbCrashes({run,serial}={}){const hub=serial||(await usbForward({run})).serial;try{return crashLines(await adb(['-s',hub,'shell','logcat -b crash -d 2>/dev/null'],{run}));}catch{return null;}}
+// After Torque Debug is built: if the Robot Controller crashes within the time a crash on new OnBot Java code takes (under 30 s
 // seen, from Sinister in the team's build), it would crash again each time it starts. So that build and Torque Debug's source
-// are taken off, the app is started again, and this says so. The team's own sources stay.
-async function usbDebugGuard({run,watch=40000,pause=2000}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run});
+// are taken off, the app is started again, and this says so. The team's own sources stay, but the build was theirs too.
+// The app not listening proves nothing: a save, a Driver Hub or a press restarts it too, and a team's build is not to go for that. Only a crash that the log did not hold at the start counts. before: the log from before the build, so a crash during it counts.
+async function usbDebugGuard({run,watch=40000,pause=2000,before}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),old=before===undefined?await usbCrashes({run,serial}):before;
   for(const end=Date.now()+watch;Date.now()<end;await delay(pause)){if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
-    await delay(5000);if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
+    await delay(Math.min(5000,watch));if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
+    const now=await usbCrashes({run,serial});if(!old||!now||!now.some(l=>!old.includes(l)))continue;
     await sh(`rm -f /sdcard/FIRST/java/src/${DEBUG_FILE}; rm -rf /sdcard/FIRST/java/build/jars/* /sdcard/FIRST/java/build/classes/*`);await usbController(serial,{run});
-    throw Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took it off again and restarted the app. Nothing else changed.');}}
+    throw Object.assign(Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took that program off and restarted the app. Your OnBot Java files are all still there, but their last build had to be cleared too, so your OnBot Java op modes will not show until you open OnBot Java and press Build Everything.'),{crashed:true,serial});}}
 // Sets up the ports, the Robot Controller and the relay: what the Driver Station link needs.
 async function usbLink(options){const ports=await usbForward(options);await usbController(ports.serial,options);await usbRelay(ports.serial,options);return ports;}
-module.exports={adb,runDebug,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,formEncode,checkHost};
+module.exports={adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};

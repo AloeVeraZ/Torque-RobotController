@@ -44,9 +44,23 @@ test('removing a hub Scan did not find keeps everything else; its devices go wit
 });
 
 test('a Robot Controller that crashes on Torque Debug gets it taken off and is started again; one that stays up is left alone',async()=>{
-  const fake=(table)=>{const calls=[];return {calls,run:(f,args,o,done)=>{const a=args.join(' ');calls.push(a);if(/^devices/.test(a))return done(null,'List of devices attached\nABC\tdevice\n','');if(/cat \/proc\/net\/udp/.test(a))return done(null,table(calls),'');return done(null,'','');}};};
-  const on='  1: 012BA8C0:5194 00000000:0000 07',ok=fake(()=>on);await L.usbDebugGuard({run:ok.run,watch:30,pause:5});assert.ok(!ok.calls.some(c=>/rm /.test(c)));
-  let removed=false;const bad=fake(calls=>{removed=calls.some(c=>/rm -f/.test(c));return calls.some(c=>/am start/.test(c))?on:'';});await assert.rejects(L.usbDebugGuard({run:bad.run,watch:30000,pause:5}),/crashed when it loaded Torque Debug/);assert.ok(removed);assert.ok(bad.calls.some(c=>/rm -f \/sdcard\/FIRST\/java\/src\/TorqueDebug\.java/.test(c)));assert.ok(bad.calls.some(c=>/am start/.test(c)));
+  const fake=(table,log=()=>'')=>{const calls=[];return {calls,run:(f,args,o,done)=>{const a=args.join(' ');calls.push(a);if(/^devices/.test(a))return done(null,'List of devices attached\nABC\tdevice\n','');if(/cat \/proc\/net\/udp/.test(a))return done(null,table(calls),'');if(/logcat -b crash/.test(a)){try{return done(null,log(calls),'');}catch(e){return done(e,'','');}}return done(null,'','');}};};
+  const CRASH='10-30 18:32:11.123  1234  1234 E AndroidRuntime: Process: com.qualcomm.ftcrobotcontroller, PID: 1234',OLD='10-29 09:00:00.000   999   999 E AndroidRuntime: Process: com.qualcomm.ftcrobotcontroller, PID: 999',OTHER='10-30 18:32:11.123   777   777 E AndroidRuntime: Process: com.android.settings, PID: 777',deleted=f=>f.calls.some(c=>/\brm\b/.test(c)),started=f=>f.calls.some(c=>/am start/.test(c));
+  const on='  1: 012BA8C0:5194 00000000:0000 07',ok=fake(()=>on);await L.usbDebugGuard({run:ok.run,watch:30,pause:5});assert.ok(!deleted(ok));
+  // Listening stopped and a new crash of the app is in the log: it comes off, and it says what really changed.
+  const looks=calls=>calls.filter(c=>/logcat -b crash/.test(c)).length,bad=fake(calls=>calls.some(c=>/am start/.test(c))?on:'',calls=>looks(calls)>1?`${OLD}\n${CRASH}\n`:`${OLD}\n`);
+  const thrown=await L.usbDebugGuard({run:bad.run,watch:100,pause:5}).then(()=>null,e=>e);assert.match(thrown?.message,/crashed when it loaded Torque Debug/);assert.equal(thrown.crashed,true,'for main to remember it');assert.doesNotMatch(thrown.message,/Nothing else changed/,'the team’s build went too');assert.match(thrown.message,/OnBot Java files are all still there/);assert.match(thrown.message,/press Build Everything/);
+  assert.ok(bad.calls.some(c=>/rm -f \/sdcard\/FIRST\/java\/src\/TorqueDebug\.java/.test(c)));assert.ok(started(bad));assert.ok(bad.calls.findIndex(c=>/\brm\b/.test(c))>bad.calls.findIndex(c=>/logcat/.test(c)),'the log is read first');
+  // Listening stopped and no new crash: a save, a Driver Hub or a restart. The team's build stays, nothing is started and nothing is said.
+  const down=()=>'';for(const [why,log] of [['an empty log',()=>''],['only a crash from before',()=>`${OLD}\n`],['another app’s crash',()=>`${OLD}\n${OTHER}\n`],['a log it cannot read',()=>{throw Error('no logcat');}]]){const quiet=fake(down,log);await L.usbDebugGuard({run:quiet.run,watch:60,pause:5});assert.ok(!deleted(quiet),why);assert.ok(!started(quiet),why);}
+  // From before the build, so a crash during the build counts; and with no log from before, nothing can be proved.
+  const during=fake(calls=>calls.some(c=>/am start/.test(c))?on:'',()=>CRASH);await assert.rejects(L.usbDebugGuard({run:during.run,watch:100,pause:5,before:[]}),/crashed when it loaded/);const blind=fake(down,()=>CRASH);await L.usbDebugGuard({run:blind.run,watch:60,pause:5,before:null});assert.ok(!deleted(blind));
+  assert.deepEqual(L.crashLines(`x\n${CRASH}\ny\n10-30 18:32:11.123  1234  1234 F DEBUG   : pid: 1234, tid: 1234, name: main  >>> com.qualcomm.ftcrobotcontroller <<<\n${OTHER}`).length,2,'a native crash counts too');
+});
+
+test('quitting stops Torque Debug through the relay before the relay goes, with a limit on the wait',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),quit=src.slice(src.indexOf("app.on('before-quit'"),src.indexOf("app.on('window-all-closed'")),first=quit.slice(quit.indexOf('e.preventDefault()'));
+  assert.ok(first.includes('debugStop()'));assert.ok(first.indexOf('debugStop()')<first.indexOf('stopUsbRelay'),'the stop first');assert.match(first,/delay\(2000\)/,'a hub that does not answer does not hold it up');assert.doesNotMatch(quit.slice(0,quit.indexOf('if(closing)')),/stopUsbRelay/,'not before the stop');
 });
 
 test('with nobody pressing anything, the Robot Controller is never started: a scan answers at once, a check only waits for it',async()=>{

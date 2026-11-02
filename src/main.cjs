@@ -403,9 +403,35 @@ handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo
 // select: the autonomous just built, which Drive selects when that robot is next opened (within the hour).
 // check-start / check-press / check-stop: the guided check TeleOp, run from the Send panel; its telemetry arrives as
 // robot-link-check events, then one {ended} (or {error}) when it stops.
-// debug-install / debug-start / debug-send / debug-stop: Torque Debug (Calibrate → Electronics → Live debug). Its device
+// debug-install / debug-start / debug-send / debug-stop: Torque Debug (Calibrate → Camera and Debug). Its device
 // list and readings arrive as robot-link-debug events ({manifest}, {frame}), then one {ended} (or {error}).
-let sentOpMode=null,robotCheck=null,robotDebug=null;
+let sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null;
+const debugStop=async()=>{const debug=robotDebug;if(!debug)return;debug.stop();const over=await Promise.race([debug.ended.then(()=>true,()=>true),delay(5000).then(()=>false)]);
+  // Given up on: what comes next must not be reached by a late stop of this one's. The page still hears that it ended.
+  if(!over&&!debug.told){debug.told=true;debug.abandon();emit('robot-link-debug',{ended:'stopped'});}if(robotDebug===debug)robotDebug=null;};
+// A hub whose Robot Controller app really crashed on Torque Debug: it does not go on that hub again until someone presses for it. Kept on this computer, so relaunching does not try again.
+const debugTripFile=()=>path.join(app.getPath('userData'),'torque-debug-crashes.json');
+const debugTrips=()=>{try{const all=JSON.parse(fs.readFileSync(debugTripFile(),'utf8'));return all&&typeof all==='object'?all:{};}catch{return {};}};
+function debugTrip(serial,on){const all=debugTrips();if(!!all[serial]===on)return;if(on)all[serial]=new Date().toISOString();else delete all[serial];try{fs.writeFileSync(debugTripFile(),JSON.stringify(all));}catch{}}
+// Torque Debug onto the robot and built, and over the cable the crash guard then watches that the app survives it. auto: Calibrate → Camera asked, so nothing goes on unless the robot is free and that page still shows: a build
+// on a robot someone is driving would disturb them. noStart with it: nobody pressed anything, which never happens over Wi-Fi, where nothing could bring the app back from a crash, or on a hub it has crashed.
+async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='usb',nobody=data?.noStart===true,here=()=>{if(state.page!=='calibrate'&&state.page!=='setup')throw Error('Torque left this page before the robot started.');},serial=usb?(await robotLink.usbForward()).serial:null;
+  if(data?.auto){here();if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+    if(nobody&&!usb)throw Error('Over Wi-Fi, Torque puts the camera program on the robot only when someone asks.');
+    if(nobody&&debugTrips()[serial])throw Error('Last time, the Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque will not put it back by itself. Press Try again to put it on once more.');
+    await overLink(o=>robotLink.debugIdle(data?.host,o),undefined,usbOptions);here();}
+  if(serial&&!nobody)debugTrip(serial,false);
+  const before=usb?await robotLink.usbCrashes({serial}):undefined,opMode=robotLink.debugName(),built=await robotLink.send(data?.host,{[robotLink.DEBUG_FILE]:robotLink.debugSource(opMode)},{remove:[robotLink.OLD_DEBUG_FILE],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
+  if(built.built&&usb){try{await robotLink.usbDebugGuard({before});}catch(e){if(e.crashed)debugTrip(serial,true);throw e;}}
+  return {...built,opMode,...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
+// What waits while that runs: a save or a restart would look like a crash to the guard, and a build is not to be interrupted. Reading the hub's files and ports does neither.
+const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
+// Wiring notes read over the cable, for when Wi-Fi cannot read them (robotLink.notesThrough), and failing that those Drive's Configure Robot keeps. An entry here, empty or not, is what was last saved or read.
+let notesRobot=null;const notesStore={file:()=>path.join(app.getPath('userData'),'configuration-notes.json'),key:(robot,name)=>`${String(robot).slice(0,80)}\n${String(name).slice(0,80)}`,
+  all(file){try{const v=JSON.parse(fs.readFileSync(file,'utf8'));return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch{return {};}},
+  get(robot,name){const k=notesStore.key(robot,name),own=notesStore.all(notesStore.file());return k in own?own[k]:notesStore.all(path.join(app.getPath('userData'),'wiring-notes.json'))[k]||null;},
+  set(robot,name,notes){const k=notesStore.key(robot,name),file=notesStore.file(),own=notesStore.all(file);if(JSON.stringify(own[k]??null)===JSON.stringify(notes))return;own[k]=notes;try{fs.writeFileSync(file,JSON.stringify(own));}catch{}}};
+const readThrough=read=>{if(read?.deviceName)notesRobot=read.deviceName;return robotLink.notesThrough(read,notesStore);};
 // The Control Hub left the cable: what was kept for it goes, and whatever runs through it has ended, now rather than when it times out.
 function hubUnplugged(serial){robotLink.usbForget(serial);
   if(robotDebug?.usb){const debug=robotDebug;robotDebug=null;debug.told=true;debug.stop('lost');emit('robot-link-debug',{ended:'lost'});}
@@ -432,34 +458,46 @@ handle('robot-link',async(action,data)=>{
   if(action==='detect'){const ssid=currentNetwork?.ssid||'',ftc=library.list(ssid).filter(r=>r.kind==='ftc'),saved=ftc.find(r=>ssid&&r.ssid===ssid)||ftc.find(r=>!r.ssid),phone=/^DIRECT-/i.test(ssid);let host='';try{host=saved?new URL(saved.url).hostname:'';}catch{}
     // While the USB watch is up it already knows, so no ADB runs for this.
     const usb=usbWatch?.status()??await robotLink.usbStatus().catch(e=>({found:false,message:e.message})).then(p=>usbWatch?usbWatch.withPoll(p):p);if(usb.found)hubSeenAt=Date.now();
-    // A robot saved under this network, or a network named like one, is only a guess: without a hub on USB, ask whether it answers.
-    const robot=!!saved&&!!ssid&&saved.ssid===ssid||/^FTC-|-RC$|^DIRECT-/i.test(ssid),wifiHost=host||(phone?'192.168.49.1':'192.168.43.1'),reachable=robot&&!usb.found?await probeFtc(wifiHost,{timeout:700}).then(r=>!!r.ftc).catch(()=>false):robot;
+    // A robot saved under this network, or a network named like one, is only a guess: without a hub on USB, ask whether it answers. A port already in use is usually this app holding a link to it, Live debug say, which nothing else could be doing.
+    const robot=!!saved&&!!ssid&&saved.ssid===ssid||/^FTC-|-RC$|^DIRECT-/i.test(ssid),wifiHost=host||(phone?'192.168.49.1':'192.168.43.1'),reachable=robot&&!usb.found?await probeFtc(wifiHost,{timeout:700}).then(r=>!!r.ftc||/in use/.test(r.error||"")).catch(()=>false):robot;
     return {usb,wifi:{ssid,robot,reachable,host:wifiHost,name:saved?.name||''}};}
   if(action==='check-press')return !!robotCheck?.press(String(data?.button||''));
   if(action==='debug-camera')return !!robotDebug?.camera(data?.on===true);
   if(action==='debug-send')return !!robotDebug?.send(String(data?.line||''));
-  if(action==='debug-stop'){const debug=robotDebug;if(debug){debug.stop();await Promise.race([debug.ended.catch(()=>{}),delay(5000)]);}return true;}
+  if(action==='debug-stop'){await debugStop();return true;}
+  // Calibrate → Camera runs it by itself, and that gives way to anything a student asks of the robot, until something has driven an output (debug-claim).
+  if(action==='debug-claim'){if(robotDebug)robotDebug.auto=false;return true;}
+  if(debugBusy&&DEBUG_HOLDS.has(action))await debugBusy.catch(()=>{});
+  if(robotDebug?.auto)await debugStop();
   if(robotDebug)throw Error('Live debug is still running. Stop it first.');
   // Resolves once the robot has stopped the check and the connection is free (5 s at most).
   if(action==='check-stop'){const check=robotCheck;if(check){check.stop();await Promise.race([check.ended.catch(()=>{}),delay(5000)]);}return true;}
   if(robotCheck)throw Error('The guided check is still running. Stop it first.');
-  if(action==='debug-install'){const opMode=robotLink.debugName(),built=await robotLink.send(data?.host,{[robotLink.DEBUG_FILE]:robotLink.debugSource(opMode)},{remove:[robotLink.OLD_DEBUG_FILE],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});if(built.built&&data?.host==='usb')await robotLink.usbDebugGuard();return {...built,opMode};}
+  // noStart: nobody pressed anything, so a stopped Robot Controller app stays stopped.
+  const usbOptions=data?.noStart===true?{noStart:true,wait:0}:undefined;
+  // Over the cable these go through the Driver Station link, as over Wi-Fi. link: for what nobody pressed, which does not start the Robot Controller app.
+  const overLink=async(task,options,link)=>{if(data?.host!=='usb')return task({});const socket=await new UsbFtcSocket(()=>robotLink.usbLink(link).then(f=>({port:f.link})),options).open();try{return await task({socket});}finally{await socket.close();}};
+  if(action==='debug-install'){const job=debugInstall(data,overLink,usbOptions),done=()=>{if(debugBusy===job)debugBusy=null;};debugBusy=job;job.then(done,done);return job;}
   if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+  // Try again on Calibrate → Camera, when the Robot Controller app is not answering: a press may start it.
+  if(action==='rc-start'){if(data?.host==='usb')await robotLink.usbController((await robotLink.usbForward()).serial);return true;}
+  // Is the robot's Torque Debug this one? The app has to be up to say.
+  if(action==='debug-current'){if(data?.host==='usb')await robotLink.usbLink(usbOptions);return robotLink.debugCurrent(data?.host);}
   if(action==='check-start'){
     const check=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-check',update)});robotCheck=check;check.usb=data?.host==='usb';
     check.ended.then(why=>{if(!check.told)emit('robot-link-check',{ended:why});},e=>{if(!check.told)emit('robot-link-check',{error:e.message});}).finally(()=>{if(robotCheck===check)robotCheck=null;});
     return true;}
   if(action==='debug-start'){
-    const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink().then(f=>({port:f.link}))).open():null;
-    const debug=robotLink.runDebug(host,{socket,onManifest:manifest=>emit('robot-link-debug',{manifest}),onFrame:frame=>emit('robot-link-debug',{frame}),onCamera:bytes=>emit('robot-link-debug',{camera:Uint8Array.from(bytes)})});robotDebug=debug;debug.usb=host==='usb';
+    const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
+    // The page may have changed while the cable's link came up, and Live debug only runs while Calibrate or Setup shows.
+    if(state.page!=='calibrate'&&state.page!=='setup'){await socket?.close();throw Error('Torque left this page before the robot started.');}
+    const debug=robotLink.runDebug(host,{socket,opMode:typeof data?.opMode==='string'?data.opMode:null,onManifest:manifest=>emit('robot-link-debug',{manifest}),onFrame:frame=>emit('robot-link-debug',{frame}),onCamera:bytes=>emit('robot-link-debug',{camera:Uint8Array.from(bytes)})});robotDebug=debug;debug.usb=host==='usb';debug.auto=data?.auto===true;
     debug.ended.then(why=>{if(!debug.told)emit('robot-link-debug',{ended:why});},e=>{if(!debug.told)emit('robot-link-debug',{error:e.message});}).finally(()=>{if(robotDebug===debug)robotDebug=null;if(socket)void socket.close();});
     return true;}
   if(action==='read')return robotLink.readRobot(data?.host,{scan:data?.scan===true});
-  if(action==='read-usb')return robotLink.readUsb();
+  if(action==='read-usb')return readThrough(await robotLink.readUsb());
   // The robot's own dashboard (Program & Manage, OnBot Java, Blocks) through the USB cable, in a window of its own.
   if(action==='usb-dashboard'){const {port,serial}=await robotLink.usbForward();const view=new BrowserWindow({width:1200,height:820,title:`Robot Controller ${serial} (USB)`,autoHideMenuBar:true,webPreferences:{contextIsolation:true,sandbox:true}});await view.loadURL(`http://127.0.0.1:${port}/`);return {port,serial};}
-  // Over the cable these go through the Driver Station link, as over Wi-Fi. link: for what nobody pressed, which does not start the Robot Controller app.
-  const overLink=async(task,options,link)=>{if(data?.host!=='usb')return task({});const socket=await new UsbFtcSocket(()=>robotLink.usbLink(link).then(f=>({port:f.link})),options).open();try{return await task({socket});}finally{await socket.close();}};
   if(action==='usb-status')return robotLink.usbStatus();
   if(action==='usb-recover')return robotLink.usbRecover();
   if(action==='hubs')return overLink(o=>robotLink.scanRobot(data?.host,o));
@@ -467,9 +505,9 @@ handle('robot-link',async(action,data)=>{
   if(action==='scan'){const live=await robotLink.rcHubs(data?.host),onProgress=p=>emit('robot-link-scan',p);if(live.length)onProgress({portals:robotLink.openHubs(live)});return overLink(o=>robotLink.scanDevices(data?.host,{...o,live,onProgress}),{grace:150},data?.noStart===true?{noStart:true,wait:0}:undefined);}
   if(action==='delete-config')return overLink(o=>robotLink.deleteConfiguration(data?.host,data?.name,o));
   if(action==='check'){const usb=data?.host==='usb'?await robotLink.usbCheck():[];if(usb.some(s=>!s.ok))return usb;const talk=()=>overLink(o=>robotLink.connectionCheck(data?.host,o),undefined,data?.noStart===true?{noStart:true}:undefined);try{return [...usb,...await talk().catch(async e=>{if(!/not found|offline|closed/i.test(e.message))throw e;await new Promise(r=>setTimeout(r,1200));return talk();})];}catch(e){return [...usb,{name:'Talk to the robot',ok:false,detail:e.message}];}}
-  if(action==='read-all')return overLink(o=>robotLink.readConfigurations(data?.host,o));
+  if(action==='read-all')return readThrough(await overLink(o=>robotLink.readConfigurations(data?.host,o)));
   if(action==='activate')return overLink(o=>robotLink.activateConfiguration(data?.host,data?.name,o));
-  if(action==='configure')return overLink(o=>robotLink.writeConfiguration(data?.host,{name:data?.name,xml:data?.xml,replace:data?.replace===true},o));
+  if(action==='configure'){const saved=await overLink(o=>robotLink.writeConfiguration(data?.host,{name:data?.name,xml:data?.xml,replace:data?.replace===true},o));if(notesRobot)notesStore.set(notesRobot,data?.name,robotLink.notesOf(data?.xml));return saved;}
   if(action==='send')return robotLink.send(data?.host,data?.files,{keep:Array.isArray(data?.keep)?data.keep:[],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
   throw Error('Unknown robot action.');
 });
@@ -553,4 +591,6 @@ app.whenReady().then(async()=>{
     robotKeyboard?.close();});win.on('closed',()=>{robotExitView?.webContents.close();robotExitView=null;});
   pollTimer=setInterval(()=>{if(!network.busy)void refreshNetwork().then(()=>autoOpenFtc());},5000);pollTimer.unref();
 });
-let closing=false;app.on('before-quit',e=>{usbWatch?.quit();robotLink.stopUsbRelay();axon?.quit();simulation?.stop();robotCheck?.stop();robotDebug?.stop();if(closing)return;e.preventDefault();closing=true;clearInterval(pollTimer);void closeRobot().finally(()=>app.quit());});app.on('window-all-closed',()=>app.quit());
+// Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
+let closing=false;app.on('before-quit',e=>{usbWatch?.quit();axon?.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
+  void Promise.all([Promise.race([Promise.all([debugStop(),robotCheck?.ended.catch(()=>{})]),delay(2000)]),closeRobot().catch(()=>{})]).finally(()=>{robotLink.stopUsbRelay();app.quit();});});app.on('window-all-closed',()=>app.quit());

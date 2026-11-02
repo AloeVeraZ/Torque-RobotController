@@ -16,19 +16,19 @@ test('a scan reads a generic camera as WEBCAM, and a configuration keeps its ser
 test('a plugged-in camera is listed with its serial, says it is not in this configuration, and has one Add button',()=>{
   const e=E.load('robot',XML,null),html=E.usbHtml(e,[CAM]);
   assert.match(html,/Webcam · Ucamera001/);assert.match(html,/plugged in, not in this configuration/);assert.equal((html.match(/data-ce-usb-add=/g)||[]).length,1);assert.match(html,/data-ce-usb-add="Ucamera001"/);
-  assert.match(E.usbNavHtml(e,[CAM]),/1 camera plugged in, not in this configuration/);
-  assert.equal(E.usbHtml(e,[]),'','nothing plugged in and nothing configured: no rows');assert.match(E.usbNavHtml(e,[]),/Nothing else is on the Control Hub/);assert.match(E.usbNavHtml(e,null),/Connect to the robot/);
+  assert.equal(E.offerText(E.autoPlan(e,[CAM])),'1 new USB device');
+  assert.doesNotMatch(E.usbHtml(e,[]),/class="ce-usb"/,'nothing plugged in and nothing configured: no rows');assert.match(E.usbHtml(e,[]),/Nothing else is on the Control Hub/);assert.match(E.usbHtml(e,null),/Connect to the robot/);
 });
 
 test('Add, rename and remove change the draft and write the right XML',()=>{
-  const e=E.load('robot',XML,null);assert.equal(e.dirty,false);const c=E.addWebcam(e,'Ucamera001');assert.equal(c.name,'Webcam 1');assert.equal(e.dirty,true);assert.equal(E.addWebcam(e,'Ucamera001'),null,'one camera is added once');
-  assert.ok(E.xmlOf(e).includes('<Webcam name="Webcam 1" serialNumber="Ucamera001" />'),E.xmlOf(e));assert.equal(e.xml,XML,'the draft only: what came from the robot is untouched');assert.ok(R.parse(E.xmlOf(e)).devices.some(d=>d.name==='left'),'the rest of it stays');
+  const e=E.load('robot',XML,null);assert.equal(e.dirty,false);const c=E.addWebcam(e,'Ucamera001');assert.equal(c.name,'Webcam');assert.equal(e.dirty,true);assert.equal(E.addWebcam(e,'Ucamera001'),null,'one camera is added once');
+  assert.ok(E.xmlOf(e).includes('<Webcam name="Webcam" serialNumber="Ucamera001" />'),E.xmlOf(e));assert.equal(e.xml,XML,'the draft only: what came from the robot is untouched');assert.ok(R.parse(E.xmlOf(e)).devices.some(d=>d.name==='left'),'the rest of it stays');
   assert.equal(E.renameWebcam(e,0,'  front cam '),null);assert.ok(E.xmlOf(e).includes('<Webcam name="front cam" serialNumber="Ucamera001" />'));
   assert.match(E.renameWebcam(e,0,'bad;name'),/letters, digits/);assert.match(E.renameWebcam(e,0,'LEFT'),/already named/);assert.equal(e.webcams[0].name,'front cam','a refused name changes nothing');
-  assert.equal(E.addWebcam(e,'other').name,'Webcam 1','the next free name');assert.equal(E.addWebcam(e,'third').name,'Webcam 2');
+  assert.equal(E.addWebcam(e,'other').name,'Webcam','the next free name');assert.equal(E.addWebcam(e,'third').name,'Webcam 2');
   const again=E.load('robot',E.xmlOf(e),null);assert.equal(again.dirty,false);assert.deepEqual(again.webcams.map(x=>x.serial),['Ucamera001','other','third'],'it survives saving');
-  E.removeWebcam(again,0);assert.equal(again.dirty,true);assert.ok(!E.xmlOf(again).includes('Ucamera001'));assert.deepEqual(again.webcams.map(x=>x.name),['Webcam 1','Webcam 2']);
-  const taken=E.load('robot',R.withWebcams(XML,[{name:'Webcam 1',serial:'a'}]),null);assert.equal(E.addWebcam(taken,'b').name,'Webcam 2');
+  E.removeWebcam(again,0);assert.equal(again.dirty,true);assert.ok(!E.xmlOf(again).includes('Ucamera001'));assert.deepEqual(again.webcams.map(x=>x.name),['Webcam','Webcam 2']);
+  const taken=E.load('robot',R.withWebcams(XML,[{name:'Webcam',serial:'a'}]),null);assert.equal(E.addWebcam(taken,'b').name,'Webcam 2');const named=E.load('robot',R.withWebcams(XML,[{name:'Webcam 1',serial:'a'}]),null);assert.equal(E.addWebcam(named,'b').name,'Webcam','a name a team already has is honoured');
   const clash=E.load('robot',R.withWebcams(XML,[{name:'left',serial:'a'}]),null);assert.throws(()=>E.xmlOf(clash),/Two devices are named “left”/);
 });
 
@@ -52,12 +52,12 @@ const withRows=(list,devices,context)=>Object.assign([...list],{devices:K.classi
 
 test('a Limelight that answers gets an Add, which writes the entry under <Robot> as a draft',()=>{
   const usb=withRows([LIME],[NET],{scan:{portals:[],others:[LIME]},limelight:LIMELIGHT}),e=E.load('robot',XML,null);
-  assert.match(E.usbHtml(e,usb),/data-ce-usb-add-lime="EthernetOverUsb:eth0:172\.29\.0\.23"/);assert.match(E.usbNavHtml(e,usb),/a Limelight plugged in, not in this configuration/);
+  assert.match(E.usbHtml(e,usb),/data-ce-usb-add-lime="EthernetOverUsb:eth0:172\.29\.0\.23"/);assert.equal(E.offerText(E.autoPlan(e,usb)),'1 new USB device');
   assert.equal(R.withLimelights(XML,[]),XML,'nothing to write changes nothing');
   const c=E.addLimelight(e,{serial:LIME.serial,address:'172.29.0.1'});assert.equal(c.name,'limelight');assert.equal(e.dirty,true);assert.equal(e.xml,XML,'the draft only');assert.equal(E.addLimelight(e,{serial:'other',address:'172.29.1.1'}),null,'a hub can only have one');
   const out=E.xmlOf(e);assert.ok(out.includes('<EthernetDevice name="limelight" serialNumber="EthernetOverUsb:eth0:172.29.0.23" port="-1" ipAddress="172.29.0.1" />'),out);assert.match(out,/<Robot[^>]*>\s*<EthernetDevice/,'directly under Robot');assert.ok(R.parse(out).devices.some(d=>d.name==='left'),'the rest of it stays');
   assert.deepEqual(R.parse(out).devices.find(d=>d.tag==='EthernetDevice'),{name:'limelight',tag:'EthernetDevice',kind:'limelight',hub:null,serial:LIME.serial,port:-1},'read back the same way');
-  assert.doesNotMatch(E.usbHtml(e,usb),/data-ce-usb-add-lime/,'no second Add');assert.match(E.usbHtml(e,usb),/<b>limelight<\/b><small>Limelight · EthernetOverUsb:eth0:172\.29\.0\.23 · plugged in/);
+  assert.doesNotMatch(E.usbHtml(e,usb),/data-ce-usb-add-lime/,'no second Add');assert.match(E.usbHtml(e,usb),/<b>limelight<\/b><span class="ce-usb-end">.*?<\/span><small>Limelight · EthernetOverUsb:eth0:172\.29\.0\.23 · plugged in/);
   const again=E.load('robot',out,null);assert.equal(again.dirty,false);assert.deepEqual(again.limelights,[{name:'limelight',serial:LIME.serial,port:-1,ipAddress:'172.29.0.1'}],'it survives saving');assert.deepEqual(again.outside,[]);
   E.removeLimelight(again,0);assert.equal(again.dirty,true);assert.ok(!E.xmlOf(again).includes('EthernetDevice'));
   const named=E.load('robot',XML.replace('name="left"','name="limelight"'),null);assert.equal(E.addLimelight(named,{serial:'s',address:'a'}).name,'limelight 2','a name taken moves over');
@@ -91,7 +91,7 @@ test('two identical cameras with no serial: the port in the key tells them apart
   assert.equal(K.sameCamera(a,b),false,'two ports, two cameras');assert.equal(K.sameCamera(a,a),true);assert.equal(K.sameCamera(VP,a),true,'no port means any port');assert.equal(K.sameCamera('x','x'),true);assert.equal(K.sameCamera('x','y'),false);assert.equal(Cam.sameCamera(a,b),false,'Camera agrees');
   const usb=withRows(scan,[C270('1-1'),C270('3-1.4')],{scan:{portals:[],others:scan}});assert.equal((E.usbHtml(e,usb).match(/data-ce-usb-add=/g)||[]).length,2);
   assert.ok(E.addWebcam(e,a));let html=E.usbHtml(e,usb);assert.equal((html.match(/data-ce-usb-add=/g)||[]).length,1,'the first went in, and the second is still offered');assert.ok(html.includes(`data-ce-usb-add="${b}"`));
-  assert.ok(E.addWebcam(e,b));html=E.usbHtml(e,usb);assert.doesNotMatch(html,/data-ce-usb-add=/);assert.deepEqual(e.webcams.map(c=>c.name),['Webcam 1','Webcam 2']);assert.doesNotMatch(html,/not plugged in/,'both are plugged in');
+  assert.ok(E.addWebcam(e,b));html=E.usbHtml(e,usb);assert.doesNotMatch(html,/data-ce-usb-add=/);assert.deepEqual(e.webcams.map(c=>c.name),['Webcam','Webcam 2']);assert.doesNotMatch(html,/not plugged in/,'both are plugged in');
   assert.ok(E.xmlOf(e).includes(`serialNumber="${a}"`)&&E.xmlOf(e).includes(`serialNumber="${b}"`));
   // One set up with no port when it was alone, and now a twin beside it.
   const old=E.load('robot',R.withWebcams(XML,[{name:'Webcam 1',serial:VP}]),null);assert.equal((E.usbHtml(old,usb).match(/data-ce-usb-add=/g)||[]).length,1,'it accounts for one of them');
@@ -115,7 +115,6 @@ test('the long key the robot makes up for a camera never shows where a student r
   const seen=h=>h.replace(/<details[\s\S]*?<\/details>/g,'').replace(/(id|data-ce-usb-add)="[^"]*"/g,'');assert.doesNotMatch(seen(html),/VendorProduct/);
   const own=E.load('robot',R.withWebcams(XML,[{name:'Webcam 1',serial:VP}]),null),mine=E.usbHtml(own,usb);assert.match(mine,/Webcam · C270 HD WEBCAM · plugged in/);assert.match(mine,closed);assert.doesNotMatch(seen(mine),/VendorProduct/);
   assert.doesNotMatch(seen(E.usbHtml(own,[])),/VendorProduct/,'not plugged in, so its name is not known');assert.match(E.usbHtml(own,[]),/Camera with no serial number · in this configuration, not plugged in/);
-  assert.doesNotMatch(E.usbNavHtml(e,usb),/VendorProduct/);
   // A real serial stays as it is, with nothing to open.
   assert.doesNotMatch(E.usbHtml(E.load('robot',XML,null),[CAM]),/Technical facts/);
   // Two of them: which port each is in.
@@ -130,7 +129,7 @@ test('the long key the robot makes up for a camera never shows where a student r
 
 test('a network device that has left is no reason to warn, however long ago the last Scan was',()=>{
   const e=E.load('robot',XML,null),here=withRows([LIME],[NET],{scan:{portals:[],others:[LIME]},limelight:{status:null}}),gone=withRows([LIME],[],{scan:{portals:[],others:[LIME]}});
-  assert.match(E.usbHtml(e,here),/Scan offers this as if it were a Limelight/,'while it is there');assert.doesNotMatch(E.usbHtml(e,gone),/Limelight/,'gone: nothing is said');assert.doesNotMatch(E.usbHtml(e,gone),/data-warn/);assert.match(E.usbNavHtml(e,gone),/Nothing else is on the Control Hub/);
+  assert.match(E.usbHtml(e,here),/Scan offers this as if it were a Limelight/,'while it is there');assert.doesNotMatch(E.usbHtml(e,gone),/as if it were a Limelight|class="ce-usb"/,'gone: nothing is said');assert.doesNotMatch(E.usbHtml(e,gone),/data-warn/);assert.match(E.usbHtml(e,gone),/Nothing else is on the Control Hub/);
   assert.match(E.usbHtml(e,[LIME]),/checking whether it is a Limelight/,'with the ports not read, the last Scan is all there is');
 });
 
@@ -140,9 +139,9 @@ test('the constants file has the lens numbers, and never the simulated webcam’
   assert.deepEqual(T.sanitize({lens:{Ucamera001:{'640x480':{fx:822.5}}},mechs:{}}).lens,{Ucamera001:{'640x480':{fx:822.5}}},'saving the calibration keeps them');assert.deepEqual(T.sanitize({mechs:{}}),{mechs:{}},'and adds nothing when there are none');
 });
 
-test('the editor draws them above the families, and seeing them changes nothing',()=>{
+test('the editor draws them once, under the hubs on the right, and seeing them changes nothing',()=>{
   let others=[],saved=0;const b=box(),ed=E.create({box:b,api:{save:async()=>{saved++;},usb:()=>others}});ed.open('robot',XML,null);assert.doesNotMatch(b.innerHTML,/data-ce-usb-add/);
-  others=[CAM];ed.render();const main=b.innerHTML.slice(b.innerHTML.indexOf('class="ce-main"'),b.innerHTML.indexOf('class="ce-hubs"'));assert.ok(main.indexOf('data-ce-usb-add')>=0,'in the main column');assert.ok(main.indexOf('data-ce-usb-add')<main.indexOf('data-ce-family="motor"'),'above the families');assert.match(b.innerHTML.slice(b.innerHTML.indexOf('class="ce-hubs"')),/data-ce-usb-show/);
+  others=[CAM];ed.render();const main=b.innerHTML.slice(b.innerHTML.indexOf('class="ce-main"'),b.innerHTML.indexOf('class="ce-hubs"')),side=b.innerHTML.slice(b.innerHTML.indexOf('class="ce-hubs"'));assert.doesNotMatch(main,/USB devices|data-ce-usb/,'not in the main column');assert.ok(main.includes('data-ce-family="motor"'));assert.ok(side.indexOf('data-ce-hub=')<side.indexOf('data-ce-usb-add'),'under the hubs');assert.equal((b.innerHTML.match(/class="ce-heading">USB devices/g)||[]).length,1,'one place');assert.doesNotMatch(b.innerHTML,/data-ce-usb-show/);
   assert.equal(ed.dirty(),false,'seeing a camera changes nothing');assert.equal(saved,0);
 });
 

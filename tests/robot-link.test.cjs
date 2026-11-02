@@ -4,7 +4,7 @@
 // (tools/ftc-sim.cjs), which answers the same commands and routes as FTC SDK 12.0.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const RobotConfig=require('../ui/ftc/robot-config.js'),Hardware=require('../ui/sim-hardware.js'),C=require('../ui/sim-config.js'),F=require('../ui/sim-ftc.js'),Mech=require('../ui/sim-mechanisms.js'),P=require('../ui/sim-planner.js'),X=require('../ui/sim-export.js');
-const {startUdpRobot,startOnBotJava,CONFIG_XML,SENSOR_CONFIG_XML,HUBS,OP_MODES}=require('../tools/ftc-sim.cjs'),{readRobot,writeConfiguration,runCheck,OnBotJava,send,buildErrors,formEncode,checkHost}=require('../src/robot-link.cjs');
+const {startUdpRobot,startOnBotJava,CONFIG_XML,SENSOR_CONFIG_XML,HUBS,OP_MODES}=require('../tools/ftc-sim.cjs'),{readRobot,writeConfiguration,runCheck,OnBotJava,send,buildErrors,buildProblem,debugCurrent,debugSource,DEBUG_FILE,formEncode,checkHost}=require('../src/robot-link.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const {FtcSocket}=require('../src/ftc.cjs'),robot={drivetrain:'mecanum',length:17,width:17,heightIn:12,driveRpm:312,intakeIn:0};
 // The simulated robot and this station use their own loopback addresses (Robocol needs port 20884 on both ends), so these
@@ -278,6 +278,10 @@ test('Send to robot uploads the export with OnBot Java, builds it, keeps a copy 
   // A build that fails reports each error with its file and line.
   const failing=await startOnBotJava({address:'127.0.0.2',port:0,compile:()=>['/src/org/firstinspires/ftc/teamcode/PlannedRouteAuto.java:42: error: cannot find symbol']});t.after(()=>failing.close());
   const bad=await send('127.0.0.2',out.files,{client:new OnBotJava('127.0.0.2',{port:failing.port})});assert.equal(bad.built,false);assert.deepEqual(bad.errors,[{file:'PlannedRouteAuto.java',line:42,message:'cannot find symbol'}]);
+  // Whether the robot's Torque Debug is this one: only its name, which says when it went on, may differ. Nothing on the robot, or an older copy, is not.
+  assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:false,opMode:null});
+  await client.save(DEBUG_FILE,debugSource('TorqueDebug-10.00-01-01-26').replace(/\n/g,'\r\n'));assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:true,opMode:'TorqueDebug-10.00-01-01-26'},'its line endings do not matter');
+  await client.save(DEBUG_FILE,debugSource('TorqueDebug-10.00-01-01-26').replace('STALL_MS = 400','STALL_MS = 500'));assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:false,opMode:null},'an older copy');await client.remove(DEBUG_FILE).catch(()=>{});
   // Paths stay under /src as Java files.
   await assert.rejects(send('127.0.0.2',{'../evil.java':'x'},{client}),/not a Java source path/);
 });
@@ -286,8 +290,16 @@ test('the OnBot Java form encoding and build log parsing',async()=>{
   const text='a+b = 100% & "quoted" \'single\' (x)*! é\r\nline';assert.equal(new URLSearchParams('data='+formEncode(text)).get('data'),text,'every character survives the robot\'s form decoding');
   assert.doesNotMatch(formEncode("!'()*"),/[!'()*]/);
   // OnBot Java's own log, as a real Control Hub wrote it.
-  assert.deepEqual(buildErrors('org/firstinspires/ftc/teamcode/mySecondJavaOpModeFritz.java(49:9): ERROR: cannot find symbol\n  symbol:   variable imu'),[{file:'mySecondJavaOpModeFritz.java',line:49,message:'cannot find symbol'}]);
+  assert.deepEqual(buildErrors('org/firstinspires/ftc/teamcode/mySecondJavaOpModeFritz.java(49:9): ERROR: cannot find symbol\n  symbol:   variable imu'),[{file:'mySecondJavaOpModeFritz.java',line:49,message:'cannot find symbol: variable imu'}]);
   assert.deepEqual(buildErrors('Foo.java:3:5: error: ; expected\nnote: something\nsrc/org/Bar.java:10: error: incompatible types'),[{file:'Foo.java',line:3,message:'; expected'},{file:'Bar.java',line:10,message:'incompatible types'}]);
+  // Exactly what a Control Hub on SDK 12.0 said about the old Torque Debug, and javac's own shape with the source line and caret between.
+  const real='TorqueDebug.java(421:77): ERROR: cannot find symbol\n  symbol:   variable decisionMargin\n  location: variable d of type org.firstinspires.ftc.vision.apriltag.AprilTagDetection\nTorqueDebug.java(422:18): ERROR: cannot find symbol\n  symbol:   variable metadata\n  location: variable d of type org.firstinspires.ftc.vision.apriltag.AprilTagDetection\n';
+  assert.deepEqual(buildErrors(real),[{file:'TorqueDebug.java',line:421,message:'cannot find symbol: variable decisionMargin'},{file:'TorqueDebug.java',line:422,message:'cannot find symbol: variable metadata'}]);
+  assert.equal(buildErrors('Foo.java:3: error: cannot find symbol\n    x.y();\n    ^\n  symbol:   variable x\n  location: class Foo\n')[0].message,'cannot find symbol: variable x');
+  // One line, saying whose file it is: OnBot Java builds them all, so a team's broken file stops Torque's too.
+  assert.match(buildProblem(buildErrors(real)),/^Torque’s own program did not build on this robot \(TorqueDebug\.java line 421: cannot find symbol: variable decisionMargin\)\. This is not your code\./);
+  const theirs=buildProblem(buildErrors('TorqueDebug.java(1:1): ERROR: x\nTeamAuto.java(12:4): ERROR: cannot find symbol\n  symbol:   method bar()\n'));assert.match(theirs,/^Your file TeamAuto\.java has an error on line 12: cannot find symbol: method bar\(\)\. OnBot Java builds every file together/);assert.match(theirs,/Torque did not change it/);
+  assert.match(buildProblem([]),/OnBot Java page/);
   // Nothing listening: the message says where it looked and what to check.
   await assert.rejects(new OnBotJava('127.0.0.2',{port:9,timeout:2000}).available(),/Could not reach the robot's OnBot Java at http:\/\/127\.0\.0\.2:9.*Join the robot's Wi-Fi/);
 });

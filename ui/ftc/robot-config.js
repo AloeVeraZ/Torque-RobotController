@@ -258,8 +258,8 @@
   function newConfiguration(portals,assignments){
     const lines=["<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>",'<Robot type="FirstInspires-FTC">'];let usb=0;
     const hubXml=(tag,name,address,mine)=>{const open=`        <${tag} name="${escape(name)}" port="${address}"`;return mine.length?[open+'>',...mine.map(a=>'            '+deviceXml(a)),`        </${tag}>`]:[open+' />'];};
-    for(const portal of portals){if(!portal.modules.length)continue;const parent=portal.modules.find(m=>m.parent)||portal.modules[0],on=(a,address,servoHub)=>!!a.module.servoHub===servoHub&&moduleKey(a.module)===moduleKey({portal:portal.serial,address});
-      lines.push(`    <LynxUsbDevice name="${portal.serial==='(embedded)'?'Control Hub Portal':`Expansion Hub Portal ${++usb}`}" serialNumber="${escape(portal.serial)}" parentModuleAddress="${parent.address}">`);
+    for(const portal of portals){if(!portal.modules.length)continue;const parent=portal.modules.find(m=>m.parent)||portal.modules[0],on=(a,address,servoHub)=>!!a.module.servoHub===servoHub&&moduleKey(a.module)===moduleKey({portal:portal.serial,address}),made=portal.serial==='(embedded)'?'Control Hub Portal':`Expansion Hub Portal ${++usb}`;
+      lines.push(`    <LynxUsbDevice name="${portal.name?escape(portal.name):made}" serialNumber="${escape(portal.serial)}" parentModuleAddress="${parent.address}">`);
       for(const m of [...portal.modules].sort((a,b)=>Number(a.parent)-Number(b.parent)||a.address-b.address))lines.push(...hubXml('LynxModule',moduleName(portal,m),m.address,assignments.filter(a=>on(a,m.address,false)).sort(written)));
       for(const h of [...(portal.servoHubs||[])].sort((a,b)=>a.address-b.address))lines.push(...hubXml('ServoHub',h.name||`Servo Hub ${h.address}`,h.address,assignments.filter(a=>on(a,h.address,true)).sort(written)));
       lines.push('    </LynxUsbDevice>');}
@@ -398,6 +398,10 @@
   const limelightsOf=xml=>[...elements(xml)].filter(e=>!e.close&&e.tag==='EthernetDevice').map(e=>({name:e.attrs.name||'',serial:e.attrs.serialNumber||'',port:e.attrs.port!==undefined?Number(e.attrs.port):-1,ipAddress:e.attrs.ipAddress||''}));
   function withLimelights(xml,list){const clean=String(xml).replace(/[ \t]*<EthernetDevice\b[^>]*?\/>[ \t]*\r?\n?/g,'').replace(/[ \t]*<EthernetDevice\b[^>]*>\s*<\/EthernetDevice>[ \t]*\r?\n?/g,'');
     return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n${(list||[]).map(c=>`    <EthernetDevice name="${escape(c.name)}" serialNumber="${escape(c.serial)}" port="${Number.isFinite(c.port)?c.port:-1}" ipAddress="${escape(c.ipAddress)}" />\n`).join('')}`);}
+  // New webcams and Limelights, by text, into the file as it is: nothing else in it moves or changes, whatever it holds. After the last that is there, else first under <Robot>.
+  function withUsbAdded(xml,{webcams=[],limelights=[]}={}){const text=String(xml),usb=new Set(['Webcam','EthernetDevice']),lines=[...webcams.map(c=>`    <Webcam name="${escape(c.name)}" serialNumber="${escape(c.serial)}" />`),...limelights.map(c=>`    <EthernetDevice name="${escape(c.name)}" serialNumber="${escape(c.serial)}" port="${Number.isFinite(c.port)?c.port:-1}" ipAddress="${escape(c.ipAddress)}" />`)];if(!lines.length)return text;
+    let at=-1;for(const e of elements(text)){if(e.close?usb.has(e.close.tag):usb.has(e.tag)&&e.selfClose)at=e.close?text.indexOf('>',e.start)+1:e.end;}
+    return at<0?text.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n${lines.join('\n')}\n`):`${text.slice(0,at)}\n${lines.join('\n')}${text.slice(at)}`;}
   // A hub to add to a portal, for hubs a scan cannot find yet (not plugged in, or a Servo Hub): its default address when
   // free, else the next free one of 1-10 (the SDK's range), named as Configure Robot names them. Null when all are taken.
   function newHub(hubs,tag,portal='(embedded)'){const used=new Set((hubs||[]).map(h=>h.address)),first=tag==='ServoHub'?3:2,address=[first,1,2,3,4,5,6,7,8,9,10].find(a=>!used.has(a));if(address===undefined)return null;
@@ -406,10 +410,12 @@
   const familyOfTag=tag=>{for(const [f,list] of Object.entries(EDIT_TYPES))if(list.some(([t])=>t===tag))return f;return tag==='QWIIC_LED_STICK'?'i2c':portFamily(kindOf(tag));};
   // The configuration with its devices replaced by `devices` ({name, tag, port, bus?, module: {portal, address,
   // servoHub?}}), anything outside a hub (a webcam, a Limelight) kept as it was. hubs: the hubs to write, when they changed.
-  function rebuild(xml,devices,newHubs){
-    const hubs=newHubs||parse(xml).hubs,portals=[];for(const h of hubs){let p=portals.find(x=>x.serial===h.portal);if(!p){p={serial:h.portal,modules:[],servoHubs:[]};portals.push(p);}
+  // keep: what the file already has stays, a portal's name and a name a Driver Hub allowed (arm.motor) but Deck would not offer.
+  function rebuild(xml,devices,newHubs,{keep=false}={}){
+    const named=keep?new Map([...elements(xml)].filter(e=>!e.close&&PORTAL.has(e.tag)).map(e=>[e.attrs.serialNumber,e.attrs.name])):null,had=keep?new Set(parse(xml).devices.map(d=>d.name)):null;
+    const hubs=newHubs||parse(xml).hubs,portals=[];for(const h of hubs){let p=portals.find(x=>x.serial===h.portal);if(!p){p={serial:h.portal,modules:[],servoHubs:[],...(named?.get(h.portal)?{name:named.get(h.portal)}:{})};portals.push(p);}
       if(h.tag==='ServoHub')p.servoHubs.push({address:h.address,name:h.name});else p.modules.push({address:h.address,parent:h.parent,name:h.name});}
-    for(const d of devices||[])if(!validName(d.name))throw Error(`“${d.name}” cannot be a device name: use letters, digits, spaces, - and _.`);
+    for(const d of devices||[])if(!validName(d.name)&&!had?.has(d.name))throw Error(`“${d.name}” cannot be a device name: use letters, digits, spaces, - and _.`);
     const names=new Set();for(const d of devices||[]){if(names.has(d.name.toLowerCase()))throw Error(`Two devices are named “${d.name}”.`);names.add(d.name.toLowerCase());}
     const out=newConfiguration(portals,(devices||[]).map(d=>({...d,device:d.bus!==undefined?'i2c':familyOfTag(d.tag)})));
     const outside=[...elements(xml)].filter(e=>!e.close&&e.attrs.name&&!CONTAINERS.has(e.tag)&&!within(e,HUBS)).map(e=>'    '+xml.slice(e.start,xml.indexOf('>',e.start)+1).replace(/\s*>$/,'').replace(/\/$/,'').trim()+' />');
@@ -429,5 +435,5 @@
     if(!Object.keys(keep).length)return clean;const json=JSON.stringify(keep).replace(/-/g,'\\u002d').replace(/[<>&;]/g,c=>'\\u00'+c.charCodeAt(0).toString(16));
     return clean.replace(/(<Robot\b[^>]*>)[ \t]*\r?\n?/,(m,tag)=>`${tag}\n    <!-- Deck wiring: ${json} -->\n`);}
   return {notesOf,cleanNotes,withNotes,EDIT_TYPES,DEVICE_TYPES,PORT_COUNT,familyOfTag,rebuild,javaFor,javaOf,variableOf,parse,kindOf,check,explain,fits,tokens,KINDS,PORTS,MOTOR_TYPES,IMU_TAGS,missingDevices,planPorts,portChoices,movePort,withType,portLabel,portFamily,portKeyOf:keyOf,portsTaken,tagFor,hubFor,
-    addDevices,newHub,matchHubs,hubKey,discover,withLiveHubs,openHubs,removeHub,canSend,webcamsOf,withWebcams,limelightsOf,withLimelights,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,otherUsb,usbLabel,lynxModules,withImus,unknownImus,deviceXml};
+    addDevices,newHub,matchHubs,hubKey,discover,withLiveHubs,openHubs,removeHub,canSend,webcamsOf,withWebcams,limelightsOf,withLimelights,withUsbAdded,newConfiguration,configurationFor,modulesOf,modulesFromScan,configurationName,validName,lynxSerials,otherUsb,usbLabel,lynxModules,withImus,unknownImus,deviceXml};
 });

@@ -46,7 +46,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Torque's live hardware debug (Calibrate → Electronics → Live debug). Deck installs this file with OnBot Java; it is
+ * Torque's live hardware debug (Calibrate → Camera and Debug). Deck installs this file with OnBot Java; it is
  * the same for every robot: it finds every motor, servo, continuous servo, digital and analog input and I2C sensor in
  * the active configuration, and while it runs it streams their readings to Deck and drives the outputs Deck asks for.
  *
@@ -84,14 +84,14 @@ public class TorqueDebug extends LinearOpMode {
 
     // ---- what Deck has asked for
     double[] motorPower, motorAmps, crPower, servoPos;
-    boolean[] servoOn, servoLatched, motorCut;
+    boolean[] servoOn, servoLatched, motorCut, crTold;
     long[] motorOverSince, motorAt, crAt;
     String[] i2cLast;
     long[] i2cAt;
     /** A loop Deck runs on the robot (a step test): one actuator, one sensor, gains in the sensor's raw units. */
     TorqueDebugLoop loop;
 
-    // ---- the first webcam in the configuration, if there is one: its picture goes to the Driver Station's Camera Stream
+    // ---- one webcam of the configuration's at a time, the first until told otherwise (W): its picture goes to the Driver Station's Camera Stream
     final List<WebcamName> webcams = new ArrayList<>();
     final List<String> webcamNames = new ArrayList<>();
     final ConcurrentLinkedQueue<String[]> cameraCommands = new ConcurrentLinkedQueue<>();
@@ -100,10 +100,14 @@ public class TorqueDebug extends LinearOpMode {
     VisionPortal closedPortal;
     volatile AprilTagProcessor aprilTag;
     volatile String cameraError, cameraRange = "null", camLast;
-    volatile double camExposure = Double.NaN, camGain = Double.NaN, camDecimation = 3;
+    volatile double camExposure = Double.NaN, camGain = Double.NaN, camDecimation = 3, camExposureRead = Double.NaN;
+    /** The exposure modes this camera says it has, as JSON. A real one had only Manual. */
+    volatile String camModes = "null";
     /** The lens numbers Torque sent: fx, fy, cx, cy. Null: the SDK's own for this camera, or its guess. */
     volatile double[] camLens;
     volatile boolean camOpening;
+    /** Which webcam is open. */
+    volatile int camIndex;
     long camAt;
 
     final ConcurrentLinkedQueue<String> commands = new ConcurrentLinkedQueue<>();
@@ -140,16 +144,17 @@ public class TorqueDebug extends LinearOpMode {
         battery = volts.isEmpty() ? null : volts.get(0);
 
         motorPower = new double[motors.size()]; motorAmps = new double[motors.size()]; motorCut = new boolean[motors.size()]; motorOverSince = new long[motors.size()]; motorAt = new long[motors.size()]; crAt = new long[crservos.size()];
-        crPower = new double[crservos.size()]; servoPos = new double[servos.size()]; servoOn = new boolean[servos.size()]; servoLatched = new boolean[servos.size()];
+        crPower = new double[crservos.size()]; crTold = new boolean[crservos.size()]; servoPos = new double[servos.size()]; servoOn = new boolean[servos.size()]; servoLatched = new boolean[servos.size()];
         i2cLast = new String[i2c.size()]; i2cAt = new long[i2c.size()];
         for (int i = 0; i < motors.size(); i++) { motorAmps[i] = Double.NaN; motors.get(i).setPower(0); }
         for (int i = 0; i < servos.size(); i++) { servoPos[i] = Double.NaN; if (servos.get(i) instanceof PwmControl) ((PwmControl) servos.get(i)).setPwmDisable(); }
         manifest = manifest();
 
-        startCamera();
+        // The port first: a camera can take a while to open, and Torque is waiting on the port.
         Thread serve = new Thread(this::serve, "Torque Debug server"), send = new Thread(this::send, "Torque Debug sender");
         serve.setDaemon(true); send.setDaemon(true); serve.start(); send.start();
-        telemetry.addLine("Torque Debug: press START, then connect from Torque (Calibrate → Electronics → Live debug).");
+        startCamera();
+        telemetry.addLine("Torque Debug: press START, then open Calibrate → Debug in Torque.");
         telemetry.addData("Devices", "%d motors, %d servos, %d CR servos, %d digital, %d analog, %d I2C", motors.size(), servos.size(), crservos.size(), digitals.size() + touches.size(), analogs.size(), i2c.size());
         telemetry.update();
         waitForStart();
@@ -168,7 +173,7 @@ public class TorqueDebug extends LinearOpMode {
                 for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && !(loop != null && loop.cr && loop.index == i)) crPower[i] = 0;
                 runLoop();
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
-                for (int i = 0; i < crservos.size(); i++) crservos.get(i).setPower(crPower[i]);
+                for (int i = 0; i < crservos.size(); i++) if (crTold[i]) crservos.get(i).setPower(crPower[i]);
                 for (int i = 0; i < servos.size(); i++) {
                     Servo s = servos.get(i);
                     if (servoOn[i] && !Double.isNaN(servoPos[i])) { if (s instanceof PwmControl && !((PwmControl) s).isPwmEnabled()) ((PwmControl) s).setPwmEnable(); s.setPosition(servoPos[i]); }
@@ -187,7 +192,7 @@ public class TorqueDebug extends LinearOpMode {
         } finally {
             running = false; stopOutputs(true);
             for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(0);
-            for (CRServo s : crservos) s.setPower(0);
+            for (int i = 0; i < crservos.size(); i++) if (crTold[i]) crservos.get(i).setPower(0);
             closePortal();
             close();
         }
@@ -210,6 +215,7 @@ public class TorqueDebug extends LinearOpMode {
     //   V auto | V ms gain        the camera's exposure: automatic, or manual with a gain
     //   D decimation              how far the AprilTag processor reads against how fast
     //   K fx fy cx cy | K off     the lens numbers AprilTag uses, or the SDK's own: the camera opens again to take them
+    //   W name                    open this webcam instead: only one is ever open
     void apply(String line) {
         String[] f = line.split("\t", -1);
         if (f.length == 0 || f[0].isEmpty()) return;
@@ -217,7 +223,7 @@ public class TorqueDebug extends LinearOpMode {
             switch (f[0]) {
                 case "P": break;
                 case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { if (loop != null && !loop.cr && loop.index == i) loop = null; motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
-                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { if (loop != null && loop.cr && loop.index == i) loop = null; crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); } break; }
+                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { if (loop != null && loop.cr && loop.index == i) loop = null; crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
                 case "S": { int i = servoNames.indexOf(f[1]); if (i >= 0) { servoPos[i] = clamp(Double.parseDouble(f[2]), 0, 1); servoOn[i] = true; } break; }
                 case "E": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoOn[i] = "1".equals(f[2]) && !Double.isNaN(servoPos[i]); break; }
                 case "L": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoLatched[i] = "1".equals(f[2]); break; }
@@ -225,7 +231,7 @@ public class TorqueDebug extends LinearOpMode {
                 case "Q": startLoop(f); break;
                 case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; } break;
                 case "X": stopOutputs(false); break;
-                case "V": case "D": case "K": cameraCommands.add(f); break;
+                case "V": case "D": case "K": case "W": cameraCommands.add(f); break;
                 default: break;
             }
         } catch (RuntimeException ignored) { }
@@ -242,7 +248,7 @@ public class TorqueDebug extends LinearOpMode {
         if (l.sensorIndex < 0) return;
         l.target = Double.parseDouble(f[4]); l.kP = Double.parseDouble(f[5]); l.kI = Double.parseDouble(f[6]); l.kD = Double.parseDouble(f[7]);
         l.kF = Double.parseDouble(f[8]); l.kS = Double.parseDouble(f[9]); l.kG = Double.parseDouble(f[10]); l.tol = Math.abs(Double.parseDouble(f[11])); l.wrap = Double.parseDouble(f[12]);
-        if (!l.cr) { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
+        if (l.cr) crTold[l.index] = true; else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
         loop = l;
     }
 
@@ -330,18 +336,24 @@ public class TorqueDebug extends LinearOpMode {
     // ---- the camera. Its controls can take a moment and need a streaming camera, so a thread of its own sets them.
     void startCamera() {
         if (webcams.isEmpty()) return;
-        try {
-            openCamera();
-            Thread t = new Thread(this::cameraThread, "Torque Debug camera"); t.setDaemon(true); t.start();
-        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); portal = null; aprilTag = null; }
+        tryOpenCamera();
+        Thread t = new Thread(this::cameraThread, "Torque Debug camera"); t.setDaemon(true); t.start();
+    }
+    void tryOpenCamera() {
+        try { openCamera(); }
+        catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); portal = null; aprilTag = null; }
     }
     // AprilTag takes its lens numbers only as it is built.
     void openCamera() {
+        cameraError = null;
         double[] lens = camLens;
         AprilTagProcessor.Builder tags = new AprilTagProcessor.Builder();
         if (lens != null) tags.setLensIntrinsics(lens[0], lens[1], lens[2], lens[3]);
         aprilTag = tags.build();
-        portal = new VisionPortal.Builder().setCamera(webcams.get(0)).addProcessor(aprilTag).build();
+        VisionPortal.Builder builder = new VisionPortal.Builder().setCamera(webcams.get(camIndex)).addProcessor(aprilTag);
+        // Otherwise the SDK writes its version and frame rate across the picture. By name, so that an SDK without it still builds this file.
+        try { VisionPortal.Builder.class.getMethod("setShowStatsOverlay", boolean.class).invoke(builder, false); } catch (ReflectiveOperationException | RuntimeException ignored) { }
+        portal = builder.build();
     }
     // Stopping can come while the camera thread opens a new portal. Whichever thread is last closes whichever portal is current, so none keeps the camera after the op mode ends.
     void closePortal() {
@@ -355,48 +367,96 @@ public class TorqueDebug extends LinearOpMode {
     // Many cheap cameras have no gain control: their exposure still works, and the range says so with 0,0.
     String gainRange(GainControl gain) { try { return gain.getMinGain() + "," + gain.getMaxGain(); } catch (RuntimeException e) { return "0,0"; } }
     void setGain(GainControl gain, int g) { try { gain.setGain(g); camGain = g; } catch (RuntimeException ignored) { } }
+    /** What the camera itself says now: asking for an exposure does not prove it took. */
+    void exposureRead(ExposureControl exposure) { try { camExposureRead = exposure.getExposure(TimeUnit.MILLISECONDS); } catch (RuntimeException e) { camExposureRead = Double.NaN; } }
+    static String exposureModes(ExposureControl exposure) {
+        StringBuilder b = new StringBuilder("[");
+        for (ExposureControl.Mode m : ExposureControl.Mode.values()) if (m != ExposureControl.Mode.Unknown && exposure.isModeSupported(m)) { if (b.length() > 1) b.append(','); b.append(str(m.name())); }
+        return b.append(']').toString();
+    }
+    /** Many webcams call their automatic exposure aperture priority. Null: this one has none. */
+    static ExposureControl.Mode automatic(ExposureControl exposure) {
+        for (ExposureControl.Mode m : new ExposureControl.Mode[] { ExposureControl.Mode.ContinuousAuto, ExposureControl.Mode.Auto, ExposureControl.Mode.AperturePriority }) if (exposure.isModeSupported(m)) return m;
+        return null;
+    }
+    boolean streaming() { VisionPortal open = portal; return open != null && open.getCameraState() == VisionPortal.CameraState.STREAMING; }
+    /** A lens or a camera: what opens the camera again. False: this line is neither, or changes nothing. */
+    boolean takeReopen(String[] f) {
+        if ("K".equals(f[0])) camLens = "off".equals(f[1]) ? null : new double[] { Double.parseDouble(f[1]), Double.parseDouble(f[2]), Double.parseDouble(f[3]), Double.parseDouble(f[4]) };
+        else if ("W".equals(f[0])) {
+            int i = webcamNames.indexOf(f[1]);
+            if (i < 0) { cameraError = "The configuration has no webcam named " + f[1]; return false; }
+            if (i == camIndex && portal != null) return false;
+            camIndex = i;
+        }
+        else return false;
+        return true;
+    }
+    /** While a camera is not streaming, one that cannot open (its cable, say) must not stop another being asked for. */
+    boolean reopenAsked() {
+        for (Iterator<String[]> it = cameraCommands.iterator(); it.hasNext(); ) {
+            String[] f = it.next();
+            if (!"K".equals(f[0]) && !"W".equals(f[0])) continue;
+            it.remove();
+            try { if (takeReopen(f)) return true; } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+        }
+        return false;
+    }
     void cameraThread() {
         try {
             boolean reopened = false;
             while (running) {
-                while (running && portal.getCameraState() != VisionPortal.CameraState.STREAMING) Thread.sleep(50);
+                boolean reopen = false;
+                while (running && !reopen && !streaming()) { reopen = reopenAsked(); if (!reopen) Thread.sleep(50); }
                 if (!running) return;
-                ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
-                GainControl gain = portal.getCameraControl(GainControl.class);
-                cameraRange = "[" + exposure.getMinExposure(TimeUnit.MILLISECONDS) + "," + exposure.getMaxExposure(TimeUnit.MILLISECONDS) + "," + gainRange(gain) + "]";
-                if (reopened) {
-                    try {
-                        aprilTag.setDecimation((float) camDecimation);
-                        if (!Double.isNaN(camExposure)) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); exposure.setExposure((long) camExposure, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, (int) camGain); }
-                    } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
-                }
-                camOpening = false;
-                boolean lensChanged = false;
-                while (running && !lensChanged) {
-                    String[] f = cameraCommands.poll();
-                    if (f == null) { Thread.sleep(20); continue; }
-                    try {
-                        if ("K".equals(f[0])) { camLens = "off".equals(f[1]) ? null : new double[] { Double.parseDouble(f[1]), Double.parseDouble(f[2]), Double.parseDouble(f[3]), Double.parseDouble(f[4]) }; lensChanged = true; }
-                        else if ("D".equals(f[0])) { camDecimation = Double.parseDouble(f[1]); aprilTag.setDecimation((float) camDecimation); }
-                        else if ("auto".equals(f[1])) { exposure.setMode(ExposureControl.Mode.Auto); camExposure = Double.NaN; camGain = Double.NaN; }
-                        else {
-                            if (exposure.getMode() != ExposureControl.Mode.Manual) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); }
-                            long ms = Long.parseLong(f[1]); int g = Integer.parseInt(f[2]);
-                            exposure.setExposure(ms, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, g); camExposure = ms;
-                        }
-                    } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                if (!reopen) {
+                    ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
+                    GainControl gain = portal.getCameraControl(GainControl.class);
+                    cameraRange = "[" + exposure.getMinExposure(TimeUnit.MILLISECONDS) + "," + exposure.getMaxExposure(TimeUnit.MILLISECONDS) + "," + gainRange(gain) + "]";
+                    camModes = exposureModes(exposure);
+                    exposureRead(exposure);
+                    if (reopened) {
+                        try {
+                            aprilTag.setDecimation((float) camDecimation);
+                            if (!Double.isNaN(camExposure)) { exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); exposure.setExposure((long) camExposure, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, (int) camGain); }
+                        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                    }
+                    camOpening = false;
+                    while (running && !reopen) {
+                        String[] f = cameraCommands.poll();
+                        if (f == null) { Thread.sleep(20); continue; }
+                        try {
+                            if ("K".equals(f[0]) || "W".equals(f[0])) reopen = takeReopen(f);
+                            else if ("D".equals(f[0])) { camDecimation = Double.parseDouble(f[1]); aprilTag.setDecimation((float) camDecimation); }
+                            else if ("auto".equals(f[1])) { ExposureControl.Mode auto = automatic(exposure); boolean took = auto != null && exposure.setMode(auto); camExposure = Double.NaN; camGain = Double.NaN; cameraError = took ? null : "This camera has no automatic exposure."; Thread.sleep(50); exposureRead(exposure); }
+                            else {
+                                boolean manual = exposure.getMode() == ExposureControl.Mode.Manual;
+                                if (!manual) { manual = exposure.setMode(ExposureControl.Mode.Manual); Thread.sleep(50); }
+                                long ms = Long.parseLong(f[1]); int g = Integer.parseInt(f[2]);
+                                boolean took = exposure.setExposure(ms, TimeUnit.MILLISECONDS); Thread.sleep(20); setGain(gain, g); camExposure = ms;
+                                cameraError = manual && took ? null : "This camera did not take a manual exposure of " + ms + " ms.";
+                                exposureRead(exposure);
+                            }
+                        } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); }
+                    }
                 }
                 if (!running) return;
                 camOpening = true;
                 closePortal();
                 Thread.sleep(500);
                 if (!running) return;
-                openCamera();
+                tryOpenCamera();
                 if (!running) { closePortal(); return; }
                 reopened = true;
             }
         } catch (InterruptedException ignored) {
         } catch (RuntimeException e) { cameraError = String.valueOf(e.getMessage()); camOpening = false; }
+    }
+    /** SDK 12.0 moved id, decisionMargin and metadata from AprilTagDetection down to its subclasses; older SDKs have them on it. By name, this one file builds on both. Null: this kind of detection has none. */
+    static Object field(Object from, String name) {
+        if (from == null) return null;
+        try { return from.getClass().getField(name).get(from); }
+        catch (ReflectiveOperationException | RuntimeException e) { return null; }
     }
     String cameraJson() {
         StringBuilder b = new StringBuilder("{\"state\":");
@@ -410,7 +470,7 @@ public class TorqueDebug extends LinearOpMode {
             try { b.append(str(String.valueOf(open.getCameraState()))).append(",\"fps\":").append(num(open.getFps())); }
             catch (RuntimeException e) { opening = true; b.append("\"OPENING\""); }
         }
-        b.append(",\"range\":").append(cameraRange).append(",\"exp\":").append(num(camExposure)).append(",\"gain\":").append(num(camGain)).append(",\"dec\":").append(num(camDecimation));
+        b.append(",\"open\":").append(str(webcamNames.get(camIndex))).append(",\"range\":").append(cameraRange).append(",\"exp\":").append(num(camExposure)).append(",\"gain\":").append(num(camGain)).append(",\"dec\":").append(num(camDecimation)).append(",\"seen\":").append(num(camExposureRead)).append(",\"modes\":").append(camModes);
         double[] lens = camLens;
         b.append(",\"lens\":");
         if (lens == null) b.append("null"); else b.append('[').append(num(lens[0])).append(',').append(num(lens[1])).append(',').append(num(lens[2])).append(',').append(num(lens[3])).append(']');
@@ -418,8 +478,9 @@ public class TorqueDebug extends LinearOpMode {
         b.append(",\"tags\":[");
         if (tags != null && !opening) { boolean first = true; for (AprilTagDetection d : tags.getDetections()) {
             if (!first) b.append(','); first = false;
-            b.append("{\"id\":").append(d.id).append(",\"m\":").append(num(d.decisionMargin));
-            if (d.metadata != null) b.append(",\"name\":").append(str(d.metadata.name));
+            Object id = field(d, "id"), margin = field(d, "decisionMargin"), name = field(field(d, "metadata"), "name");
+            b.append("{\"id\":").append(id instanceof Number ? String.valueOf(((Number) id).intValue()) : "null").append(",\"m\":").append(margin instanceof Number ? num(((Number) margin).doubleValue()) : "null");
+            if (name != null) b.append(",\"name\":").append(str(String.valueOf(name)));
             if (d.ftcPose != null) b.append(",\"r\":").append(num(d.ftcPose.range)).append(",\"b\":").append(num(d.ftcPose.bearing)).append(",\"y\":").append(num(d.ftcPose.yaw)).append(",\"p\":").append(num(d.ftcPose.pitch));
             b.append('}');
         } }

@@ -111,7 +111,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     const cam=(dev=4,serial='Ucamera001')=>`1-1|a108|2240|ef|0090|480|1|${dev}|HHYL|UVC Camera|${serial}|200mA|c0|0|0e/01/00/uvcvideo,0e/02/00/uvcvideo,03/00/00/usbhid,01/01/00/snd-usb-audio,01/02/00/snd-usb-audio,`,CAM_SCAN={serial:'Ucamera001',type:'WEBCAM'};
     let stamp=1000;const ports=(lines=[],addresses=[])=>({serial:'hub1',devices:parseUsb([INSIDE,...lines].join('\n')),addresses,at:++stamp});
     const listed=(lines,addresses)=>push(said(hub('device'),{why:'hub-usb',hubUsb:ports(lines,addresses)}));
-    const scansNow=async()=>(await u()).scans,rsHubs=()=>page.textContent('#rs-hubs'),setOthers=list=>app.evaluate((_,l)=>{global.__u.others=l;},list),cameraList=()=>page.$eval('#cam-source',s=>s.textContent);
+    const scansNow=async()=>(await u()).scans,rsHubs=()=>page.textContent('#rs-hubs'),setOthers=list=>app.evaluate((_,l)=>{global.__u.others=l;},list),cameraList=()=>page.$eval('#cal-camera',b=>`${b.querySelector('[data-cam-name]').textContent} ${b.querySelector('[data-cam-pick]').textContent}`);
     const scanOnce=async(what,from,ms=6000)=>{await soon(what,async()=>await scansNow()===from+1,ms);await wait(1500);assert.equal(await scansNow(),from+1,`${what}: once`);};
     const closeDropped=()=>page.evaluate(()=>document.querySelector('#hub-dropped[open]')?.close());
 
@@ -119,25 +119,25 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     await app.evaluate(()=>{global.__u.plugged=true;global.__u.others=[];});scans=await scansNow();await push(said(hub('device'),{hubUsb:ports()}));await soon('read',async()=>await page.locator('#rs-configs .rs-config').count()===1,8000);await scanOnce('the first scan',scans,8000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C/),5000);
     // Its own parts never show.
     {const t=await rsHubs();assert.doesNotMatch(t,/802\.11ac|USB2\.0 Hub|xHCI|Realtek/,'the hub’s own parts stay hidden');assert.doesNotMatch(t,/press Scan/i,'nobody has to press anything');}
-    const others=()=>page.$eval('#rs-hubs',b=>[...b.querySelectorAll('.sim-wire-card')].find(c=>/Other USB/.test(c.textContent)).querySelector('output').textContent);assert.equal(await others(),'0');
+    const others=()=>page.$$eval('#rs-hubs [data-usb-row]',l=>String(l.length));assert.equal(await others(),'0');
     // Setup: a camera in, by its student name, with nothing pressed; then the robot's scan follows by itself. And out again.
     scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam()]);await soon('the camera on Setup',async()=>/Webcam \(needs its lens measured\)/.test(await rsHubs()));assert.match(await rsHubs(),/Blue USB 3\.0 port · Ucamera001/);assert.doesNotMatch(await rsHubs(),/802\.11ac|USB2\.0 Hub|xHCI/);assert.equal(await others(),'1');await scanOnce('a scan on Setup',scans);
     scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Setup',async()=>!/needs its lens|Ucamera001/.test(await rsHubs()));assert.equal(await others(),'0');await scanOnce('a scan when it left',scans);
     // Configure.
     await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');
-    scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(5)]);await soon('the camera on Configure',async()=>/Webcam · Ucamera001\s*plugged in, not in this configuration/.test(await page.textContent('.ce-main')));await scanOnce('a scan on Configure',scans);
-    scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Configure',async()=>!/Ucamera001/.test(await page.textContent('.ce-main')));await scanOnce('a scan when it left Configure',scans);
+    scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(5)]);await soon('the camera on Configure',async()=>/Webcam · Ucamera001[\s\S]*plugged in, not in this configuration/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan on Configure',scans);
+    scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Configure',async()=>!/Ucamera001/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan when it left Configure',scans);
     await page.click('#setup-view .flow-steps [data-flow=setup]');
     // Calibrate, with the hub already read on Setup.
     await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-camera');
-    scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(6)]);await soon('the camera on Calibrate',async()=>/Webcam · Ucamera001/.test(await cameraList()));await scanOnce('a scan on Calibrate',scans);
-    await page.click('#cal-tab-usb');await soon('the USB devices tab',async()=>await page.locator('[data-usb-elsewhere="Ucamera001"]').count()===1);
+    scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(6)]);await soon('the camera on Calibrate',async()=>/Ucamera001/.test(await cameraList()));await scanOnce('a scan on Calibrate',scans);
+    await page.click('#cal-tab-calibrate');await page.click('#cal-tab-electronics');await soon('USB devices in Electronics',async()=>await page.locator('[data-usb-elsewhere="Ucamera001"]').count()===1);
     // Something a scan cannot see is shown at once, and is no reason to scan.
     scans=await scansNow();await listed([cam(6),'3-1.4|2341|0043|02|0100|12|3|7|Arduino|Uno||100mA|80|0|02/02/01/cdc_acm,']);await soon('an Arduino',async()=>/Arduino/.test(await page.textContent('#cal-usb')));await wait(2500);assert.equal(await scansNow(),scans,'an Arduino is no reason to scan');
     await page.click('#cal-tab-camera');scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Calibrate',async()=>!/Ucamera001/.test(await cameraList()));await scanOnce('a scan when it left Calibrate',scans);
     // Calibrate with the hub plugged in there, so nothing has been read from the robot: the camera still reaches Camera's list, and the scan still runs, on a hub with no configuration read.
     await push(said(null,{drop:'unplugged'}));await soon('the dialog',dropped);await closeDropped();await soon('nothing connected',async()=>!/Ucamera001/.test(await cameraList()));
-    let reads0=(await u()).reads;scans=await scansNow();await setOthers([CAM_SCAN]);await push(said(hub('device'),{hubUsb:ports([cam(8)])}));await soon('the camera, plugged in on Calibrate',async()=>/Webcam · Ucamera001/.test(await cameraList()));await scanOnce('a scan with nothing read',scans);assert.equal((await u()).reads,reads0,'Calibrate does not read the configuration');
+    let reads0=(await u()).reads;scans=await scansNow();await setOthers([CAM_SCAN]);await push(said(hub('device'),{hubUsb:ports([cam(8)])}));await soon('the camera, plugged in on Calibrate',async()=>/Ucamera001/.test(await cameraList()));await scanOnce('a scan with nothing read',scans);assert.equal((await u()).reads,reads0,'Calibrate does not read the configuration');
     scans=await scansNow();await setOthers([]);await listed([]);await soon('gone, with nothing read',async()=>!/Ucamera001/.test(await cameraList()));await scanOnce('a scan when it left, with nothing read',scans);
 
     // A change during a scan: one scan at a time, and another after it. The list is right before either answers.
