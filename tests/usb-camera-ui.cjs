@@ -41,8 +41,8 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     const toConfigure=async()=>{await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');};
     const until=async(what,fn,ms=20000)=>{for(const end=Date.now()+ms;;await page.waitForTimeout(100)){if(await fn())return;if(Date.now()>end)assert.fail('timed out: '+what);}};
 
-    // A. The order, and where it opens.
-    await toCalibrate();
+    // A. The order, and where it opens. Debug's own start and Auto-configure's are held off here: this is the Camera tab by itself.
+    await page.evaluate(()=>{window.deckHoldAuto=true;});await toCalibrate();
     assert.deepEqual(await page.$$eval('#calibrate-view [data-cal-top]',l=>l.map(b=>[b.id,b.textContent])),[['cal-tab-camera','Camera'],['cal-tab-debug','Debug'],['cal-tab-calibrate','Calibrate']],'Camera first, Calibrate at the very end');
     const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id));
     assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true','it opens on Camera');assert.deepEqual(await opened(),['cal-panel-camera']);
@@ -55,7 +55,7 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await page.click('#robot-setup-tab');await page.waitForFunction(()=>/Ucamera001/.test(document.querySelector('#rs-hubs').textContent));assert.ok((await u()).scans>=1);
     await toConfigure();
     const row=page.locator('#rs-step-configure .ce-usb',{hasText:'Ucamera001'});await row.waitFor();assert.match(await row.innerText(),/Webcam · Ucamera001\s+(Add\s+)?plugged in, not in this configuration/);assert.equal(await page.locator('#rs-step-configure [data-ce-usb-add]').count(),1,'one Add button');
-    assert.ok(await page.evaluate(()=>{const r=document.querySelector('#rs-step-configure .ce-usb button').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),'on screen without scrolling');assert.equal(await page.locator('[data-ce-save]').isDisabled(),true,'seeing it changes nothing');
+    assert.ok(await page.evaluate(()=>{const r=document.querySelector('#rs-step-configure .ce-usb button').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),'on screen without scrolling');assert.equal(await page.locator('[data-ce-save]').isDisabled(),false,'Save would take it along');assert.equal((await u()).saves.length,0,'seeing it writes nothing');
     await page.screenshot({path:path.join(out,'configure.png')});
     // Camera: heads the tab by its name, says what to do in one line, and offers the one button.
     await toCalibrate();await page.waitForFunction(()=>/Ucamera001/.test(document.querySelector('[data-cam-name]').textContent));
@@ -70,7 +70,7 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await page.waitForSelector('[data-ce-usb-add="SECOND"]',{timeout:15000});
     const name=page.locator('.ce-main input[id^=ce-name-]').first();assert.equal(await name.inputValue(),'elbowTwo','what is being typed stays');assert.equal(await page.evaluate(()=>document.activeElement?.id),await name.getAttribute('id'),'and so does the cursor');await page.keyboard.type('x');assert.equal(await name.inputValue(),'elbowTwox','typing carries on where it was');
     await page.keyboard.press('Tab');await page.waitForTimeout(100);assert.equal(await page.locator('.ce-main input[id^=ce-name-]').first().inputValue(),'elbowTwox','leaving the box takes the name');assert.equal(await page.locator('[data-ce-save]').isDisabled(),false,'the edit is still there to save');assert.equal((await u()).saves.length,0,'nothing went to the robot');
-    await page.click('[data-ce-cancel]');assert.equal(await page.locator('[data-ce-save]').isDisabled(),true);await page.click('[data-ce-back]');
+    await page.click('[data-ce-cancel]');assert.equal(await page.locator('.ce-main input[id^=ce-name-]').first().inputValue()!=='elbowTwox',true,'the edit went');assert.equal(await page.locator('[data-ce-save]').isDisabled(),false,'the cameras plugged in are still there to save');await page.click('[data-ce-back]');
     // Camera follows the same scan: two cameras, a row of their names.
     const names=()=>page.$$eval('[data-cam-choice]',l=>l.map(b=>b.textContent));
     await toCalibrate();await page.waitForFunction(()=>document.querySelectorAll('[data-cam-choice]').length===2);assert.deepEqual(await names(),['Ucamera001','SECOND']);assert.equal(await page.locator('[data-cam-name]').isVisible(),false,'the row is the heading');await page.click('[data-cam-choice="usb:SECOND"]');assert.equal(await page.getAttribute('[data-cam-choice="usb:SECOND"]','aria-pressed'),'true');assert.match(await text('[data-cam-status]'),/^SECOND is plugged in/);

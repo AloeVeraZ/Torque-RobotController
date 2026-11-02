@@ -46,7 +46,7 @@
       <div class="cal-debug-state"><i class="dot" data-debug-dot></i><span data-debug-status role="status">Not connected</span></div></div>
       <div class="button-row cal-debug-actions"><button type="button" class="secondary" data-debug-install>Put Torque Debug on the robot</button><button type="button" class="primary" data-debug-start>Start live debug</button></div>
       <p class="hint cal-debug-stats" data-debug-stats></p>
-      <div class="cal-debug-run" data-check hidden><button type="button" class="secondary" data-check-all>Check all, one at a time</button><button type="button" class="cal-debug-stop" data-debug-stopall disabled>STOP<small>or press Space</small></button></div>
+      <div class="cal-debug-run" data-check hidden><div class="cal-run-battery" data-port="power:battery"><span>Battery</span><b><span data-live="bat:v">—</span> V</b><meter min="8" max="14" low="11.5" optimum="13" data-live="bat:v:bar"></meter></div><button type="button" class="secondary" data-check-all>Check all, one at a time</button><button type="button" class="cal-debug-stop" data-debug-stopall disabled>STOP<small>or press Space</small></button></div>
       <div data-debug-hubs class="cal-debug-hubs" data-idle></div>
       <div class="cal-debug-tools" data-debug-tools hidden><section><h3 class="cal-group-title">Timeline</h3><p class="hint">Click any reading to plot it; each line is scaled to its own range. Last ${SPAN} s.</p><canvas data-debug-chart height="160"></canvas><div data-debug-legend class="cal-debug-legend"></div></section></div>`;
     const q=s=>host.querySelector(s);
@@ -66,10 +66,10 @@
     // ---- the device check: every device the op mode found, one at a time, each saying how it went on its own box
     const checks=new Map();let checkRun=null;
     const devices=()=>{const m=manifest;if(!m)return [];return [...(m.motors||[]).map(name=>({kind:'motor',name})),...(m.crservos||[]).map(name=>({kind:'crservo',name})),...(m.servos||[]).map(name=>({kind:'servo',name})),...(m.digital||[]).map(name=>({kind:'digital',name})),...(m.touch||[]).map(name=>({kind:'touch',name})),...(m.analog||[]).map(a=>({kind:'analog',name:a.n}))];};
-    function checkPaint(){const list=devices();q('[data-check]').hidden=!list.length;q('[data-check-all]').disabled=!running||!!checkRun;
+    function checkPaint(){const list=devices();q('[data-check]').hidden=!manifest;q('[data-check-all]').disabled=!running||!!checkRun;
       for(const d of list){const row=host.querySelector(`[data-check-row="${CSS.escape(d.name)}"]`);if(!row)continue;const c=checks.get(d.name)||{state:'idle',text:''},act=row.querySelector('[data-check-act]'),bad=d.kind==='servo'&&C().problem(settingsOf('servo',d.name));row.dataset.state=c.state;row.closest('.cal-port').dataset.checkState=c.state;row.querySelector('[data-check-text]').textContent=c.text;
         const html=c.state==='ask'?'<button type="button" class="primary" data-check-answer="yes">Yes</button><button type="button" class="secondary" data-check-answer="no">No</button>':`<button type="button" class="secondary" data-check-one="${esc(d.name)}"${!running||checkRun||bad?' disabled':''}>Check</button>`;if(act.dataset.drawn!==html){act.dataset.drawn=html;act.innerHTML=html;}}}
-    const checkSet=(name,state,text)=>{checks.set(name,{state,text});checkPaint();};
+    const checkSet=(name,state,text)=>{checks.set(name,{state,text});if(state==='pass')root.DeckSounds?.play('ok');else if(state==='fail')root.DeckSounds?.play('fail');checkPaint();};
     const stopped=()=>!checkRun||checkRun.stop;
     const pause=async ms=>{for(const end=performance.now()+ms;performance.now()<end&&!stopped();)await new Promise(r=>setTimeout(r,Math.min(50,ms)));};
     async function holdOut(cmd,name,power,ms){const line=`${cmd}\t${name}\t${power.toFixed(3)}`;void send(line);const keep=setInterval(()=>void send(line),100);try{await pause(ms);}finally{clearInterval(keep);void send(`${cmd}\t${name}\t0`);}}
@@ -119,13 +119,13 @@
       const onBus=(name,label)=>{const seen=(m.i2c||[]).find(x=>x.n===name);return `<div class="cal-bus-device"><span class="cal-port-who"><b>${esc(name)}</b>${label?`<small>${esc(label)}</small>`:''}</span>${seen?`<span class="rs-pill" data-live="ib:${esc(name)}">${flowing?'Checking…':I2C_IDLE}</span><dl class="cal-stats" data-live="il:${esc(name)}" hidden></dl>${live.light.includes(name)?`<button type="button" class="cal-switch" role="switch" aria-checked="false" aria-label="${esc(name)}" data-light="${esc(name)}" data-live="l:${esc(name)}"><span class="cal-switch-track"><i></i></span><span data-switch-word>Off</span></button>`:''}`:'<span class="rs-pill">In the configuration</span>'}</div>`;};
       const hubAt=hub=>hub==='control'?173:wiring.hubs[hub]?.address,buses=(hub,on)=>{if(D.hubSpec(hub)?.i2c===0)return '';const row=b=>{const here=on.filter(d=>d.bus===b);return `<div class="cal-port cal-bus" data-bus="${esc(hub)}:${b}"><div class="cal-port-head"><span class="cal-port-num">${b}</span><span class="cal-port-who"><b>Bus ${b}</b>${here.length?'':'<small>Nothing configured</small>'}</span></div>${here.map(d=>{used.add(`i2c:${d.name}`);return onBus(d.name,typeName(d.tag));}).join('')}<span class="rs-pill warn" data-live="ix:${hubAt(hub)}:${b}" hidden></span></div>`;};return `<div class="cal-port-group"><h4>I2C buses</h4><div class="cal-buses">${[0,1,2,3].map(row).join('')}</div></div>`;};
       const order=D.hubIds(wiring),hubs=[...new Set(['control',...read.filter(d=>d.hub).map(d=>d.hub)])].sort((x,y)=>(order.indexOf(x)+1||99)-(order.indexOf(y)+1||99));
-      const cards=read.length?hubs.map(hub=>{const on=read.filter(d=>d.hub===hub),html=[['motor','Motors'],['servo','Servos'],['analog','Analog'],['digital','Digital']].map(([fam,title])=>{const cells=on.filter(d=>familyOf(d)===fam).sort((x,y)=>x.port-y.port).map(d=>{const f=live.light.includes(d.name)?'light':fam==='servo'&&live.crservo.includes(d.name)?'crservo':fam;return live[f]?.includes(d.name)?tile(f,d.name,d.port):`<div class="cal-port missing"><div class="cal-port-head"><b>${title.replace(/s$/,'')} ${d.port}</b><code>${esc(d.name)}</code></div><small>In the robot’s configuration, but Torque Debug is not reading it. Check its cable, then restart live debug.</small></div>`;});return cells.length?`<div class="cal-port-group"><h4>${title}</h4><div class="cal-ports">${cells.join('')}</div></div>`:'';}).join('')+`<p class="cal-stray"><span class="rs-pill warn" data-live="ax:${hubAt(hub)}" data-ports="${on.filter(d=>familyOf(d)==='analog').map(d=>d.port).join(',')}" hidden></span></p>`+buses(hub,on.filter(d=>d.bus!==undefined));
+      const cards=read.length?hubs.map(hub=>{const on=read.filter(d=>d.hub===hub),html=[['motor','Motors'],['servo','Servo ports'],['digital','Digital'],['analog','Analog']].map(([fam,title])=>{const cells=on.filter(d=>familyOf(d)===fam).sort((x,y)=>x.port-y.port).map(d=>{const f=live.light.includes(d.name)?'light':fam==='servo'&&live.crservo.includes(d.name)?'crservo':fam;return live[f]?.includes(d.name)?tile(f,d.name,d.port):`<div class="cal-port missing"><div class="cal-port-head"><b>${title.replace(/s$/,'')} ${d.port}</b><code>${esc(d.name)}</code></div><small>In the robot’s configuration, but Torque Debug is not reading it. Check its cable, then restart live debug.</small></div>`;});return cells.length?`<div class="cal-port-group"><h4>${title}</h4><div class="cal-ports">${cells.join('')}</div></div>`:'';}).join('')+`<p class="cal-stray"><span class="rs-pill warn" data-live="ax:${hubAt(hub)}" data-ports="${on.filter(d=>familyOf(d)==='analog').map(d=>d.port).join(',')}" hidden></span></p>`+buses(hub,on.filter(d=>d.bus!==undefined));
         return `<section class="cal-hub"><h3>${esc(D.hubName(hub,wiring))}</h3>${html}</section>`;}):[];
       // What the robot reports that the read configuration did not list: read it again in Setup to place it on its port.
       const other=[...live.motor.map(n=>['motor',n]),...live.servo.map(n=>['servo',n]),...live.crservo.map(n=>['crservo',n]),...live.analog.map(n=>['analog',n]),...live.digital.map(n=>['digital',n]),...live.light.map(n=>['light',n])].filter(([f,n])=>!used.has(`${f}:${n}`));
       const otherI2c=(m.i2c||[]).filter(d=>!used.has(`i2c:${d.n}`));
       if(other.length||otherI2c.length)cards.push(`<section class="cal-hub"><h3>On the robot</h3>${other.length?`<div class="cal-ports">${other.map(([f,n])=>tile(f,n,'')).join('')}</div>`:''}${otherI2c.length?`<div class="cal-port-group"><h4>I2C</h4><div class="cal-buses">${otherI2c.map(d=>`<div class="cal-port cal-bus"><div class="cal-port-head"><span class="cal-port-who"><b>${d.b===undefined?'I2C':`Bus ${d.b}`}</b></span></div>${onBus(d.n,'')}</div>`).join('')}</div></div>`:''}</section>`);
-      q('[data-debug-hubs]').innerHTML=`<p class="hint">Everything here comes from the robot’s active configuration. I2C devices and analog ports show whether anything is really there. Motors, servos and digital ports can’t tell: a motor with nothing plugged in just won’t move.</p><div class="cal-port-group"><h4>Power</h4><div class="cal-ports"><div class="cal-port" data-port="power:battery"><div class="cal-port-head"><span class="cal-port-who"><b>Battery</b><small>What the hub reads</small></span></div><div class="cal-big"><span data-live="bat:v">—</span> V</div><meter min="8" max="14" low="11.5" optimum="13" data-live="bat:v:bar"></meter></div></div></div>${cards.join('')}`;
+      q('[data-debug-hubs]').innerHTML=`<p class="hint">Everything here comes from the robot’s active configuration. I2C devices and analog ports show whether anything is really there. Motors, servos and digital ports can’t tell: a motor with nothing plugged in just won’t move.</p>${cards.join('')}`;
       q('[data-debug-tools]').hidden=false;
       for(const k of plot)host.querySelector(`[data-plot-key="${CSS.escape(k)}"]`)?.classList.add('plotted');
       paint(true);}
@@ -142,7 +142,7 @@
     let paintMissed=false;
     if(typeof ResizeObserver==='function')new ResizeObserver(()=>{if(paintMissed&&host.offsetParent)paint(true);}).observe(host);
     // Nothing is running, so nothing here is being asked: the buses say so, and what could only come from the robot goes away.
-    function idlePaint(){const box=q('[data-debug-hubs]');box.toggleAttribute('data-idle',true);for(const el of box.querySelectorAll('[data-live^="ib:"]')){el.textContent=I2C_IDLE;el.className='rs-pill';}for(const el of box.querySelectorAll('[data-live^="ix:"],[data-live^="ax:"],[data-live^="il:"],[data-live$=":plug"]'))el.hidden=true;}
+    function idlePaint(){const box=q('[data-debug-hubs]');box.toggleAttribute('data-idle',true);for(const el of box.querySelectorAll('[data-live^="ib:"]')){el.textContent=I2C_IDLE;el.className='rs-pill';}for(const el of box.querySelectorAll('[data-live^="ix:"],[data-live^="ax:"],[data-live^="il:"],[data-live$=":plug"]'))el.hidden=true;const v=q('[data-live="bat:v"]'),bar=q('[data-live="bat:v:bar"]');v.textContent='—';bar.value=8;}
     function paint(force){
       if(!host.offsetParent){paintMissed=true;return;}paintMissed=false;
       if(!flowing)return idlePaint();
@@ -181,7 +181,7 @@
     // ---- events from the robot link
     function event(e){
       if(e.camera){for(const fn of cameraListeners)fn(e.camera);return;}
-      if(e.manifest){manifest=e.manifest;frame=null;flowing=true;frames=[];edges={};seen={};checks.clear();status('Live: reading the robot','live');layout();checkPaint();onChange();return;}
+      if(e.manifest){if(host.offsetParent)root.DeckSounds?.play('ready');manifest=e.manifest;frame=null;flowing=true;frames=[];edges={};seen={};checks.clear();status('Live: reading the robot','live');layout();checkPaint();onChange();return;}
       if(e.frame){const prev=values(frame);frame=e.frame;frames.push(frame);const cut=frame.t-(SPAN+2)*1000;while(frames.length&&frames[0].t<cut)frames.shift();
         const v=values(frame);for(const [k,x] of Object.entries(v)){if(k.startsWith('d:')&&prev[k]!==undefined&&prev[k]!==x)edges[k.slice(2)]=(edges[k.slice(2)]||0)+1;if(k.startsWith('a:')&&finite(x)){const n=k.slice(2),s=seen[n]||[x,x];seen[n]=[Math.min(s[0],x),Math.max(s[1],x)];}}
         if(pulse)pulse.frames.push(frame);for(const fn of listeners)fn(frame,v);paint(false);return;}
@@ -211,17 +211,22 @@
       finally{starting=false;buttons();checkPaint();onChange();}}
     // Over the cable this tab starts it by itself, the way Camera does, until someone stops it here. Leaving the tab forgets that.
     let heldOff=false;
-    const wanted=()=>{if(!host.offsetParent){heldOff=false;return false;}return !heldOff;};
+    // warm: for a while after a Save it starts with no one looking, so it is already going when they get there.
+    let warmUntil=0;
+    const wanted=()=>{if(root.deckHoldAuto)return false;if(heldOff&&!host.offsetParent)heldOff=false;if(Date.now()<warmUntil&&!heldOff)return true;return !!host.offsetParent&&!heldOff;};
+    // Puts this version on the robot ahead of time if it has another, and only that: nothing starts. Once for a hub.
+    let preparedFor=null;
+    async function prepare(to,serial){if(!native||root.deckHoldAuto||preparedFor===serial||running||starting||installing)return;preparedFor=serial;try{const copy=await api.robotLink('debug-current',{host:to,noStart:true});if(!copy?.current&&!running&&!starting&&!installing)await install(to,{auto:true,noStart:true}).catch(()=>{});}catch{}}
     q('[data-debug-start]').onclick=()=>{heldOff=running||starting;void start();};
     // STOP: everything off, whatever is going on. Space does the same anywhere on this tab, as it stops an op mode on a Driver Station.
     function zeroHolds(){releasedAt=performance.now();for(const s of host.querySelectorAll('[data-hold]')){s.value=0;spinFill(s);}held=null;}
-    function stopAll(){const told=!!checkRun;checkStop();zeroHolds();for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;if(!told)void send('X');}
+    function stopAll(){root.DeckSounds?.play('stop');const told=!!checkRun;checkStop();zeroHolds();for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;if(!told)void send('X');}
     q('[data-debug-stopall]').onclick=stopAll;
     document.addEventListener('keydown',e=>{if(e.code!=='Space'||e.repeat||!running||!host.offsetParent||e.target?.matches?.('textarea,[contenteditable],input:not([type]),input[type=text]'))return;e.preventDefault();e.stopPropagation();stopAll();},true);
     // lastBuild: what the last install answered, for run: {opMode} or {problem}. An error on the way, such as the crash guard's, is thrown again for run to say.
     let lastBuild=null;
     async function install(host,extra={}){const {host:picked,label}=link(),to=host||picked,b=q('[data-debug-install]'),was=unplugs;b.disabled=true;installing=true;lastBuild=null;status(`Putting Torque Debug on ${label} and building…`);
-      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
+      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};root.DeckSounds?.play(lastBuild.problem?'fail':'ready');status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
     q('[data-debug-install]').onclick=()=>void install();
     // Hold-to-run: the slider sends while held and springs back to 0 when let go (pointer up, key up, focus lost). Its bar grows from the middle, the way it turns.
     let held=null,sentAt=0;
@@ -252,7 +257,7 @@
     // Holding a slider keeps sending, so a held slider never times out on the robot.
     setInterval(()=>{if(held&&running)holdSend(held,true);},150);
     host.addEventListener('click',e=>{const r=e.target.closest('[data-reset]');if(r){void send(`R\t${r.dataset.reset}`);return;}
-      const l=e.target.closest('[data-light]');if(l){void send(`G\t${l.dataset.light}\t${l.getAttribute('aria-checked')==='true'?0:1}`);return;}
+      const l=e.target.closest('[data-light]');if(l){root.DeckSounds?.play('tap');void send(`G\t${l.dataset.light}\t${l.getAttribute('aria-checked')==='true'?0:1}`);return;}
       const p=e.target.closest('[data-plot-key]');if(p){const k=p.dataset.plotKey;if(plot.has(k))plot.delete(k);else if(plot.size<5)plot.add(k);p.classList.toggle('plotted',plot.has(k));chart();if(!plot.size)q('[data-debug-legend]').innerHTML='';}});
     // Half a second of quiet, the pulse (M, C: power; S: position), then 0.6 s after: every input that moved beyond three
     // times its noise, with when it first did and by how much. {changes:[{key, delta, at, text}], error}
@@ -273,7 +278,7 @@
       return {changes};}
     // Readings over a while (for captures and ramps): the values of every frame in the next ms milliseconds.
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
-    return {event,layout,start,run,install,stop,unplugged,wanted,send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    return {event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:ms=>{warmUntil=Date.now()+ms;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

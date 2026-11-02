@@ -26,6 +26,7 @@
   // One plain line for what stopped the link, whether trying again by itself makes sense and when. rebuild: the robot does not list the program that is on it. wait: someone else has the robot, so it clears by itself. rc: only the Robot Controller app starting clears it, and a press may start that.
   function linkFailure(message){const m=String(message||''),plain=m.replace(/\bTorque Debug\b/g,'the camera program').replace(/\blive debug\b/gi,'the camera program').replace(/^the /,'The ');
     if(/no Torque Debug op mode/.test(m))return {rebuild:true};
+    if(/Competition mode is on/.test(m))return {hard:true,text:m};
     if(/crashed when it loaded/.test(m))return {hard:true,sticky:true,text:plain};
     if(/older than this app/.test(m))return {hard:true,text:plain};
     if(/Another Driver Station is connected/.test(m))return {again:10000,wait:true,text:'Another Driver Station is connected to this robot. The picture starts once it disconnects.'};
@@ -130,7 +131,7 @@
     return c?.state==='default'?{state:'warn',text:'The default calibration is active, not one made for this Limelight.'}:{state:'na',text:'Torque has not read its calibration.'};}
   const LIME_STEPS=['Plug the Limelight into the computer, not the hub, and go to http://limelight.local:5801 in a web browser.','Open its Calibration tab and print a ChArUco board (the default is 11x8, 5x5_100).','Take at least 25 snapshots, then go on to 50, with edges and tilted views among them.','Aim for a reprojection error under 1 pixel. 0.3 to 0.8 is typical.','Plug it back into the Control Hub’s blue USB 3.0 port.'];
 
-  function create({host,api,native,debug,configured=()=>[],plugged=()=>null,active=()=>null,toConfigure,autoConfigure=null,limelights=()=>[],lens=null,conn=()=>null,busy=()=>false}){const q=s=>host.querySelector(s);let settings=(()=>{try{return sanitize(JSON.parse(localStorage.getItem(STORE)||'{}'));}catch{return sanitize({});}})(),source='sim',tags=[],tuning=null,result=null,streaming=false,raf=0,lastDraw=0,hits=[],camUrl=null,cam=null,timer=null;
+  function create({host,api,native,debug,configured=()=>[],plugged=()=>null,active=()=>null,toConfigure,autoConfigure=null,autoNow=null,limelights=()=>[],lens=null,conn=()=>null,busy=()=>false}){const q=s=>host.querySelector(s);let settings=(()=>{try{return sanitize(JSON.parse(localStorage.getItem(STORE)||'{}'));}catch{return sanitize({});}})(),source='sim',tags=[],tuning=null,result=null,streaming=false,raf=0,lastDraw=0,hits=[],camUrl=null,cam=null,timer=null;
     let lensBusy=false,lensFail='',lensSent=null,lensCopied=false,checkSize=LIVE_SIZE,drops,dropsAt=0,dropsKey=null,checksHtmlNow=null,lensHtmlNow=null,limeHtmlNow=null,controlsNow_=null,pickNow=null;const uvcs=new Map(),lime={at:0,calAt:0,busy:false,status:null,info:null,error:null,cal:null};
     // The link. failure: {text, hard, sticky, install, rc} what stopped it. pressed: someone pressed for the next start, which alone may start the Robot Controller app or clear a crash. moving: a start or stop on its way. pictureUp: a picture of this camera has arrived.
     // builds, ends, fails: this visit's builds with nobody pressing, runs that ended and failures that may not clear. startedAt: the last start, since a run that lasted is not a run that keeps ending.
@@ -192,7 +193,7 @@
       if(real()&&isOpen(now)&&cam){const up=cam.state==='STREAMING',n=Number.isFinite(cam.fps)?Math.round(cam.fps):null;if(n!==null&&(fpsShown===null||Math.abs(n-fpsShown)>=2))fpsShown=n;/* A rate that wobbles by one is not news, and this line is read out. */const fps=fpsShown===null?'':`${fpsShown} frames a second`;
         if(cam.error&&!up)return {text:`The camera did not start: ${cam.error}`,kind:'bad'};if(cam.error)return {text:`${fps}. A setting did not take: ${cam.error}`,kind:'warn'};if(up&&pictureUp)return {text:fps};}
       if(real()&&!isOpen(now))return {text:`Opening “${now.value}”. One camera opens at a time.`};
-      return {text:`Getting the camera ready…${link?.installing?' The first time takes about a minute.':''}`};}
+      return {text:`Getting the camera ready…${link?.installing?' The first time takes about half a minute.':''}`};}
     function paintLine(){const now=current(),l=lineOf(now),el=q('[data-cam-status]');if(el.textContent!==l.text)el.textContent=l.text;const c=l.kind==='bad'?'cal-debug-bad':l.kind==='warn'?'cal-debug-warn':'hint';if(el.className!==c)el.className=c;}
     function paintActions(now){const quiet=rcQuiet()&&['spare','configured'].includes(now.state)&&!failure?.hard,linked=['configured','live'].includes(now.state),add=!quiet&&((now.state==='spare'&&configKnown()&&addable(now))||(now.state==='limelight'&&!limeInConfig(now))),put=linked&&!!failure?.install,again=quiet||(linked&&!put&&(!!failure?.hard||!!failure?.rc)),b=q('[data-cam-add]');b.hidden=!add;b.textContent=now.state==='limelight'?'Add it in Configure':'Auto-configure';q('[data-cam-install]').hidden=!put;q('[data-cam-again]').hidden=!again;q('[data-cam-actions]').hidden=!add&&!again&&!put;}
     function paint(){const now=current(),c=controlsNow(),html=controls(),pick=offered().length>1?offered().map(o=>`<button type="button" data-cam-choice="${esc(o.value)}" aria-pressed="${o.value===now.value}" title="${esc(o.label)}">${esc(nameOf(o))}</button>`).join(''):'';if(waiting()||now.state==='limelight')tags=[];
@@ -246,7 +247,8 @@
     async function wake(){moving=true;paint();try{await api.robotLink('rc-start',{host:conn()?.host});}catch(e){failWith(e.message);}finally{moving=false;}if(fresh)fresh.stale=true;freshAt=0;paint();tick();}
     function pressAgain(){const quiet=rcQuiet();failure=null;tryAt=0;builtAt=0;rebuilds=0;builds=0;ends=0;fails=0;pressed=!quiet||current().state==='configured';if(quiet){guesses=0;void wake();return;}paint();tick();}
     async function stopLink(){moving=true;try{await debug.stop();}finally{moving=false;}paint();}
-    function drive(){if(!debug?.run)return;const s=debug.state(),want=wantNow()||debugWants(),keep=!!debug.shown?.(),at=Date.now();if(want||keep)leftAt=at;
+    let autoTried=null;
+    function drive(){if(!debug?.run)return;const spare=offered().find(o=>o.state==='spare'&&!o.absent);if(spare&&autoNow&&conn()?.host==='usb'&&shown()&&autoTried!==spare.value&&!busy()&&!moving){if(autoNow())autoTried=spare.value;}const s=debug.state(),want=wantNow()||debugWants(),keep=!!debug.shown?.(),at=Date.now();if(want||keep)leftAt=at;
       const step=linkStep({want,keep,running:s.running,moving:moving||s.starting||s.installing||freshBusy,blocked:!!busy(),own:s.auto,hard:!!failure?.hard,at,tryAt,leftAt});if(step==='start')void startLink();else if(step==='stop')void stopLink();}
     // The camera picked, if another is open. Torque Debug opens its first by itself.
     function syncCamera(){const now=current();if(!real()||!cam||cam.open===undefined)return;if(cam.open===now.value){camSent=null;return;}const line=`W\t${now.value}`;if(camSent!==line&&!now.absent){camSent=line;pictureUp=false;send(line);}}
@@ -310,7 +312,7 @@
       const had=cameras().join(),now=current();stream(real());if(!debug?.running?.()){lensSent=null;camSent=null;if(pictureUp)pictureUp=false;}if(!real()&&!raf&&!waiting()&&!limelightOn())raf=requestAnimationFrame(frame);const row=rowOf(now);
       if(native&&api.robotLink){void readFresh();if(row){void readUvc(row);}if(rows())void readDrops();if(now.state==='limelight')void readLime();}
       const link=debug?.state?.(),seen=(rows()||[]).map(r=>[r.device?.path,r.device?.dev,r.id,r.pending,r.scanKey]),known=JSON.stringify([had,configured(),plugged(),seen,limelights(),active(),link,fresh]);if(tick.cams!==known){tick.cams=known;if(real()&&!tuning)sendSettings();paint();}}
-    debug?.onCamera?.(bytes=>{if(!real()||!shown()||!isOpen(current()))return;const url=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));q('[data-cam-image]').src=url;if(camUrl)URL.revokeObjectURL(camUrl);camUrl=url;if(!pictureUp){pictureUp=true;paint();}});
+    debug?.onCamera?.(bytes=>{if(!real()||!shown()||!isOpen(current()))return;if(!pictureUp)globalThis.DeckSounds?.play('ready');const url=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));q('[data-cam-image]').src=url;if(camUrl)URL.revokeObjectURL(camUrl);camUrl=url;if(!pictureUp){pictureUp=true;paint();}});
     // Readings can come 50 times a second, and what the camera says about itself changes 10 times a second. So the last one is read every tenth of a second, and hidden, only kept.
     let camNext=null,camAt=0,camTimer=null,camMissed=false;
     function camFrame(){const f=camNext;camNext=null;camAt=performance.now();if(!f)return;runPressed=false;const on=shown();if(failure&&(!failure.hard||failure.install)){failure=null;tryAt=0;if(on)paint();}const c=f.cam;if(!c)return;const was=`${cam?.state}${cam?.error}${cam?.lens}${cam?.open}${cam?.range}`;if(cam?.open!==c.open)pictureUp=false;cam=c;if(!on){camMissed=true;return;}

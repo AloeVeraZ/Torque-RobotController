@@ -430,8 +430,8 @@ async function usbCrashes({run,serial}={}){const hub=serial||(await usbForward({
 // seen, from Sinister in the team's build), it would crash again each time it starts. So that build and Torque Debug's source
 // are taken off, the app is started again, and this says so. The team's own sources stay, but the build was theirs too.
 // The app not listening proves nothing: a save, a Driver Hub or a press restarts it too, and a team's build is not to go for that. Only a crash that the log did not hold at the start counts. before: the log from before the build, so a crash during it counts.
-async function usbDebugGuard({run,watch=40000,pause=2000,before}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),old=before===undefined?await usbCrashes({run,serial}):before;
-  for(const end=Date.now()+watch;Date.now()<end;await delay(pause)){if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
+async function usbDebugGuard({run,watch=40000,pause=2000,before,still=()=>true}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run}),old=before===undefined?await usbCrashes({run,serial}):before;
+  for(const end=Date.now()+watch;Date.now()<end&&still();await delay(pause)){if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
     await delay(Math.min(5000,watch));if(controllerListening(await sh('cat /proc/net/udp /proc/net/udp6 2>/dev/null')))continue;
     const now=await usbCrashes({run,serial});if(!old||!now||!now.some(l=>!old.includes(l)))continue;
     await sh(`rm -f /sdcard/FIRST/java/src/${DEBUG_FILE}; rm -rf /sdcard/FIRST/java/build/jars/* /sdcard/FIRST/java/build/classes/*`);await usbController(serial,{run});

@@ -52,6 +52,11 @@ test('Auto-configure adds the hub’s own IMU on bus 0, as Configure Robot’s S
   const taken=bare.replace('name="left"','name="imu"');{const t=E.load('robot',taken,ALONE);assert.deepEqual(E.autoApply(t,[]).imus,['imu2'],'its name is free');}
   const list=usb([CAM],{},[{serial:'Ucamera001',type:'WEBCAM'}]),both=E.load('robot',bare,CABLE),all=E.autoPlan(both,list);assert.equal(E.offerText(all),'1 new USB device, 2 new hubs and the hub’s own IMU');assert.deepEqual(all.imus.map(m=>m.address),[173],'on the parent, not the others');
 });
+test('Configure warns about what the rules limit, and only then',()=>{
+  const hubs=n=>Array.from({length:n},(_,i)=>`<LynxModule name="Expansion Hub ${i+2}" port="${i+2}" />`).join('\n        '),motors=n=>Array.from({length:n},(_,i)=>`<goBILDA5202SeriesMotor name="m${i}" port="${i%4}" />`).join(''),with_=(extra,mods='')=>XML.replace('<LynxModule name="Control Hub" port="173">',`${mods}<LynxModule name="Control Hub" port="173">${extra}`);
+  assert.deepEqual(E.ruleNotes(E.load('robot',XML,null)),[]);assert.deepEqual(E.ruleNotes(E.load('robot',with_('',hubs(1)),null)),[],'one Expansion Hub is fine');assert.match(E.ruleNotes(E.load('robot',with_('',hubs(2)),null))[0],/2 Expansion Hubs: FTC rule R701/);
+  assert.match(E.ruleNotes({devices:Array.from({length:9},()=>({family:'motor'})),hubs:[]})[0],/^9 motors: FTC rule R503 allows 8/);assert.deepEqual(E.ruleNotes({devices:Array.from({length:8},()=>({family:'motor'})),hubs:[]}),[]);assert.match(E.ruleNotes({devices:Array.from({length:9},()=>({family:'servo',tag:'Servo'})),hubs:[]})[0],/^9 servos/);assert.deepEqual(E.ruleNotes({devices:Array.from({length:9},()=>({family:'servo',tag:'RevBlinkinLedDriver'})),hubs:[]}),[],'a Blinkin is not a servo');
+});
 test('Auto-configure with everything already there writes nothing, and says which cameras are ready',()=>{
   const list=usb([CAM],{},[{serial:'Ucamera001',type:'WEBCAM'}]),e=E.load('robot',R.withWebcams(XML,[{name:'Webcam',serial:'Ucamera001'}]),ALONE),plan=E.autoPlan(e,list);
   assert.equal(plan.writes,false);assert.deepEqual(plan.ready,['Webcam']);assert.equal(plan.readyKey,'Ucamera001');assert.equal(e.dirty,false);

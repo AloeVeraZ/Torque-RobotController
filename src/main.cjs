@@ -263,7 +263,7 @@ function lockDown(contents,allowed){
   contents.on('will-navigate',(e,url)=>{if(!allowed(url))e.preventDefault();});contents.setWindowOpenHandler(({url})=>{if(allowed(url))void contents.loadURL(url);return {action:'deny'};});
 }
 async function openFtc(target,ssid,epoch){
-  const host=new URL(target.url).hostname,socket=host===USB_HOST?new UsbFtcSocket(()=>robotLink.usbLink().then(f=>({port:f.link}))):new FtcSocket(host);
+  const host=new URL(target.url).hostname;if(competition&&host!==USB_HOST)throw Error(COMPETITION_WIFI);const socket=host===USB_HOST?new UsbFtcSocket(()=>robotLink.usbLink().then(f=>({port:f.link}))):new FtcSocket(host);
   try{await socket.open();}catch(e){if(epoch===connectionEpoch)update({page:'drive',loading:false,url:target.url,title:target.name||host,error:e.message});return {opened:false};}
   if(epoch!==connectionEpoch||suspended){await socket.close();return {opened:false};}
   const robot=library.upsert({...target,ssid,kind:'ftc'},{opened:true});
@@ -332,7 +332,7 @@ handle('manager-close',closeManager);
 const auto={ssid:null,dismissed:false,busy:false};
 async function autoOpenFtc(){
   const ssid=currentNetwork?.ssid||'';if(auto.ssid!==ssid)Object.assign(auto,{ssid,dismissed:false});
-  if(offlinePage(state.page)||suspended||state.recovering||auto.busy||auto.dismissed||robotView||opening||finding||updater?.busy||network.busy||!library||!ssid)return;
+  if(competition||offlinePage(state.page)||suspended||state.recovering||auto.busy||auto.dismissed||robotView||opening||finding||updater?.busy||network.busy||!library||!ssid)return;
   const saved=library.list(ssid).filter(r=>r.ssid===ssid&&r.kind==='ftc');if(!saved.length)return;
   auto.busy=true;
   try{
@@ -340,19 +340,25 @@ async function autoOpenFtc(){
     if(robot&&!offlinePage(state.page)&&!suspended&&!state.recovering&&!robotView&&!opening&&!auto.dismissed&&(currentNetwork?.ssid||'')===ssid){auto.busy=false;await openRobot({id:robot.id});}
   }catch(e){emit('notice',e.message);}finally{auto.busy=false;}
 }
-handle('bootstrap',async()=>{await refreshNetwork();setTimeout(()=>void autoOpenFtc(),300);return {state:snapshot(),hardware:hardware(),app:{version:meta.version,channel:meta.updateChannel}};});handle('open',openRobot);handle('close',async()=>{auto.dismissed=true;await closeRobot();});
-// The open robot stays connected while Settings is shown; it is hidden, not closed.
+handle('bootstrap',async()=>{await refreshNetwork();setTimeout(()=>void autoOpenFtc(),300);return {state:snapshot(),hardware:hardware(),app:{version:meta.version,channel:meta.updateChannel}};});handle('open',input=>{driveRobot=null;return openRobot(input);});handle('close',async()=>{auto.dismissed=true;driveRobot=null;await closeRobot();});
+// The open robot stays connected while Settings is shown; it is hidden, not closed. Setup, Calibrate and Simulate need the robot themselves, since only one Driver Station can talk to it at a time, so what was open comes back when Drive does.
+let driveRobot=null;
+// Competition mode, from the three-dot menu. R704 lets Wi-Fi streaming go only through the FTC Driver Station app, so Torque drives and streams only over the cable. docs/COMPETITION-RULES.md
+let competition=false;
+const COMPETITION_WIFI='Competition mode is on, and FTC rule R704 allows streaming over Wi-Fi only through the FTC Driver Station app. Use the USB-C cable, or turn Competition mode off in the three-dot menu once you are away from the event.';
+async function driveAgain(){const robot=driveRobot;driveRobot=null;try{await debugStop();if(robotCheck){robotCheck.stop();await Promise.race([robotCheck.ended?.catch(()=>{}),delay(5000)]);}if(state.page==='drive'&&!robotView&&!opening)await openRobot(robot);}catch(e){emit('notice',e.message);}}
 async function setPage(page){
   if(!['drive','setup','settings','simulation','calibrate'].includes(page))throw Error('Unknown app view.');
   pageEpoch++;releaseKeys();
   if(page!=='drive'){robotKeyboard?.hide({focus:false});await setRobotFullscreen(false);}
   update({page});fitView();
   // Simulation and Calibrate are offline. Close the live robot, including its active FTC op mode.
-  if(offlinePage(page)){finding?.abort();await closeRobot();}
+  if(offlinePage(page)){finding?.abort();if(robotView&&active)driveRobot={...active};await closeRobot();}
   // Leaving them ends the simulation's processes, including any running Java program, and a guided check running on a robot.
   else {simulation?.stop();robotCheck?.stop();}
   // Live debug drives the robot's outputs: it only runs while Calibrate or Setup's hub test shows.
   if(page!=='calibrate'&&page!=='setup')robotDebug?.stop();
+  if(page==='drive'&&driveRobot)void driveAgain();
   return snapshot();
 }
 handle('page',setPage);
@@ -413,6 +419,9 @@ const debugStop=async()=>{const debug=robotDebug;if(!debug)return;debug.stop();c
 const debugTripFile=()=>path.join(app.getPath('userData'),'torque-debug-crashes.json');
 const debugTrips=()=>{try{const all=JSON.parse(fs.readFileSync(debugTripFile(),'utf8'));return all&&typeof all==='object'?all:{};}catch{return {};}};
 function debugTrip(serial,on){const all=debugTrips();if(!!all[serial]===on)return;if(on)all[serial]=new Date().toISOString();else delete all[serial];try{fs.writeFileSync(debugTripFile(),JSON.stringify(all));}catch{}}
+// The crash guard's watch after a build, beside whatever comes next. A newer build has its own. A real crash takes the program off and says so to whoever is listening, and that hub is remembered.
+let debugGuarding=null;
+function debugWatch(before,serial){const me={};debugGuarding=me;void robotLink.usbDebugGuard({before,still:()=>debugGuarding===me}).catch(e=>{if(e.crashed){debugTrip(serial,true);emit('robot-link-debug',{error:e.message});}}).finally(()=>{if(debugGuarding===me)debugGuarding=null;});}
 // Torque Debug onto the robot and built, and over the cable the crash guard then watches that the app survives it. auto: Calibrate → Camera asked, so nothing goes on unless the robot is free and that page still shows: a build
 // on a robot someone is driving would disturb them. noStart with it: nobody pressed anything, which never happens over Wi-Fi, where nothing could bring the app back from a crash, or on a hub it has crashed.
 async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='usb',nobody=data?.noStart===true,here=()=>{if(state.page!=='calibrate'&&state.page!=='setup')throw Error('Torque left this page before the robot started.');},serial=usb?(await robotLink.usbForward()).serial:null;
@@ -422,7 +431,7 @@ async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='us
     await overLink(o=>robotLink.debugIdle(data?.host,o),undefined,usbOptions);here();}
   if(serial&&!nobody)debugTrip(serial,false);
   const before=usb?await robotLink.usbCrashes({serial}):undefined,opMode=robotLink.debugName(),built=await robotLink.send(data?.host,{[robotLink.DEBUG_FILE]:robotLink.debugSource(opMode)},{remove:[robotLink.OLD_DEBUG_FILE],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
-  if(built.built&&usb){try{await robotLink.usbDebugGuard({before});}catch(e){if(e.crashed)debugTrip(serial,true);throw e;}}
+  if(built.built&&usb)debugWatch(before,serial);
   return {...built,opMode,...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
 // What waits while that runs: a save or a restart would look like a crash to the guard, and a build is not to be interrupted. Reading the hub's files and ports does neither.
 const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
@@ -443,6 +452,7 @@ const hubWatcher=()=>usbWatch||=new UsbWatch({adbPath:robotLink.adbPath,logFile:
 // The hub to ask, for a page that asks before the watch has said: the watch knows without running ADB.
 const hubOnUsb=async()=>{const known=HubUsb.hubToFollow({hub:usbWatch?.hub});if(known)return known;const s=await robotLink.usbStatus();if(!s.found)throw Error(s.message||'No Control Hub on USB.');return s.serial;};
 handle('robot-link',async(action,data)=>{
+  if(action==='competition'){competition=data?.on===true;return competition;}
   if(action==='usb-watch'){if(data?.shown)return hubWatcher().shown(data.shown,data.at);if(!data?.on)return usbWatch?.stop()??null;const s=hubWatcher().start();hubFollower.follow(HubUsb.hubToFollow(s));return {...s,hubUsb:hubFollower.latest()};}
   // What is on the hub's own USB ports. They only read the hub, so they go on while live debug runs.
   if(action==='hub-usb'){const serial=await hubOnUsb();return hubFollower.serial===serial?hubFollower.latest()||await hubFollower.read():HubUsb.readHubUsbList(serial);}
@@ -468,7 +478,7 @@ handle('robot-link',async(action,data)=>{
   // Calibrate → Camera runs it by itself, and that gives way to anything a student asks of the robot, until something has driven an output (debug-claim).
   if(action==='debug-claim'){if(robotDebug)robotDebug.auto=false;return true;}
   if(debugBusy&&DEBUG_HOLDS.has(action))await debugBusy.catch(()=>{});
-  if(robotDebug?.auto)await debugStop();
+  if(robotDebug?.auto||robotDebug&&(action==='configure'||action==='activate'))await debugStop();
   if(robotDebug)throw Error('Live debug is still running. Stop it first.');
   // Resolves once the robot has stopped the check and the connection is free (5 s at most).
   if(action==='check-stop'){const check=robotCheck;if(check){check.stop();await Promise.race([check.ended.catch(()=>{}),delay(5000)]);}return true;}
@@ -488,6 +498,7 @@ handle('robot-link',async(action,data)=>{
     check.ended.then(why=>{if(!check.told)emit('robot-link-check',{ended:why});},e=>{if(!check.told)emit('robot-link-check',{error:e.message});}).finally(()=>{if(robotCheck===check)robotCheck=null;});
     return true;}
   if(action==='debug-start'){
+    if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
     // The page may have changed while the cable's link came up, and Live debug only runs while Calibrate or Setup shows.
     if(state.page!=='calibrate'&&state.page!=='setup'){await socket?.close();throw Error('Torque left this page before the robot started.');}

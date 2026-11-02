@@ -90,7 +90,7 @@ Tune your robot step by step using real readings from your Control Hub.
 
 ![Live debug listing each motor, servo and sensor on the Control Hub](docs/media/calibrate-live.jpg)
 
-[Full calibration guide](docs/CALIBRATION.md)
+[Full calibration guide](docs/CALIBRATION.md) · [FTC rules and Competition mode](docs/COMPETITION-RULES.md)
 
 ## Updating
 
