@@ -164,6 +164,7 @@ window.DeckAxon=(()=>{
   }
   async function startSwitch(extra={}){
     const code=extra.code||modelCode(),mode=extra.mode||wanted(),status=await axon('firmware-status',{code,mode});
+    if(!status.keys){ask={title:'Import your key file',text:'Changing a servo\'s firmware needs Axon\'s keys, and Torque does not include them. If you have a key file, import it once and it stays on this computer. Everything else here works without it, and Axon\'s own app can switch modes too.',buttons:[['Import key file','import-keys'],['Cancel','cancel-ask']],code,mode,extra};return;}
     if(!status.have&&!status.chosen){ask={title:'Firmware needed',text:`This needs ${status.fileName} (${(status.size/1024).toFixed(1)} KB), Axon's official firmware for this mode. Torque does not ship it. It can download it once from Axon's own link, or you can pick the file if you already have it.`,buttons:[['Download from Axon','download'],['Choose a file','choose-firmware'],['Cancel','cancel-ask']],code,mode,extra};return;}
     const v1=models().find(m=>m.code===code)?.family==='v1';
     ask={title:extra.recovery?'Recover a servo':`Switch to ${MODE[mode]}`,text:extra.recovery?`Use this if a mode switch was interrupted and the servo no longer shows up. It writes ${modelTitle(code)} ${MODE[mode]} firmware, so check that the servo and mode picked are right. Torque still checks the hardware ID, but it cannot check the servo's name.`:`This writes Axon's ${MODE[mode]} firmware to the servo and resets its settings to Axon's factory values for that mode. Save a settings file first if you want to keep them.`,
@@ -189,6 +190,7 @@ window.DeckAxon=(()=>{
     'save-file':()=>axon('save-settings',{changes:pending}),
     'cancel-ask':()=>closeAsk(),
     download:async()=>{const a=ask;closeAsk();render();await axon('download',{code:a.code,mode:a.mode});await startSwitch({...a.extra,code:a.code,mode:a.mode});},
+    'import-keys':async()=>{const a=ask,r=await axon('import-keys');if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     'choose-firmware':async()=>{const a=ask,r=await axon('choose-firmware',{code:a.code,mode:a.mode});if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     flash:()=>doFlash(ask),'flash-anyway':()=>doFlash(ask,true),
     recover:()=>startSwitch({recovery:true,code:chosenModel(),mode:wanted()}),

@@ -31,10 +31,12 @@ async function until(fn,label){for(let i=0;i<100;i++){if(await fn())return;await
   await page.waitForFunction(size=>innerWidth===size[0]&&innerHeight===size[1],original.size);
   for(const zoom of [1,1.25,1.5,2]){
    await native.evaluate((w,z)=>w.webContents.setZoomFactor(z),zoom);
-   const mount=await page.evaluate(async()=>{await bounds();return document.querySelector('#robot-mount').getBoundingClientRect().toJSON();});
-   const view=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].contentView.children.find(v=>v.webContents.getURL().startsWith('http://127.0.0.1:')).getBounds());
-   const x=Math.round(mount.x*zoom),y=Math.round(mount.y*zoom);
-   assert.deepEqual(view,{x,y,width:Math.min(Math.round(mount.width*zoom),original.size[0]-x),height:Math.min(Math.round(mount.height*zoom),original.size[1]-y)},'native robot view covers the station chrome or footer at zoom '+zoom);
+   let view,want;for(let i=0;i<30;i++){
+    const mount=await page.evaluate(async()=>{await bounds();return document.querySelector('#robot-mount').getBoundingClientRect().toJSON();});
+    view=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].contentView.children.find(v=>v.webContents.getURL().startsWith('http://127.0.0.1:')).getBounds());
+    const x=Math.round(mount.x*zoom),y=Math.round(mount.y*zoom);want={x,y,width:Math.min(Math.round(mount.width*zoom),original.size[0]-x),height:Math.min(Math.round(mount.height*zoom),original.size[1]-y)};
+    if(JSON.stringify(view)===JSON.stringify(want))break;await page.waitForTimeout(100);}
+   assert.deepEqual(view,want,'native robot view covers the station chrome or footer at zoom '+zoom);
   }
   await native.evaluate(w=>w.webContents.setZoomFactor(1));await page.evaluate(()=>bounds());
   if(process.env.DECK_ZOOM_ONLY==='1'){console.log('PASS: embedded native robot view stays inside its mount at 100/125/150/200% app zoom.');return;}

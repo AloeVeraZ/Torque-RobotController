@@ -8,7 +8,7 @@ Setup & Calibrate → **Axon Programmer**, the tab at the far right. Torque prog
 
 - An Axon V2 programmer, which Axon calls the Programmer MK2. Axon, goBILDA and ServoCity sell it.
 - A USB cable that carries data. USB-C powers the programmer and the servo, so no battery is needed.
-- A Windows computer, for now. Torque's releases are Windows only.
+- A Windows computer, for now. Torque runs on Steam Deck, Linux and Mac too, but the small program that reaches the programmer over USB is built for Windows, so there this tab says it cannot reach it.
 - One of these servos: V1 MAX (sold as MAX+), V1 MINI (MINI+), V2 MAX (MAX MK2), V2 MINI (MINI MK2).
 
 Close Axon Software MK2 and Axon Bridge first. They poll the same programmer, and two apps at once corrupt each other's traffic. Torque waits and offers to close them.
@@ -33,6 +33,8 @@ It is laid out like Axon Bridge, in Torque's look, and fits a 1280x800 screen wi
 Nothing reaches the servo before Apply. Torque then reads it back, and the banner says **Confirmed** or **It did not take**.
 
 Switching mode writes Axon's official firmware for that mode, as Axon's own apps do. It takes about a minute. It also resets the servo's settings to Axon's factory values for that mode, because the firmware file carries them, so save a settings file first if you want them back.
+
+**Axon's keys.** Axon's firmware files are encrypted with Axon's own keys, and Torque includes neither the keys nor the firmware. Settings, reading, saving and defaults all work without them. Switching mode asks for a key file once (**Import key file**, a JSON file with `v1` and `v2`, each 32 hexadecimal digits), and it stays beside this computer's settings as `axon-keys.json`, never in a release or this repository. Without one, Axon's own app can switch modes. Firmware comes from Axon's own link, or a file you already have.
 
 ## Simple and Advanced
 

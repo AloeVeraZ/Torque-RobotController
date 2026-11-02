@@ -47,11 +47,13 @@ function simTransport(link,{v1Programmer=false,bootMode=false,silent=false}={}){
 function firmwareText(a,b,name,mode,records){let s=`@${a.toString(16).padStart(2,'0').toUpperCase()}${b.toString(16).padStart(2,'0').toUpperCase()}${name}\r\n$0800\r\n$0900\r\n`;
   for(let r=0;r<records;r++){const d=Buffer.alloc(16);for(let i=0;i<16;i++)d[i]=r*7+i;d[0]=mode==='cr'?0xC1:0x51;const addr=r*16;let sum=16+(addr>>8)+(addr&255);s+=`:10${addr.toString(16).padStart(4,'0').toUpperCase()}00`;for(const x of d){s+=x.toString(16).padStart(2,'0').toUpperCase();sum+=x;}s+=`${((-sum)&255).toString(16).padStart(2,'0').toUpperCase()}\r\n`;}
   return s+':00000001FF\r\n';}
+// Keys made up for these tests: they open only the fake files below.
+const TEST_KEYS={v1:'11'.repeat(16),v2:'22'.repeat(16)};
 const crypt=(key,mode,data)=>{const c=crypto.createCipheriv(mode,key,mode==='aes-128-cbc'?Buffer.alloc(16):null);c.setAutoPadding(false);return Buffer.concat([c.update(data),c.final()]);};
 const pad16=d=>{const p=Buffer.alloc(Math.ceil(d.length/16)*16);d.copy(p);return p;};
-function encryptV1(text){const plain=Buffer.from(text,'latin1'),key=Buffer.alloc(16),head=Buffer.alloc(16);head.writeInt32LE(plain.length,0);head[4]=head[5]=0x78;return Buffer.concat([crypt(key,'aes-128-ecb',head),crypt(key,'aes-128-cbc',pad16(plain))]);}
-function encryptV2(text){return Buffer.concat([Buffer.alloc(16),crypt(Buffer.alloc(16),'aes-128-cbc',pad16(Buffer.from(text,'latin1')))]);}
+function encryptV1(text){const plain=Buffer.from(text,'latin1'),key=Buffer.from(TEST_KEYS.v1,'hex'),head=Buffer.alloc(16);head.writeInt32LE(plain.length,0);head[4]=head[5]=0x78;return Buffer.concat([crypt(key,'aes-128-ecb',head),crypt(key,'aes-128-cbc',pad16(plain))]);}
+function encryptV2(text){return Buffer.concat([Buffer.alloc(16),crypt(Buffer.from(TEST_KEYS.v2,'hex'),'aes-128-cbc',pad16(Buffer.from(text,'latin1')))]);}
 // Fake mode files with the real servos' names under the real file names, and a catalog without hashes to go with them.
 function installFirmware(dir){fs.mkdirSync(dir,{recursive:true});
   return S.FIRMWARE.map(f=>{const model=S.modelByCode(f.code),v1=f.fileName.endsWith('.sfw'),text=firmwareText(0x08,v1?1:0x22,model.factoryName,f.mode,120);fs.writeFileSync(path.join(dir,f.fileName),v1?encryptV1(text):encryptV2(text));return {...f,sha256:null};});}
-module.exports={SimLink,simTransport,makeBlock,firmwareText,encryptV1,encryptV2,installFirmware};
+module.exports={TEST_KEYS,SimLink,simTransport,makeBlock,firmwareText,encryptV1,encryptV2,installFirmware};

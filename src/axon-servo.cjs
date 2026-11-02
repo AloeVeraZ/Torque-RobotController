@@ -96,7 +96,7 @@ const OVERLOAD='When the servo stalls, it cuts its own power in up to three stag
 const INVERT='Reverses which way the servo turns for the same command. Counter-clockwise is the default.';
 const PROPTL='How long the servo may hold full power before it starts limiting itself. Continuous rotation has no three-stage overload protection, so this is its only stall protection.';
 const BEEP='Plays a sound when the servo powers up.';
-const POWER_SHORT='Caps how hard it pushes',DAMPING_SHORT='Stops overshoot. Factory tuned',SENSITIVITY_SHORT='Smallest change it reacts to',SOFT_SHORT='Gentler start at power-on',INVERT_SHORT='Reverses the direction',LOST_SHORT='If the signal stops',BEEP_SHORT='Beep at power-up',PROPTL_SHORT='Full power time before limit';
+const POWER_SHORT='Caps how hard it pushes',DAMPING_SHORT='Stops overshoot',SENSITIVITY_SHORT='Smallest change it reacts to',SOFT_SHORT='Gentler start at power-on',INVERT_SHORT='Reverses the direction',LOST_SHORT='If the signal stops',BEEP_SHORT='Beep at power-up',PROPTL_SHORT='Full power time before limit';
 const LOST_OPTIONS=['Release','Keep Position','Go Neutral'],bit=(flags,mask,on)=>on?flags|mask:flags&~mask&255,be16=(b,at,v)=>{b[at]=v>>8&255;b[at+1]=v&255;};
 const changed=(now,basis,key)=>now[key]!==basis[key];
 const overloadFields=(tMax,pMin,format)=>[1,2,3].flatMap(n=>[{key:`ol${n}t`,label:`Level ${n} after`,group:'Overload protection',kind:'range',min:0,max:tMax,format,short:`Stall time before level ${n}`,what:`How long the servo must stay stalled before level ${n} starts. ${OVERLOAD}`},{key:`ol${n}p`,label:`Level ${n} power`,group:'Overload protection',kind:'range',min:pMin,max:255,format:'pct',short:`Power limit during level ${n}`,what:`How much power the servo may use once level ${n} starts. ${OVERLOAD}`}]);
@@ -107,7 +107,7 @@ const SENS_V2=[150,100,50,25];
 const v1Servo={title:'V1 servo mode',family:'v1',mode:'servo',fields:[
     {key:'angle',label:'Servo Angle',group:'Travel',kind:'range',min:1,max:255,format:'angle',short:'Total travel, up to 355°',what:'How far the servo may turn in total. 255 is 355 degrees and the factory value is about 180.'},
     {key:'neutral',label:'Neutral',group:'Travel',kind:'range',min:-127,max:127,format:'plain',short:'Shifts the center position',what:'Moves the center position a little. Axon warns that large changes can have side effects.'},
-    {key:'range',label:'Pulse Range',group:'Travel',kind:'choice',options:['500-2500','900-2100','1100-1900','Narrow','SSR'],short:'Keep 500-2500 on an FTC hub',what:'The signal the servo expects, in µs. Narrow is 450-1050 and SSR is 130-470. An FTC hub sends 500-2500, so leave this there on a robot.'},
+    {key:'range',label:'Pulse Range',group:'Travel',kind:'choice',options:['500-2500','900-2100','1100-1900','Narrow','SSR'],short:'Keep 500-2500 for FTC',what:'The signal the servo expects, in µs. Narrow is 450-1050 and SSR is 130-470. An FTC hub sends 500-2500, so leave this there on a robot.'},
     {key:'pwm',label:'PWM Power',group:'Response',kind:'range',min:100,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'damping',label:'Damping',group:'Response',kind:'range',min:50,max:600,format:'plain',short:DAMPING_SHORT,what:DAMPING},
     {key:'sens',label:'Sensitivity',group:'Response',kind:'choice',options:['Ultra High','High','Medium','Low'],short:SENSITIVITY_SHORT,what:SENSITIVITY},{key:'softstart',label:'Soft Start',group:'Response',kind:'switch',short:SOFT_SHORT,what:'Limits how fast the servo accelerates just after power-on, so it does not jump.'},
     {key:'inversion',label:'Inversion',group:'Response',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'lostppm',label:'Lose PPM',group:'Response',kind:'choice',options:LOST_OPTIONS,short:LOST_SHORT,what:LOST},
@@ -165,7 +165,7 @@ const v2Cr={title:'V2 continuous rotation',family:'v2',mode:'cr',fields:[
     {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:25,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:1,max:250,format:'tenth',short:PROPTL_SHORT,what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'beep',label:'Power-on Sound',group:'Continuous rotation',kind:'switch',short:BEEP_SHORT,what:BEEP},
     // Advanced. Axon's app hides this on its continuous rotation page, but both V2 CR firmware files read byte 2 at start and
     // treat a smaller control error as no error, and the factory value for this firmware is Medium. Same byte, same four values as servo mode.
-    {key:'sens',label:'Stop Band',group:'Advanced',kind:'choice',advanced:true,options:['Low','Medium','High','Ultra High'],short:'Low is widest, factory Medium',what:'How wide the stop zone is around the center signal. If the servo creeps when it should be stopped, move to a wider band. If it ignores small commands, move to a narrower one. Axon\'s software does not show this in continuous rotation, but this firmware reads it.'}],
+    {key:'sens',label:'Stop Band',group:'Advanced',kind:'choice',advanced:true,options:['Low','Medium','High','Ultra High'],short:'Low widest, factory Medium',what:'How wide the stop zone is around the center signal. If the servo creeps when it should be stopped, move to a wider band. If it ignores small commands, move to a narrower one. Axon\'s software does not show this in continuous rotation, but this firmware reads it.'}],
   decode:b=>({pwm:b[6],proptl:b[15],inversion:b[20]&1,beep:b[26]&1,sens:b[2]>100?0:b[2]>50?1:b[2]>25?2:3}),
   encode(b,now,was){if(changed(now,was,'pwm'))b[6]=now.pwm;if(changed(now,was,'proptl'))b[15]=now.proptl;if(changed(now,was,'inversion'))b[20]=bit(b[20],1,now.inversion);if(changed(now,was,'beep'))b[26]=bit(b[26],1,now.beep);if(changed(now,was,'sens'))b[2]=SENS_V2[now.sens];},
   sanity:()=>null};
@@ -217,14 +217,21 @@ const FIRMWARE=[
   {code:'mini2',mode:'cr',fileName:'Axon_MINI_MK2_CR_Mode.sfm',size:13152,v:'1758606431',sha256:'a00f203ca736220d583dd4043c2b638347adb4ae02542df8b17677816157d6d0'},
 ].map(f=>({...f,url:`${CDN}${f.fileName}?v=${f.v}`}));
 const sha256=data=>crypto.createHash('sha256').update(data).digest('hex');
-const KEY_V1=Buffer.alloc(16),KEY_V2=Buffer.alloc(16);
+// Axon's firmware files are encrypted with Axon's own keys. No key is in this code or in a release. Whoever has them imports a key file once (AxonService.importKeys), and until then the rest of the tab works and only changing firmware asks for it.
+const NO_KEYS='Changing a servo\'s firmware needs Axon\'s keys, and Torque does not include them. Import your key file to use this, or switch modes with Axon\'s own app. Everything else here works without them.';
+let firmwareKeys=null;
+const goodKey=k=>typeof k==='string'&&/^[0-9a-f]{32}$/i.test(k);
+// A key file: {"v1": 32 hex digits, "v2": 32 hex digits}, either or both.
+function parseKeys(text){let v=null;try{v=JSON.parse(String(text));}catch{}const keys={};for(const k of ['v1','v2'])if(goodKey(v?.[k]))keys[k]=v[k].toLowerCase();if(!Object.keys(keys).length)throw Error('That is not a key file Torque can read. It should hold v1 and v2, each 32 hexadecimal digits.');return keys;}
+const useKeys=keys=>{firmwareKeys=keys||null;},hasKey=family=>!!firmwareKeys?.[family];
+const keyFor=family=>{if(!hasKey(family))throw Error(NO_KEYS);return Buffer.from(firmwareKeys[family],'hex');};
 const aes=(key,mode,data)=>{const d=crypto.createDecipheriv(mode,key,mode==='aes-128-cbc'?Buffer.alloc(16):null);d.setAutoPadding(false);return Buffer.concat([d.update(data),d.final()]);};
 // V1: the first block is an ECB header holding {int32 length, 'x', 'x'}. The body is CBC with a zero IV.
 function decryptV1(file){if(file.length<32||file.length%16!==0)throw Error('This is not a valid .sfw file (bad length).');
-  const head=aes(KEY_V1,'aes-128-ecb',file.subarray(0,16)),size=head.readInt32LE(0);if(head[4]!==0x78||head[5]!==0x78||size<=0||size>file.length)throw Error('This is not a valid .sfw file (bad header).');
-  const blocks=Math.ceil(size/16);if(16+blocks*16>file.length)throw Error('This .sfw file is truncated.');return aes(KEY_V1,'aes-128-cbc',file.subarray(16,16+blocks*16)).toString('latin1').slice(0,size);}
+  const key=keyFor('v1'),head=aes(key,'aes-128-ecb',file.subarray(0,16)),size=head.readInt32LE(0);if(head[4]!==0x78||head[5]!==0x78||size<=0||size>file.length)throw Error('This is not a valid .sfw file (bad header).');
+  const blocks=Math.ceil(size/16);if(16+blocks*16>file.length)throw Error('This .sfw file is truncated.');return aes(key,'aes-128-cbc',file.subarray(16,16+blocks*16)).toString('latin1').slice(0,size);}
 // V2: a 16-byte header is skipped, then CBC with a zero IV and no padding.
-function decryptV2(file){if(file.length<32||file.length%16!==0)throw Error('This is not a valid .sfm file (bad length).');return aes(KEY_V2,'aes-128-cbc',file.subarray(16)).toString('latin1');}
+function decryptV2(file){if(file.length<32||file.length%16!==0)throw Error('This is not a valid .sfm file (bad length).');return aes(keyFor('v2'),'aes-128-cbc',file.subarray(16)).toString('latin1');}
 const hx=(s,at)=>{const t=s.slice(at,at+2);if(!/^[0-9A-Fa-f]{2}$/.test(t))throw Error('not hex');return parseInt(t,16);};
 // A decrypted file: an "@AABBNAME" header, "$" erase lines and Intel-HEX ":" data lines. Only the key and header check differ between generations.
 function parseFirmware(text,family){
@@ -269,4 +276,4 @@ async function flash(programmer,image,servoName,{allowUnknownName=false,progress
   await programmer.bootExit(image.family);progress(100,'Firmware written.');return {ok:true};
 }
 
-module.exports={VID_V2,VID_V1,VID_BOOT,PID,CHUNK,REPORT,DeviceLost,hex,frame,parseStatus,servoPresent,servoEditable,servoKey,blockName,blockMade,Programmer,schemaFor,schemaView,checkChanges,v2Unconfirmed,packConfig,configProblem,CONFIG_SIZE,MODELS,norm,modelByCode,modelByName,factoryBlock,modelView,FIRMWARE,sha256,decryptV1,decryptV2,parseFirmware,loadFirmware,readFirmware,flash};
+module.exports={NO_KEYS,parseKeys,useKeys,hasKey,VID_V2,VID_V1,VID_BOOT,PID,CHUNK,REPORT,DeviceLost,hex,frame,parseStatus,servoPresent,servoEditable,servoKey,blockName,blockMade,Programmer,schemaFor,schemaView,checkChanges,v2Unconfirmed,packConfig,configProblem,CONFIG_SIZE,MODELS,norm,modelByCode,modelByName,factoryBlock,modelView,FIRMWARE,sha256,decryptV1,decryptV2,parseFirmware,loadFirmware,readFirmware,flash};

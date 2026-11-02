@@ -2,7 +2,8 @@
 // Calibrate's Axon programmer against a simulated V2 programmer: the settings maps, identification, reads and writes, firmware
 // files and flashing, moved from Axon Bridge's self test, whose expected bytes come from Axon's own apps and firmware.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{execFileSync}=require('node:child_process');
-const S=require('../src/axon-servo.cjs'),{AxonService,UsbHelper}=require('../src/axon-programmer.cjs'),{SimLink,simTransport,makeBlock,firmwareText,encryptV1,encryptV2,installFirmware}=require('./fixtures/axon-sim.cjs');
+const S=require('../src/axon-servo.cjs'),{AxonService,UsbHelper}=require('../src/axon-programmer.cjs'),{SimLink,simTransport,makeBlock,firmwareText,encryptV1,encryptV2,installFirmware,TEST_KEYS}=require('./fixtures/axon-sim.cjs');
+S.useKeys(TEST_KEYS);
 const onlyChanged=(a,b,...allowed)=>{for(let i=0;i<a.length;i++)if(a[i]!==b[i]&&!allowed.includes(i))assert.fail(`byte ${i} changed unexpectedly`);};
 const statusReply=(ok,type,b6,fam,b8)=>{const r=Buffer.alloc(64);r[0]=4;r[1]=ok;r[4]=0x8A;r[5]=type;r[6]=b6;r[7]=fam;r[8]=b8;return r;};
 const edit=(schema,raw,changes)=>{const b=Buffer.from(raw),basis=schema.decode(raw);schema.encode(b,{...basis,...changes},basis);return b;};
@@ -117,9 +118,10 @@ test('firmware file formats',()=>{
   const bad=encryptV1(text);bad[3]^=0xFF;assert.throws(()=>S.loadFirmware(bad,'a.sfw'));assert.throws(()=>S.loadFirmware(encryptV1(text),'b.sfm'),'the wrong key is rejected');assert.throws(()=>S.loadFirmware(Buffer.alloc(33),'b.sfm'));assert.throws(()=>S.loadFirmware(encryptV1(text),'a.bin'));
 });
 
-// On the computer that has Axon Bridge installed, Axon's eight real files must still match the pins and flash cleanly against the simulator.
-const REAL=process.env.LOCALAPPDATA&&path.join(process.env.LOCALAPPDATA,'Programs','Axon Bridge','firmware');
-test('Axon\'s real firmware files match the pinned hashes and flash against the simulator',{skip:REAL&&fs.existsSync(REAL)?false:'Axon\'s firmware is not on this computer'},async()=>{
+// On the computer that has Axon Bridge installed and a key file imported, Axon's eight real files must still match the pins and flash cleanly against the simulator.
+const REAL=process.env.LOCALAPPDATA&&path.join(process.env.LOCALAPPDATA,'Programs','Axon Bridge','firmware'),REAL_KEYS=process.env.APPDATA&&path.join(process.env.APPDATA,'Deck Driver Station','axon-keys.json');
+test('Axon\'s real firmware files match the pinned hashes and flash against the simulator',{skip:REAL&&fs.existsSync(REAL)&&REAL_KEYS&&fs.existsSync(REAL_KEYS)?false:'Axon\'s firmware and a key file are not on this computer'},async t=>{
+  t.after(()=>S.useKeys(TEST_KEYS));S.useKeys(S.parseKeys(fs.readFileSync(REAL_KEYS,'utf8')));
   for(const f of S.FIRMWARE){const data=fs.readFileSync(path.join(REAL,f.fileName));assert.equal(data.length,f.size,f.fileName);assert.equal(S.sha256(data),f.sha256,f.fileName);
     const image=S.loadFirmware(data,f.fileName),model=S.modelByCode(f.code);assert.equal(image.name,model.factoryName,f.fileName);assert.equal(image.badChecksums,0,f.fileName);
     const link=new SimLink(model.family,f.mode==='cr'?'servo':'cr',model.factoryName,{powerOn:true,modelA:image.modelA,modelB:image.modelB}),r=await S.flash(new S.Programmer(link),image,model.factoryName);assert.ok(r.ok,`${f.fileName}: ${r.error}`);assert.equal(link.badRecords,0);assert.equal(link.dataRecords,image.records);assert.equal(link.eraseRecords,image.erase);
@@ -233,4 +235,15 @@ test('the USB helper answers, and gives up when the app goes away',{skip:process
   const lines=execFileSync(HELPER,{input:'1 ping\n2 find 473 13aa\n3 read 5\n4 nope\n',encoding:'utf8'}).trim().split('\n');assert.equal(lines[0],'1 ok pong');assert.match(lines[1],/^2 ok \[/);assert.equal(lines[2],'3 lost The programmer is not open.');assert.match(lines[3],/^4 err /);
   const h=new UsbHelper();try{assert.equal(await h.ask('ping'),'pong');assert.ok(Array.isArray(JSON.parse(await h.ask('rivals'))));await assert.rejects(h.ask('read',5),e=>e instanceof S.DeviceLost);}finally{h.stop();}
   const missing=new UsbHelper(path.join(os.tmpdir(),'no-such-axon-helper.exe'));await assert.rejects(missing.ask('ping'),/missing|stopped|could not start/);
+});
+
+test('no Axon key is in the code, firmware asks for an imported file, and a bad one is refused',()=>{
+  const src=['src/axon-servo.cjs','src/axon-programmer.cjs','tests/fixtures/axon-sim.cjs'].map(f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8')).join('\n');assert.doesNotMatch(src,/Buffer\.from\('[0-9a-f]{32}','hex'\)/i,'no key written out in the code');assert.doesNotMatch(src,/Buffer\.alloc\(16,0x[0-9a-f]{2}\)/i);
+  const text=firmwareText(0x12,0xAB,'AXONTEST','cr',4),v1=encryptV1(text),v2=encryptV2(text);S.useKeys(null);
+  try{assert.throws(()=>S.loadFirmware(v2,'b.sfm'),/needs Axon's keys, and Torque does not include them/);assert.throws(()=>S.loadFirmware(v1,'a.sfw'),/needs Axon's keys/);assert.equal(S.hasKey('v2'),false);
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-axon-keys-')),keyFile=path.join(dir,'kept','axon-keys.json'),file=path.join(dir,'mine.json'),s=new AxonService({transport:simTransport(new SimLink('v2','servo','MAXMK2')),firmwareDir:dir,keyFile});assert.equal(s.firmwareStatus('max2','cr').keys,false);
+    fs.writeFileSync(file,'not a key file');assert.throws(()=>s.importKeys(file),/not a key file Torque can read/);fs.writeFileSync(file,JSON.stringify({v2:'zz'}));assert.throws(()=>s.importKeys(file),/not a key file/);assert.equal(fs.existsSync(keyFile),false,'nothing kept');
+    fs.writeFileSync(file,JSON.stringify(TEST_KEYS));assert.deepEqual(s.importKeys(file),{imported:['v1','v2']});assert.equal(s.firmwareStatus('max2','cr').keys,true);assert.equal(S.loadFirmware(v2,'b.sfm').family,'v2');
+    S.useKeys(null);new AxonService({transport:simTransport(new SimLink('v2','servo','MAXMK2')),firmwareDir:dir,keyFile});assert.equal(S.hasKey('v2'),true,'it is there next time');}
+  finally{S.useKeys(TEST_KEYS);}
 });

@@ -5,7 +5,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'..');
 (async()=>{
-  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-axon-')),env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-axon-'));fs.writeFileSync(path.join(data,'axon-keys.json'),JSON.stringify(require('./fixtures/axon-sim.cjs').TEST_KEYS));const env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root],env});
   try{
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1280,height:800});
@@ -56,6 +56,7 @@ const root=path.resolve(__dirname,'..');
     {const k=await keys();for(const key of ['left','right','neutral','signal','pwm','damping','sens','softstart','lostppm','inversion','beep','name','ol1t','ol1p','ol3p'])assert.ok(k.includes(key),key);assert.ok(!k.includes('sysamp')&&!k.includes('minpower'),'hidden tuning is not offered');
       assert.equal(await page.$$eval('[data-axon-field] small',s=>s.filter(x=>x.textContent.trim().length<8).length),0,'every setting has a note beside it');
       assert.equal(await page.$$eval('[data-axon-field] small',s=>s.filter(x=>x.scrollWidth>x.clientWidth).length),0,'and every note fits');
+      assert.deepEqual(await page.$$eval('.axon-seg',g=>g.flatMap(s=>[...s.children].filter(b=>b.scrollWidth>b.clientWidth+1||b.getBoundingClientRect().right>s.getBoundingClientRect().right+1).map(b=>b.textContent))),[],'no choice runs into the next');
       await page.hover('[data-axon-field=pwm] small');await page.waitForFunction(()=>/Axon suggests about 66%/.test(document.querySelector('#axon-hint').textContent));await page.hover('#axon-report');await page.waitForFunction(()=>/Simple shows exactly/.test(document.querySelector('#axon-hint').textContent));
       assert.equal(await page.locator('#axon-recover-go').isVisible(),false,'Recover is Advanced');assert.equal(await page.locator('[style]').evaluateAll(e=>e.filter(x=>x.closest('#rs-step-axon')&&x.getAttribute('style')&&!/^--fill:/.test(x.getAttribute('style'))).length),0,'no inline styles');}
     // Change settings like Axon Bridge's rows: slider, minus and plus, a pick-one and a switch. Nothing is sent until applied.
@@ -84,6 +85,9 @@ const root=path.resolve(__dirname,'..');
     await page.click('#axon-level');
     // Switch to continuous rotation: it says what will happen, asks, flashes, comes back and reads its new settings.
     await page.click('#axon-mode-cr');await page.waitForFunction(()=>/gets Axon's official firmware/.test(document.querySelector('#axon-settings').textContent));assert.equal(await page.locator('#axon-apply').textContent(),'Switch mode');assert.match(await banner(),/Ready to switch to continuous rotation/);
+    // With no key file, switching asks for one and nothing changes on the servo. Everything else on the tab goes on working.
+    await app.evaluate((x,root)=>{process.mainModule.require(root+'/src/axon-servo.cjs').useKeys(null);},root);await page.click('#axon-apply');await asked(/Torque does not include them/);assert.equal(await page.locator('#axon-ask-0').textContent(),'Import key file');await page.click('#axon-ask-1');await page.waitForSelector('#axon-ask[open]',{state:'detached'});assert.equal(await sim(()=>global.__axon.link.mode),'servo','nothing was flashed');
+    await app.evaluate((x,root)=>{const req=process.mainModule.require;req(root+'/src/axon-servo.cjs').useKeys(req(root+'/tests/fixtures/axon-sim.cjs').TEST_KEYS);},root);
     await page.click('#axon-apply');await asked(/resets its settings to Axon/);await page.click('#axon-ask-0');
     await until(/Switched to continuous rotation/,{timeout:30000});assert.equal(await sim(()=>global.__axon.link.mode),'cr');assert.equal(await page.locator('#axon-ask[open]').count(),0);
     await page.waitForSelector('#axon-f-proptl:not([disabled])');assert.match(await page.locator('#axon-settings-title').textContent(),/V2 continuous rotation/);assert.deepEqual((await keys()).sort(),['beep','inversion','proptl','pwm'],'Simple is Axon\'s four settings on continuous rotation');assert.match(await page.locator('#axon-mode-cr').textContent(),/Now/);

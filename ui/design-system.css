@@ -77,3 +77,12 @@
 .sim-robot-cad #sim-model-help:empty{display:block}.sim-robot-cad #sim-model-help:empty::before{content:'Click a side of the cube, then say which side of your robot it is.'}
 #sim-panel-run h3,#sim-panel-run .sim-section-title{margin-top:14px}
 :is(#sim-panel-setup,#setup-view,#calibrate-view,#settings-view) :is(.hint,small){color:var(--muted)}
+/* One set of buttons. A button on its own has one corner and one of three heights: 32 compact, 36 regular, 44 for touch. A big bar button is 56 to 60. Inside a segmented control the smaller corner sits inside the larger one. */
+.driver-station :is(.cal-chip,.sim-active-setup,.sim-live-status,#sim-setup,#sim-setup-new,#sim-open,.sim-reliable>.sim-reliable-close,.ce-back){border-radius:var(--radius-control)}
+.driver-station .sim-live-status[aria-expanded=true]{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.driver-station #rs-read,.driver-station :is(.cal-card,.cal-gate) .button-row>button.secondary,.driver-station :is(#sim-setup-new,#sim-open,#sim-send-go),.driver-station .cal-port-zero{min-height:36px;padding-block:0}
+.driver-station [data-auto-configure]{font-size:13px}
+#simulation-view :is(button.primary,button.secondary){min-height:32px}
+#simulation-view :is(#sim-speed,#sim-log-origin){height:36px;min-height:36px}
+.driver-station :is(#sim-auto-seconds,#library-search){font-size:14px}
+.driver-station .sim-send-head .text-button{min-height:32px;padding:0 6px;font-size:12px}

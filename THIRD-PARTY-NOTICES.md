@@ -75,8 +75,9 @@ BIOBUZZ field mesh are not shipped. Without them the simulator draws fields from
 code-drawn layouts and the real physics outlines, and robots as plain footprints. You can still
 import your own STEP robot model, which stays on your computer.
 
-Axon's servo firmware is not included either. When a student switches a servo's mode, Torque asks,
-then downloads the file from Axon's own link or uses one the student picks (docs/AXON.md).
+Axon's servo firmware is not included either, and nor are the keys to its encrypted files. When a
+student switches a servo's mode, Torque asks, then downloads the file from Axon's own link or uses one
+the student picks, and opens it with a key file the student imports (docs/AXON.md).
 
 ## Trademarks
 

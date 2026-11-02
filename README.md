@@ -18,7 +18,9 @@ That's it. Torque installs, adds a desktop icon and opens. You don't need an adm
 
 Prefer a normal download? Get it from the [releases page](https://github.com/AloeVeraZ/Torque-RobotController/releases/latest).
 
-> **Steam Deck, Linux and Apple Silicon Mac:** the current releases are Windows only, so there's nothing to install on these yet.
+**Steam Deck and Linux:** download `DeckDriverStation-SteamDeck.run` from the [releases page](https://github.com/AloeVeraZ/Torque-RobotController/releases/latest) and run it.
+
+**Apple Silicon Mac:** download `DeckDriverStation-macOS-arm64.zip` from the same page and open it.
 
 ## What it does
 

@@ -36,8 +36,8 @@ function usbTransport(helper=new UsbHelper()){
 const blank=()=>({ready:false,v1Seen:false,bootSeen:false,rivals:[],handshakeFailed:false,error:null,info:null,hello:null});
 class AxonService{
   // transport as above; firmwareDir holds downloaded firmware; logFile keeps every USB frame; catalog lists Axon's firmware files.
-  constructor({transport=usbTransport(),firmwareDir,logFile,catalog=S.FIRMWARE,onState=()=>{},fetchFile=null}={}){
-    Object.assign(this,{transport,firmwareDir,logFile,catalog,onState,fetchFile});this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
+  constructor({transport=usbTransport(),firmwareDir,logFile,keyFile=null,catalog=S.FIRMWARE,onState=()=>{},fetchFile=null}={}){
+    Object.assign(this,{transport,firmwareDir,logFile,keyFile,catalog,onState,fetchFile});if(keyFile){try{S.useKeys(S.parseKeys(fs.readFileSync(keyFile,'utf8')));}catch{}}this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
   }
   resetView(){this.programmer=blank();this.telemetry=null;this.servo=S.parseStatus(Buffer.alloc(S.REPORT));this.block=null;this.blockKey=null;this.lastKey='';this.readPending=false;this.readAttempts=0;this.busy=null;this.warnedVoltage=false;this.warnedHandshake=false;}
   say(text,tone='info'){if(this.log.at(-1)?.text===text)return;this.log.push({text,tone,at:Date.now()});if(this.log.length>LOG_LINES)this.log.shift();this.trace(`[${tone}] ${text}`);this.publish();}
@@ -166,7 +166,9 @@ class AxonService{
   firmwarePath(file){return path.join(this.firmwareDir,file.fileName);}
   // A saved file only counts while it is exactly the one that was listed.
   firmwareStatus(code,mode){const file=this.fileFor(code,mode);if(!file)throw Error('Torque has no firmware for that servo.');let have=false;try{const data=fs.readFileSync(this.firmwarePath(file));have=!file.sha256||S.sha256(data)===file.sha256;}catch{}
-    return {have,chosen:this.chosen.has(`${code}/${mode}`),fileName:file.fileName,size:file.size,url:file.url};}
+    return {have,chosen:this.chosen.has(`${code}/${mode}`),keys:S.hasKey(S.modelByCode(code)?.family),fileName:file.fileName,size:file.size,url:file.url};}
+  // A key file someone already has, kept beside this computer's settings.
+  importKeys(filePath){const text=fs.readFileSync(filePath,'utf8'),keys=S.parseKeys(text);if(this.keyFile){fs.mkdirSync(path.dirname(this.keyFile),{recursive:true});fs.writeFileSync(this.keyFile,JSON.stringify(keys,null,2));}S.useKeys(keys);this.say('Imported your key file. It stays on this computer.','good');return {imported:Object.keys(keys)};}
   chooseFirmware(code,mode,filePath){const image=S.readFirmware(filePath),model=S.modelByCode(code);if(!model||image.family!==model.family)throw Error(`${path.basename(filePath)} is ${image.family.toUpperCase()} firmware, but this is a ${model?.title}.`);this.chosen.set(`${code}/${mode}`,filePath);this.say(`Using ${path.basename(filePath)} for this servo.`);return {name:path.basename(filePath)};}
   async download(code,mode){
     const file=this.fileFor(code,mode);if(!file)throw Error('Torque has no firmware for that servo.');if(!this.fetchFile)throw Error('Downloading is not available here. Choose the file instead.');

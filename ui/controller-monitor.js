@@ -58,7 +58,7 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
     info=next;
     for(let i=0;i<2;i++){
       const pad=info.slots?.[i],identity=identify(pad),row=$('#controller-'+(i+1)),standby=i===1&&info.count===1;
-      row.hidden=false;row.classList.toggle('standby',standby);row.querySelector('small').textContent=pad?(pad.mapping!=='standard'?'Unmapped · ':standby?'Standby · ':'')+identity.name:standby?'Optional · USB / Bluetooth':'Set up gamepad input';
+      row.hidden=false;row.classList.toggle('standby',standby);row.querySelector('small').textContent=pad?(pad.mapping!=='standard'?'Unmapped · ':standby?'Standby · ':'')+identity.name:standby?'Optional':'Set up gamepad';
       row.querySelector('.dot').className='dot'+(pad?(pad.mapping==='standard'?' live':' error'):'');row.title='Test or assign controller '+(i+1)+(standby?' · optional for this robot':'');
       $('#setup-controller-'+(i+1)+'-name').textContent=(pad?identity.name:null)||(i===0?(hardware().builtInController?hardware().model+' · automatic default':'First standard gamepad · automatic default'):'Connect a USB or Bluetooth controller');
     }
