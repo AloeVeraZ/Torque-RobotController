@@ -229,13 +229,13 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886,web
   const net=require('node:net'),RobotConfig=require('../ui/ftc/robot-config.js'),devices=RobotConfig.parse(xml).devices.filter(d=>d.module||d.bus!==undefined);
   const of=(fam,test=()=>true)=>devices.filter(d=>RobotConfig.familyOfTag(d.tag)===fam&&test(d)).map(d=>d.name);
   const I2C={RevColorSensorV3:'color',REV_VL53L0X_RANGE_SENSOR:'distance',goBILDAPinpoint:'pinpoint',SparkFunOTOS:'otos',ControlHubImuBHI260AP:'imu',LynxEmbeddedIMU:'imu'},I2C_AT={RevColorSensorV3:0x52,REV_VL53L0X_RANGE_SENSOR:0x29,goBILDAPinpoint:0x31,SparkFunOTOS:0x17,ControlHubImuBHI260AP:0x28,LynxEmbeddedIMU:0x28,AndyMarkTOF:0x29,AdafruitColorSensor:0x29,KauaiLabsNavxMicro:0x32},absent=new Set(gone);
-  const m={deck:'debug',version:1,motors:of('motor'),servos:of('servo',d=>d.tag!=='ContinuousRotationServo'),crservos:of('servo',d=>d.tag==='ContinuousRotationServo'),digital:of('digital',d=>d.tag!=='RevTouchSensor'),touch:of('digital',d=>d.tag==='RevTouchSensor'),
+  const m={deck:'debug',version:1,motors:of('motor'),servos:of('servo',d=>d.tag==='Servo'||d.tag==='ServoFullRange'),crservos:of('servo',d=>d.tag==='ContinuousRotationServo'||d.tag==='RevSPARKMini'),digital:of('digital',d=>d.tag!=='RevTouchSensor'&&d.tag!=='Led'),touch:of('digital',d=>d.tag==='RevTouchSensor'),lights:devices.filter(d=>d.tag==='Led'||d.tag==='RevBlinkinLedDriver').map(d=>({n:d.name,k:d.tag==='Led'?'led':'blinkin'})),
     analog:of('analog').map(n=>({n,max:3.3})),i2c:devices.filter(d=>d.bus!==undefined).map(d=>({n:d.name,k:I2C[d.tag]||'other',h:d.module?.address??173,b:d.bus,a:I2C_AT[d.tag]??0x40})),hubs:[{n:'Control Hub',address:173,parent:true}]};
   // A webcam in the configuration: the SDK's camera as ui/sim-camera.js models it, one tag in view at 4 ft.
   const Cam=require('../ui/sim-camera.js'),webcams=[...xml.matchAll(/<Webcam\b[^>]*\bname="([^"]*)"/g)].map(x=>x[1]);m.cameras=webcams;let camera={exposure:'auto',gain:100,decimation:3,feet:4},camNum=0,lens=null,open=webcams[0];
   // Its picture comes only while the op mode has the camera, and follows the exposure as a camera's would: darker when short.
   if(webcams.length&&sim){sim.camera=()=>running()?Cam.simFrame(camNum++,camera.exposure==='auto'?.6:Math.min(1,.12+camera.exposure/60)):null;sim.command?.('CMD_STREAM_CHANGE','true');}
-  const pos=m.motors.map(()=>0),power=m.motors.map(()=>0),at=m.motors.map(()=>0),cr=m.crservos.map(()=>0),servo=m.servos.map(()=>null),on=m.servos.map(()=>false),latched=m.servos.map(()=>false),commands=[];
+  const pos=m.motors.map(()=>0),power=m.motors.map(()=>0),at=m.motors.map(()=>0),cr=m.crservos.map(()=>0),servo=m.servos.map(()=>null),on=m.servos.map(()=>false),latched=m.servos.map(()=>false),lit=m.lights.map(()=>false),commands=[];
   let client=null,heard=0,loop=null,t0=Date.now(),timer=null;const running=()=>/^TorqueDebug-/.test(sim.opMode||'')&&sim.opState==='running';
   const mech=Math.max(0,m.motors.findIndex(n=>!/front|back|left|right/.test(n)));
   const apply=line=>{commands.push(line);const f=line.split('\t'),i=k=>m[k].indexOf(f[1]);
@@ -245,6 +245,7 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886,web
     else if(f[0]==='E'&&i('servos')>=0)on[i('servos')]=f[2]==='1'&&servo[i('servos')]!==null;
     else if(f[0]==='L'&&i('servos')>=0)latched[i('servos')]=f[2]==='1';
     else if(f[0]==='R'&&i('motors')>=0)pos[i('motors')]=0;
+    else if(f[0]==='G'){const k=m.lights.findIndex(l=>l.n===f[1]);if(k>=0)lit[k]=f[2]==='1';}
     else if(f[0]==='Q'){const index=m.motors.indexOf(f[1]);if(index>=0)loop={index,target:+f[4],kP:+f[5],kI:+f[6],kD:+f[7],kS:+f[9],kG:+f[10],tol:+f[11],integral:0,last:null};}
     else if(f[0]==='T'&&loop)loop.target=+f[1];
     else if(f[0]==='V')camera={...camera,...(f[1]==='auto'?{exposure:'auto'}:{exposure:+f[1],gain:+f[2]})};
@@ -252,7 +253,7 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886,web
     else if(f[0]==='K')lens=f[1]==='off'?null:f.slice(1,5).map(Number);
     else if(f[0]==='W'&&webcams.includes(f[1]))open=f[1];
     else if(f[0]==='X')stopAll();};
-  const stopAll=()=>{loop=null;power.fill(0);cr.fill(0);m.servos.forEach((_,k)=>{if(!latched[k])on[k]=false;});};
+  const stopAll=()=>{loop=null;power.fill(0);cr.fill(0);lit.fill(false);m.servos.forEach((_,k)=>{if(!latched[k])on[k]=false;});};
   const tick=()=>{if(!running()){if(client){client.destroy();client=null;}stopAll();return;}
     if(!client||Date.now()-heard>300)stopAll();
     power.forEach((p,k)=>{if(Date.now()-at[k]>300&&loop?.index!==k)power[k]=0;});
@@ -260,15 +261,15 @@ function startDebugServer({address='127.0.0.2',sim,xml=CONFIG_XML,port=20886,web
     power.forEach((p,k)=>{pos[k]+=Math.sign(p)*Math.max(0,Math.abs(p)-.04)*2800*.02;});
     if(!client)return;const intake=m.motors.findIndex(n=>/intake/i.test(n)),piece=intake>=0&&Math.abs(power[intake])>.2,home=pos[mech]<100;
     const frame={t:Date.now()-t0,loop:6.2,v:12.6,m:m.motors.map((n,k)=>[Math.round(pos[k]),Math.round(Math.sign(power[k])*Math.max(0,Math.abs(power[k])-.04)*2800/20)*20,power[k],Math.abs(power[k])*2,0]),
-      s:m.servos.map((n,k)=>[servo[k],on[k]?1:0,latched[k]?1:0]),c:cr,d:m.digital.map(n=>/home|limit/i.test(n)?(home?0:1):1),touch:m.touch.map(()=>0),a:m.analog.map(a=>absent.has(a.n)?0:servo[0]!==null&&on[0]?+(servo[0]*3.3).toFixed(4):1.65),
+      s:m.servos.map((n,k)=>[servo[k],on[k]?1:0,latched[k]?1:0]),c:cr,d:m.digital.map(n=>/home|limit/i.test(n)?(home?0:1):1),touch:m.touch.map(()=>0),l:lit.map(x=>x?1:0),a:m.analog.map(a=>absent.has(a.n)?0:servo[0]!==null&&on[0]?+(servo[0]*3.3).toFixed(4):1.65),
       on:m.i2c.map(d=>absent.has(d.n)?0:1),b:[{h:173,swept:true,found:[0,1,2,3].map(bus=>[...m.i2c.filter(d=>d.h===173&&d.b===bus&&!absent.has(d.n)).map(d=>d.a),...stray.filter(s=>s.bus===bus).map(s=>s.a)]),a:[0,1,2,3].map(p=>strayAnalog[p]??0)}],
-      i:m.i2c.map(d=>({age:absent.has(d.n)||d.k==='other'?null:10,v:absent.has(d.n)||d.k==='other'?null:d.k==='color'?{r:.1,g:.1,b:.1,a:piece?.6:.05,d:piece?2:8}:d.k==='distance'?{d:piece?3:20}:d.k==='pinpoint'?{x:0,y:0,h:0,ex:0,ey:0,status:'READY'}:d.k==='otos'?{x:0,y:0,h:0}:{yaw:0,pitch:0,roll:0,wz:0}}))};
+      i:m.i2c.map(d=>({age:absent.has(d.n)||d.k==='other'?null:10,v:absent.has(d.n)||d.k==='other'?null:d.k==='color'?{r:.1,g:.1,b:.1,a:piece?.6:.05,d:piece?2:8}:d.k==='distance'?{d:piece?3:20}:d.k==='pinpoint'?{x:0,y:0,h:0,ex:0,ey:0,status:'READY'}:d.k==='otos'?{x:0,y:0,h:0}:{yaw:0,pitch:0,roll:0,wx:0,wy:0,wz:0}}))};
     if(webcams.length){const hit=Math.random()<Cam.simRate(camera);frame.cam={state:'STREAMING',open,fps:Cam.fpsOf(camera.decimation),range:webcam.range,...(webcam.modes?{modes:webcam.modes}:{}),seen:camera.exposure==='auto'?30:camera.exposure,exp:camera.exposure==='auto'?null:camera.exposure,gain:camera.exposure==='auto'?null:camera.gain,dec:camera.decimation,lens,tags:hit?[{id:584,name:'Simulated tag',m:60,r:48*(lens?lens[0]:Cam.FALLBACK_FX)/Cam.SIM_FX,b:0,y:0,p:0}]:[]};}
     client.write(JSON.stringify(frame)+'\n');};
   const server=net.createServer(s=>{if(!running()){s.destroy();return;}if(client)client.destroy();client=s;heard=Date.now();t0=Date.now();s.setNoDelay(true);s.write(JSON.stringify(m)+'\n');
     let buffer='';s.on('data',c=>{heard=Date.now();buffer+=c;for(let k;(k=buffer.indexOf('\n'))>=0;){const line=buffer.slice(0,k);buffer=buffer.slice(k+1);if(line)apply(line);}});
     s.on('close',()=>{if(client===s){client=null;stopAll();}});s.on('error',()=>{});});
-  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,absent,stray,strayAnalog,camera:()=>camera,lens:()=>lens,open:()=>running()?open:null,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
+  return new Promise((ok,fail)=>{server.once('error',fail);server.listen(port,address,()=>{timer=setInterval(tick,20);ok({manifest:m,commands,absent,stray,strayAnalog,lit,camera:()=>camera,lens:()=>lens,open:()=>running()?open:null,positions:pos,close:()=>{clearInterval(timer);client?.destroy();return new Promise(r=>server.close(()=>r()));}});});});
 }
 module.exports={SimController,CheckScript,startUdpRobot,startUsbRelay,startOnBotJava,onBotCompile,opModesIn,listBuilt,startDebugServer,OP_MODES,CONFIG_XML,SENSOR_CONFIG_XML,HUBS};
 if(require.main===module){const address=process.argv.slice(2).find(a=>!a.startsWith('--'))||'127.0.0.2';

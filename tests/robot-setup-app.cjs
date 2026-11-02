@@ -120,7 +120,7 @@ Guided check said: ${await text('#sim-check-status').catch(()=>'')} | ${await te
 
     // ---- C: Live debug, then the Mechanisms gates, on the robot's own configuration.
     debug=await startDebugServer({address:ROBOT,sim:robot.sim,xml:robot.sim.configurations.find(c=>c.name===robot.sim.active).xml});
-    await page.click('#cal-tab-debug');await page.click('[data-debug-install]');await page.click('[data-debug-go]');await until(()=>robot.sim.opModes.some(m=>/^TorqueDebug-/.test(m.name)),30000,'Torque Debug built');
+    await page.click('#cal-tab-debug');await page.click('[data-debug-install]');await until(()=>robot.sim.opModes.some(m=>/^TorqueDebug-/.test(m.name)),30000,'Torque Debug built');
     await page.waitForFunction(()=>/TorqueDebug-[0-9.-]+ is on the robot/.test(document.querySelector('[data-debug-status]').textContent));
     await page.click('[data-debug-start]');await page.waitForSelector('#cal-debug [data-port="motor:intake"]',{timeout:20000});assert.match(robot.sim.opMode,/^TorqueDebug-/);
     // What is really on a bus is what the hub heard, not that a read came back.

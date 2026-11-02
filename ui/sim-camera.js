@@ -228,6 +228,8 @@
       catch(e){fresh={...fresh,key,failed:true,stale:false,why:e.message};}finally{freshBusy=false;}paint();}
     // ---- the link: Torque Debug runs by itself while this tab shows a camera it can open
     const wantNow=(now=current())=>shown()&&!!conn()&&!!debug?.run&&!now.absent&&configKnown()&&['configured','live'].includes(now.state);
+    // The Debug tab wants the same program. Only over the cable, where the crash guard can bring the app back.
+    const debugWants=()=>conn()?.host==='usb'&&!!debug?.run&&!!debug.wanted?.();
     const stopTrying=text=>{failure={hard:true,text};tryAt=Infinity;};
     function failWith(message){const f=linkFailure(message),at=Date.now();
       if(f.rebuild){if(at-builtAt<60000){tryAt=at+3000;return;}if(builds||rebuilds)return stopTrying('The robot built the camera program but does not list it. Restart the robot, then try again.');rebuilds++;needBuild=true;pressed=pressed||runPressed;tryAt=0;return;}
@@ -236,7 +238,7 @@
       failure=f;tryAt=at+Math.min(f.rc?30000:60000,f.again*2**(fails-1));}
     // A build happens with nobody pressing only over the cable, where the crash guard can bring the app back, and once a visit: a robot whose copy never matches is not built over and over.
     async function startLink(){moving=true;startedAt=Date.now();tryAt=startedAt+3000;const asked=pressed,build=needBuild,usb=conn()?.host==='usb';runPressed=asked;pressed=false;needBuild=false;let r={};paint();
-      try{r=await debug.run({host:conn()?.host,noStart:!asked,build,mayBuild:asked||(usb&&!builds),still:()=>wantNow()&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
+      try{r=await debug.run({host:conn()?.host,noStart:!asked,build,mayBuild:asked||(usb&&!builds),still:()=>(wantNow()||debugWants())&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
       if(r.built){builtAt=Date.now();builds++;}
       if(r.cantBuild){if(usb)stopTrying('The camera program on the robot still does not match this version of Torque. Press Try again to put it on again.');else{failure={hard:true,install:true,text:'The camera program is not on this robot yet.'};tryAt=Infinity;}}
       else if(r.problem)stopTrying(r.problem);else if(r.error)failWith(r.error);paint();}
@@ -244,7 +246,7 @@
     async function wake(){moving=true;paint();try{await api.robotLink('rc-start',{host:conn()?.host});}catch(e){failWith(e.message);}finally{moving=false;}if(fresh)fresh.stale=true;freshAt=0;paint();tick();}
     function pressAgain(){const quiet=rcQuiet();failure=null;tryAt=0;builtAt=0;rebuilds=0;builds=0;ends=0;fails=0;pressed=!quiet||current().state==='configured';if(quiet){guesses=0;void wake();return;}paint();tick();}
     async function stopLink(){moving=true;try{await debug.stop();}finally{moving=false;}paint();}
-    function drive(){if(!debug?.run)return;const s=debug.state(),want=wantNow(),keep=!!debug.shown?.(),at=Date.now();if(want||keep)leftAt=at;
+    function drive(){if(!debug?.run)return;const s=debug.state(),want=wantNow()||debugWants(),keep=!!debug.shown?.(),at=Date.now();if(want||keep)leftAt=at;
       const step=linkStep({want,keep,running:s.running,moving:moving||s.starting||s.installing||freshBusy,blocked:!!busy(),own:s.auto,hard:!!failure?.hard,at,tryAt,leftAt});if(step==='start')void startLink();else if(step==='stop')void stopLink();}
     // The camera picked, if another is open. Torque Debug opens its first by itself.
     function syncCamera(){const now=current();if(!real()||!cam||cam.open===undefined)return;if(cam.open===now.value){camSent=null;return;}const line=`W\t${now.value}`;if(camSent!==line&&!now.absent){camSent=line;pictureUp=false;send(line);}}

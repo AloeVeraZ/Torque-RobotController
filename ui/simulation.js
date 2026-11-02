@@ -2145,8 +2145,8 @@ public class MyAuto implements DeckAutonomous {
   function autoEnd(text){autoBusy=false;autoTold='';setupNote(text);configEditor?.say(text);calTold(calibrating?text:'');setupRender();return false;}
   const namesOf=list=>list.length<2?list.join(''):`${list.slice(0,-1).join(', ')} and ${list.at(-1)}`;
   // What happened, in a sentence or two, with what stayed out and why.
-  function autoWords({wrote,cameras,hubs,ready,left}){const on=(list,word)=>list.length?`${namesOf(list)} ${list.length>1?'are':'is'} ${word}.`:'';
-    return [wrote?'':'Everything plugged in is already configured, so nothing was written.',on(cameras.length?cameras:ready,'connected and ready'),on(hubs,'in the configuration now'),...left.map(r=>`Not added: ${r.word}. ${r.warn}`)].filter(Boolean).join(' ');}
+  function autoWords({wrote,cameras,hubs,imus=[],ready,left}){const on=(list,word)=>list.length?`${namesOf(list)} ${list.length>1?'are':'is'} ${word}.`:'';
+    return [wrote?'':'Everything plugged in is already configured, so nothing was written.',on(cameras.length?cameras:ready,'connected and ready'),on([...hubs,...imus],'in the configuration now'),...left.map(r=>`Not added: ${r.word}. ${r.warn}`)].filter(Boolean).join(' ');}
   // The robot restarts to use a new configuration. A read and then a scan, which the Robot Controller itself answers, so an answer means it is back.
   async function autoBack(){for(let i=0;i<3&&setupConn;i++){if(!setupRobot||!setupRead)await setupRead_();if(setupRobot&&setupRead&&await setupScan())return true;}return false;}
   async function autoConfigure(){if(autoBusy||!setupRoot)return false;if(!native||!api.robotLink||project.controller!=='ftc'||!setupConn)return autoEnd('Connect to the Control Hub first, by USB-C with the robot on.');
@@ -2164,13 +2164,13 @@ public class MyAuto implements DeckAutonomous {
       setupFollowActive();const active=setupRead.active?.name||setupRead.configurations[0],none=!active||!setupRead.files?.[active];
       if(none){const portals=setupRobot.portals||[];if(!portals.length)return done('The scan found no hubs. Check the hubs are powered and connected, then press Auto-configure again.');configEditor.open(RobotConfig.configurationName('robot',setupRead.configurations||[]),configFromScan(portals),portals);}
       const plan=configEditor.plan(),left=plan.left.filter(r=>r.word);
-      let cameras=[],hubs=[];
+      let cameras=[],hubs=[],imus=[];
       if(plan.writes||none){let withEdits=false;if(!none&&configEditor.edited()){const answer=await autoAsk(configEditor.current());if(answer==='cancel')return done('');withEdits=answer==='save';}
-        autoSay('Saving to the robot. The robot restarts to use it…');const r=await configEditor.autoWrite(withEdits);if(!r.ok)return done(r.error);({cameras,hubs}=r);
+        autoSay('Saving to the robot. The robot restarts to use it…');const r=await configEditor.autoWrite(withEdits);if(!r.ok)return done(r.error);({cameras,hubs,imus}=r);
         autoSay('The robot is restarting to use it. Waiting for it to come back…');if(!await autoBack())return done('It is saved, but the robot has not come back yet. Torque reconnects by itself. When it says connected, go to Calibrate.');}
       // The student left for Drive or Simulate while it ran: it does not pull them back.
       if(gen!==setupGen||!hubUsbTabs())return done('');
-      const words=autoWords({wrote:plan.writes||none,cameras,hubs,ready:plan.ready,left}),serial=plan.webcams[0]?.add||plan.readyKey;autoBusy=false;autoTold='';await autoGo(serial,words);return true;}
+      const words=autoWords({wrote:plan.writes||none,cameras,hubs,imus,ready:plan.ready,left}),serial=plan.webcams[0]?.add||plan.readyKey;autoBusy=false;autoTold='';await autoGo(serial,words);return true;}
     catch(e){return done(e.message);}finally{autoBusy=false;}}
   // To Calibrate → Camera, on the camera it was about, with what happened said above the tabs.
   async function autoGo(serial,words){await api.page('calibrate');for(let i=0;i<40&&calRoot.hidden;i++)await new Promise(r=>setTimeout(r,25));calSelect('camera');if(serial)liveCamera?.select(serial);else liveCamera?.refresh();calTold(words);}
@@ -3571,7 +3571,7 @@ public class MyAuto implements DeckAutonomous {
   const usbToCamera=serial=>{calSelect('camera');liveCamera?.select(serial);};
   const usbDevices=window.DeckUsbDevices&&calRoot?window.DeckUsbDevices.create({host:$('#cal-usb'),api,native,usb:hubUsb,toCamera:usbToCamera,toI2c:tag=>void configureI2c(tag),toAxon:axonTab}):null;
   // Debug's list of the same devices, above the check and the hubs' ports, which run long, with what each is doing now.
-  const usbLive=(()=>{const below=$('#cal-debug [data-check]');if(!window.DeckUsbDevices||!below)return null;const host=document.createElement('section');host.className='cal-usb-live';host.dataset.debugUsb='';below.before(host);return window.DeckUsbDevices.createLive({host,api,native,usb:hubUsb,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>!d.module),toCamera:usbToCamera,auto:()=>void autoConfigure()});})();
+  const usbLive=(()=>{const box=$('#cal-debug');if(!window.DeckUsbDevices||!box)return null;const host=document.createElement('section');host.className='cal-usb-live';host.dataset.debugUsb='';box.append(host);return window.DeckUsbDevices.createLive({host,api,native,usb:hubUsb,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>!d.module),toCamera:usbToCamera,auto:()=>void autoConfigure()});})();
   function calUnitsNow(m,rec){const v=liveDebug?.values()||{},raw=v[calKey(m,rec)];return TU.toUnits(raw,rec?.transform||{});}
   const calFix=(v,d=2)=>finite(v)?(+v).toFixed(d):'—';
   const calNeedLive=()=>`<p class="cal-note">This step moves the robot. Start Live debug in the Debug tab first (robot on blocks).</p><div class="button-row"><button type="button" class="secondary" data-cal-act="to-live">Go to Live debug</button></div>`;

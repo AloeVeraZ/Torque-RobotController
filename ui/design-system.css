@@ -69,7 +69,7 @@
 :is(#setup-view,#calibrate-view,#simulation-view,#settings-view,#bug-dialog) :is(button,a,select,textarea,input:not(.num-slider),[tabindex]):focus-visible{outline:2px solid var(--text);outline-offset:1px;box-shadow:none}
 .driver-station #bug-dialog :is(input,textarea):focus{box-shadow:none}
 #rs-hubs .sim-wire-card{gap:2px;padding:var(--space-3)}#rs-hubs .sim-wire-card .hint{margin:0 0 4px}#rs-hubs .sim-wire-stepper{justify-content:flex-start;height:auto;border:0;background:none;padding:0;min-height:0}#rs-hubs .sim-wire-stepper>output{flex:none;justify-content:flex-start;font-size:26px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;background:none;border:0;padding:0;min-height:0}
-.driver-station .cal-debug-actions>button{flex:0 1 auto;padding-inline:18px}.driver-station .cal-debug-actions>[data-debug-stopall]{margin-left:auto}
+.driver-station .cal-debug-actions>button{flex:0 1 auto;padding-inline:18px}
 .driver-station #bug-dialog form>.button-row:has(#bug-send){justify-content:flex-end}.driver-station #bug-dialog form>.button-row #bug-send{order:2}.driver-station #bug-dialog textarea{background:var(--well);color:var(--text);border:1px solid var(--line-strong);border-radius:var(--radius-control)}.driver-station #bug-dialog textarea::placeholder{color:var(--placeholder)}
 @media (prefers-reduced-motion:reduce){.driver-station .sim-tile{transition:none}.driver-station .sim-tile:hover:not(:disabled){transform:none}}
 .driver-station .controller-card .card-action{padding:5px 12px;border-radius:var(--radius-control);background:var(--raised);color:var(--text);font-size:13px;font-weight:600}.driver-station .controller-card:hover .card-action{background:var(--hover)}

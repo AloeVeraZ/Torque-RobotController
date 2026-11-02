@@ -11,10 +11,10 @@ test('Torque Debug is named by when it went on, on a 24-hour clock, and has no p
 });
 
 test('parameters: motors 20 to 40% unless more is allowed, servo angles at least 20° apart',()=>{
-  assert.deepEqual(C.motorChoices(false),[20,25,30,35,40]);assert.ok(C.motorChoices(true).includes(100));
-  assert.equal(C.sanitize({motor:60}).motor,20,'above 40 needs the box');assert.equal(C.sanitize({motor:60,over:true}).motor,60);assert.equal(C.sanitize({motor:10}).motor,20);
-  assert.equal(C.problem(C.sanitize({servoA:100,servoB:119})),C.problem({servoA:0,servoB:0}));assert.equal(C.problem(C.sanitize({servoA:100,servoB:120})),'');assert.equal(C.problem(C.sanitize({servoA:120,servoB:100})),'');
-  assert.equal(C.sanitize({servoA:0,servoB:270}).servoA,0);assert.equal(C.position(135),.5);assert.equal(C.direction({servoA:90,servoB:45}),-1);
+  assert.ok(C.speeds().includes(5)&&C.speeds().includes(100));assert.deepEqual(C.deviceParams('motor',null),{speed:20});assert.equal(C.deviceParams('crservo',{speed:60}).speed,60,'each one is its own');assert.equal(C.deviceParams('motor',{speed:7}).speed,20);assert.deepEqual(C.deviceParams('digital',{speed:50}),{});
+  assert.deepEqual(C.deviceParams('servo',null),{range:270,a:125,b:145});assert.deepEqual(C.deviceParams('servo',{range:180,a:200,b:90}),{range:180,a:125,b:90},'an angle past its range goes back to the default');assert.deepEqual(C.deviceParams('servo',{range:90}),{range:90,a:90,b:90});assert.equal(C.deviceParams('servo',{range:123}).range,270);
+  assert.equal(C.problem(C.deviceParams('servo',{a:100,b:119})),C.problem({a:0,b:0}));assert.equal(C.problem(C.deviceParams('servo',{a:100,b:120})),'');assert.equal(C.problem(C.deviceParams('servo',{a:120,b:100})),'');
+  assert.equal(C.deviceParams('servo',{a:0,b:270}).a,0);assert.equal(C.position(135),.5);assert.equal(C.position(90,180),.5);assert.equal(C.position(400),1);assert.equal(C.servoChoices(180).at(-1),180);
 });
 
 test('digital: it changes and comes back; one already held lets go, is held and lets go',()=>{

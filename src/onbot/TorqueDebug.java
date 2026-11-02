@@ -5,6 +5,7 @@ import com.qualcomm.hardware.lynx.commands.core.LynxGetADCCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadSingleByteCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadStatusQueryCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
+import com.qualcomm.hardware.rev.RevBlinkinLedDriver;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -20,6 +21,7 @@ import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.I2cAddr;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynchDevice;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.hardware.LED;
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
 import com.qualcomm.robotcore.hardware.PwmControl;
@@ -31,8 +33,12 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AngularVelocity;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -42,14 +48,17 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -97,19 +106,22 @@ public class TorqueDebug extends LinearOpMode {
     final List<DigitalChannel> digitals = new ArrayList<>();
     final List<TouchSensor> touches = new ArrayList<>();
     final List<AnalogInput> analogs = new ArrayList<>();
+    /** An LED on a digital port or a Blinkin on a servo port: on or off. */
+    final List<HardwareDevice> lights = new ArrayList<>();
+    final List<String> lightNames = new ArrayList<>();
     final List<HardwareDevice> i2c = new ArrayList<>();
     List<LynxModule> hubs = new ArrayList<>();
     VoltageSensor battery;
 
     // ---- what Deck has asked for
     double[] motorPower, motorAmps, crPower, servoPos;
-    boolean[] servoOn, servoLatched, motorCut, crTold;
+    boolean[] servoOn, servoLatched, motorCut, crTold, lightOn, lightSent;
     long[] motorOverSince, motorAt, crAt;
     String[] i2cLast;
     long[] i2cAt;
     /** Each I2C device's hub (its place in hubs), bus and address, or null if the SDK does not say. */
     int[][] i2cPlace;
-    /** Whether each I2C device answered last: 1 yes, 0 no, -1 not asked yet. */
+    /** Whether each I2C device answered last: 1 yes, 0 no, -1 not asked yet, -2 the SDK does not say where it is, so it cannot be asked. */
     volatile int[] i2cOn;
     /** What watchHub found, ready to go into a frame. */
     volatile String hubWatch = "";
@@ -154,6 +166,8 @@ public class TorqueDebug extends LinearOpMode {
         for (DigitalChannel d : hardwareMap.getAll(DigitalChannel.class)) { d.setMode(DigitalChannel.Mode.INPUT); digitals.add(d); digitalNames.add(nameOf(d)); }
         for (TouchSensor t : hardwareMap.getAll(TouchSensor.class)) { touches.add(t); touchNames.add(nameOf(t)); }
         for (AnalogInput a : hardwareMap.getAll(AnalogInput.class)) { analogs.add(a); analogNames.add(nameOf(a)); }
+        for (LED l : hardwareMap.getAll(LED.class)) { lights.add(l); lightNames.add(nameOf(l)); }
+        for (RevBlinkinLedDriver l : hardwareMap.getAll(RevBlinkinLedDriver.class)) { lights.add(l); lightNames.add(nameOf(l)); }
         for (IMU imu : hardwareMap.getAll(IMU.class)) {
             // Deck reads yaw, pitch and roll as the hub lies flat, logo up and USB forward; the robot's own code sets the real mounting.
             try { imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.UP, RevHubOrientationOnRobot.UsbFacingDirection.FORWARD))); } catch (RuntimeException ignored) { }
@@ -165,18 +179,20 @@ public class TorqueDebug extends LinearOpMode {
         // A colour sensor is a distance sensor too: it is one device, read once.
         for (DistanceSensor d : hardwareMap.getAll(DistanceSensor.class)) if (!(d instanceof NormalizedColorSensor)) addI2c(d, "distance");
         // Anything else on an I2C bus has no reading here, but can still say whether it is there.
-        for (HardwareDevice d : hardwareMap) if (placeOf(d) != null) addI2c(d, "other");
+        for (HardwareDevice d : hardwareMap) if (placeOf(d) != null && !i2cNames.contains(nameOf(d))) addI2c(d, "other");
+        for (HardwareDevice d : hardwareMap) if ("SparkFunLEDStick".equals(d.getClass().getSimpleName()) && !lights.contains(d)) { lights.add(d); lightNames.add(nameOf(d)); }
         for (WebcamName w : hardwareMap.getAll(WebcamName.class)) { webcams.add(w); webcamNames.add(nameOf(w)); }
         List<VoltageSensor> volts = hardwareMap.getAll(VoltageSensor.class);
         battery = volts.isEmpty() ? null : volts.get(0);
 
         motorPower = new double[motors.size()]; motorAmps = new double[motors.size()]; motorCut = new boolean[motors.size()]; motorOverSince = new long[motors.size()]; motorAt = new long[motors.size()]; crAt = new long[crservos.size()];
         crPower = new double[crservos.size()]; crTold = new boolean[crservos.size()]; servoPos = new double[servos.size()]; servoOn = new boolean[servos.size()]; servoLatched = new boolean[servos.size()];
-        i2cLast = new String[i2c.size()]; i2cAt = new long[i2c.size()]; i2cPlace = new int[i2c.size()][]; i2cOn = new int[i2c.size()]; Arrays.fill(i2cOn, -1);
+        lightOn = new boolean[lights.size()]; lightSent = new boolean[lights.size()];
+        i2cLast = new String[i2c.size()]; i2cAt = new long[i2c.size()]; i2cPlace = new int[i2c.size()][]; i2cOn = new int[i2c.size()]; Arrays.fill(i2cOn, -2);
         for (int k = 0; k < i2c.size(); k++) {
             Matcher p = placeOf(i2c.get(k));
             if (p == null) continue;
-            for (int h = 0; h < hubs.size(); h++) if (hubs.get(h).getModuleAddress() == Integer.parseInt(p.group(1))) i2cPlace[k] = new int[]{h, Integer.parseInt(p.group(2)), Integer.parseInt(p.group(3), 16)};
+            for (int h = 0; h < hubs.size(); h++) if (hubs.get(h).getModuleAddress() == Integer.parseInt(p.group(1))) { i2cPlace[k] = new int[]{h, Integer.parseInt(p.group(2)), Integer.parseInt(p.group(3), 16)}; i2cOn[k] = -1; }
         }
         for (int i = 0; i < motors.size(); i++) { motorAmps[i] = Double.NaN; motors.get(i).setPower(0); }
         for (int i = 0; i < servos.size(); i++) { servoPos[i] = Double.NaN; if (servos.get(i) instanceof PwmControl) ((PwmControl) servos.get(i)).setPwmDisable(); }
@@ -213,9 +229,10 @@ public class TorqueDebug extends LinearOpMode {
                     if (servoOn[i] && !Double.isNaN(servoPos[i])) { if (s instanceof PwmControl && !((PwmControl) s).isPwmEnabled()) ((PwmControl) s).setPwmEnable(); s.setPosition(servoPos[i]); }
                     else if (s instanceof PwmControl && ((PwmControl) s).isPwmEnabled()) ((PwmControl) s).setPwmDisable();
                 }
+                for (int i = 0; i < lights.size(); i++) if (lightOn[i] != lightSent[i]) { setLight(i, lightOn[i]); lightSent[i] = lightOn[i]; }
                 // One motor's current and one I2C sensor a loop, in turn.
                 if (!motors.isEmpty()) { int m = turn % motors.size(); motorAmps[m] = motors.get(m).getCurrent(CurrentUnit.AMPS); stall(m, now); }
-                if (!i2c.isEmpty()) { int k = turn % i2c.size(); i2cLast[k] = i2cOn[k] == 0 ? null : readI2c(k); i2cAt[k] = now; }
+                if (!i2c.isEmpty()) { int k = turn % i2c.size(); i2cLast[k] = i2cOn[k] == 0 || i2cOn[k] == -1 ? null : readI2c(k); i2cAt[k] = now; }
                 if (battery != null && turn % 25 == 0) volts12 = battery.getVoltage();
                 turn++; loops++;
                 long t = System.nanoTime();
@@ -227,6 +244,7 @@ public class TorqueDebug extends LinearOpMode {
             running = false; stopOutputs(true);
             for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(0);
             for (int i = 0; i < crservos.size(); i++) if (crTold[i]) crservos.get(i).setPower(0);
+            for (int i = 0; i < lights.size(); i++) if (lightSent[i]) setLight(i, false);
             closePortal();
             close();
         }
@@ -245,6 +263,7 @@ public class TorqueDebug extends LinearOpMode {
     //                             mode pos (target in ticks or volts) or vel (ticks a second); wrap > 0 takes the
     //                             shortest way round a circle of that many units; gains in power per raw unit
     //   T target                  move the running loop's target
+    //   G name 0|1                a light off or on
     //   X                         stop: every output off, loops ended, servos limp unless latched
     //   V auto | V ms gain        the camera's exposure: automatic, or manual with a gain
     //   D decimation              how far the AprilTag processor reads against how fast
@@ -262,6 +281,7 @@ public class TorqueDebug extends LinearOpMode {
                 case "E": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoOn[i] = "1".equals(f[2]) && !Double.isNaN(servoPos[i]); break; }
                 case "L": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoLatched[i] = "1".equals(f[2]); break; }
                 case "R": { int i = motorNames.indexOf(f[1]); if (i >= 0) { DcMotorEx m = motors.get(i); m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER); m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); } break; }
+                case "G": { int i = lightNames.indexOf(f[1]); if (i >= 0) lightOn[i] = "1".equals(f[2]); break; }
                 case "Q": startLoop(f); break;
                 case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; } break;
                 case "X": stopOutputs(false); break;
@@ -313,7 +333,13 @@ public class TorqueDebug extends LinearOpMode {
         loop = null;
         java.util.Arrays.fill(motorPower, 0);
         java.util.Arrays.fill(crPower, 0);
+        java.util.Arrays.fill(lightOn, false);
         for (int i = 0; i < servos.size(); i++) if (all || !servoLatched[i]) servoOn[i] = false;
+    }
+
+    void setLight(int i, boolean on) {
+        HardwareDevice d = lights.get(i);
+        try { if (d instanceof LED) ((LED) d).enable(on); else if (d instanceof RevBlinkinLedDriver) ((RevBlinkinLedDriver) d).setPattern(on ? RevBlinkinLedDriver.BlinkinPattern.WHITE : RevBlinkinLedDriver.BlinkinPattern.BLACK); else if (on) call(d, "setColor", 0xFFFFFFFF); else call(d, "turnAllOff"); } catch (RuntimeException ignored) { }
     }
 
     // ---- what is really plugged in
@@ -375,7 +401,7 @@ public class TorqueDebug extends LinearOpMode {
 
     String hubWatchJson(int[] on, boolean[][][] found, double[][] volts, boolean swept) {
         StringBuilder b = new StringBuilder(",\"on\":[");
-        for (int k = 0; k < on.length; k++) { if (k > 0) b.append(','); b.append(on[k]); }
+        for (int k = 0; k < on.length; k++) { if (k > 0) b.append(','); b.append(on[k] == -2 ? "null" : String.valueOf(on[k])); }
         b.append("],\"b\":[");
         for (int h = 0; h < hubs.size(); h++) {
             if (h > 0) b.append(',');
@@ -392,28 +418,80 @@ public class TorqueDebug extends LinearOpMode {
     String readI2c(int k) {
         HardwareDevice d = i2c.get(k);
         try {
+            StringBuilder b = new StringBuilder("{");
             switch (i2cKinds.get(k)) {
                 case "imu": {
-                    IMU imu = (IMU) d; YawPitchRollAngles a = imu.getRobotYawPitchRollAngles();
-                    return "{\"yaw\":" + num(a.getYaw(AngleUnit.DEGREES)) + ",\"pitch\":" + num(a.getPitch(AngleUnit.DEGREES)) + ",\"roll\":" + num(a.getRoll(AngleUnit.DEGREES)) + ",\"wz\":" + num(imu.getRobotAngularVelocity(AngleUnit.DEGREES).zRotationRate) + "}";
+                    IMU imu = (IMU) d; YawPitchRollAngles a = imu.getRobotYawPitchRollAngles(); AngularVelocity w = imu.getRobotAngularVelocity(AngleUnit.DEGREES);
+                    put(b, "yaw", a.getYaw(AngleUnit.DEGREES)); put(b, "pitch", a.getPitch(AngleUnit.DEGREES)); put(b, "roll", a.getRoll(AngleUnit.DEGREES)); put(b, "wx", w.xRotationRate); put(b, "wy", w.yRotationRate); put(b, "wz", w.zRotationRate);
+                    break;
                 }
                 case "pinpoint": {
                     GoBildaPinpointDriver p = (GoBildaPinpointDriver) d; p.update();
-                    return "{\"x\":" + num(p.getPosX(DistanceUnit.MM)) + ",\"y\":" + num(p.getPosY(DistanceUnit.MM)) + ",\"h\":" + num(p.getHeading(AngleUnit.DEGREES)) + ",\"ex\":" + p.getEncoderX() + ",\"ey\":" + p.getEncoderY() + ",\"status\":" + str(String.valueOf(p.getDeviceStatus())) + "}";
+                    put(b, "x", p.getPosX(DistanceUnit.MM)); put(b, "y", p.getPosY(DistanceUnit.MM)); put(b, "h", p.getHeading(AngleUnit.DEGREES)); put(b, "ex", p.getEncoderX()); put(b, "ey", p.getEncoderY()); put(b, "status", String.valueOf(p.getDeviceStatus()));
+                    put(b, "vx", call(p, "getVelX", DistanceUnit.MM)); put(b, "vy", call(p, "getVelY", DistanceUnit.MM)); put(b, "vh", call(p, "getHeadingVelocity", UnnormalizedAngleUnit.DEGREES)); put(b, "rate", call(p, "getFrequency"));
+                    break;
                 }
                 case "otos": {
                     SparkFunOTOS o = (SparkFunOTOS) d; SparkFunOTOS.Pose2D p = o.getPosition();
-                    return "{\"x\":" + num(p.x) + ",\"y\":" + num(p.y) + ",\"h\":" + num(p.h) + "}";
+                    put(b, "x", p.x); put(b, "y", p.y); put(b, "h", p.h);
+                    Object v = call(o, "getVelocity"), c = call(o, "getAcceleration");
+                    put(b, "vx", field(v, "x")); put(b, "vy", field(v, "y")); put(b, "vh", field(v, "h")); put(b, "ax", field(c, "x")); put(b, "ay", field(c, "y")); put(b, "ah", field(c, "h"));
+                    break;
                 }
                 case "color": {
                     NormalizedRGBA c = ((NormalizedColorSensor) d).getNormalizedColors();
-                    String dist = d instanceof DistanceSensor ? ",\"d\":" + num(((DistanceSensor) d).getDistance(DistanceUnit.CM)) : "";
-                    return "{\"r\":" + num(c.red) + ",\"g\":" + num(c.green) + ",\"b\":" + num(c.blue) + ",\"a\":" + num(c.alpha) + dist + "}";
+                    put(b, "r", c.red); put(b, "g", c.green); put(b, "b", c.blue); put(b, "a", c.alpha);
+                    if (d instanceof DistanceSensor) put(b, "d", ((DistanceSensor) d).getDistance(DistanceUnit.CM));
+                    break;
                 }
-                case "distance": return "{\"d\":" + num(((DistanceSensor) d).getDistance(DistanceUnit.CM)) + "}";
-                default: return "null";
+                case "distance": put(b, "d", ((DistanceSensor) d).getDistance(DistanceUnit.CM)); break;
+                default: readOther(b, d); break;
             }
+            return b.append('}').toString();
         } catch (RuntimeException e) { return "{\"error\":" + str(e.getClass().getSimpleName()) + "}"; }
+    }
+
+    /** Every other I2C driver in the SDK, by what it can do: docs/I2C-DEVICES.md lists them. By name, since which of them a robot has depends on its SDK, and one missing must not stop this file building. */
+    void readOther(StringBuilder b, HardwareDevice d) {
+        Object turned = call(d, "getAngularOrientation", AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES), rate = call(d, "getAngularVelocity", AngleUnit.DEGREES), push = call(d, "getAcceleration");
+        put(b, "yaw", field(turned, "firstAngle")); put(b, "pitch", field(turned, "secondAngle")); put(b, "roll", field(turned, "thirdAngle")); put(b, "wx", field(rate, "xRotationRate")); put(b, "wy", field(rate, "yRotationRate")); put(b, "wz", field(rate, "zRotationRate"));
+        put(b, "gx", field(push, "xAccel")); put(b, "gy", field(push, "yAccel")); put(b, "gz", field(push, "zAccel"));
+        put(b, "dir", call(d, "getDirection")); put(b, "angle", call(d, "getAngle")); put(b, "strength", call(d, "getStrength")); put(b, "signal", call(d, "signalDetected"));
+        put(b, "light", call(d, "getLightDetected")); put(b, "d", call(d, "getDistanceAsync", DistanceUnit.CM));
+        Object seen = call(d, "blocks"), arrows = call(d, "arrows"), encoders = call(d, "readAllEncoderData");
+        if (seen instanceof Object[]) { Object[] list = (Object[]) seen; put(b, "blocks", list.length); if (list.length > 0) { put(b, "id", field(list[0], "id")); put(b, "x", field(list[0], "x")); put(b, "y", field(list[0], "y")); put(b, "w", field(list[0], "width")); put(b, "t", field(list[0], "height")); } }
+        if (arrows instanceof Object[]) put(b, "arrows", ((Object[]) arrows).length);
+        Object at = field(encoders, "positions"), speed = field(encoders, "velocities");
+        if (at instanceof int[]) { int[] list = (int[]) at; for (int i = 0; i < list.length; i++) put(b, "e" + i, list[i]); }
+        if (speed instanceof short[]) { short[] list = (short[]) speed; for (int i = 0; i < list.length; i++) put(b, "s" + i, list[i]); }
+    }
+
+    static final Map<String, Method> METHODS = new HashMap<>();
+    /** What a device answers when asked by name, or null when it has no such thing or the asking fails. */
+    static Object call(Object o, String name, Object... args) {
+        if (o == null) return null;
+        String key = o.getClass().getName() + "." + name + "/" + args.length;
+        try {
+            if (!METHODS.containsKey(key)) {
+                Method found = null;
+                for (Method m : o.getClass().getMethods()) {
+                    if (!m.getName().equals(name) || m.getParameterTypes().length != args.length) continue;
+                    boolean fits = true;
+                    for (int i = 0; i < args.length; i++) if (!m.getParameterTypes()[i].isPrimitive() && !m.getParameterTypes()[i].isInstance(args[i])) fits = false;
+                    if (fits) { found = m; break; }
+                }
+                METHODS.put(key, found);
+            }
+            Method m = METHODS.get(key);
+            return m == null ? null : m.invoke(o, args);
+        } catch (ReflectiveOperationException | RuntimeException e) { return null; }
+    }
+
+    static void put(StringBuilder b, String key, Object v) {
+        if (v == null) return;
+        if (b.length() > 1) b.append(',');
+        b.append(str(key)).append(':');
+        if (v instanceof Number) b.append(num(((Number) v).doubleValue())); else if (v instanceof Boolean) b.append(v); else b.append(str(String.valueOf(v)));
     }
 
     String frame(double t, double loopMs, double volts, long now) {
@@ -428,6 +506,8 @@ public class TorqueDebug extends LinearOpMode {
         for (int i = 0; i < digitals.size(); i++) { if (i > 0) b.append(','); b.append(digitals.get(i).getState() ? 1 : 0); }
         b.append("],\"touch\":[");
         for (int i = 0; i < touches.size(); i++) { if (i > 0) b.append(','); b.append(touches.get(i).isPressed() ? 1 : 0); }
+        b.append("],\"l\":[");
+        for (int i = 0; i < lights.size(); i++) { if (i > 0) b.append(','); b.append(lightOn[i] ? 1 : 0); }
         b.append("],\"a\":[");
         for (int i = 0; i < analogs.size(); i++) { if (i > 0) b.append(','); b.append(num(analogs.get(i).getVoltage())); }
         b.append("],\"i\":[");
@@ -596,7 +676,9 @@ public class TorqueDebug extends LinearOpMode {
     String manifest() {
         StringBuilder b = new StringBuilder("{\"deck\":\"debug\",\"version\":1");
         list(b, "motors", motorNames); list(b, "servos", servoNames); list(b, "crservos", crNames); list(b, "digital", digitalNames); list(b, "touch", touchNames); list(b, "cameras", webcamNames);
-        b.append(",\"analog\":[");
+        b.append(",\"lights\":[");
+        for (int i = 0; i < lights.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(lightNames.get(i))).append(",\"k\":").append(str(lights.get(i) instanceof LED ? "led" : lights.get(i) instanceof RevBlinkinLedDriver ? "blinkin" : "stick")).append('}'); }
+        b.append("],\"analog\":[");
         for (int i = 0; i < analogs.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(analogNames.get(i))).append(",\"max\":").append(num(analogs.get(i).getMaxVoltage())).append('}'); }
         b.append("],\"i2c\":[");
         for (int i = 0; i < i2c.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(i2cNames.get(i))).append(",\"k\":").append(str(i2cKinds.get(i))); int[] p = i2cPlace[i]; if (p != null) b.append(",\"h\":").append(hubs.get(p[0]).getModuleAddress()).append(",\"b\":").append(p[1]).append(",\"a\":").append(p[2]); b.append('}'); }

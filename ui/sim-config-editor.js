@@ -86,14 +86,18 @@
   // ---- Auto-configure: what one press would do, from what is plugged in and what the file has. Hubs a scan found are already in the draft (load, withPortals).
   // It goes by the file on the robot, not the draft: a camera only Added in the draft is still to write, and one only removed from it is still there. webcams, limelight, fixLime (its place in the file): what to add or correct. hubs: in the draft, not in the file.
   // left: what stays out, each saying why. ready: the cameras the file has that are plugged in, which only something that has said what is plugged in can tell. writes: whether there is anything to write.
+  // The hub's own IMU, as Configure Robot's Scan adds it: on bus 0 of the parent hub, or of each hub that has one when the parent has none. Only a scan says which chip a hub has. It goes by the file, like the rest.
+  function imusToAdd(e){const R=C(),file=R.parse(e.xml).devices,own=Object.values(R.IMU_TAGS),out=[];for(const p of e.portals||[]){const parent=(p.modules||[]).find(m=>m.parent),list=parent&&R.IMU_TAGS[parent.imu]?[parent]:(p.modules||[]).filter(m=>R.IMU_TAGS[m.imu]);
+      for(const m of list)if(e.hubs.some(h=>h.portal===p.serial&&h.address===m.address)&&!file.some(d=>own.includes(d.tag)&&d.module?.portal===p.serial&&d.module?.address===m.address))out.push({portal:p.serial,address:m.address,tag:R.IMU_TAGS[m.imu]});}return out;}
   function autoPlan(e,others){const R=C(),rows=usbRows({...e,webcams:R.webcamsOf(e.xml),limelights:R.limelightsOf(e.xml)},others),file=R.parse(e.xml).hubs,hubs=e.hubs.filter(h=>!file.some(f=>f.portal===h.portal&&f.address===h.address&&f.tag===h.tag)&&(!e.connected||e.connected.has(R.hubKey(h.portal,h.address)))),webcams=rows.filter(r=>r.add),limelight=rows.find(r=>r.addLime)?.addLime||null,fixLime=rows.find(r=>r.fix)?.lime??null;
-    const here=others?rows.filter(r=>r.at!==undefined&&!r.absent):[];return {webcams,limelight,fixLime,hubs,left:rows.filter(r=>r.warn),ready:here.map(r=>r.name),readyKey:here[0]?.key||null,usb:webcams.length+(limelight?1:0)+(fixLime!==null?1:0),writes:webcams.length+hubs.length+(limelight?1:0)+(fixLime!==null?1:0)>0};}
+    const here=others?rows.filter(r=>r.at!==undefined&&!r.absent):[],imus=imusToAdd(e);return {webcams,limelight,fixLime,hubs,imus,left:rows.filter(r=>r.warn),ready:here.map(r=>r.name),readyKey:here[0]?.key||null,usb:webcams.length+(limelight?1:0)+(fixLime!==null?1:0),writes:webcams.length+hubs.length+imus.length+(limelight?1:0)+(fixLime!==null?1:0)>0};}
   // Into the draft. What the student already put there stays as they have it. Answers the names that go to the robot.
   function autoApply(e,others){const plan=autoPlan(e,others),names=[];for(const r of plan.webcams){const c=e.webcams.find(x=>x.serial===r.add)||addWebcam(e,r.add);if(c)names.push(c.name);}
     const lime=plan.limelight||(plan.fixLime!==null?others?.devices?.find(x=>x.config==='limelight'):null),to=lime&&{serial:lime.scanKey,address:lime.limelight?.address};
     if(plan.limelight&&to){const c=e.limelights.find(x=>x.serial===to.serial)||addLimelight(e,to);if(c)names.push(c.name);}
     else if(to){const old=C().limelightsOf(e.xml)[plan.fixLime]?.serial,i=e.limelights.findIndex(x=>x.serial===old),c=i>=0?fixLimelight(e,i,to):e.limelights.find(x=>x.serial===to.serial);if(c)names.push(c.name);}
-    if(plan.hubs.length)e.dirty=true;return {cameras:names,hubs:plan.hubs.map(h=>h.name)};}
+    const imus=[];for(const m of plan.imus){const hub={portal:m.portal,address:m.address};let d=e.devices.find(x=>sameHub(x,hub)&&x.tag===m.tag);if(!d){const taken=new Set(e.devices.map(x=>String(x.name).trim()));let name='imu';for(let i=2;taken.has(name);i++)name=`imu${i}`;d=addI2c(e,hub,0,m.tag,name);}imus.push(d.name);}
+    if(plan.hubs.length)e.dirty=true;return {cameras:names,hubs:plan.hubs.map(h=>h.name),imus};}
   // What is new for the file, when that is only USB devices, by text: all else in it stays exactly as it is on the robot. e: the file's own draft with autoApply done.
   function autoText(xml,e,plan){const R=C(),cams=R.webcamsOf(xml),limes=R.limelightsOf(xml),fix=plan.fixLime!==null;
     return R.withUsbAdded(fix?R.withLimelights(xml,e.limelights):xml,{webcams:e.webcams.filter(c=>!cams.some(x=>x.serial===c.serial)),limelights:fix?[]:e.limelights.filter(c=>!limes.some(x=>x.serial===c.serial))});}
@@ -102,7 +106,7 @@
   function edited(e){return !!e.dirty&&draftOf(e)!==draftOf(load(e.name,e.xml,e.portals));}
   // A newer scan into the draft, edits kept: its hubs show, and it says which are connected. Whether there is anything new to save, Auto-configure decides.
   function withPortals(e,portals){if(!portals)return e;const was=e.hubs[e.hub],m=C().matchHubs(e.hubs,portals,e.devices);e.portals=portals;e.connected=m.connected;if(m.added.length+m.fixed.length)e.dirty=true;e.hubs=hubOrder(m.hubs);e.hub=Math.max(0,e.hubs.findIndex(h=>h.portal===was?.portal&&h.address===was?.address));return e;}
-  const offerText=p=>{const n=(c,w)=>c?plural(c,w):'';return [n(p.usb,'new USB device'),n(p.hubs.length,'new hub')].filter(Boolean).join(' and ');};
+  const offerText=p=>{const n=(c,w)=>c?plural(c,w):'',list=[n(p.usb,'new USB device'),n(p.hubs.length,'new hub'),p.imus?.length?'the hub’s own IMU':''].filter(Boolean);return list.length>1?`${list.slice(0,-1).join(', ')} and ${list.at(-1)}`:list.join('');};
   const usbLine=r=>[r.word,r.serial,r.state].filter(Boolean).map(esc).join(' · ');
   // The robot's long name for a camera with no serial, for anyone comparing it with the Driver Hub. Closed, and drawn afresh with the row.
   const usbFacts=r=>r.key&&r.key!==r.serial?`<details class="usb-facts"><summary>Technical facts</summary>${esc(r.key)}</details>`:'';
@@ -181,7 +185,7 @@
       const add=box.querySelector('[data-ce-add]');if(add)openMenu(add,'i2c',tag,false,t=>{const d=addI2c(edit,h,free,t,t==='HuskyLens'&&!nameTaken(edit,'huskylens')?'huskylens':'');render();document.getElementById(`ce-name-i2c-${d.port}`)?.focus();},true);return true;}
     // One press of Auto-configure, once the student has said about any unsaved edits. withEdits: they go too. Without it the robot gets only what is new, and the edits stay here, still to save.
     // Only hubs and edits take the file written afresh, as Save writes it. Anything less goes in by text.
-    async function autoWrite(withEdits){if(!edit)return {ok:false,error:'Connect to the robot first.'};const usb=api.usb?.(),plan=autoPlan(edit,usb),base=withEdits?edit:load(edit.name,edit.xml,edit.portals),added=autoApply(base,usb);let xml;try{xml=withEdits||plan.hubs.length?xmlOf(base):autoText(edit.xml,base,plan);}catch(e){note=e.message;render();return {ok:false,error:e.message};}
+    async function autoWrite(withEdits){if(!edit)return {ok:false,error:'Connect to the robot first.'};const usb=api.usb?.(),plan=autoPlan(edit,usb),base=withEdits?edit:load(edit.name,edit.xml,edit.portals),added=autoApply(base,usb);let xml;try{xml=withEdits||plan.hubs.length||plan.imus.length?xmlOf(base):autoText(edit.xml,base,plan);}catch(e){note=e.message;render();return {ok:false,error:e.message};}
       busy=true;note='';render();try{await api.save(edit.name,xml);}catch(e){busy=false;note=e.message;render();return {ok:false,error:e.message};}
       if(withEdits){const {hub,family,bus,portals}=edit;edit={...load(edit.name,xml,portals),hub,family,bus};}else{autoApply(edit,usb);edit.xml=xml;edit.dirty=edited(edit);}
       busy=false;note='Saved to the robot.';render();return {ok:true,xml,...added};}
