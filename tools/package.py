@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse,re,hashlib,io,json,os,plistlib,shutil,stat,tarfile,urllib.request,zipfile,subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-META=json.loads((ROOT/'package.json').read_text());VERSION=META['version'];ELECTRON=META['devDependencies']['electron']
+META=json.loads((ROOT/'package.json').read_text());VERSION=META['version'];CHANNEL=None;ELECTRON=META['devDependencies']['electron']
 # Bump when anything outside app/ changes in a way installed copies must pick up
 # (runtime layout, launchers, Info.plist keys). Installs whose base differs get the full package.
 BASE_REVISION='2'
@@ -39,8 +39,11 @@ def generated(name,data):
     folder=CACHE/'generated'/VERSION;folder.mkdir(parents=True,exist_ok=True);file=folder/name;file.write_bytes(data);return file
 def app_files():
     meta=json.loads((ROOT/'package.json').read_text())
-    if meta['version']==VERSION:yield ROOT/'package.json','package.json'
-    else:meta['version']=VERSION;yield generated('package.json',(json.dumps(meta,indent=2)+'\n').encode()),'package.json'
+    if meta['version']==VERSION and CHANNEL in (None,meta.get('updateChannel')):yield ROOT/'package.json','package.json'
+    else:
+        meta['version']=VERSION
+        if CHANNEL:meta['updateChannel']=CHANNEL
+        yield generated('package.json',(json.dumps(meta,indent=2)+'\n').encode()),'package.json'
     yield generated('build.json',json.dumps({'version':VERSION,'electron':ELECTRON,'base':base_id()}).encode()),'build.json'
     yield ROOT/'docs'/'CHROMIUM-LICENSE.txt','licenses/CHROMIUM-GAMEPAD.txt'
     yield ROOT/'LICENSE','LICENSE'
@@ -174,9 +177,11 @@ def mac(arch):
         assert plistlib.loads(z.read(bundle+'/Contents/Info.plist'))['CFBundleIdentifier']=='dev.deckdriverstation.app'
     finish(file);latest(file)
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--target',choices=['steamdeck','windows','macos-arm64','app','all'],default='steamdeck');p.add_argument('--version',help='Package as this version (update tests only).');p.add_argument('--runtime-only',choices=['linux-x64','win32-x64']);p.add_argument('--fetch-only',choices=['darwin-arm64']);args=p.parse_args();OUT.mkdir(exist_ok=True)
+    p=argparse.ArgumentParser();p.add_argument('--target',choices=['steamdeck','windows','macos-arm64','app','all'],default='steamdeck');p.add_argument('--version',help='Package as this version (update tests only).');p.add_argument('--channel',choices=['testing','main'],help='Package for this update channel instead of the one package.json names (a local Main build from testing).');p.add_argument('--runtime-only',choices=['linux-x64','win32-x64']);p.add_argument('--fetch-only',choices=['darwin-arm64']);args=p.parse_args();OUT.mkdir(exist_ok=True)
     if args.version:
         global VERSION;VERSION=args.version
+    if args.channel:
+        global CHANNEL;CHANNEL=args.channel
     if args.runtime_only:print(runtime(args.runtime_only));return
     if args.fetch_only:print(runtime_archive(args.fetch_only));return
     if args.target in ('steamdeck','all'):linux()

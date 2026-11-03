@@ -8,7 +8,6 @@ Setup & Calibrate → **Axon Programmer**, the tab at the far right. Torque prog
 
 - An Axon V2 programmer, which Axon calls the Programmer MK2. Axon, goBILDA and ServoCity sell it.
 - A USB cable that carries data. USB-C powers the programmer and the servo, so no battery is needed.
-- Axon's own software for that servo family, downloaded by you from Axon's page: **Axon Programming Software** for V1, **Axon Software MK2** for V2. See [Axon's software](#axons-software).
 - A Windows computer, for now. Torque runs on Steam Deck, Linux and Mac too, but the small program that reaches the programmer over USB is built for Windows, so there this tab says it cannot reach it.
 - One of these servos: V1 MAX (sold as MAX+), V1 MINI (MINI+), V2 MAX (MAX MK2), V2 MINI (MINI MK2).
 
@@ -38,11 +37,7 @@ Switching mode writes Axon's official firmware for that mode, as Axon's own apps
 
 ### Axon's software
 
-Axon's programs are plain downloads, not installed, so Torque looks for the file: `Axon_Servo_Programming_Software*.exe` unlocks V1 servos and `Axon_Software_MK2*.exe` unlocks V2 servos. It looks in Downloads, Desktop and Documents, including OneDrive's, and one level into a folder with Axon in its name. A student can also point at the file with **I saved it somewhere else**. Torque only checks that the file is there and is a whole program, opens it when asked, and reads nothing out of it. Nothing about it leaves the computer.
-
-With a family's program missing, the tab says so, **Open Axon's download page** opens Axon's page in the browser on the link to click, with that link highlighted, and the student saves it themselves. The tab unlocks by itself within a few seconds. Writes for that family are refused until then, in the main process as well as on the page. The Response graph needs no download.
-
-Having Axon's program does not change where the keys come from: Torque never takes them from it. So switching mode opens Axon's program, unless a key file was imported.
+Not needed. Torque works through the V2 programmer by itself, for reading, changing, saving and restoring settings, and the Response graph. If Axon's own program is on the computer anyway (`Axon_Servo_Programming_Software*.exe` for V1, `Axon_Software_MK2*.exe` for V2, in Downloads, Desktop or Documents), a mode switch with no key file offers to open it. Torque only looks for the file, opens it when asked, and reads nothing out of it.
 
 **Axon's keys.** Axon's firmware files are encrypted with Axon's own keys, and Torque includes neither the keys nor the firmware. Settings, reading, saving and defaults all work without them. Switching mode asks for a key file once (**Import key file**, a JSON file with `v1` and `v2`, each 32 hexadecimal digits), and it stays beside this computer's settings as `axon-keys.json`, never in a release or this repository. A copy of your own file in your Documents folder named `Torque Axon keys.json` is found with no prompt, so it follows you to your other computers if Documents syncs. Without one, Axon's own app can switch modes. Firmware comes from Axon's own link, or a file you already have.
 
