@@ -113,7 +113,9 @@ test('Torque Debug’s source compiles on SDK 12.0 and before, opens one camera 
   // SDK 12.0 moved these to AprilTagDetection's subclasses, and that is what broke the build on a real hub: "cannot find symbol: variable decisionMargin".
   const code=src.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g,'');assert.doesNotMatch(code,/\bd\.(id|decisionMargin|metadata)\b/);for(const name of ['id','decisionMargin','metadata'])assert.ok(code.includes(`field(d, "${name}")`),name);assert.match(code,/getField\(name\)\.get\(from\)/);assert.match(code,/d\.ftcPose/,'ftcPose stayed on the class');
   // Nothing moves until told. Motors are set to 0; a continuous servo is written only once told, since 0 power on a position servo is a move to its middle; servos go limp and get a position only from S.
-  assert.match(code,/if \(crTold\[i\]\) crservos\.get\(i\)\.setPower\(crPower\[i\]\)/);assert.doesNotMatch(code,/for \(CRServo s : crservos\) s\.setPower/);assert.match(code,/if \(servoOn\[i\] && !Double\.isNaN\(servoPos\[i\]\)\)/);assert.match(code,/\.setPwmDisable\(\)/);
+  assert.match(code,/if \(crTold\[i\] && driven\) c\.setPower\(crPower\[i\]\)/);
+  // A continuous servo nothing drives has no PWM at all, so what it turns (a swerve pod) moves freely by hand for its encoder's check.
+  assert.match(code,/else if \(!driven && p\.isPwmEnabled\(\)\) p\.setPwmDisable\(\)/);assert.doesNotMatch(code,/for \(CRServo s : crservos\) s\.setPower/);assert.match(code,/if \(servoOn\[i\] && !Double\.isNaN\(servoPos\[i\]\)\)/);assert.match(code,/\.setPwmDisable\(\)/);
   // The port opens before the camera does.
   assert.ok(code.indexOf('serve.start()')<code.indexOf('startCamera();'));
   // The camera is always let go. Stopping closes whichever portal is current, one closing never goes around that, and a stop during a reopen leaves no new portal holding the camera.

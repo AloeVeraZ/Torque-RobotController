@@ -296,7 +296,7 @@ public class MyAuto implements DeckAutonomous {
   // One tab, three steps: Setup says what electronics the robot has, Configure says what is plugged into them and what each
   // is called, and Calibrate debugs and tunes them on the robot. Setup and Configure share an app view; all show these steps.
   const flowArrow='<svg class="ui-icon flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17M14 6l6 6-6 6"/></svg>';
-  const flowSteps=`<nav class="flow-steps" aria-label="Setup and Calibrate steps"><button type="button" data-flow="setup"><span class="flow-num" aria-hidden="true">1</span>Setup</button>${flowArrow}<button type="button" data-flow="configure"><span class="flow-num" aria-hidden="true">2</span>Configure</button>${flowArrow}<button type="button" data-flow="calibrate"><span class="flow-num" aria-hidden="true">3</span>Calibrate</button><button type="button" class="flow-axon" data-flow="axon"><span class="flow-new">New</span><span class="flow-num" aria-hidden="true">4</span>Axon Programmer</button></nav>`;
+  const flowSteps=`<nav class="flow-steps" aria-label="Setup and Calibrate steps"><button type="button" data-flow="setup"><span class="flow-num" aria-hidden="true">1</span>Setup</button>${flowArrow}<button type="button" data-flow="configure"><span class="flow-num" aria-hidden="true">2</span>Configure</button>${flowArrow}<button type="button" data-flow="debug"><span class="flow-num" aria-hidden="true">3</span>Debug</button>${flowArrow}<button type="button" data-flow="calibrate"><span class="flow-num" aria-hidden="true">4</span>Calibrate</button><button type="button" class="flow-axon" data-flow="axon"><span class="flow-new">New</span><span class="flow-num" aria-hidden="true">5</span>Axon Programmer</button></nav>`;
   // Setup (its own app view): the electronics on the robot and what is plugged into them, typed in or read from the Control
   // Hub's configuration. Simulate and Calibrate work from this.
   if(setupRoot)setupRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-grid" id="rs-step-setup"><div class="cal-flow">
@@ -315,10 +315,10 @@ public class MyAuto implements DeckAutonomous {
     <dialog id="rs-active-confirm" aria-labelledby="rs-active-title"><form method="dialog"><h2 id="rs-active-title"></h2><p id="rs-active-text"></p><div class="button-row"><button id="rs-active-yes" class="primary" type="button">Yes, make it active</button><button id="rs-active-no" class="secondary" type="button">No</button></div></form></dialog>`;
   // Calibrate (its own app view): send the code with its check TeleOp, run the guided check, and the other things to
   // measure on the real robot. It uses this setup and the same Send to robot panel, moved here while it shows.
-  if(calRoot)calRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-bar"><div class="cal-tabs" role="tablist" aria-label="Calibrate steps, in order"><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera">Camera</button><button type="button" role="tab" id="cal-tab-debug" data-cal-top="debug" aria-controls="cal-panel-debug">Debug</button><button type="button" role="tab" id="cal-tab-calibrate" data-cal-top="calibrate" aria-controls="cal-panel-calibrate">Calibrate</button></div><div class="cal-head"><p id="cal-saved" class="hint" role="status"></p><button id="cal-open-sim" class="secondary" type="button">Open in Simulate</button><button id="cal-save" class="primary" type="button">Save</button></div></div>
+  if(calRoot)calRoot.innerHTML=`<div class="cal-page">${flowSteps}<div class="cal-bar"><div class="cal-tabs" role="tablist" aria-label="Debug, and each USB device plugged in" data-cal-top-tabs><button type="button" role="tab" id="cal-tab-debug" data-cal-top="debug" aria-controls="cal-panel-debug">Debug</button><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera" hidden>Camera</button><button type="button" role="tab" id="cal-tab-calibrate" data-cal-top="calibrate" aria-controls="cal-panel-calibrate" hidden>Calibrate</button></div><div class="cal-head"><p id="cal-saved" class="hint" role="status"></p><button id="cal-open-sim" class="secondary" type="button">Open in Simulate</button><button id="cal-save" class="primary" type="button">Save</button></div></div>
     <p id="cal-told" class="rs-told" role="status" hidden></p>
-    <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera"><section class="cal-card" id="cal-camera"></section></div>
-    <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug" hidden><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
+    <div id="cal-panel-camera" role="tabpanel" aria-labelledby="cal-tab-camera" data-cal-top-panel="camera" hidden><section class="cal-card" id="cal-camera"></section></div>
+    <div id="cal-panel-debug" role="tabpanel" aria-labelledby="cal-tab-debug" data-cal-top-panel="debug"><section class="cal-card cal-debug" id="cal-debug" aria-labelledby="cal-debug-title"></section></div>
     <div id="cal-panel-calibrate" role="tabpanel" aria-labelledby="cal-tab-calibrate" data-cal-top-panel="calibrate" hidden>
     <div class="cal-tabs cal-subtabs" role="tablist" aria-label="What to calibrate"><button type="button" role="tab" id="cal-tab-electronics" data-cal-tab="electronics" aria-controls="cal-panel-electronics">Electronics</button><button type="button" role="tab" id="cal-tab-mechanisms" data-cal-tab="mechanisms" aria-controls="cal-panel-mechanisms">Mechanisms</button></div>
     <div id="cal-panel-electronics" role="tabpanel" aria-labelledby="cal-tab-electronics" data-cal-panel="electronics"><div class="cal-grid"><div class="cal-flow">
@@ -1952,7 +1952,7 @@ public class MyAuto implements DeckAutonomous {
   // what is on them now (DeckUsbKinds.classifyAll, undefined until read; Wi-Fi never has it). Setup, Configure and Camera all read this, so they cannot disagree; null when no hub is
   // connected to say. hubUsbChanged draws whatever shows it, and Configure keeps its unsaved edits.
   const hubUsb=()=>{if(!setupConn)return null;const others=project.calibration?.hub?.scan?.others,rows=setupConn.host==='usb'?hubUsbRows:null;return rows?Object.assign([...(others||[])],{devices:rows,stuck:hubScanStuck()}):others||null;};
-  function hubUsbChanged(){if(setupShown)setupRender();if(calibrating){liveCamera?.refresh();usbDevices?.refresh();usbLive?.refresh();}}
+  function hubUsbChanged(){if(setupShown)setupRender();if(calibrating){camTab();liveCamera?.refresh();usbDevices?.refresh();usbLive?.refresh();}}
   // ---- What main reads of the hub's ports (src/hub-usb.cjs), pushed with the USB watch. hubUsbRead: {serial, devices, addresses, at}. hubFound: the last scan's answer and when it began.
   // hubCovers: what the last scan that answered was asked about. Whenever that is not what is plugged in now it scans: that one rule takes in a change during a scan, a scan that failed,
   // and a change while nobody was looking, with nothing to remember. A scan never runs off these tabs, and only ever one: setupBusy. Scans nobody pressed for start nothing on the robot, and after
@@ -2101,7 +2101,7 @@ public class MyAuto implements DeckAutonomous {
     hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();}setupRender();hubUsbChanged();}
   // What the USB watch pushes (src/usb-watch.cjs): Windows's word on the cable first, then ADB's, and this comes at once whatever else is busy.
   function hubPushed(s){if(!s||!setupTimer)return;hubLive=s;const there=!!s.hub,seeing=s.usb||s.adb?.running;hubDarkAt=seeing?0:hubDarkAt||Date.now();
-    if(there&&!hubPushedOn){hubPushedOn=true;hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}
+    if(there&&!hubPushedOn){hubPushedOn=true;liveCamera?.replugged?.();liveDebug?.recheck?.();hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}
     // Only the watch's own word that the hub left. A list with no hub in it says nothing by itself: ADB's first after its server restarts is often empty. A Driver Hub found out never was a Control Hub,
     // and a hub leaving update mode is restarting: they just go.
     else if(!there&&hubPushedOn&&s.drop){hubPushedOn=false;hubOnUsb=false;if(s.drop==='unplugged')hubLeft();}
@@ -2186,7 +2186,7 @@ public class MyAuto implements DeckAutonomous {
     return `<p>${of}</p><p class="hint">Moves ${s.device.kind==='motor'?'motor':'servo'} port ${s.device.port}, “${W_esc(s.device.name)}”, for one second.</p><div class="button-row"><button type="button" class="primary" data-hub-test="run"${hubTest.running?' disabled':''}>${hubTest.ran?'Move it again':'Move it'}</button></div>${hubTest.note?`<p class="hint" role="status">${W_esc(hubTest.note)}</p>`:''}${pick}<div class="button-row"><button type="button" class="secondary" data-hub-test="next">Next</button><button type="button" class="secondary" data-hub-test="cancel">Stop</button></div>`;}
   const W_esc=v=>window.DeckWiring.esc(v);
   let flowStep='setup';
-  function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?'calibrate':flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);}
+  function flowMarks(){for(const b of $$('.flow-steps [data-flow]')){const here=b.closest('#calibrate-view')?(calTop==='calibrate'?'calibrate':'debug'):flowStep;b.toggleAttribute('data-here',b.dataset.flow===here);}
     if(setupRoot){$('#rs-step-setup').hidden=flowStep!=='setup';$('#rs-step-configure').hidden=flowStep!=='configure';$('#rs-step-axon').hidden=flowStep!=='axon';}}
   // The Axon Programmer tab: its programmer is only touched while the tab shows, and the Control Hub's USB watch rests meanwhile.
   const axonShown=()=>window.DeckAxon?.shown(setupShown&&flowStep==='axon');
@@ -3430,7 +3430,8 @@ public class MyAuto implements DeckAutonomous {
   // (the flywheel's speed and what each shot costs it, the hood angle by flywheel speed, the turret, feeder, intakes and
   // moving parts); the simulation runs on them. What the check measures is read from the check TeleOp generated for the
   // setup: one line for each step it asks about.
-  let calibrating=false,calTop='camera',calTab='electronics';
+  // calTop: Debug (with a tab for each USB device that has one) is step 3, Calibrate step 4; both are this page.
+  let calibrating=false,calTop='debug',calTab='electronics',camPicked=false;
   window.DeckPartPicker?.install({photo:native?tag=>api.devicePhoto(tag):null});
   const setupBar=$('.sim-setup-bar'),setupHome=setupBar?.nextElementSibling,reliable=document.createElement('div');reliable.id='sim-reliable';reliable.className='sim-reliable';reliable.setAttribute('role','status');reliable.hidden=true;reliable.innerHTML='<span></span><button type="button" class="secondary">Go to Setup &amp; Calibrate</button><button type="button" class="sim-reliable-close" aria-label="Close this note" title="Close">×</button>';setupBar?.after(reliable);
   const RELIABLE_CLOSED='torque-reliable-closed',reliableClosed=()=>{try{return new Set(JSON.parse(localStorage.getItem(RELIABLE_CLOSED)||'[]'));}catch{return new Set();}};
@@ -3460,9 +3461,13 @@ public class MyAuto implements DeckAutonomous {
     list.replaceChildren(...groups.length?groups.flatMap(([name,list])=>[Object.assign(document.createElement('li'),{className:'cal-group',textContent:`${name} · ${list.length}`}),...list.map(row)]):[calNote('This setup has no devices for the check to test.')]);
   }
   function calTabs(attr,panel,key){for(const b of $$(`[data-${attr}]`)){const on=b.getAttribute(`data-${attr}`)===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}for(const p of $$(`[data-${panel}]`))p.hidden=p.getAttribute(`data-${panel}`)!==key;}
-  // The tabs run in the order a team works: Camera, Debug, and Calibrate last. Electronics or Mechanisms opens the Calibrate tab they are in. What Auto-configure said goes with the first tab change.
-  function calSelect(key){const was=calTop;if(['camera','debug','calibrate'].includes(key))calTop=key;else{calTop='calibrate';calTab=key;}if(calTop!==was)calTold('');calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);usbDevices?.refresh();usbLive?.refresh();}
-  for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const row=$$(`[data-${attr}]`),other=row[(row.indexOf(b)+(e.key==='ArrowRight'?1:row.length-1))%row.length];calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
+  // Debug comes first; a camera plugged into the hub (or the simulated one, when asked for) gets a tab beside it, and none otherwise.
+  // Calibrate is the next step: Electronics or Mechanisms opens it. What Auto-configure said goes with the first tab change.
+  const camHere=()=>{const u=hubUsb();if(Array.isArray(u?.devices))return u.devices.some(r=>r.config==='webcam'||r.config==='limelight');return Array.isArray(u)&&u.some(d=>d.type==='WEBCAM');};
+  function camTab(){const b=$('#cal-tab-camera');if(!b)return;const on=camHere()||camPicked;b.hidden=!on;const sim=$('#cal-sim-cam');if(sim)sim.hidden=camHere();if(!on&&calTop==='camera')calSelect('debug');}
+  function calSelect(key){const was=calTop;if(key==='camera')camPicked=camPicked||!camHere();if(['camera','debug','calibrate'].includes(key))calTop=key;else{calTop='calibrate';calTab=key;}if(calTop!==was)calTold('');calTabs('cal-top','cal-top-panel',calTop);calTabs('cal-tab','cal-panel',calTab);
+    const tabs=$('[data-cal-top-tabs]');if(tabs)tabs.hidden=calTop==='calibrate';camTab();flowMarks();if(calTop==='debug')liveDebug?.recheck?.();usbDevices?.refresh();usbLive?.refresh();}
+  for(const attr of ['cal-top','cal-tab'])for(const b of $$(`[data-${attr}]`)){b.onclick=()=>calSelect(b.getAttribute(`data-${attr}`));b.onkeydown=e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const row=$$(`[data-${attr}]`).filter(x=>!x.hidden),other=row[(row.indexOf(b)+(e.key==='ArrowRight'?1:row.length-1))%row.length];calSelect(other.getAttribute(`data-${attr}`));other.focus();};}
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
   function calRender(){if(!calRoot||calRoot.hidden)return;calElectronics();calMechanisms();calGates();const h=calHubHash();if(liveDebug&&h!==calLayout){calLayout=h;liveDebug.layout();}}
@@ -3568,10 +3573,10 @@ public class MyAuto implements DeckAutonomous {
   const calCmd=m=>m.row.family==='motor'?'M':m.row.kind==='crservo'?'C':'S';
   const calUnit=(m,rec)=>m.template==='T3'?'RPM':rec?.transform?.unit==='mm'?'mm':'°';
   const liveCamera=window.DeckCamera&&calRoot?window.DeckCamera.create({host:$('#cal-camera'),api,native,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='Webcam').map(d=>({name:d.name,serial:d.serial})),plugged:hubUsb,active:()=>{const n=project.calibration?.hub?.config?.name;return n&&n!=='no configuration'?n:null;},toConfigure:serial=>void configureUsb(serial),autoConfigure:()=>autoConfigure(),autoNow:()=>{if(window.deckHoldAuto||autoBusy||configEditor?.edited?.())return false;void autoConfigure();return true;},conn:()=>setupConn,busy:()=>!!robotSending||!!checking?.running||!!hubTest||setupBusy||autoBusy,limelights:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>d.tag==='EthernetDevice'),lens:{all:()=>project.calibration?.lens,save:lens=>{project.calibration.lens=lens;calSave();}}}):null;
-  const usbToCamera=serial=>{calSelect('camera');liveCamera?.select(serial);};
+  const usbToCamera=serial=>{camPicked=true;calSelect('camera');liveCamera?.select(serial);};
   const usbDevices=window.DeckUsbDevices&&calRoot?window.DeckUsbDevices.create({host:$('#cal-usb'),api,native,usb:hubUsb,toCamera:usbToCamera,toI2c:tag=>void configureI2c(tag),toAxon:axonTab}):null;
   // Debug's list of the same devices, above the check and the hubs' ports, which run long, with what each is doing now.
-  const usbLive=(()=>{const box=$('#cal-debug');if(!window.DeckUsbDevices||!box)return null;const host=document.createElement('section');host.className='cal-usb-live';host.dataset.debugUsb='';box.append(host);return window.DeckUsbDevices.createLive({host,api,native,usb:hubUsb,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>!d.module),toCamera:usbToCamera,auto:()=>void autoConfigure()});})();
+  const usbLive=(()=>{const box=$('#cal-debug');if(!window.DeckUsbDevices||!box)return null;const host=document.createElement('section');host.className='cal-usb-live';host.dataset.debugUsb='';box.append(host);const sim=document.createElement('p');sim.id='cal-sim-cam';sim.className='hint cal-sim-cam';sim.innerHTML='No camera on the hub? <button type="button" class="link" data-sim-cam>Try the camera tools on a simulated webcam</button>';sim.querySelector('button').onclick=()=>{camPicked=true;calSelect('camera');};box.append(sim);return window.DeckUsbDevices.createLive({host,api,native,usb:hubUsb,debug:liveDebug,configured:()=>(project.calibration?.hub?.config?.devices||[]).filter(d=>!d.module),toCamera:usbToCamera,auto:()=>void autoConfigure()});})();
   function calUnitsNow(m,rec){const v=liveDebug?.values()||{},raw=v[calKey(m,rec)];return TU.toUnits(raw,rec?.transform||{});}
   const calFix=(v,d=2)=>finite(v)?(+v).toFixed(d):'—';
   const calNeedLive=()=>`<p class="cal-note">This step moves the robot. Start Live debug in the Debug tab first (robot on blocks).</p><div class="button-row"><button type="button" class="secondary" data-cal-act="to-live">Go to Live debug</button></div>`;
@@ -3712,7 +3717,7 @@ public class MyAuto implements DeckAutonomous {
   // The setup bar's right-click menu works here too.
   calRoot?.addEventListener('contextmenu',e=>{const b=e.target.closest('[data-setup-id],#sim-setup');if(!b)return;e.preventDefault();const r=b.getBoundingClientRect();setupMenu(b.dataset.setupId||project.setupId,e.clientX||r.left+16,e.clientY||r.bottom);});
   $('#cal-open-sim').onclick=()=>void api.page?.('simulation');
-  return {flow(step){if(step!=='calibrate'){flowStep=step;setupRender();}flowMarks();hubWatch();axonShown();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();axonShown();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
+  return {flow(step){if(step==='debug')calSelect('debug');else if(step==='calibrate')calSelect(calTab);else{flowStep=step;setupRender();}flowMarks();hubWatch();axonShown();},setup(value){const was=setupShown;setupShown=!!value&&!!setupRoot;if(setupShown&&!was)setupRender();hubWatch();axonShown();if(!setupShown&&was){if(hubTest){hubTest=null;void liveDebug?.stop();}}},
     calibrate(value){const was=calibrating;calibrating=!!value&&!!calRoot;if(calibrating&&!was)void calibrateShow();if(was&&!calibrating)calTold('');hubWatch();},
     activate(value){
     if(value)reliableNote();

@@ -1,6 +1,6 @@
 'use strict';
 // The straight line from Configure to Debug on the virtual Control Hub over the cable, with only ADB stood in for. Connecting puts the program on the robot in the background. Save takes what is plugged in with it,
-// the program is already going when Calibrate opens, Camera has its picture, Debug shows what was just configured, with no build and nothing pressed. A camera plugged in later configures itself.
+// the program is already going when Debug opens, Camera has its picture, Debug shows what was just configured, with no build and nothing pressed. A camera plugged in later configures itself.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/save-flow-app.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright'),{parseUsb}=require('../src/hub-usb.cjs'),{onBotCompile}=require('../tools/ftc-sim.cjs'),RobotConfig=require('../ui/ftc/robot-config.js');
@@ -40,8 +40,10 @@ const ports=(...lines)=>parseUsb([INSIDE,...lines].join('\n'));
     await soon('it is on the robot',async()=>{const c=RobotConfig.parse((await sim()).xml);return c.devices.some(d=>d.tag==='Webcam'&&d.serial==='Ucamera001')&&c.devices.some(d=>d.tag==='ControlHubImuBHI260AP'&&d.bus===0);});assert.ok(RobotConfig.parse((await sim()).xml).devices.some(d=>d.name==='arm'),'what was there stays');await soon('the robot restarted',async()=>(await sim()).restarts===before+1);
     // ---- It is already going, on this page, before anyone gets to Calibrate.
     await soon('it starts in the background',running);assert.equal((await sim()).builds,1,'no second build');
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true','Calibrate opens on Camera');
-    const took=await soon('the picture',picture,8000);console.log(`picture ${took} ms after opening Calibrate`);await page.screenshot({path:path.join(out,'a-camera.png')});
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','it opens on Debug');assert.match(await page.textContent('[data-debug-start]'),/Stop live debug/,'already going');
+    // A webcam is on the hub, so Camera has its tab beside Debug.
+    assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'a tab for the webcam');await page.click('#cal-tab-camera');
+    const took=await soon('the picture',picture,8000);console.log(`picture ${took} ms after opening Camera`);await page.screenshot({path:path.join(out,'a-camera.png')});
     // ---- Debug shows what was just configured, on its own bus.
     await page.click('#cal-tab-debug');assert.match(await page.textContent('[data-debug-start]'),/Stop live debug/,'still going');await soon('the IMU',async()=>await page.locator('#cal-debug [data-bus="control:0"] [data-live="ib:imu"]').innerText()==='Connected');await soon('its readings',async()=>/Yaw °/.test(await page.locator('#cal-debug [data-bus="control:0"]').innerText()));
     // ---- Something configured afterwards is on Debug by the time it is back, with no build. Its own run gave way to the Save, even one someone was using.

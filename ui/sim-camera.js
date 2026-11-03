@@ -239,9 +239,9 @@
       failure=f;tryAt=at+Math.min(f.rc?30000:60000,f.again*2**(fails-1));}
     // A build happens with nobody pressing only over the cable, where the crash guard can bring the app back, and once a visit: a robot whose copy never matches is not built over and over.
     async function startLink(){moving=true;startedAt=Date.now();tryAt=startedAt+3000;const asked=pressed,build=needBuild,usb=conn()?.host==='usb';runPressed=asked;pressed=false;needBuild=false;let r={};paint();
-      try{r=await debug.run({host:conn()?.host,noStart:!asked,build,mayBuild:asked||(usb&&!builds),still:()=>(wantNow()||debugWants())&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
+      try{r=await debug.run({host:conn()?.host,noStart:!asked,build,mayBuild:asked,still:()=>(wantNow()||debugWants())&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
       if(r.built){builtAt=Date.now();builds++;}
-      if(r.cantBuild){if(usb)stopTrying('The camera program on the robot still does not match this version of Torque. Press Try again to put it on again.');else{failure={hard:true,install:true,text:'The camera program is not on this robot yet.'};tryAt=Infinity;}}
+      if(r.cantBuild){if(usb)stopTrying(builds?'The camera program on the robot still does not match this version of Torque. Press Try again to put it on again.':'The camera program on the robot is missing or from another version of Torque. Press Try again to put it on.');else{failure={hard:true,install:true,text:'The camera program is not on this robot yet.'};tryAt=Infinity;}}
       else if(r.problem)stopTrying(r.problem);else if(r.error)failWith(r.error);paint();}
     // Try again while the Robot Controller app is not answering: nothing else would start it, with no camera it can start.
     async function wake(){moving=true;paint();try{await api.robotLink('rc-start',{host:conn()?.host});}catch(e){failWith(e.message);}finally{moving=false;}if(fresh)fresh.stale=true;freshAt=0;paint();tick();}
@@ -352,7 +352,7 @@
     q('[data-cam-add]').onclick=()=>{const now=current(),press=autoConfigure||globalThis.DeckAutoConfigure||globalThis.autoConfigure;if(now.state==='spare'&&typeof press==='function')void press();else toConfigure?.(now.serial);};
     q('[data-cam-again]').onclick=pressAgain;q('[data-cam-install]').onclick=()=>{needBuild=true;pressAgain();};
     paint();timer=setInterval(tick,500);
-    return {refresh:()=>{paint();tick();},settings:()=>settings,
+    return {replugged(){failure=null;tryAt=0;ends=0;fails=0;rebuilds=0;paint();},refresh:()=>{paint();tick();},settings:()=>settings,
       // From the USB devices tab: this camera or Limelight, by its Scan key.
       select(serial){const o=offered().find(x=>sameCamera(serialOf(x),serial));if(o){source=o.value;tags=[];pictureUp=false;camSent=null;limeReset();}paint();syncCamera();tick();},
       stop(){clearInterval(timer);clearTimeout(camTimer);unlisten?.();unend?.();stream(false);}};}

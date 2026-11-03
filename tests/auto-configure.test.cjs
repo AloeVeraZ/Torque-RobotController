@@ -113,10 +113,10 @@ test('Debug: a Limelight says how it is',()=>{
   const NET=`1-1|1d6b|0104|00|0100|480|1|5|Some|Gadget||100mA|80|0|02/06/00/cdc_ether/eth0,`,LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'EthernetOverUsb:eth0:172.29.0.23',status:{name:'limelight'}},list=usb([NET],{limelight:LIME});
   assert.match(U.liveHtml(list,{lime:{temp:48.52,fps:90,pipelineIndex:2}}),/rs-pill ok">Answering · 48\.5 °C · 90 frames a second · pipeline 2/);assert.match(U.liveHtml(list,{lime:null}),/rs-pill warn">Not answering/);assert.match(U.liveHtml(list,{}),/Asking it how it is/);
 });
-test('Calibrate has three tabs, with USB devices inside Electronics and Debug',()=>{
-  const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),tops=[...src.matchAll(/data-cal-top="(\w+)"/g)].map(m=>m[1]);assert.deepEqual(tops,['camera','debug','calibrate']);assert.doesNotMatch(src,/cal-panel-usb|cal-tab-usb/);
+test('Debug is step 3 and Calibrate step 4, with a camera tab only for a camera, and USB devices inside Electronics and Debug',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),tops=[...src.matchAll(/data-cal-top="(\w+)"/g)].map(m=>m[1]);assert.deepEqual(tops,['debug','camera','calibrate']);assert.match(src,/id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera" hidden>/);assert.match(src,/data-flow="debug"><span class="flow-num" aria-hidden="true">3<\/span>Debug/);assert.match(src,/data-flow="calibrate"><span class="flow-num" aria-hidden="true">4<\/span>Calibrate/);assert.doesNotMatch(src,/cal-panel-usb|cal-tab-usb/);
   const electronics=src.slice(src.indexOf('id="cal-panel-electronics"'),src.indexOf('id="cal-panel-mechanisms"'));assert.match(electronics,/id="cal-usb"/);assert.match(src,/DeckUsbDevices\.createLive/);
-  assert.match(src,/class="flow-axon" data-flow="axon"><span class="flow-new">New<\/span><span class="flow-num" aria-hidden="true">4<\/span>Axon Programmer/);
+  assert.match(src,/class="flow-axon" data-flow="axon"><span class="flow-new">New<\/span><span class="flow-num" aria-hidden="true">5<\/span>Axon Programmer/);
 });
 
 // ---- What the review found.

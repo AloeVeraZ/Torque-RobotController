@@ -1,12 +1,12 @@
 'use strict';
 // A camera on the Control Hub's USB in the real app, against a stubbed hub:
-//  A. Calibrate's tabs run Camera, Debug, Calibrate, and open on Camera;
+//  A. Debug comes first and opens, Camera has a tab only for a camera or when asked for, and Calibrate is a step of its own;
 //  B. a scan's camera reaches Configure and Camera, a new scan redraws both with nothing lost, and neither writes to the robot until Save;
 //  C. Add, rename and remove, and the XML Save sends;
 //  D. the Robot Controller restarting after a scan does not hide the camera from Configure while Setup still shows it;
-//  E. Camera's picture with nothing pressed: built once, started by itself, its settings beside it, released after the tab is left, and failures in one line;
+//  E. Camera's picture: nothing builds by itself, one press builds it once, a current copy starts with nothing pressed, its settings beside it, released after the tab is left, and failures in one line;
 //  F. several cameras: a row of names, one open at a time;
-//  G. leaving while it asks about the robot's copy builds nothing, a copy that never matches is built once a visit, and a Robot Controller app that never starts says so and offers Try again;
+//  G. leaving while it asks about the robot's copy builds nothing, a copy that never matches is built only when pressed, and a Robot Controller app that never starts says so and offers Try again;
 //  H. the Debug panel draws nothing while hidden and shows the latest when it shows again, and the camera line ends on the last reading of a burst.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/usb-camera-ui.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
@@ -39,15 +39,19 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     const u=()=>app.evaluate(()=>global.__u),text=s=>page.locator(s).first().innerText();
     const toCalibrate=async()=>{await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');};
     const toConfigure=async()=>{await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');};
+    // Calibrate is its own step and hides Debug's row of tabs, so Camera is reached through Debug while it shows.
+    const leave=()=>page.click('#calibrate-view [data-flow=calibrate]'),camTab=async()=>{if(!await page.locator('#cal-tab-camera').isVisible())await page.click('#calibrate-view [data-flow=debug]');await page.click('#cal-tab-camera');};
     const until=async(what,fn,ms=20000)=>{for(const end=Date.now()+ms;;await page.waitForTimeout(100)){if(await fn())return;if(Date.now()>end)assert.fail('timed out: '+what);}};
 
     // A. The order, and where it opens. Debug's own start and Auto-configure's are held off here: this is the Camera tab by itself.
     await page.evaluate(()=>{window.deckHoldAuto=true;});await toCalibrate();
-    assert.deepEqual(await page.$$eval('#calibrate-view [data-cal-top]',l=>l.map(b=>[b.id,b.textContent])),[['cal-tab-camera','Camera'],['cal-tab-debug','Debug'],['cal-tab-calibrate','Calibrate']],'Camera first, Calibrate at the very end');
-    const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id));
-    assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true','it opens on Camera');assert.deepEqual(await opened(),['cal-panel-camera']);
-    await page.focus('#cal-tab-camera');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-debug'],'the arrow keys follow the same order');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-calibrate']);
-    await page.click('#cal-tab-camera');
+    assert.deepEqual(await page.$$eval('#calibrate-view [data-cal-top]',l=>l.map(b=>[b.id,b.textContent])),[['cal-tab-debug','Debug'],['cal-tab-camera','Camera'],['cal-tab-calibrate','Calibrate']],'Debug first');
+    const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id)),shown=()=>page.$$eval('#calibrate-view [data-cal-top]',l=>l.filter(b=>!b.hidden).map(b=>b.dataset.calTop));
+    assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','it opens on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);assert.deepEqual(await shown(),['debug'],'nothing scanned yet: no camera, so no Camera tab, and Calibrate is a step of its own');
+    await page.focus('#cal-tab-debug');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-debug'],'the arrow keys skip hidden tabs');
+    // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, and its tab stays from then on.
+    assert.equal(await page.locator('#cal-sim-cam').isVisible(),true);await page.click('#cal-sim-cam [data-sim-cam]');assert.deepEqual(await opened(),['cal-panel-camera']);assert.deepEqual(await shown(),['debug','camera']);
+    await page.focus('#cal-tab-camera');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-debug'],'round to Debug, past Calibrate');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-camera']);
     // Nothing a student has to read first, and no words about how it works.
     const cameraWords=async()=>{const t=await page.locator('#cal-camera').evaluate(e=>e.textContent);assert.doesNotMatch(t,/see what a webcam sees/i);assert.doesNotMatch(t,/live debug|torque debug|decimation/i,t.slice(0,400));};await cameraWords();
 
@@ -85,12 +89,13 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     {const r=await u();assert.equal(r.saves.length,1,'Save writes it');assert.ok(r.saves[0].xml.includes('<Webcam name="Webcam" serialNumber="Ucamera001" />'),r.saves[0].xml);assert.ok(r.saves[0].xml.includes('name="leftFront"'),'the rest of it stays');}
     await page.waitForSelector('[data-ce-usb-name="0"]');await page.waitForFunction(()=>document.querySelector('[data-ce-save]').disabled,null,{timeout:15000});
 
-    // E. The camera is in the configuration. Opening the tab is all it takes: the robot has no copy, so it goes on once, and it starts.
+    // E. The camera is in the configuration. The robot has no copy, and nothing puts Torque Debug on by itself: the tab says to press, and one press puts it on once and starts it.
     const debugEvent=m=>app.evaluate(({BrowserWindow},m)=>BrowserWindow.getAllWindows()[0].webContents.send('robot-link-debug',m),m);
     const live=(more={})=>({frame:{t:1,loop:5,v:12,cam:{state:'STREAMING',open:'Webcam',fps:11.4,range:[0,100,1,10],modes:['Manual'],seen:50,exp:null,gain:null,dec:3,lens:null,tags:[],...more}}});
     const picture=[...Cam.simFrame(1,.6)],manifest={cameras:['Webcam'],motors:[],servos:[],crservos:[],digital:[],touch:[],analog:[],i2c:[]};
-    await page.waitForTimeout(300);await toCalibrate();await page.click('#cal-tab-camera');await until('it starts by itself',async()=>(await u()).starts===1);
-    {const r=await u();assert.equal(r.installs,1,'the robot had no copy');assert.ok(r.currents>=1,'it asked first');assert.equal(r.startedWith[0].host,'usb');assert.equal(r.startedWith[0].auto,true);assert.equal(r.startedWith[0].opMode,'TorqueDebug-test1','the build it just made');assert.equal(r.startedWith[0].noStart,true,'nobody pressed anything, so the Robot Controller app is not started');assert.deepEqual(r.installData[0],{host:'usb',auto:true,noStart:true},'the build says so too, and main looks at the robot first');}
+    await page.waitForTimeout(300);await toCalibrate();await camTab();await until('it says to press',()=>page.locator('[data-cam-again]').isVisible());await page.waitForTimeout(3500);{const r=await u();assert.ok(r.currents>=1,'it asked first');assert.equal(r.installs,0,'nothing is built by itself');assert.equal(r.starts,0);}
+    await page.click('[data-cam-again]');await until('a press starts it',async()=>(await u()).starts===1);
+    {const r=await u();assert.equal(r.installs,1,'the robot had no copy');assert.equal(r.startedWith[0].host,'usb');assert.equal(r.startedWith[0].auto,true);assert.equal(r.startedWith[0].opMode,'TorqueDebug-test1','the build it just made');assert.equal(r.startedWith[0].noStart,undefined,'a press may start the Robot Controller app');assert.deepEqual(r.installData[0],{host:'usb',auto:true},'the build was pressed for too');}
     assert.match(await text('[data-cam-name]'),/^Webcam$/);assert.match(await text('[data-cam-status]'),/^Getting the camera ready…/);assert.equal(await page.locator('[data-cam-add]').isVisible(),false);await cameraWords();
     await debugEvent({manifest});await debugEvent(live());await until('its picture is asked for',async()=>(await u()).streaming);
     await debugEvent({camera:Uint8Array.from(picture)});await page.waitForFunction(()=>{const i=document.querySelector('[data-cam-image]');return !i.hidden&&i.naturalWidth===160;});await debugEvent(live());await page.waitForFunction(()=>document.querySelector('[data-cam-status]').textContent==='11 frames a second');assert.equal(await page.locator('[data-cam-canvas]').isVisible(),false);assert.equal(await page.locator('[data-cam-empty]').isVisible(),false);
@@ -108,15 +113,15 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await page.locator('#cal-camera').evaluate(e=>e.scrollIntoView({block:'start'}));
     // A look at another tab keeps it: no restart, no stop. Leaving lets go, shortly after.
     await page.click('#cal-tab-debug');await page.waitForTimeout(1500);await page.click('#cal-tab-camera');await page.waitForTimeout(600);{const r=await u();assert.equal(r.starts,1);assert.equal(r.stops,0);}
-    await page.click('#cal-tab-calibrate');const left=Date.now();await until('it lets go',async()=>(await u()).stops===1,Cam.LINGER+8000);assert.ok(Date.now()-left>=Cam.LINGER-1500,'not at once');assert.equal((await u()).streaming,false);
-    // Back: the robot's copy is this one, so nothing is built; it only starts.
-    await page.click('#cal-tab-camera');await until('it starts again',async()=>(await u()).starts===2);{const r=await u();assert.equal(r.installs,1,'not rebuilt');assert.equal(r.startedWith[1].opMode,'TorqueDebug-test1');}
+    await leave();const left=Date.now();await until('it lets go',async()=>(await u()).stops===1,Cam.LINGER+8000);assert.ok(Date.now()-left>=Cam.LINGER-1500,'not at once');assert.equal((await u()).streaming,false);
+    // Back: the robot's copy is this one, so nothing is built; it only starts, with nothing pressed.
+    await camTab();await until('it starts again',async()=>(await u()).starts===2);{const r=await u();assert.equal(r.installs,1,'not rebuilt');assert.equal(r.startedWith[1].opMode,'TorqueDebug-test1');assert.equal(r.startedWith[1].noStart,true,'nobody pressed anything, so the Robot Controller app is not started');}
     await debugEvent({manifest});await debugEvent(live());
     // Someone else's run is shared: stopping it is not this tab's to do. And on Drive nothing starts.
-    await page.click('#cal-tab-calibrate');await until('it lets go again',async()=>(await u()).stops===2,Cam.LINGER+8000);{const was=(await u()).starts;await page.evaluate(()=>window.deck.page('drive'));await page.waitForFunction(()=>state.page==='drive');await page.waitForTimeout(2500);assert.equal((await u()).starts,was,'never on Drive');}
+    await leave();await until('it lets go again',async()=>(await u()).stops===2,Cam.LINGER+8000);{const was=(await u()).starts;await page.evaluate(()=>window.deck.page('drive'));await page.waitForFunction(()=>state.page==='drive');await page.waitForTimeout(2500);assert.equal((await u()).starts,was,'never on Drive');}
     // A failed build: its one line, with the file and the symbol; nothing tries again by itself; Try again does.
     await app.evaluate(()=>{const r=global.__u;r.installed=false;r.build={built:false,errors:[{file:'TeamAuto.java',line:12,message:'cannot find symbol: method bar()'}],problem:'Your file TeamAuto.java has an error on line 12: cannot find symbol: method bar(). OnBot Java builds every file together, so nothing new can go on the robot until that file is fixed. Torque did not change it.'};});
-    await toCalibrate();await page.click('#cal-tab-camera');await page.waitForFunction(()=>/TeamAuto\.java/.test(document.querySelector('[data-cam-status]').textContent));assert.match(await text('[data-cam-status]'),/^Your file TeamAuto\.java has an error on line 12: cannot find symbol: method bar\(\)\./);assert.equal(await page.locator('[data-cam-again]').isVisible(),true);assert.equal(await page.locator('[data-cam-image]').isVisible(),false);await page.screenshot({path:path.join(out,'camera-build-failed.png')});
+    await toCalibrate();await camTab();await until('it says to press',()=>page.locator('[data-cam-again]').isVisible());await page.click('[data-cam-again]');await page.waitForFunction(()=>/TeamAuto\.java/.test(document.querySelector('[data-cam-status]').textContent));assert.match(await text('[data-cam-status]'),/^Your file TeamAuto\.java has an error on line 12: cannot find symbol: method bar\(\)\./);assert.equal(await page.locator('[data-cam-again]').isVisible(),true);assert.equal(await page.locator('[data-cam-image]').isVisible(),false);await page.screenshot({path:path.join(out,'camera-build-failed.png')});
     {const r=await u(),was=[r.installs,r.starts];await page.waitForTimeout(4500);const n=await u();assert.deepEqual([n.installs,n.starts],was,'a broken file does not get rebuilt over and over');}
     await app.evaluate(()=>{global.__u.build=null;});await page.click('[data-cam-again]');await until('Try again',async()=>(await u()).installed);await page.waitForFunction(()=>!/TeamAuto/.test(document.querySelector('[data-cam-status]').textContent));{const r=await u();assert.deepEqual(r.installData.at(-1),{host:'usb',auto:true},'a press: main may look, and it clears a crash');await until('it starts',async()=>(await u()).startedWith.at(-1).noStart===undefined);}await debugEvent({manifest});await debugEvent(live());
     // The crash guard: says what happened, and a visit does not try it again. Another Driver Station: says so, and tries again by itself.
@@ -128,11 +133,11 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await app.evaluate(({},cam)=>{const r=global.__u;r.others=[cam,{serial:'SECOND',type:'WEBCAM'}];r.xml=r.xml.replace('<Webcam name="Webcam" serialNumber="Ucamera001" />','<Webcam name="Webcam" serialNumber="Ucamera001" />\n    <Webcam name="Back" serialNumber="SECOND" />');r.sent=[];},CAM);
     await debugEvent({manifest:{...manifest,cameras:['Webcam','Back']}});await debugEvent(live());await page.waitForFunction(()=>document.querySelectorAll('[data-cam-choice]').length>=2);assert.ok((await names()).includes('Back'));await page.click('[data-cam-choice="Back"]');await until('the other camera asked for',async()=>(await u()).sent.includes('W\tBack'));assert.match(await text('[data-cam-status]'),/^Opening “Back”\. One camera opens at a time\.$/);
     await debugEvent(live({open:'Back',state:'OPENING'}));await debugEvent(live({open:'Back'}));await debugEvent({camera:Uint8Array.from(picture)});await page.waitForFunction(()=>document.querySelector('[data-cam-status]').textContent==='11 frames a second');assert.equal((await u()).sent.filter(l=>l==='W\tBack').length,1,'asked once');await page.screenshot({path:path.join(out,'camera-two.png')});
-    await debugEvent({ended:'stopped'});await page.click('#cal-tab-calibrate');await page.waitForTimeout(300);await app.evaluate(({},xml)=>{const r=global.__u;r.xml=r.xml.replace(/\n\s*<Webcam name="Back"[^>]*>/,'');},XML);
+    await debugEvent({ended:'stopped'});await leave();await page.waitForTimeout(300);await app.evaluate(({},xml)=>{const r=global.__u;r.xml=r.xml.replace(/\n\s*<Webcam name="Back"[^>]*>/,'');},XML);
 
     // A camera in the configuration and not plugged in says so, in both places.
     await app.evaluate(()=>{global.__u.others=[];});await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.evaluate(()=>document.querySelector('#rs-scan').click());
-    await page.waitForFunction(()=>/in this configuration, not plugged in/.test(document.querySelector('#rs-step-configure').textContent),null,{timeout:15000});await toCalibrate();await page.click('#cal-tab-camera');await page.waitForFunction(()=>/last scan did not find it/.test(document.querySelector('[data-cam-status]').textContent));
+    await page.waitForFunction(()=>/in this configuration, not plugged in/.test(document.querySelector('#rs-step-configure').textContent),null,{timeout:15000});await toCalibrate();await camTab();await page.waitForFunction(()=>/last scan did not find it/.test(document.querySelector('[data-cam-status]').textContent));
 
     // D. The Robot Controller restarts after a scan: Setup and Configure agree, and it looks again.
     await app.evaluate(({},cam)=>{global.__u.others=[cam];},CAM);await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.evaluate(()=>document.querySelector('#rs-scan').click());await page.waitForFunction(()=>/Ucamera001/.test(document.querySelector('#rs-hubs').textContent),null,{timeout:15000});
@@ -141,14 +146,15 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     assert.ok((await u()).scans>before,'it scans again after the restart');assert.deepEqual(await both(),[true,true],'Setup and Configure agree');
 
     // G. Leaving while it asks whether the robot's copy is this one: nothing is built.
-    await debugEvent({ended:'stopped'});await page.waitForTimeout(100);const toCamera=async()=>{await toCalibrate();await page.click('#cal-tab-camera');};
+    await debugEvent({ended:'stopped'});await page.waitForTimeout(100);const toCamera=async()=>{await toCalibrate();await camTab();};
     await app.evaluate(()=>{const r=global.__u;r.installed=false;r.holdCurrent=1500;r.installs=0;r.installData=[];r.currents=0;r.starts=0;r.startedWith=[];});await toCamera();await until('it asks',async()=>(await u()).currents>0);await page.evaluate(()=>window.deck.page('drive'));await page.waitForFunction(()=>state.page==='drive');await page.waitForTimeout(2500);{const r=await u();assert.equal(r.installs,0,'no build for a page that has gone');assert.equal(r.starts,0);}
-    // A copy that never matches: one build a visit, then a line and Try again, however often it comes back.
-    await app.evaluate(()=>{const r=global.__u;r.holdCurrent=0;r.mismatch=true;});await toCamera();await until('the one build',async()=>(await u()).installs===1&&(await u()).starts===1);await debugEvent({manifest});await debugEvent(live());await debugEvent({ended:'lost'});
+    // A copy that never matches: no build until a press, then a line and Try again, however often it comes back.
+    await app.evaluate(()=>{const r=global.__u;r.holdCurrent=0;r.mismatch=true;});await toCamera();await page.waitForFunction(()=>/is missing or from another version of Torque/.test(document.querySelector('[data-cam-status]').textContent),null,{timeout:10000});assert.equal((await u()).installs,0,'not built by itself');
+    await page.click('[data-cam-again]');await until('the one build',async()=>(await u()).installs===1&&(await u()).starts===1);await debugEvent({manifest});await debugEvent(live());await debugEvent({ended:'lost'});
     await page.waitForFunction(()=>/still does not match this version of Torque/.test(document.querySelector('[data-cam-status]').textContent),null,{timeout:10000});assert.equal(await page.locator('[data-cam-again]').isVisible(),true);{const r=await u();assert.equal(r.installs,1,'not built again');assert.equal(r.starts,1);}await page.waitForTimeout(3500);assert.equal((await u()).installs,1,'nor by itself later');
-    await page.click('[data-cam-again]');await until('a press builds again',async()=>(await u()).installs===2);await until('and starts it',async()=>(await u()).starts===2);await app.evaluate(()=>{global.__u.mismatch=false;});await debugEvent({manifest});await debugEvent(live());{const was=(await u()).stops;await page.click('#cal-tab-calibrate');await until('it lets go',async()=>(await u()).stops>was,Cam.LINGER+8000);}
+    await page.click('[data-cam-again]');await until('a press builds again',async()=>(await u()).installs===2);await until('and starts it',async()=>(await u()).starts===2);await app.evaluate(()=>{global.__u.mismatch=false;});await debugEvent({manifest});await debugEvent(live());{const was=(await u()).stops;await leave();await until('it lets go',async()=>(await u()).stops>was,Cam.LINGER+8000);}
     // A Robot Controller app that never starts: not "getting ready" for ever. It says so, offers Try again, and asks far less often. Each visit asks at once, which here stands in for the 40 seconds of it.
-    await app.evaluate(()=>{const r=global.__u;r.guessed=true;r.rcStarts=0;r.starts=0;});await page.click('#cal-tab-camera');await page.waitForFunction(()=>/^Getting the camera ready…/.test(document.querySelector('[data-cam-status]').textContent));assert.equal((await u()).starts,0,'it does not start on a guess');
+    await app.evaluate(()=>{const r=global.__u;r.guessed=true;r.rcStarts=0;r.starts=0;});await camTab();await page.waitForFunction(()=>/^Getting the camera ready…/.test(document.querySelector('[data-cam-status]').textContent));assert.equal((await u()).starts,0,'it does not start on a guess');
     for(let i=0;i<Cam.GUESSES+6&&(await text('[data-cam-status]'))!==Cam.RC_QUIET;i++){await page.click('#cal-tab-debug');await page.waitForTimeout(650);await page.click('#cal-tab-camera');await page.waitForTimeout(650);}
     assert.equal(await text('[data-cam-status]'),Cam.RC_QUIET);assert.equal(await page.locator('[data-cam-again]').isVisible(),true);assert.equal(await page.locator('[data-cam-add]').isVisible(),false);assert.equal((await u()).rcStarts,0,'nothing pressed, nothing started');{const was=(await u()).reads;await page.waitForTimeout(6000);assert.ok((await u()).reads-was<=1,'it asks far less often');}await page.screenshot({path:path.join(out,'camera-not-answering.png')});
     await page.click('[data-cam-again]');await until('a press starts the app',async()=>(await u()).rcStarts===1);await until('and the picture follows',async()=>(await u()).starts>=1);assert.equal((await u()).startedWith.at(-1).noStart,undefined,'the press carries through');await debugEvent({manifest});await debugEvent(live());

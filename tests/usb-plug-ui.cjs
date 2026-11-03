@@ -128,13 +128,13 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(5)]);await soon('the camera on Configure',async()=>/Webcam · Ucamera001[\s\S]*plugged in, not in this configuration/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan on Configure',scans);
     scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Configure',async()=>!/Ucamera001/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan when it left Configure',scans);
     await page.click('#setup-view .flow-steps [data-flow=setup]');
-    // Calibrate, with the hub already read on Setup.
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-camera');
+    // Calibrate, with the hub already read on Setup. No camera is plugged in yet, so Camera opens from Debug's link, and keeps its tab while the camera comes and goes.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.locator('#cal-tab-camera').isVisible(),false,'no camera, no tab');await page.click('#cal-sim-cam [data-sim-cam]');
     scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(6)]);await soon('the camera on Calibrate',async()=>/Ucamera001/.test(await cameraList()));await scanOnce('a scan on Calibrate',scans);
-    await page.click('#cal-tab-calibrate');await page.click('#cal-tab-electronics');await soon('USB devices in Electronics',async()=>await page.locator('[data-usb-elsewhere="Ucamera001"]').count()===1);
+    await page.click('#calibrate-view [data-flow=calibrate]');await page.click('#cal-tab-electronics');await soon('USB devices in Electronics',async()=>await page.locator('[data-usb-elsewhere="Ucamera001"]').count()===1);
     // Something a scan cannot see is shown at once, and is no reason to scan.
     scans=await scansNow();await listed([cam(6),'3-1.4|2341|0043|02|0100|12|3|7|Arduino|Uno||100mA|80|0|02/02/01/cdc_acm,']);await soon('an Arduino',async()=>/Arduino/.test(await page.textContent('#cal-usb')));await wait(2500);assert.equal(await scansNow(),scans,'an Arduino is no reason to scan');
-    await page.click('#cal-tab-camera');scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Calibrate',async()=>!/Ucamera001/.test(await cameraList()));await scanOnce('a scan when it left Calibrate',scans);
+    await page.click('#calibrate-view [data-flow=debug]');await page.click('#cal-tab-camera');scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Calibrate',async()=>!/Ucamera001/.test(await cameraList()));await scanOnce('a scan when it left Calibrate',scans);
     // Calibrate with the hub plugged in there, so nothing has been read from the robot: the camera still reaches Camera's list, and the scan still runs, on a hub with no configuration read.
     await push(said(null,{drop:'unplugged'}));await soon('the dialog',dropped);await closeDropped();await soon('nothing connected',async()=>!/Ucamera001/.test(await cameraList()));
     let reads0=(await u()).reads;scans=await scansNow();await setOthers([CAM_SCAN]);await push(said(hub('device'),{hubUsb:ports([cam(8)])}));await soon('the camera, plugged in on Calibrate',async()=>/Ucamera001/.test(await cameraList()));await scanOnce('a scan with nothing read',scans);assert.equal((await u()).reads,reads0,'Calibrate does not read the configuration');

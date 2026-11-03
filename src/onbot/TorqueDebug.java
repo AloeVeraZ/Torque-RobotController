@@ -223,7 +223,12 @@ public class TorqueDebug extends LinearOpMode {
                 for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && !(loop != null && loop.cr && loop.index == i)) crPower[i] = 0;
                 runLoop();
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
-                for (int i = 0; i < crservos.size(); i++) if (crTold[i]) crservos.get(i).setPower(crPower[i]);
+                for (int i = 0; i < crservos.size(); i++) {
+                    CRServo c = crservos.get(i);
+                    boolean driven = crPower[i] != 0 || (loop != null && loop.cr && loop.index == i);
+                    if (c instanceof PwmControl) { PwmControl p = (PwmControl) c; if (driven && !p.isPwmEnabled()) p.setPwmEnable(); else if (!driven && p.isPwmEnabled()) p.setPwmDisable(); }
+                    if (crTold[i] && driven) c.setPower(crPower[i]);
+                }
                 for (int i = 0; i < servos.size(); i++) {
                     Servo s = servos.get(i);
                     if (servoOn[i] && !Double.isNaN(servoPos[i])) { if (s instanceof PwmControl && !((PwmControl) s).isPwmEnabled()) ((PwmControl) s).setPwmEnable(); s.setPosition(servoPos[i]); }
