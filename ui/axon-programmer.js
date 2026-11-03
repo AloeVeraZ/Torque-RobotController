@@ -153,7 +153,7 @@ window.DeckAxon=(()=>{
     if(testing){trialLoad(p);box.innerHTML=trialHtml(p);paintTrial();return;}
     if(p.kind==='switch'){box.innerHTML=`<div class="axon-switch-note"><h4>Switch to ${esc(MODE[wanted()])}</h4><p>Press Switch mode and this ${esc(modelCode()?modelTitle(modelCode()):'servo')} gets Axon's official firmware for that mode. Its settings go back to Axon's factory values for that mode, and they load here once it restarts.</p></div>`;return;}
     if(p.kind==='none'){box.innerHTML=p.text?`<div class="axon-switch-note"><p>${esc(p.text)}</p></div>`:'';return;}
-    const fields=p.schema.fields.filter(visible),first=fields[0]?.group,two=fields.some(f=>f.group!==first),onRight=f=>level==='simple'?two&&f.group!==first:f.group==='Overload protection'||f.key==='name',column=right=>{const list=fields.filter(f=>onRight(f)===right);let last=null,html='';
+    const fields=p.schema.fields.filter(visible),first=fields[0]?.group,two=fields.some(f=>f.group!==first),half=Math.ceil(fields.length/2),onRight=(f,i)=>level==='simple'?two&&f.group!==first:i>=half,column=right=>{const list=fields.filter((f,i)=>onRight(f,i)===right);let last=null,html='';
       for(const f of list){if(f.group&&f.group!==last)html+=`<h4 class="axon-group"><span>${esc(level==='simple'&&f.group==='Response'?'Power and direction':f.group)}</span></h4>`;last=f.group;html+=fieldRow(f,p,edit);}return html;};
     box.innerHTML=`<div class="axon-column">${column(false)}</div><div class="axon-column">${column(true)}</div>`;
     for(const r of box.querySelectorAll('input[type=range]'))setFill(r);

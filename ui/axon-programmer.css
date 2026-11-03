@@ -38,7 +38,7 @@
 .axon-group { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .axon-group::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
 .axon-group > span { flex: none; }
-.axon-row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 32px; }
+.axon-row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 30px; }
 .axon-row-label { display: grid; min-width: 0; }
 .driver-station .axon-row-label label { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 5px; margin: 0; font-size: 12px; font-weight: 600; line-height: 1.2; }
 .axon-row-label [data-axon-mark] { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
@@ -122,6 +122,12 @@
   .axon-settings-body { overflow-y: auto; }
   #setup-view .axon-settings { padding: 8px 12px; }
   #setup-view .axon-side .cal-card { padding: 8px 12px; }
+}
+/* A short window keeps every setting by dropping the notes under them. Pointing at one still shows its note on the line below. */
+@media (min-width: 861px) and (max-height: 700px) {
+  .axon-settings-body[data-level=advanced] .axon-row { min-height: 25px; }
+  .axon-settings-body[data-level=advanced] .axon-row-label small { display: none; }
+  .driver-station .axon-card { min-height: 44px; padding-block: 3px; }
 }
 /* A tall window has room for bigger touch targets. */
 @media (min-width: 861px) and (min-height: 860px) {
