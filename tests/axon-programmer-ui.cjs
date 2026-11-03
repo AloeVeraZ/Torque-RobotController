@@ -29,7 +29,6 @@ const root=path.resolve(__dirname,'..');
     // It opens directly, from either view's row of steps, and says up front what is needed.
     await page.click('#setup-view [data-flow=calibrate]');await page.waitForSelector('#calibrate-view:not([hidden])');await page.click('#calibrate-view [data-flow=axon]');await page.waitForSelector('#setup-view:not([hidden]) #rs-step-axon:not([hidden])');
     assert.equal(await page.getAttribute('#setup-view [data-flow=axon]','data-here'),'');assert.equal(await page.locator('#axon-open').count(),0,'no button in front of it');
-    {const t=await page.locator('.axon-top').textContent();assert.match(t,/Needs Axon's V2 programmer/);assert.match(t,/does not replace it/);}
     await page.waitForFunction(()=>/Simple is what every student needs/.test(document.querySelector('#axon-hint').textContent));
     // The response graph with nothing plugged in: the real range and the factory value, and nothing to apply.
     {await page.click('[data-view=graph]');await page.waitForSelector('#axon-try-graph svg');const damp=page.locator('#axon-try-damping'),facts=()=>page.locator('#axon-try-facts').textContent(),graph=()=>page.locator('#axon-try-graph').textContent();

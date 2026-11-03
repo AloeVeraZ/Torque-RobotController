@@ -5,8 +5,7 @@
 .axon-tab { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .axon-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .axon-top h2 { flex: none; margin: 0; font-size: 15px; }
-.axon-top .hint { flex: 1 1 200px; min-width: 0; margin: 0; font-size: 11px; line-height: 1.35; }
-.axon-chips { display: flex; flex: none; gap: 6px; }
+.axon-chips { display: flex; flex: none; gap: 6px; margin-left: auto; }
 .axon-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 12px; white-space: nowrap; }
 .axon-chip > i { width: 8px; height: 8px; border-radius: 50%; background: var(--quiet); }
 .axon-chip[data-tone=good] > i { background: var(--connected); }
@@ -130,8 +129,6 @@
 }
 @media (max-width: 1120px) {
   .axon-top { flex-wrap: wrap; }
-  .axon-top .hint { order: 3; flex-basis: 100%; }
-  .axon-chips { margin-left: auto; }
   .axon-main { grid-template-columns: minmax(0, 1fr) 280px; }
   .axon-settings-body { grid-template-columns: minmax(0, 1fr); }
 }

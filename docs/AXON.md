@@ -22,7 +22,7 @@ It is laid out like Axon Bridge, in Torque's look, and fits a 1280x800 screen wi
 
 | Where | What it does |
 |---|---|
-| Top | That the V2 programmer is needed, and chips for the programmer, the servo and the voltage and current |
+| Top | Chips for the programmer, the servo and the voltage and current |
 | 1 Servo | V1 MAX, V1 MINI, V2 MINI, V2 MAX. Plug a servo into the top row of pins on the left of the programmer, grey signal wire on the right, and Torque powers the pins, reads it and marks it Plugged in. Reading changes nothing |
 | 2 Mode | Servo Mode moves to and holds a position. CR Mode is continuous rotation: the signal sets speed and direction. Now marks the mode it is in |
 | 3 Settings | Simple shows the basics every student needs: how far the servo turns, its center, how hard it pushes and which way it goes. Advanced shows every setting. Point at one for the longer version on the line at the bottom of the panel. A dot marks a change not applied yet. With no servo, it previews that model's factory values, greyed out |

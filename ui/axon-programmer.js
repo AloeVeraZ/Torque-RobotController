@@ -268,7 +268,7 @@ window.DeckAxon=(()=>{
   function stop(){if(traceTimer){clearInterval(traceTimer);traceTimer=null;}if(api)void axon('stop').catch(()=>{});}
 
   const PAGE=`<div class="axon-tab">
-    <div class="axon-top"><h2>Axon Programmer</h2><p class="hint">Needs Axon's V2 programmer (Programmer MK2), sold by Axon, goBILDA and ServoCity. Torque works through it and does not replace it. Keep it off the robot.</p><div id="axon-chips" class="axon-chips"></div><button id="axon-level" class="secondary" type="button" data-axon="level" aria-pressed="false">Show Advanced</button></div>
+    <div class="axon-top"><h2>Axon Programmer</h2><div id="axon-chips" class="axon-chips"></div><button id="axon-level" class="secondary" type="button" data-axon="level" aria-pressed="false">Show Advanced</button></div>
     <div class="axon-picks"><section aria-labelledby="axon-models-title"><h3 id="axon-models-title" class="axon-step-title"><span>1</span>Servo</h3><div id="axon-models" class="axon-cards"></div></section><section aria-labelledby="axon-modes-title"><h3 id="axon-modes-title" class="axon-step-title"><span>2</span>Mode</h3><div id="axon-modes" class="axon-cards"></div></section></div>
     <div class="axon-main">
       <section class="cal-card axon-settings" aria-labelledby="axon-settings-title"><div class="axon-settings-head"><h3 class="axon-step-title"><span>3</span>Settings<b aria-hidden="true">·</b><em id="axon-settings-title"></em></h3><div id="axon-view"></div><span id="axon-tag"></span></div><div id="axon-settings" class="axon-settings-body"></div><p id="axon-hint" class="hint" aria-live="polite"></p></section>
