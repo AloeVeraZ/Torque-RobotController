@@ -38,6 +38,7 @@ test('a Windows-only build publishes only the Windows files, and a partial build
 });
 test('partial releases say which devices they are for',()=>{
   assert.deepEqual(describe('v2.4.23',ALL),{title:'Torque v2.4.23',notes:''});
+  assert.deepEqual(describe('v2.4.28',ALL,'V2'),{title:'Torque V2 (v2.4.28)',notes:''},'a main release can carry a name');assert.equal(describe('testing-v2.4.28',ALL,'V2').title,'Torque testing-v2.4.28','a testing one keeps its tag');assert.match(describe('v2.4.28',['windows'],'V2').title,/^Torque V2 \(v2\.4\.28\) \(Windows x64 only\)$/);
   assert.deepEqual(describe('testing-v2.4.23',['windows']),{title:'Torque testing-v2.4.23 (Windows x64 only)',notes:'This build is for Windows x64 only. Steam Deck/Linux and Apple Silicon stay on their current version until a later release includes them.'});
 });
 test('prepare checks dist, removes a partial build\'s App package and prints the title and notes',t=>{

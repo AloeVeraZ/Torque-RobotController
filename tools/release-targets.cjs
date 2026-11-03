@@ -23,10 +23,11 @@ function targets(branch,meta){
   return meta?.[key]===undefined?ALL.slice():check(meta[key],key);
 }
 const partial=list=>check(list).length<ALL.length;
-function describe(tag,list){
-  list=check(list);if(!partial(list))return {title:`Torque ${tag}`,notes:''};
+// A main release can carry a name people know it by, from package.json's releaseName. The updater goes by the tag, so this is only its title.
+function describe(tag,list,name=''){
+  list=check(list);const label=name&&!tag.startsWith('testing-')?`${name} (${tag})`:tag;if(!partial(list))return {title:`Torque ${label}`,notes:''};
   const names=l=>l.map(t=>LABEL[t]).join(' and '),only=names(list),rest=ALL.filter(t=>!list.includes(t));
-  return {title:`Torque ${tag} (${only} only)`,notes:`This build is for ${only} only. ${names(rest)} ${rest.length>1?'stay on their':'stays on its'} current version until a later release includes ${rest.length>1?'them':'it'}.`};
+  return {title:`Torque ${label} (${only} only)`,notes:`This build is for ${only} only. ${names(rest)} ${rest.length>1?'stay on their':'stays on its'} current version until a later release includes ${rest.length>1?'them':'it'}.`};
 }
 // Checks the built files before anything is published. Each target needs its update download and
 // checksum, and no other platform's file may be there. The App package (app code only) fits every
@@ -58,7 +59,7 @@ if(require.main===module){
       const chosen=JSON.parse(list),{drop,problems}=plan(fs.readdirSync(dist),chosen,version);
       if(problems.length)throw Error(problems.join('\n'));
       for(const file of drop){fs.rmSync(path.join(dist,file));console.error(`Left out ${file}: this release is not built for every platform.`);}
-      process.stdout.write(JSON.stringify(describe(tag,chosen))+'\n');
+      const meta=JSON.parse(fs.readFileSync(path.join(__dirname,'..','package.json'),'utf8'));process.stdout.write(JSON.stringify(describe(tag,chosen,meta.releaseName))+'\n');
     }else throw Error('Use: release-targets.cjs targets <testing|main> | prepare <dist> <targets JSON> <version> <tag>');
   }catch(e){console.error(e.message);process.exit(1);}
 }

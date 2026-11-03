@@ -133,6 +133,12 @@ jobs:
       # partial release skips can still find the newest release with its download.
       # Installs from before the repository's rename only accept download URLs with its old name,
       # so the manifest keeps that name. GitHub redirects it, and newer installs accept both.
+      # The release before this one is V1. Only its title changes: nothing here removes a release.
+      - name: Name the earlier release
+        if: needs.validate.outputs.branch == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit v2.4.25 --title "Torque V1 (v2.4.25, Windows x64 only)" || true
       - name: Update the channel manifest
         env:
           GH_TOKEN: ${{ github.token }}
