@@ -9,7 +9,7 @@ const platform=process.platform,kind={win32:'Windows',linux:'SteamDeck',darwin:'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(check,label,ms=120000){const end=Date.now()+ms;for(;;){const value=await check();if(value)return value;if(Date.now()>end)throw Error('Timed out: '+label);await sleep(500);}}
 const home=fs.mkdtempSync(path.join(os.tmpdir(),'deck-e2e-')),data=path.join(home,'user-data');
-const env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data,DECK_NO_LAUNCH:'1'};delete env.ELECTRON_RUN_AS_NODE;
+const env={...process.env,ADB:process.env.ADB||(process.platform==='win32'?'C:\\Windows\\System32\\where.exe':process.platform==='darwin'?'/usr/bin/true':'/bin/true'),DECK_HEADLESS:'1',DECK_DATA_DIR:data,DECK_NO_LAUNCH:'1'};delete env.ELECTRON_RUN_AS_NODE;
 if(platform!=='win32')Object.assign(env,{HOME:home,XDG_DATA_HOME:path.join(home,'share')});
 const install=platform==='win32'?{root:path.join(process.env.LOCALAPPDATA,'DeckDriverStation'),bin:'runtime/electron.exe',app:'app'}:platform==='darwin'?{root:path.join(home,'Applications','Deck Driver Station.app'),bin:'Contents/MacOS/Electron',app:'Contents/Resources/app'}:{root:path.join(home,'share','deck-driver-station'),bin:'runtime/electron',app:'app'};
 const at=p=>path.join(install.root,p),installedVersion=()=>{try{return JSON.parse(fs.readFileSync(at(install.app+'/package.json'),'utf8')).version;}catch{return '';}};

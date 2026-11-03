@@ -16,6 +16,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # No check here needs USB. With Android's real adb, its server outlives the app and holds the test's output open.
+    env:
+      ADB: /bin/true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,11 +48,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: steamdeck
+            adb: /bin/true
           - os: windows-latest
             target: windows
+            adb: C:\Windows\System32\where.exe
           - os: macos-latest
             target: macos-arm64
+            adb: /usr/bin/true
     runs-on: ${{ matrix.os }}
+    env:
+      ADB: ${{ matrix.adb }}
     # Normally about 25 minutes on Windows. Each long step has its own limit too, so a hang names the step.
     timeout-minutes: 75
     steps:
@@ -138,6 +146,8 @@ jobs:
     runs-on: ubuntu-latest
     # Normally about 25 minutes for the Steam Deck build, which runs the Linux UI checks.
     timeout-minutes: 75
+    env:
+      ADB: /bin/true
     strategy:
       fail-fast: false
       matrix:

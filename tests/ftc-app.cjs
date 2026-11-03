@@ -16,7 +16,7 @@ async function targets(){return (await fetch('http://127.0.0.1:9333/json/list'))
   const robot=await startUdpRobot({address:'127.0.0.2'}),data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-e2e-')),out=path.join(root,'test-results','ftc');fs.mkdirSync(out,{recursive:true});
   // Ubuntu CI restricts unprivileged user namespaces. The sandbox exception is
   // confined to this simulated-robot test process, never the packaged launcher.
-  const launch=()=>spawn(process.env.DECK_ELECTRON||path.join(root,'.cache/runtime-win32-x64-44.8.0/electron.exe'),[root,'--remote-debugging-port=9333',...(process.env.DECK_ELECTRON_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[])],{env:(()=>{const e={...process.env,DECK_DATA_DIR:data,DECK_DEVICE_MODEL:model,DECK_CONTROLLER_TEST:'1',DECK_HEADLESS:process.env.DECK_FTC_SCREENSHOTS==='1'?'0':'1'};delete e.ELECTRON_RUN_AS_NODE;return e;})(),stdio:'ignore'});
+  const launch=()=>spawn(process.env.DECK_ELECTRON||path.join(root,'.cache/runtime-win32-x64-44.8.0/electron.exe'),[root,'--remote-debugging-port=9333',...(process.env.DECK_ELECTRON_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[])],{env:(()=>{const e={...process.env,ADB:process.env.ADB||(process.platform==='win32'?'C:\\Windows\\System32\\where.exe':process.platform==='darwin'?'/usr/bin/true':'/bin/true'),DECK_DATA_DIR:data,DECK_DEVICE_MODEL:model,DECK_CONTROLLER_TEST:'1',DECK_HEADLESS:process.env.DECK_FTC_SCREENSHOTS==='1'?'0':'1'};delete e.ELECTRON_RUN_AS_NODE;return e;})(),stdio:'ignore'});
   let app=launch();
   try{
     const launcherT=await until(async()=>(await targets()).find(t=>t.url.endsWith('ui/index.html')),15000,'launcher');const L=new Cdp(launcherT.webSocketDebuggerUrl);await L.ready;
