@@ -69,6 +69,8 @@ checkouts are protected from replacement. Apple Silicon updates are ad-hoc signe
 
 ## Publishing later
 
+Every release from V2 (2.4.28) on keeps to [Compatibility from V2 on](COMPATIBILITY.md): V2 must update to it, and going back to V2 must keep saved robots and settings. tests/compat-v2.test.cjs checks it.
+
 The remote is `https://github.com/AloeVeraZ/Torque-RobotController.git`.
 The repository used to be `AloeVeraZ/SteamDeck-RobotController`. Installs from before the rename only accept
 download URLs with the old name, so the channel manifests keep it and GitHub redirects them. Never create a new
