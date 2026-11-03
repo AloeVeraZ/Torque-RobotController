@@ -15,6 +15,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,7 +29,8 @@ jobs:
         run: |
           node tools/simulation/fetch.cjs --targets linux-x64
           node tools/simulation/build.cjs --public
-      - run: node --test tests/*.test.cjs
+      - run: node --test --test-timeout=300000 tests/*.test.cjs
+        timeout-minutes: 15
       - run: bash -n packaging/install.sh packaging/launch.sh packaging/Install-Mac.command
       - run: mkdir -p test-results && bash tests/update-linux.sh
       - run: bash tests/install-bootstrap.sh
@@ -48,6 +50,8 @@ jobs:
           - os: macos-latest
             target: macos-arm64
     runs-on: ${{ matrix.os }}
+    # Normally about 25 minutes on Windows. Each long step has its own limit too, so a hang names the step.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -64,7 +68,8 @@ jobs:
           { node tools/simulation/fetch.cjs --targets "$t" && node tools/simulation/build.cjs --public; } 2>&1 | tee test-results/ci/simulator-build.log
       - name: Unit tests on this OS
         shell: bash
-        run: node --test tests/*.test.cjs 2>&1 | tee test-results/ci/unit-tests.log
+        timeout-minutes: 15
+        run: node --test --test-timeout=300000 tests/*.test.cjs 2>&1 | tee test-results/ci/unit-tests.log
       - name: Build two versions (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -89,17 +94,20 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Windows update helpers
         if: runner.os == 'Windows'
+        timeout-minutes: 10
         run: |
           node tests/update-install.cjs
           node tests/update-app-install.cjs
       - name: Install and update end to end
         shell: bash
+        timeout-minutes: 15
         run: |
           { if [[ "$RUNNER_OS" == Linux ]]; then xvfb-run -a node tests/install-e2e.cjs dist 9.0.0 9.0.1
           else node tests/install-e2e.cjs dist 9.0.0 9.0.1; fi; } 2>&1 | tee test-results/ci/install-e2e.log
       - name: Check simulation in native Windows and Apple Silicon Electron
         if: runner.os != 'Linux'
         shell: bash
+        timeout-minutes: 25
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: |
@@ -128,6 +136,8 @@ jobs:
   desktop:
     needs: verify
     runs-on: ubuntu-latest
+    # Normally about 25 minutes for the Steam Deck build, which runs the Linux UI checks.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -156,6 +166,7 @@ jobs:
         if: matrix.target == 'steamdeck'
       - name: Check handheld controller assignment in Linux Electron
         if: matrix.target == 'steamdeck'
+        timeout-minutes: 15
         env:
           DECK_ELECTRON_TEST_NO_SANDBOX: '1'
           DECK_TEST_CONTROLLERS_ONLY: '1'
@@ -170,6 +181,7 @@ jobs:
           done
       - name: Check redesigned controller and FTC layouts in Linux Electron
         if: matrix.target == 'steamdeck'
+        timeout-minutes: 40
         env:
           DECK_ELECTRON_TEST_NO_SANDBOX: '1'
           DECK_TEST_SOFTWARE_GL: '1'
@@ -180,17 +192,29 @@ jobs:
           export DECK_PLAYWRIGHT="$PWD/.cache/ui-check/node_modules/playwright"
           export DECK_ELECTRON="$PWD/.cache/runtime-linux-x64-$(node -p 'require("./package.json").devDependencies.electron')/electron"
           {
+          echo "== tests/ui.cjs"
           DECK_UI_LAYOUT_ONLY=1 xvfb-run -a node tests/ui.cjs
+          echo "== tests/controller-ui.cjs"
           xvfb-run -a node tests/controller-ui.cjs
+          echo "== tests/layout-audit.cjs"
           xvfb-run -a node tests/layout-audit.cjs
+          echo "== tests/controller-session.cjs"
           xvfb-run -a node tests/controller-session.cjs
+          echo "== tests/keyboard-app.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/keyboard-app.cjs
+          echo "== tests/recovery-app.cjs"
           xvfb-run -a node tests/recovery-app.cjs
+          echo "== tests/discovery-ui.cjs"
           xvfb-run -a node tests/discovery-ui.cjs
+          echo "== tests/simulation-ui.cjs"
           xvfb-run -a node tests/simulation-ui.cjs
+          echo "== tests/design-ui.cjs"
           xvfb-run -a node tests/design-ui.cjs
+          echo "== tests/robot-fullscreen.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/robot-fullscreen.cjs
+          echo "== tests/touch-ui.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/touch-ui.cjs
+          echo "== tests/controller-compatibility.cjs"
           xvfb-run -a node tests/controller-compatibility.cjs
           } 2>&1 | tee test-results/ci/linux-ui.log
       - uses: actions/upload-artifact@v4
@@ -216,6 +240,7 @@ jobs:
           persist-credentials: false
       - name: Check actual MotionModule driver station with simulated GPIO
         if: matrix.target == 'steamdeck'
+        timeout-minutes: 10
         env:
           DECK_ELECTRON_TEST_NO_SANDBOX: '1'
           DECK_PYTHON: python3
