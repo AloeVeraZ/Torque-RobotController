@@ -30,7 +30,7 @@ function parse(text){
   const index=new Int32Array(max+1).fill(-1);for(let k=0;k<n;k++)index[ids[k]]=k;
   // References as entity indices (-1 when the id is not defined).
   const refs=new Int32Array(rn);for(let r=0;r<rn;r++)refs[r]=refIds[r]<=max?index[refIds[r]]:-1;
-  return {text,head:text.slice(0,data+5),tail:text.slice(end),n,ids,starts,ends,types,typeNames,refAt,refs};
+  return {text,head:text.slice(0,data+5),tail:text.slice(end),n,ids,starts,ends,types,typeNames,refAt,refs,index};
 }
 // The entity text without its references to `gone` inside lists; null when one is a direct attribute (the
 // entity cannot stand without it) or a list is left empty (OpenCascade rejects "()").
@@ -66,11 +66,15 @@ function plan(text,count,{exact=Infinity}={}){
     for(const r of [...roots.keys()].sort((a,b)=>sizes[a]-sizes[b])){if(used+sizes[r]<=exact||sizes[r]<HULL_MIN){used+=sizes[r];continue;}
       const h=hull(solidPoints(s,roots[r]));if(!h){used+=sizes[r];continue;}
       const k=roots[r],name=/'((?:[^']|'')*)'/.exec(text.slice(s.starts[k],s.ends[k]))?.[1]?.replace(/''/g,"'")||'',out=markerStep(s.ids[k],name,shapes.length,next);next=out.next;shapes.push(h);hulls.set(r,out.text);sizes[r]=HULL_BYTES;}}
-  if(roots.length<2||count<2){if(!hulls.size)return {count:1,solids:roots.length,hulls:0,shapes,entities:n,piece:()=>text};count=1;}
+  if(roots.length<2||count<2){if(!hulls.size)return {count:1,solids:roots.length,hulls:0,shapes,entities:n,loads:[1],piece:()=>text};count=1;}
   const pieces=Math.max(1,Math.min(count,roots.length)),load=new Float64Array(pieces),of=new Int32Array(roots.length);
   for(const r of [...roots.keys()].sort((a,b)=>sizes[b]-sizes[a])){let best=0;for(let p=1;p<pieces;p++)if(load[p]<load[best])best=p;of[r]=best;load[best]+=sizes[r];}
   const hullText=new Map([...hulls].map(([r,t])=>[roots[r],t]));
   const shared=[];for(let k=0;k<n;k++)if(!geometry[k])shared.push(k);
+  // The top entities (nothing refers to them: the products, their shapes and placements, the colour lists): a piece keeps
+  // only what it reaches from them, so the styles of other pieces' faces stay out of it.
+  const referred=new Uint8Array(n);for(let r=0;r<refs.length;r++)if(refs[r]>=0)referred[refs[r]]=1;
+  const tops=shared.filter(k=>!referred[k]);
   const slice=k=>text.slice(s.starts[k],s.ends[k]);
   function piece(p){
     const inside=new Uint8Array(n),reach=x=>{stack.push(x);while(stack.length){const k=stack.pop();if(inside[k])continue;inside[k]=1;for(let z=refAt[k];z<refAt[k+1];z++){const y=refs[z];if(y>=0&&!inside[y])stack.push(y);}}};
@@ -85,10 +89,17 @@ function plan(text,count,{exact=Infinity}={}){
       for(const k of shared){const was=body.get(k);if(was===null||!touches(k))continue;
         const t=filterRefs(was??slice(k),absent);
         if(t===null){body.set(k,null);absent.add(s.ids[k]);changed=true;}else if(t!==was)body.set(k,t);}}
+    // What the piece keeps: everything its top entities still reach. A style left only on other pieces' faces goes, so
+    // OpenCascade reads each piece's own colours and assembly, not every part's (most of a big robot's non-solid entities).
+    const live=new Uint8Array(n),queue=[],keep=y=>y>=0&&!live[y]&&(geometry[y]?inside[y]>0:body.get(y)!==null);
+    for(const k of tops)if(keep(k)){live[k]=1;queue.push(k);}
+    while(queue.length){const k=queue.pop();if(inside[k]===2)continue;const b=body.get(k);
+      if(typeof b==='string'){for(const m of b.slice(b.indexOf('=')+1).matchAll(/#(\d+)/g)){const id=+m[1],y=id<s.index.length?s.index[id]:-1;if(keep(y)){live[y]=1;queue.push(y);}}}
+      else for(let z=refAt[k];z<refAt[k+1];z++){const y=refs[z];if(keep(y)){live[y]=1;queue.push(y);}}}
     const parts=[s.head];
-    for(let k=0;k<n;k++){if(geometry[k]){if(inside[k]===1)parts.push(slice(k));else if(inside[k]===2)parts.push(hullText.get(k));continue;}const b=body.get(k);if(b!==null)parts.push(b??slice(k));}
+    for(let k=0;k<n;k++){if(!live[k])continue;if(geometry[k]){parts.push(inside[k]===2?hullText.get(k):slice(k));continue;}const b=body.get(k);parts.push(b??slice(k));}
     parts.push(s.tail);return parts.join('\n');
   }
-  return {count:pieces,solids:roots.length,hulls:hulls.size,shapes,entities:n,piece};
+  return {count:pieces,solids:roots.length,hulls:hulls.size,shapes,entities:n,loads:[...load],piece};
 }
 module.exports={parse,plan,filterRefs};

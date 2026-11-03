@@ -76,7 +76,7 @@
   }
 
   const swatch=color=>{const e=el('span',{class:'sim-data-swatch'});e.style.background=color;return e;};
-  function create({panelHost,onScrub,settings}){
+  function create({panelHost,graphsHost=panelHost,onScrub,settings}){
     let frames=[],cursor=null,live=true;const chosen=new Set(SIGNALS.filter(s=>s.on).map(s=>s.key));
     const range=el('input',{type:'range',min:'0',max:'0',step:'0.01',value:'0','aria-label':'Run timeline'}),clock=el('output',{class:'sim-data-clock'}),liveButton=el('button',{type:'button',class:'secondary'},['Live']);
     const track=el('div',{class:'sim-data-track'},[range]),summary=el('div',{class:'sim-analysis'}),empty=el('p',{class:'sim-data-empty',text:'No run recorded yet. Press Run beside the field: speed, heading, sensor error, drive power and mechanisms are graphed here while the robot drives.'});
@@ -85,15 +85,9 @@
       picks.append(el('label',{class:'check'},[box,swatch(s.color),el('span',{text:s.label})]));}
     const recorded=el('div',{class:'sim-data-recorded'},[
       el('div',{class:'sim-data-timeline'},[track,el('div',{class:'sim-data-row'},[clock,liveButton])]),
-      el('p',{class:'hint',text:'Drag the timeline or any graph to replay that moment on the field. Green is autonomous, blue is teleop.'}),
-      el('h3',{text:'Graphs'}),lanes,el('details',{class:'sim-data-pick'},[el('summary',{text:'Choose graphs'}),picks]),
-      el('h3',{text:'Summary'}),summary]);
-    const mechView=svg('svg',{viewBox:'-70 -70 140 140',class:'sim-data-mech',role:'img','aria-label':'Mechanisms at the selected time'}),mechText=el('p',{class:'hint sim-data-caption'});
-    const wheelView=svg('svg',{viewBox:'-70 -70 140 140',class:'sim-data-wheels',role:'img','aria-label':'Wheel motion at the selected time'}),wheelTitle=el('h4',{text:'Chassis motion'}),wheelText=el('p',{class:'hint sim-data-caption'});
-    // The mechanism and wheel drawings fold away; they are drawn only while open.
-    const moment=el('details',{class:'sim-fold sim-data-moment'},[el('summary',{text:'Robot at this moment'}),el('div',{class:'sim-data-views'},[el('div',{},[el('h4',{text:'Mechanisms'}),mechView,mechText]),el('div',{},[wheelTitle,wheelView,wheelText])])]);
-    moment.ontoggle=()=>{if(moment.open)render();};
-    panelHost.append(empty,recorded,moment);
+      el('p',{class:'hint',text:'Drag the timeline or any graph to replay that moment on the field. Green is autonomous, blue is teleop.'})]);
+    const charts=el('div',{class:'sim-data-recorded'},[el('h3',{text:'Graphs'}),lanes,el('details',{class:'sim-data-pick'},[el('summary',{text:'Choose graphs'}),picks]),el('h3',{text:'Summary'}),summary]);
+    panelHost.append(empty,recorded);if(graphsHost!==panelHost)graphsHost.append(charts);else panelHost.append(charts);
     range.oninput=()=>{live=false;cursor=Number(range.value);scrub();};
     liveButton.onclick=()=>{live=true;cursor=null;onScrub(null);render();};
     // Dragging across a graph scrubs the timeline.
@@ -115,27 +109,13 @@
       if(!lanes.children.length)lanes.append(el('p',{class:'hint',text:'Choose a value to graph.'}));
     }
     const at=t=>{if(!frames.length)return null;const target=t0()+t;let lo=0,hi=frames.length-1;while(lo<hi){const mid=(lo+hi)>>1;if(frames[mid].time<target)lo=mid+1;else hi=mid;}return frames[lo];};
-    function views(f){
-      const m=settings()?.mechanisms,robot=settings()?.robot||{length:18,width:18},s=Math.min(100/robot.length,100/robot.width),L=robot.length*s,W=robot.width*s;
-      mechText.textContent=m?.enabled?drawMechanisms(mechView,m,robot,f?.mechanisms):(drawMechanisms(mechView,null,robot),'No mechanisms set up for this robot (Setup → 4 · Mechanisms).');
-      // Wheels: swerve modules point where the physics steers them; every drivetrain shows wheel velocity.
-      wheelView.replaceChildren();const t=f?.truth,h=(t?.heading||0)*Math.PI/180,vx=t?.vx||0,vy=t?.vy||0,w=(t?.omega||0)*Math.PI/180;
-      const fwd=vx*Math.cos(h)+vy*Math.sin(h),left=-vx*Math.sin(h)+vy*Math.cos(h),k=.45,g=svg('g',{transform:'rotate(-90)'});wheelView.append(g);
-      g.append(svg('rect',{x:-L/2,y:-W/2,width:L,height:W,rx:4,class:'sim-data-chassis'}));
-      const swerve=Array.isArray(f?.modules)&&f.modules.length===4;wheelTitle.textContent=swerve?'Swerve modules':'Chassis motion';
-      [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sy],i)=>{const px=sx*(L/2-8),py=sy*(W/2-8),rx=px/s,ry=py/s,mvx=fwd-w*ry,mvy=left+w*rx,speed=Math.hypot(mvx,mvy),dir=swerve?f.modules[i]:Math.atan2(mvy,mvx);
-        g.append(svg('circle',{cx:px,cy:-py,r:3,class:'sim-data-module'}),svg('path',{d:`M${px} ${-py} l${Math.cos(dir)*speed*k} ${-Math.sin(dir)*speed*k}`,class:'sim-data-vector'}));});
-      g.append(svg('path',{d:`M0 0 l${fwd*k} ${-left*k}`,class:'sim-data-vector chassis'}));
-      wheelText.textContent=t?`${Math.hypot(vx,vy).toFixed(1)} in/s · turning ${(t.omega||0).toFixed(0)}°/s${swerve?' · modules steer to their arrows':''}`:'';
-    }
     function scrub(){const span=duration();if(cursor!==null)cursor=Math.max(0,Math.min(span,cursor));const f=cursor===null?frames.at(-1):at(cursor);onScrub(live?null:f);render(f);}
     function render(f=live?frames.at(-1):at(cursor??0)){
       clearTimeout(trailing);stale=false;
       const span=duration();range.max=String(Math.max(0,span).toFixed(2));range.value=live?range.max:String(cursor??0);clock.textContent=`${(live?span:cursor||0).toFixed(2)} s of ${span.toFixed(2)} s${live?' · live':''}`;liveButton.disabled=live;
       if(frames.length&&span){const stops=[];let phase=frames[0].practice?.phase,from=0;for(let i=1;i<=frames.length;i++){const p=frames[i]?.practice?.phase;if(i===frames.length||p!==phase){const a=(frames[from].time-t0())/span*100,b=(frames[i-1].time-t0())/span*100,c=PHASES[phase]?PHASES[phase]+'66':'transparent';stops.push(`${c} ${a}%`,`${c} ${b}%`);from=i;phase=p;}}track.style.background=`linear-gradient(90deg,${stops.join(',')})`;}else track.style.background='';
-      empty.hidden=!!frames.length;recorded.hidden=!frames.length;
+      empty.hidden=!!frames.length;recorded.hidden=charts.hidden=!frames.length;
       if(frames.length){summary.replaceChildren(list(analysis(frames)));graphs(f);}
-      if(moment.open)views(f);
     }
     // Graphs redraw 4 times a second while the robot moves, once a second while it stands still.
     let renderTimer=0,trailing=0,stale=false,onScreen=true,still=0;

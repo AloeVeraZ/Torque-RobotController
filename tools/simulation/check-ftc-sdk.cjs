@@ -1,6 +1,6 @@
 'use strict';
 // Developer check: the virtual Control Hub's FTC SDK stand-ins and the Control Hub exports against the
-// REAL FTC SDK and Pedro Pathing. Downloads RobotCore and Hardware 12.0.0 and Pedro Pathing core and revhub
+// REAL FTC SDK and Pedro Pathing. Downloads RobotCore, Hardware and Vision 12.0.0 and Pedro Pathing core and revhub
 // 3.0.2 (what the Pedro Quickstart pins) from Maven Central into a temporary folder, verifies their
 // published SHA-1, then:
 //   1. compiles single-file OnBot Java and multi-file Control Hub exports for every supported localizer, a turning route, a route with
@@ -15,7 +15,7 @@
 // Needs a built simulator (node tools/simulation/build.cjs) and network access.
 // Usage: node tools/simulation/check-ftc-sdk.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),https=require('node:https'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
-const root=path.join(__dirname,'../..'),VERSION='12.0.0',ARTIFACTS=['RobotCore','Hardware'],PEDRO='3.0.2';
+const root=path.join(__dirname,'../..'),VERSION='12.0.0',ARTIFACTS=['RobotCore','Hardware','Vision'],PEDRO='3.0.2';
 // The Pedro Quickstart's TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/Constants.java as it ships.
 const QUICKSTART_CONSTANTS=`package org.firstinspires.ftc.teamcode.pedro;
 
@@ -93,6 +93,7 @@ async function main(){
       const Mech=require('../../ui/sim-mechanisms.js'),hardwareCases={
         'continuous servo rollers, two-motor flywheel, PIDF':{intakes:[{kind:'siderollers',sides:['front'],device:'crservo',motor:'roller',motor2:'roller2',reversed2:true}],shooters:[{type:'turret',motor2:'shooter_b',reversed2:true,turretReversed:true,indexerReversed:true}],shooter:{pidf:{p:1.26,i:.126,d:0,f:12.6}}},
         'set power, servo pusher, servo turret':{shooters:[{type:'turret',indexerKind:'pusher',feedPos:.7,restPos:.2}],shooter:{control:'power',power:.9},turret:{kind:'servo',servoCenter:.5,servoDegrees:300}},
+        'two continuous-servo turrets with feedback wires':{shooters:[{type:'turret'},{type:'turret',pieces:'nectar',mount:'back'}],turret:{kind:'crservo'}},
         'kicker and servo gate':{intakes:[{kind:'kicker',sides:['front'],servo:'kicker'}],shooters:[{type:'turret',indexerKind:'gate',indexer:'gate'}]},
         'two shooters, one fixed':{intakes:[{sides:['front']},{sides:['back'],kind:'ramp'}],shooters:[{type:'turret'},{type:'fixed',pieces:'nectar',mount:'back',indexerKind:'crservo'}],capacity:{pollen:2,nectar:2}}};
       for(const [name,extra] of Object.entries(hardwareCases)){
@@ -125,7 +126,7 @@ async function main(){
       .map(l=>l.trim().replace(/throws [^;]*;/,';').replace(/ ;$/,';').replace(/ (abstract|default|final|static|synchronized|native|volatile) /g,' ').replace(/\s+/g,' ').trim()));
     const name=l=>(l.match(/ ([\w$]+)(\(|;)/)||[])[1]+(l.includes('(')?'()':'');
     let checked=0,inherited=0;const missing=[];
-    for(const file of walk(path.join(root,'tools/simulation/java')).filter(f=>/[\\/](com|org)[\\/].*\.java$/.test(f))){
+    for(const file of walk(path.join(root,'tools/simulation/java')).filter(f=>/[\\/](com|org)[\\/].*\.java$/.test(f)&&!/[\\/]org[\\/]opencv[\\/]/.test(f))){
       const type=path.relative(path.join(root,'tools/simulation/java'),file).replace(/\.java$/,'').split(path.sep).join('.');
       const real=members(jars.join(path.delimiter),type);
       for(const m of members(classes,type)){checked++;if(real.has(m))continue;if(type.endsWith('.OpMode')&&INHERITED.has(name(m))){inherited++;continue;}missing.push(`${type}: ${m}`);}

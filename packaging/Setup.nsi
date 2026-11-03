@@ -1,13 +1,13 @@
 Unicode true
 !include "MUI2.nsh"
-Name "Deck Driver Station"
+Name "Torque"
 OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\DeckDriverStation"
 RequestExecutionLevel user
 SetCompressor /FINAL zlib
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey /LANG=1033 "ProductName" "Deck Driver Station Setup"
-VIAddVersionKey /LANG=1033 "FileDescription" "Deck Driver Station Installer"
+VIAddVersionKey /LANG=1033 "ProductName" "Torque Setup"
+VIAddVersionKey /LANG=1033 "FileDescription" "Torque Installer"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
 ; Modern UI sets Setup's icon itself (its stock disk unless told): the round app mark, and the sidebar with it.
 !define MUI_ICON "${SETUP_ICON}"
@@ -16,7 +16,7 @@ VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP "${SIDEBAR}"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN "$INSTDIR\DeckDriverStation.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Open Deck Driver Station"
+!define MUI_FINISHPAGE_RUN_TEXT "Open Torque"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -24,7 +24,7 @@ VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
-Section "Deck Driver Station"
+Section "Torque"
   SetShellVarContext current
   SetOutPath "$INSTDIR"
   File "${PAYLOAD}\DeckDriverStation.exe"
@@ -37,15 +37,18 @@ Section "Deck Driver Station"
   SetOutPath "$INSTDIR\icons"
   File "/oname=deck-${VERSION}.ico" "${ICON}"
   SetOutPath "$INSTDIR"
-  CreateShortCut "$DESKTOP\Deck Driver Station.lnk" "$INSTDIR\DeckDriverStation.exe" "" "$INSTDIR\icons\deck-${VERSION}.ico" 0
-  CreateShortCut "$SMPROGRAMS\Deck Driver Station.lnk" "$INSTDIR\DeckDriverStation.exe" "" "$INSTDIR\icons\deck-${VERSION}.ico" 0
-  System::Call 'shell32::SHChangeNotify(i 0x2000,i 0x1005,t "$DESKTOP\Deck Driver Station.lnk",p 0)'
-  System::Call 'shell32::SHChangeNotify(i 0x2000,i 0x1005,t "$SMPROGRAMS\Deck Driver Station.lnk",p 0)'
+  ; Torque was Deck Driver Station: its shortcuts are replaced by Torque's.
+  Delete "$DESKTOP\Deck Driver Station.lnk"
+  Delete "$SMPROGRAMS\Deck Driver Station.lnk"
+  CreateShortCut "$DESKTOP\Torque.lnk" "$INSTDIR\DeckDriverStation.exe" "" "$INSTDIR\icons\deck-${VERSION}.ico" 0
+  CreateShortCut "$SMPROGRAMS\Torque.lnk" "$INSTDIR\DeckDriverStation.exe" "" "$INSTDIR\icons\deck-${VERSION}.ico" 0
+  System::Call 'shell32::SHChangeNotify(i 0x2000,i 0x1005,t "$DESKTOP\Torque.lnk",p 0)'
+  System::Call 'shell32::SHChangeNotify(i 0x2000,i 0x1005,t "$SMPROGRAMS\Torque.lnk",p 0)'
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   FileOpen $0 "$INSTDIR\.deck-driver-station-install" w
   FileWrite $0 "dev.deckdriverstation.app"
   FileClose $0
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation" "DisplayName" "Deck Driver Station"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation" "DisplayName" "Torque"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation" "DisplayIcon" "$INSTDIR\DeckDriverStation.exe,0"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation" "InstallLocation" "$INSTDIR"
@@ -66,6 +69,8 @@ Section "Uninstall"
     MessageBox MB_ICONSTOP "The installation marker is missing. No app folders were removed."
     Abort
   owned:
+  Delete "$DESKTOP\Torque.lnk"
+  Delete "$SMPROGRAMS\Torque.lnk"
   Delete "$DESKTOP\Deck Driver Station.lnk"
   Delete "$SMPROGRAMS\Deck Driver Station.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDriverStation"

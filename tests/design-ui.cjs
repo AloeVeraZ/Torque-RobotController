@@ -16,7 +16,7 @@ const root=path.join(__dirname,'..'),out=path.join(root,'test-results','design')
   await page.locator('#drive-tab').click();await page.locator('#welcome').waitFor({state:'visible'});
   await page.screenshot({path:path.join(out,'drive-ready.png'),scale:'css'});
   for(const [name,url] of [['MotionModule','192.168.4.1'],['City Tech Robot','192.168.68.20']])await page.evaluate(robot=>window.deck.save(robot),{name,url});
-  await page.locator('#settings-tab').click();await page.waitForFunction(()=>state.robots.length===2&&document.querySelectorAll('.saved-row').length===2);
+  await page.locator('#more').click();await page.locator('#menu-settings').click();await page.waitForFunction(()=>state.robots.length===2&&document.querySelectorAll('.saved-row').length===2);
   await page.screenshot({path:path.join(out,'settings-saved-robots.png'),fullPage:true,scale:'css'});
   await page.locator('#wifi-picker').click();await page.locator('.wifi-row').filter({hasText:'Robot Hotspot'}).click();
   await page.screenshot({path:path.join(out,'wifi-picker.png'),fullPage:true,scale:'css'});await page.keyboard.press('Escape');

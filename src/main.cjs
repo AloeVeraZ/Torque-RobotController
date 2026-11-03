@@ -1,5 +1,6 @@
 'use strict';
-const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog}=require('electron');
+const BugReport=require('./bug-report.cjs');
+const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog,net}=require('electron');
 const fs=require('node:fs'),path=require('node:path');const {execFile}=require('node:child_process');const {promisify}=require('node:util');const {createHash,randomUUID}=require('node:crypto');
 const {Library,normalizeUrl,cleanSsid}=require('./library.cjs');const {Network}=require('./network.cjs');const {RobotProxy}=require('./robot-proxy.cjs');const {FtcSocket,UsbFtcSocket,probeFtc,findFtc}=require('./ftc.cjs');
 const {Updater,prepareInstall,launchInstall}=require('./updater.cjs');const {shortcut}=require('./shortcuts.cjs');let build={};try{build=JSON.parse(fs.readFileSync(path.join(__dirname,'../build.json'),'utf8'));}catch{}const meta=require('../package.json');let updater;
@@ -18,11 +19,17 @@ const run=promisify(execFile);let win,library,robotView=null,bridge=null,auth=nu
 let managerView=null,managerProxy=null;
 let robotExitView=null,robotExitReady=null,robotFullscreenPrevious=false;
 let suspended=false,interruption=null,connectionEpoch=0,pageEpoch=0;const recoveryControllers=new Set();
+// Setup, Simulate and Calibrate work offline from a robot's Driver Station: they close it and share the simulation process.
+const offlinePage=page=>page==='simulation'||page==='calibrate'||page==='setup';
 const state={page:'drive',loading:false,url:'',title:'',error:'',robot:null,kind:'',manager:false,robotFullscreen:false,recovering:false};const network=new Network();let overlay=false;
-app.setName('Deck Driver Station');
+app.setName('Torque');
+// Torque was Deck Driver Station: a computer that has that app's data (saved setups, robots, CAD, settings) keeps using
+// its folder, so nothing is moved or lost.
+const LEGACY_NAME='Deck Driver Station';
+if(!process.env.DECK_DATA_DIR){const legacy=path.join(app.getPath('appData'),LEGACY_NAME);if(fs.existsSync(legacy)&&!fs.existsSync(path.join(app.getPath('appData'),'Torque')))app.setPath('userData',legacy);}
 // Offline simulator: a utility process started by the Simulation view, never connected to a robot.
 const {DevicePhotos}=require('./device-photos.cjs');let devicePhotos=null;const photos=()=>devicePhotos||=new DevicePhotos(path.join(app.getPath('userData'),'device-photos'));
-const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs');
+const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs'),axonSoftware=require('./axon-software.cjs'),{UsbWatch}=require('./usb-watch.cjs'),HubUsb=require('./hub-usb.cjs');let axon=null,usbWatch=null;
 if(process.env.DECK_DATA_DIR){fs.mkdirSync(process.env.DECK_DATA_DIR,{recursive:true});app.setPath('userData',process.env.DECK_DATA_DIR);}
 // UI checks on GPU-less CI displays: Chromium's software WebGL, which it no longer falls back to on its own.
 if(process.env.DECK_TEST_SOFTWARE_GL==='1')app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -63,6 +70,12 @@ function setZoom(step){const contents=(managerView||robotView)?.webContents;if(!
   if(key){if(next===1)delete zooms[key];else zooms[key]=next;try{fs.writeFileSync(zoomFile,JSON.stringify(zooms),{mode:0o600});}catch{}}contents.setZoomFactor(next);emit('state',snapshot());return next;}
 function trusted(e){const shell=shellContents();if(!shell||e.sender!==shell||e.senderFrame!==shell.mainFrame)throw Error('Only app settings can perform this action.');}
 function handle(channel,fn){ipcMain.handle(channel,async(e,...args)=>{try{trusted(e);return {ok:true,value:await fn(...args)};}catch(e){return {ok:false,error:e.message,code:e.code};}});}
+// ⋮ → Report a bug (src/bug-report.cjs). Without the relay it opens on GitHub, with its pictures in a folder to drag from.
+const bugAbout=()=>BugReport.about({version:meta.version,channel:meta.updateChannel,platform:process.platform,arch:process.arch,release:require('node:os').release()});
+handle('bug-report',report=>BugReport.send(report,{url:process.env.DECK_BUG_REPORT_URL??meta.bugReportUrl,about:bugAbout()}));
+handle('bug-report-browser',async report=>{const r=BugReport.clean(report);
+  if(r.images.length){const dir=fs.mkdtempSync(path.join(app.getPath('temp'),'torque-bug-report-'));r.images.forEach((image,i)=>fs.writeFileSync(path.join(dir,`picture-${i+1}.${image.type}`),image.bytes));void shell.openPath(dir);}
+  await shell.openExternal(BugReport.issueUrl(report,{repo:meta.repository.url,about:bugAbout()}));return true;});
 function hardware(){const d=screen.getDisplayMatching(win.getBounds());return {...device,platform:process.platform,launchedThroughSteam:[process.env.SteamGameId,process.env.SteamAppId].some(id=>/^[1-9]\d*$/.test(id||'')),display:{width:d.size.width,height:d.size.height,scale:d.scaleFactor}};}
 function controllerState(){const value=controllerHub?.state()||{count:1,slots:[null,null],capture:null,blocked:[]};return {...value,source1:keyboardSource?'keyboard':'controller',deadzones:value.slots.map(p=>p?calibrations[p.id]||0:0),paused:suspended||state.recovering||state.page!=='drive'||!!overlay||!!auth||!!managerView||!!robotKeyboard?.visible||keyboardSource&&shellKeyboardEditing};}
 function blockHeldControllers(){for(const pad of controllerHub?.state().slots||[])if(pad){recoveryControllers.add(pad.id);controllerHub.blocked.add(`${pad.index}:${pad.id}`);}}
@@ -98,8 +111,8 @@ ipcMain.on('controller-input',(e,pads)=>{
   if(suspended||state.recovering)blockHeldControllers();sendControllers();
   // The simulation process accepts Controller 1 only during an explicitly started TELEOP
   // practice phase. Autonomous and transition always reject it; robot output stays paused.
-  // A guided check running from the Send panel takes Controller 1's face buttons and D-pad as its answers.
-  if((simulation?.running||robotCheck)&&state.page==='simulation'){const padState=controllerState(),blocked=suspended||state.recovering||overlay||auth||managerView||robotKeyboard?.visible||padState.capture||keyboardSource&&shellKeyboardEditing;
+  // A guided check running from Calibrate takes Controller 1's face buttons and D-pad as its answers.
+  if((simulation?.running||robotCheck)&&offlinePage(state.page)){const padState=controllerState(),blocked=suspended||state.recovering||overlay||auth||managerView||robotKeyboard?.visible||padState.capture||keyboardSource&&shellKeyboardEditing;
     const pad=blocked?null:controllerOutput({...padState,paused:false})[0];if(simulation?.running)simulation.practiceInput(pad);robotCheck?.pad(pad);}
 });
 function captureController(slot){controllerHub.begin(slot);win.webContents.focus();sendControllers(true);emit('controller-capture',controllerState());return controllerState();}
@@ -133,6 +146,7 @@ function interruptRobot(message){
   interruption=closeRobot({retain:true}).then(()=>update({error:message})).finally(()=>{interruption=null;});
   return interruption;
 }
+let appTheme='system';
 // Shell measurements are CSS pixels; native child-view bounds use window units.
 function place(view,visible){const [width,fullHeight]=win.getContentSize(),height=fullHeight-(robotKeyboard?.visible?robotKeyboard.height():0);if(state.robotFullscreen){view.setBounds({x:0,y:0,width,height});view.setVisible(visible);return;}const zoom=win.webContents.getZoomFactor(),x=Math.min(Math.max(0,Math.round(viewBounds.x*zoom)),width),y=Math.min(Math.max(0,Math.round(viewBounds.y*zoom)),height);view.setBounds({x,y,width:Math.max(0,Math.min(Math.round(viewBounds.width*zoom),width-x)),height:Math.max(0,Math.min(Math.round(viewBounds.height*zoom),height-y))});view.setVisible(visible);}
 function fitView(){
@@ -141,7 +155,7 @@ function fitView(){
   if(robotExitView){const [width]=win.getContentSize();robotExitView.setBounds({x:Math.max(0,width-60),y:12,width:48,height:48});robotExitView.setVisible(state.robotFullscreen&&shown);}
   robotKeyboard?.layout();
   // Hidden Driver Station: gamepads are released to rest, the connection (and a running op mode) continues.
-  if(bridge instanceof FtcSocket)try{robotView.webContents.send('ftc-active',shown&&!managerView);}catch{}
+  if(bridge instanceof FtcSocket)try{robotView.webContents.send('ftc-active',shown&&!managerView);robotView.webContents.send('ftc-fullscreen',!!state.robotFullscreen);}catch{}
   sendControllers();
 }
 async function ensureRobotExit(){
@@ -186,8 +200,8 @@ async function refreshNetwork(){
   if((robotView||opening&&state.url)&&expected&&next.ssid!==expected&&!network.busy&&!suspended){await interruptRobot(next.ssid?'Wi-Fi changed. Your robot address is saved. Choose Try again to reconnect to its network.':'Wi-Fi disconnected. Your robot address is saved. Reconnect Wi-Fi, then choose Try again.');}
   emit('network',next);return next;
 }
-// A Control Hub on the USB cable is saved at this address: Drive's Driver Station reaches it through ADB and the Deck USB
-// link (src/onbot/DeckUsbLink.java), whatever Wi-Fi this computer is on.
+// A Control Hub on the USB cable is saved at this address: Drive's Driver Station reaches it through ADB and a relay that
+// runs only while the cable is in (robotLink.usbLink), whatever Wi-Fi this computer is on.
 const USB_HOST='usb.control-hub',isUsb=url=>{try{return new URL(url).hostname===USB_HOST;}catch{return false;}};
 async function openRobot(input){
   const navigation=pageEpoch;finding?.abort();
@@ -249,7 +263,7 @@ function lockDown(contents,allowed){
   contents.on('will-navigate',(e,url)=>{if(!allowed(url))e.preventDefault();});contents.setWindowOpenHandler(({url})=>{if(allowed(url))void contents.loadURL(url);return {action:'deny'};});
 }
 async function openFtc(target,ssid,epoch){
-  const host=new URL(target.url).hostname,socket=host===USB_HOST?new UsbFtcSocket(()=>robotLink.usbForward().then(f=>({port:f.link}))):new FtcSocket(host);
+  const host=new URL(target.url).hostname;if(competition&&host!==USB_HOST)throw Error(COMPETITION_WIFI);const socket=host===USB_HOST?new UsbFtcSocket(()=>robotLink.usbLink().then(f=>({port:f.link}))):new FtcSocket(host);
   try{await socket.open();}catch(e){if(epoch===connectionEpoch)update({page:'drive',loading:false,url:target.url,title:target.name||host,error:e.message});return {opened:false};}
   if(epoch!==connectionEpoch||suspended){await socket.close();return {opened:false};}
   const robot=library.upsert({...target,ssid,kind:'ftc'},{opened:true});
@@ -278,14 +292,24 @@ async function openManager(){
 }
 ipcMain.on('ftc-send',(e,bytes)=>{if(robotView&&e.sender===robotView.webContents&&bridge instanceof FtcSocket&&bytes instanceof Uint8Array)bridge.send(bytes);});
 ipcMain.handle('ftc-info',e=>{if(!robotView||e.sender!==robotView.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC robot is open.');
-  const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;
-  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?'USB cable':active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{})};});
+  const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;const open=dsOpenPage;dsOpenPage=null;
+  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?'USB cable':active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,fullscreen:!!state.robotFullscreen};});
+// The Driver Station's own bar closes the robot and goes fullscreen, and it follows the app's colour theme.
+ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;await closeRobot();return true;});
+ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(true);return true;});
+ipcMain.on('app-theme',(e,theme)=>{if(e.sender!==win?.webContents||!['system','light','dark'].includes(theme))return;appTheme=theme;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-theme',theme);}catch{}});
+// A configuration saved or picked in the Driver Station's Configure Robot goes to Setup, Simulate and Calibrate.
+ipcMain.on('ftc-use-configuration',(e,c)=>{if(robotView&&e.sender===robotView.webContents&&typeof c?.xml==='string'&&c.xml.length<200000&&typeof c.name==='string')emit('robot-config',{name:c.name,xml:c.xml});});
 ipcMain.handle('ftc-controller-capture',(e,slot)=>{if(e.sender!==robotView?.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC driver station is open.');return captureController(slot);});
 ipcMain.handle('ftc-manage',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');return openManager();});
 // The Driver Station's Settings > Pair with Robot Controller: Deck's Settings, with the robot kept connected.
 ipcMain.handle('ftc-settings',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setPage('settings');return true;});
 // Configure Robot's product photos (read from the makers' listings while online and kept here) and saving a pinout.
 const fromDs=e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');};
+handle('device-photo',tag=>photos().photo(String(tag||'')));
+// The computer stays awake while a Control Hub is in use over USB: sleeping suspends the port, and the hub can then need a replug.
+let hubSeenAt=0,awake=null;
+setInterval(()=>{const on=bridge instanceof UsbFtcSocket||Date.now()-hubSeenAt<15000;if(on&&awake===null)awake=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awake!==null){powerSaveBlocker.stop(awake);awake=null;}},5000).unref();
 ipcMain.handle('ftc-device-photo',async(e,tag)=>{fromDs(e);return photos().photo(String(tag||''));});
 ipcMain.handle('ftc-device-photos',async e=>{fromDs(e);return photos().prefetch();});
 // The hubs the open robot's web server lists, with each one's IMU (Configure Robot's New: the scan leaves it UNKNOWN).
@@ -296,9 +320,11 @@ ipcMain.handle('ftc-wiring-notes',async(e,{robot,name,notes}={})=>{fromDs(e);con
   let all={};try{all=JSON.parse(fs.readFileSync(file,'utf8'));}catch{}if(!all||typeof all!=='object'||Array.isArray(all))all={};
   if(notes!==undefined){const json=JSON.stringify(notes??{});if(json.length>20000)throw Error('Too many notes.');if(json==='{}')delete all[key];else all[key]=JSON.parse(json);fs.writeFileSync(file+'.tmp',JSON.stringify(all));fs.renameSync(file+'.tmp',file);}
   return all[key]||null;});
-ipcMain.handle('ftc-save-file',async(e,{name,data,kind})=>{fromDs(e);const types={png:['PNG image','png'],svg:['SVG drawing','svg']},t=types[kind];if(!t||typeof data!=='string')throw Error('Choose PNG or SVG.');
+async function savePinoutFile({name,data,kind}){const types={png:['PNG image','png'],svg:['SVG drawing','svg']},t=types[kind];if(!t||typeof data!=='string')throw Error('Choose PNG or SVG.');
   const safe=String(name||'pinout').replace(/[\\/:*?"<>|]+/g,' ').trim().slice(0,80)||'pinout',r=await dialog.showSaveDialog(win,{title:'Save pinout',defaultPath:path.join(app.getPath('documents'),`${safe}.${t[1]}`),filters:[{name:t[0],extensions:[t[1]]}]});
-  if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,kind==='png'?Buffer.from(data,'base64'):data);return r.filePath;});
+  if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,kind==='png'?Buffer.from(data,'base64'):data);return r.filePath;}
+ipcMain.handle('ftc-save-file',async(e,file)=>{fromDs(e);return savePinoutFile(file);});
+handle('save-pinout',savePinoutFile);
 handle('manager-close',closeManager);
 // An FTC robot makes its own Wi-Fi network. Once a robot is saved as FTC, joining that network opens Drive and
 // its Driver Station as soon as the Robot Controller answers. Retries every poll (the hub's Wi-Fi starts before
@@ -306,28 +332,44 @@ handle('manager-close',closeManager);
 const auto={ssid:null,dismissed:false,busy:false};
 async function autoOpenFtc(){
   const ssid=currentNetwork?.ssid||'';if(auto.ssid!==ssid)Object.assign(auto,{ssid,dismissed:false});
-  if(state.page==='simulation'||suspended||state.recovering||auto.busy||auto.dismissed||robotView||opening||finding||updater?.busy||network.busy||!library||!ssid)return;
+  if(competition||offlinePage(state.page)||suspended||state.recovering||auto.busy||auto.dismissed||robotView||opening||finding||updater?.busy||network.busy||!library||!ssid)return;
   const saved=library.list(ssid).filter(r=>r.ssid===ssid&&r.kind==='ftc');if(!saved.length)return;
   auto.busy=true;
   try{
     const host=await findFtc([...new Set(saved.map(r=>new URL(r.url).hostname))]);const robot=saved.find(r=>new URL(r.url).hostname===host);
-    if(robot&&state.page!=='simulation'&&!suspended&&!state.recovering&&!robotView&&!opening&&!auto.dismissed&&(currentNetwork?.ssid||'')===ssid){auto.busy=false;await openRobot({id:robot.id});}
+    if(robot&&!offlinePage(state.page)&&!suspended&&!state.recovering&&!robotView&&!opening&&!auto.dismissed&&(currentNetwork?.ssid||'')===ssid){auto.busy=false;await openRobot({id:robot.id});}
   }catch(e){emit('notice',e.message);}finally{auto.busy=false;}
 }
-handle('bootstrap',async()=>{await refreshNetwork();setTimeout(()=>void autoOpenFtc(),300);return {state:snapshot(),hardware:hardware(),app:{version:meta.version,channel:meta.updateChannel}};});handle('open',openRobot);handle('close',async()=>{auto.dismissed=true;await closeRobot();});
-// The open robot stays connected while Settings is shown; it is hidden, not closed.
+handle('bootstrap',async()=>{await refreshNetwork();setTimeout(()=>void autoOpenFtc(),300);return {state:snapshot(),hardware:hardware(),app:{version:meta.version,channel:meta.updateChannel}};});handle('open',input=>{driveRobot=null;return openRobot(input);});handle('close',async()=>{auto.dismissed=true;driveRobot=null;await closeRobot();});
+// The open robot stays connected while Settings is shown; it is hidden, not closed. Setup, Calibrate and Simulate need the robot themselves, since only one Driver Station can talk to it at a time, so what was open comes back when Drive does.
+let driveRobot=null;
+// Competition mode, from the three-dot menu. R704 lets Wi-Fi streaming go only through the FTC Driver Station app, so Torque drives and streams only over the cable. docs/COMPETITION-RULES.md
+let competition=false;
+const COMPETITION_WIFI='Competition mode is on, and FTC rule R704 allows streaming over Wi-Fi only through the FTC Driver Station app. Use the USB-C cable, or turn Competition mode off in the three-dot menu once you are away from the event.';
+async function driveAgain(){const robot=driveRobot;driveRobot=null;try{await debugStop();if(robotCheck){robotCheck.stop();await Promise.race([robotCheck.ended?.catch(()=>{}),delay(5000)]);}if(state.page==='drive'&&!robotView&&!opening)await openRobot(robot);}catch(e){emit('notice',e.message);}}
 async function setPage(page){
-  if(!['drive','settings','simulation'].includes(page))throw Error('Unknown app view.');
+  if(!['drive','setup','settings','simulation','calibrate'].includes(page))throw Error('Unknown app view.');
   pageEpoch++;releaseKeys();
   if(page!=='drive'){robotKeyboard?.hide({focus:false});await setRobotFullscreen(false);}
   update({page});fitView();
-  // Simulation is offline. Close the live robot, including its active FTC op mode.
-  if(page==='simulation'){finding?.abort();await closeRobot();}
-  // Leaving Simulation ends its processes, including any running Java program, and a guided check running on a robot.
+  // Simulation and Calibrate are offline. Close the live robot, including its active FTC op mode.
+  if(offlinePage(page)){finding?.abort();if(robotView&&active)driveRobot={...active};await closeRobot();}
+  // Leaving them ends the simulation's processes, including any running Java program, and a guided check running on a robot.
   else {simulation?.stop();robotCheck?.stop();}
+  // Live debug drives the robot's outputs: it only runs while Calibrate or Setup's hub test shows.
+  if(page!=='calibrate'&&page!=='setup')robotDebug?.stop();
+  if(page==='drive'&&driveRobot)void driveAgain();
   return snapshot();
 }
 handle('page',setPage);
+// Setup's Configure Robot button: the Driver Station's own page (its three-dot menu's Configure Robot), on the robot that is
+// open or the Control Hub on the cable. Without a robot it says how to get one.
+let dsOpenPage=null;
+handle('configure-robot',async()=>{
+  if(robotView&&bridge instanceof FtcSocket){await setPage('drive');robotView.webContents.send('ftc-open','configure');return {opened:true};}
+  const usb=await robotLink.usbStatus().catch(e=>({found:false,message:e.message}));
+  if(!usb.found)throw Error(`Configure Robot needs a robot. Plug the Control Hub in by USB-C, or open your robot in Settings. (${usb.message})`);
+  dsOpenPage='configure';const opened=await openRobot({url:USB_HOST,name:'Control Hub (USB)',kind:'ftc',controllerCount:active?.controllerCount||1});if(!opened?.opened)dsOpenPage=null;return opened;});
 handle('sim-open-ready',()=>{terminalReady=true;void deliverTerminalSetup();});
 // A simulator robot drag locks the pointer; on release the system cursor is put back on the robot.
 // Electron cannot move the cursor, so Windows uses user32 from one long-lived PowerShell (started
@@ -348,34 +390,141 @@ handle('cursor',(x,y)=>{
   return false;
 });
 app.on('will-quit',()=>{try{cursorHelper?.kill();}catch{}});
-handle('sim',async(method,args)=>{if(state.page!=='simulation')throw Error('Open the Simulation view first.');return simulation.call(method,args);});
+handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open the Simulation view first.');return simulation.call(method,args);});
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
+// Setup & Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
+const axonSoftwareMemo=()=>path.join(app.getPath('userData'),'axon-software.json');
+const axonSoftwareFolders=()=>{const home=app.getPath('home'),cloud=process.env.OneDrive;return [app.getPath('downloads'),app.getPath('desktop'),app.getPath('documents'),path.join(home,'Downloads'),path.join(home,'Desktop'),path.join(home,'Documents'),...(cloud?['Downloads','Desktop','Documents'].map(n=>path.join(cloud,n)):[])];};
+const axonService=()=>axon||=new axonProgrammer.AxonService({findSoftware:axonSoftware.finder({folders:axonSoftwareFolders(),memo:axonSoftwareMemo()}),firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),sharedKeyFile:process.env.DECK_DATA_DIR?null:path.join(app.getPath('documents'),'Torque Axon keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
+  fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
+handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
+  if(action==='preview')return s.preview(data?.code,data?.mode);if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
+  if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='defaults')return s.defaults();if(action==='close-rivals')return void await s.closeRivals();
+  if(action==='firmware-status')return s.firmwareStatus(data?.code,data?.mode);if(action==='download')return s.download(data?.code,data?.mode);if(action==='flash')return s.flash(data||{});
+  if(action==='choose-firmware'){const r=await dialog.showOpenDialog(win,{title:'Choose Axon firmware',filters:[{name:'Axon firmware',extensions:['sfw','sfm']}],properties:['openFile']});return r.canceled?null:s.chooseFirmware(data?.code,data?.mode,r.filePaths[0]);}
+  if(action==='software-page'){const page=axonSoftware.SOFTWARE[data?.family]?.page;if(!page)throw Error('Torque does not know that software.');return void await shell.openExternal(page);}
+  if(action==='software-pick'){const it=axonSoftware.SOFTWARE[data?.family];if(!it)throw Error('Torque does not know that software.');const r=await dialog.showOpenDialog(win,{title:`Find ${it.title}`,filters:[{name:'Program',extensions:['exe']}],properties:['openFile']});if(r.canceled)return null;axonSoftware.remember(axonSoftwareMemo(),data.family,r.filePaths[0]);s.softwareFound(true);s.publish();return true;}
+  if(action==='software-open'){const file=s.softwareFile(data?.family);if(!file)throw Error("Axon's software is not on this computer.");const problem=await shell.openPath(file);if(problem)throw Error(problem);return true;}
+  if(action==='import-keys'){const r=await dialog.showOpenDialog(win,{title:'Import your key file',filters:[{name:'Key file',extensions:['json']}],properties:['openFile']});return r.canceled?null:s.importKeys(r.filePaths[0]);}
+  if(action==='open-settings'){const r=await dialog.showOpenDialog(win,{title:'Open servo settings',filters:[{name:'Servo settings',extensions:[ext()]}],properties:['openFile']});return r.canceled?null:s.loadSettings(fs.readFileSync(r.filePaths[0]),path.basename(r.filePaths[0]));}
+  if(action==='save-settings'){const file=s.packSettings(data?.changes),r=await dialog.showSaveDialog(win,{title:'Save servo settings',defaultPath:path.join(app.getPath('documents'),`${s.state().servo.name||'servo'}.${ext()}`),filters:[{name:'Servo settings',extensions:[ext()]}]});if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,file);return {name:path.basename(r.filePath)};}
+  throw Error('Unknown Axon action.');});
 // Send to robot (Simulation → Run & review → Export): reads a Control Hub's configuration (and scans its hubs to add
 // devices), saves a new configuration with the devices it lacks, and uploads and builds the exported OnBot Java over its
 // Wi-Fi. It never starts an op mode. robots lists the saved FTC robots to pick from.
 // select: the autonomous just built, which Drive selects when that robot is next opened (within the hour).
 // check-start / check-press / check-stop: the guided check TeleOp, run from the Send panel; its telemetry arrives as
 // robot-link-check events, then one {ended} (or {error}) when it stops.
-let sentOpMode=null,robotCheck=null;
+// debug-install / debug-start / debug-send / debug-stop: Torque Debug (Calibrate → Camera and Debug). Its device
+// list and readings arrive as robot-link-debug events ({manifest}, {frame}), then one {ended} (or {error}).
+let sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null;
+const debugStop=async()=>{const debug=robotDebug;if(!debug)return;debug.stop();const over=await Promise.race([debug.ended.then(()=>true,()=>true),delay(5000).then(()=>false)]);
+  // Given up on: what comes next must not be reached by a late stop of this one's. The page still hears that it ended.
+  if(!over&&!debug.told){debug.told=true;debug.abandon();emit('robot-link-debug',{ended:'stopped'});}if(robotDebug===debug)robotDebug=null;};
+// A hub whose Robot Controller app really crashed on Torque Debug: it does not go on that hub again until someone presses for it. Kept on this computer, so relaunching does not try again.
+const debugTripFile=()=>path.join(app.getPath('userData'),'torque-debug-crashes.json');
+const debugTrips=()=>{try{const all=JSON.parse(fs.readFileSync(debugTripFile(),'utf8'));return all&&typeof all==='object'?all:{};}catch{return {};}};
+function debugTrip(serial,on){const all=debugTrips();if(!!all[serial]===on)return;if(on)all[serial]=new Date().toISOString();else delete all[serial];try{fs.writeFileSync(debugTripFile(),JSON.stringify(all));}catch{}}
+// The crash guard's watch after a build, beside whatever comes next. A newer build has its own. A real crash takes the program off and says so to whoever is listening, and that hub is remembered.
+let debugGuarding=null;
+function debugWatch(before,serial){const me={};debugGuarding=me;void robotLink.usbDebugGuard({before,still:()=>debugGuarding===me}).catch(e=>{if(e.crashed){debugTrip(serial,true);emit('robot-link-debug',{error:e.message});}}).finally(()=>{if(debugGuarding===me)debugGuarding=null;});}
+// Torque Debug onto the robot and built, and over the cable the crash guard then watches that the app survives it. auto: Calibrate → Camera asked, so nothing goes on unless the robot is free and that page still shows: a build
+// on a robot someone is driving would disturb them. noStart with it: nobody pressed anything, which never happens over Wi-Fi, where nothing could bring the app back from a crash, or on a hub it has crashed.
+async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='usb',nobody=data?.noStart===true,here=()=>{if(state.page!=='calibrate'&&state.page!=='setup')throw Error('Torque left this page before the robot started.');},serial=usb?(await robotLink.usbForward()).serial:null;
+  if(data?.auto){here();if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+    if(nobody&&!usb)throw Error('Over Wi-Fi, Torque puts the camera program on the robot only when someone asks.');
+    if(nobody&&debugTrips()[serial])throw Error('Last time, the Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque will not put it back by itself. Press Try again to put it on once more.');
+    await overLink(o=>robotLink.debugIdle(data?.host,o),undefined,usbOptions);here();}
+  if(serial&&!nobody)debugTrip(serial,false);
+  const before=usb?await robotLink.usbCrashes({serial}):undefined,opMode=robotLink.debugName(),built=await robotLink.send(data?.host,{[robotLink.DEBUG_FILE]:robotLink.debugSource(opMode)},{remove:[robotLink.OLD_DEBUG_FILE],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
+  if(built.built&&usb)debugWatch(before,serial);
+  return {...built,opMode,...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
+// What waits while that runs: a save or a restart would look like a crash to the guard, and a build is not to be interrupted. Reading the hub's files and ports does neither.
+const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
+// Wiring notes read over the cable, for when Wi-Fi cannot read them (robotLink.notesThrough), and failing that those Drive's Configure Robot keeps. An entry here, empty or not, is what was last saved or read.
+let notesRobot=null;const notesStore={file:()=>path.join(app.getPath('userData'),'configuration-notes.json'),key:(robot,name)=>`${String(robot).slice(0,80)}\n${String(name).slice(0,80)}`,
+  all(file){try{const v=JSON.parse(fs.readFileSync(file,'utf8'));return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch{return {};}},
+  get(robot,name){const k=notesStore.key(robot,name),own=notesStore.all(notesStore.file());return k in own?own[k]:notesStore.all(path.join(app.getPath('userData'),'wiring-notes.json'))[k]||null;},
+  set(robot,name,notes){const k=notesStore.key(robot,name),file=notesStore.file(),own=notesStore.all(file);if(JSON.stringify(own[k]??null)===JSON.stringify(notes))return;own[k]=notes;try{fs.writeFileSync(file,JSON.stringify(own));}catch{}}};
+const readThrough=read=>{if(read?.deviceName)notesRobot=read.deviceName;return robotLink.notesThrough(read,notesStore);};
+// The Control Hub left the cable: what was kept for it goes, and whatever runs through it has ended, now rather than when it times out.
+function hubUnplugged(serial){robotLink.usbForget(serial);
+  if(robotDebug?.usb){const debug=robotDebug;robotDebug=null;debug.told=true;debug.stop('lost');emit('robot-link-debug',{ended:'lost'});}
+  if(robotCheck?.usb){const check=robotCheck;robotCheck=null;check.told=true;check.stop('lost');emit('robot-link-check',{ended:'lost'});}}
+// The USB watch (src/usb-watch.cjs), while a tab that works with the Control Hub shows. Its changes arrive as usb-watch events. What is on the hub's own USB ports follows it
+// (src/hub-usb.cjs): the same events carry the list as hubUsb, and a change there is one more event, why 'hub-usb'. It runs while ADB can talk to the hub and stops when the watch does.
+const hubFollower=new HubUsb.HubUsbFollower({onChange:list=>{if(usbWatch?.wanted)emit('usb-watch',{...usbWatch.state(),why:'hub-usb',hubUsb:list});}});
+const hubWatcher=()=>usbWatch||=new UsbWatch({adbPath:robotLink.adbPath,logFile:path.join(app.getPath('userData'),'usb-watch.log'),onChange:s=>{hubFollower.follow(HubUsb.hubToFollow(s));emit('usb-watch',{...s,hubUsb:hubFollower.latest()});},onGone:hubUnplugged,onQuit:()=>hubFollower.follow(null)});
+// The hub to ask, for a page that asks before the watch has said: the watch knows without running ADB.
+const hubOnUsb=async()=>{const known=HubUsb.hubToFollow({hub:usbWatch?.hub});if(known)return known;const s=await robotLink.usbStatus();if(!s.found)throw Error(s.message||'No Control Hub on USB.');return s.serial;};
 handle('robot-link',async(action,data)=>{
+  if(action==='competition'){competition=data?.on===true;return competition;}
+  if(action==='usb-watch'){if(data?.shown)return hubWatcher().shown(data.shown,data.at);if(!data?.on)return usbWatch?.stop()??null;const s=hubWatcher().start();hubFollower.follow(HubUsb.hubToFollow(s));return {...s,hubUsb:hubFollower.latest()};}
+  // What is on the hub's own USB ports. They only read the hub, so they go on while live debug runs.
+  if(action==='hub-usb'){const serial=await hubOnUsb();return hubFollower.serial===serial?hubFollower.latest()||await hubFollower.read():HubUsb.readHubUsbList(serial);}
+  if(action==='hub-usb-camera')return {hex:await HubUsb.readDescriptors(await hubOnUsb(),String(data?.path||''))};
+  if(action==='hub-usb-drops')return HubUsb.recentDrops(await hubOnUsb());
+  if(action==='hub-rc-up')return robotLink.usbControllerUp(await hubOnUsb());
+  if(action==='limelight'){const serial=await hubOnUsb();if(!data?.path)return HubUsb.readLimelight(serial);const at=await HubUsb.limelightAddress(serial);return HubUsb.limelightGet(serial,String(data.path),{host:at?.address});}
   if(action==='robots')return library.list().filter(r=>r.kind==='ftc').map(r=>{let host='';try{host=new URL(r.url).hostname;}catch{}return {name:r.name,host};}).filter(r=>r.host);
   if(action==='select'){const name=typeof data?.opMode==='string'?data.opMode:'';if(!name||name.length>200)throw Error('No op mode to select.');sentOpMode={host:robotLink.checkHost(data?.host),name,at:Date.now()};return true;}
+  // Which ways Send to robot can reach a robot now: a Control Hub on the USB cable, and the robot whose Wi-Fi this
+  // computer is on (a saved FTC robot on this network, or a Control Hub or Robot Controller phone network by its name).
+  // Its address: the robot saved for this network, else one saved for any network, else the usual Control Hub address.
+  if(action==='detect'){const ssid=currentNetwork?.ssid||'',ftc=library.list(ssid).filter(r=>r.kind==='ftc'),saved=ftc.find(r=>ssid&&r.ssid===ssid)||ftc.find(r=>!r.ssid),phone=/^DIRECT-/i.test(ssid);let host='';try{host=saved?new URL(saved.url).hostname:'';}catch{}
+    // While the USB watch is up it already knows, so no ADB runs for this.
+    const usb=usbWatch?.status()??await robotLink.usbStatus().catch(e=>({found:false,message:e.message})).then(p=>usbWatch?usbWatch.withPoll(p):p);if(usb.found)hubSeenAt=Date.now();
+    // A robot saved under this network, or a network named like one, is only a guess: without a hub on USB, ask whether it answers. A port already in use is usually this app holding a link to it, Live debug say, which nothing else could be doing.
+    const robot=!!saved&&!!ssid&&saved.ssid===ssid||/^FTC-|-RC$|^DIRECT-/i.test(ssid),wifiHost=host||(phone?'192.168.49.1':'192.168.43.1'),reachable=robot&&!usb.found?await probeFtc(wifiHost,{timeout:700}).then(r=>!!r.ftc||/in use/.test(r.error||"")).catch(()=>false):robot;
+    return {usb,wifi:{ssid,robot,reachable,host:wifiHost,name:saved?.name||''}};}
   if(action==='check-press')return !!robotCheck?.press(String(data?.button||''));
+  if(action==='debug-camera')return !!robotDebug?.camera(data?.on===true);
+  if(action==='debug-send')return !!robotDebug?.send(String(data?.line||''));
+  if(action==='debug-stop'){await debugStop();return true;}
+  // Calibrate → Camera runs it by itself, and that gives way to anything a student asks of the robot, until something has driven an output (debug-claim).
+  if(action==='debug-claim'){if(robotDebug)robotDebug.auto=false;return true;}
+  if(debugBusy&&DEBUG_HOLDS.has(action))await debugBusy.catch(()=>{});
+  if(robotDebug?.auto||robotDebug&&(action==='configure'||action==='activate'))await debugStop();
+  if(robotDebug)throw Error('Live debug is still running. Stop it first.');
   // Resolves once the robot has stopped the check and the connection is free (5 s at most).
   if(action==='check-stop'){const check=robotCheck;if(check){check.stop();await Promise.race([check.ended.catch(()=>{}),delay(5000)]);}return true;}
   if(robotCheck)throw Error('The guided check is still running. Stop it first.');
+  // noStart: nobody pressed anything, so a stopped Robot Controller app stays stopped.
+  const usbOptions=data?.noStart===true?{noStart:true,wait:0}:undefined;
+  // Over the cable these go through the Driver Station link, as over Wi-Fi. link: for what nobody pressed, which does not start the Robot Controller app.
+  const overLink=async(task,options,link)=>{if(data?.host!=='usb')return task({});const socket=await new UsbFtcSocket(()=>robotLink.usbLink(link).then(f=>({port:f.link})),options).open();try{return await task({socket});}finally{await socket.close();}};
+  if(action==='debug-install'){const job=debugInstall(data,overLink,usbOptions),done=()=>{if(debugBusy===job)debugBusy=null;};debugBusy=job;job.then(done,done);return job;}
   if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+  // Try again on Calibrate → Camera, when the Robot Controller app is not answering: a press may start it.
+  if(action==='rc-start'){if(data?.host==='usb')await robotLink.usbController((await robotLink.usbForward()).serial);return true;}
+  // Is the robot's Torque Debug this one? The app has to be up to say.
+  if(action==='debug-current'){if(data?.host==='usb')await robotLink.usbLink(usbOptions);return robotLink.debugCurrent(data?.host);}
   if(action==='check-start'){
-    const check=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-check',update)});robotCheck=check;
-    check.ended.then(why=>emit('robot-link-check',{ended:why}),e=>emit('robot-link-check',{error:e.message})).finally(()=>{if(robotCheck===check)robotCheck=null;});
+    const check=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-check',update)});robotCheck=check;check.usb=data?.host==='usb';
+    check.ended.then(why=>{if(!check.told)emit('robot-link-check',{ended:why});},e=>{if(!check.told)emit('robot-link-check',{error:e.message});}).finally(()=>{if(robotCheck===check)robotCheck=null;});
+    return true;}
+  if(action==='debug-start'){
+    if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
+    const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
+    // The page may have changed while the cable's link came up, and Live debug only runs while Calibrate or Setup shows.
+    if(state.page!=='calibrate'&&state.page!=='setup'){await socket?.close();throw Error('Torque left this page before the robot started.');}
+    const debug=robotLink.runDebug(host,{socket,opMode:typeof data?.opMode==='string'?data.opMode:null,onManifest:manifest=>emit('robot-link-debug',{manifest}),onFrame:frame=>emit('robot-link-debug',{frame}),onCamera:bytes=>emit('robot-link-debug',{camera:Uint8Array.from(bytes)})});robotDebug=debug;debug.usb=host==='usb';debug.auto=data?.auto===true;
+    debug.ended.then(why=>{if(!debug.told)emit('robot-link-debug',{ended:why});},e=>{if(!debug.told)emit('robot-link-debug',{error:e.message});}).finally(()=>{if(robotDebug===debug)robotDebug=null;if(socket)void socket.close();});
     return true;}
   if(action==='read')return robotLink.readRobot(data?.host,{scan:data?.scan===true});
-  if(action==='read-usb')return robotLink.readUsb();
+  if(action==='read-usb')return readThrough(await robotLink.readUsb());
   // The robot's own dashboard (Program & Manage, OnBot Java, Blocks) through the USB cable, in a window of its own.
   if(action==='usb-dashboard'){const {port,serial}=await robotLink.usbForward();const view=new BrowserWindow({width:1200,height:820,title:`Robot Controller ${serial} (USB)`,autoHideMenuBar:true,webPreferences:{contextIsolation:true,sandbox:true}});await view.loadURL(`http://127.0.0.1:${port}/`);return {port,serial};}
-  if(action==='read-all')return robotLink.readConfigurations(data?.host);
-  if(action==='activate')return robotLink.activateConfiguration(data?.host,data?.name);
-  if(action==='configure')return robotLink.writeConfiguration(data?.host,{name:data?.name,xml:data?.xml});
+  if(action==='usb-status')return robotLink.usbStatus();
+  if(action==='usb-recover')return robotLink.usbRecover();
+  if(action==='hubs')return overLink(o=>robotLink.scanRobot(data?.host,o));
+  // The hubs the robot has open show first, from its web server in milliseconds; then each answer from the RS485 cable.
+  if(action==='scan'){const live=await robotLink.rcHubs(data?.host),onProgress=p=>emit('robot-link-scan',p);if(live.length)onProgress({portals:robotLink.openHubs(live)});return overLink(o=>robotLink.scanDevices(data?.host,{...o,live,onProgress}),{grace:150},data?.noStart===true?{noStart:true,wait:0}:undefined);}
+  if(action==='delete-config')return overLink(o=>robotLink.deleteConfiguration(data?.host,data?.name,o));
+  if(action==='check'){const usb=data?.host==='usb'?await robotLink.usbCheck():[];if(usb.some(s=>!s.ok))return usb;const talk=()=>overLink(o=>robotLink.connectionCheck(data?.host,o),undefined,data?.noStart===true?{noStart:true}:undefined);try{return [...usb,...await talk().catch(async e=>{if(!/not found|offline|closed/i.test(e.message))throw e;await new Promise(r=>setTimeout(r,1200));return talk();})];}catch(e){return [...usb,{name:'Talk to the robot',ok:false,detail:e.message}];}}
+  if(action==='read-all')return readThrough(await overLink(o=>robotLink.readConfigurations(data?.host,o)));
+  if(action==='activate')return overLink(o=>robotLink.activateConfiguration(data?.host,data?.name,o));
+  if(action==='configure'){const saved=await overLink(o=>robotLink.writeConfiguration(data?.host,{name:data?.name,xml:data?.xml,replace:data?.replace===true},o));if(notesRobot)notesStore.set(notesRobot,data?.name,robotLink.notesOf(data?.xml));return saved;}
   if(action==='send')return robotLink.send(data?.host,data?.files,{keep:Array.isArray(data?.keep)?data.keep:[],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
   throw Error('Unknown robot action.');
 });
@@ -416,7 +565,7 @@ function recoverSandboxedLibrary(dir){
   if(process.platform!=='win32'||process.env.DECK_DATA_DIR||fs.existsSync(path.join(dir,'robots.json'))||!process.env.LOCALAPPDATA)return;
   try{
     const packages=path.join(process.env.LOCALAPPDATA,'Packages');let best=null;
-    for(const name of fs.readdirSync(packages)){const folder=path.join(packages,name,'LocalCache','Roaming',app.getName());try{const t=fs.statSync(path.join(folder,'robots.json')).mtimeMs;if(!best||t>best.t)best={folder,t};}catch{}}
+    for(const name of fs.readdirSync(packages)){for(const folder of [path.join(packages,name,'LocalCache','Roaming',app.getName()),path.join(packages,name,'LocalCache','Roaming',LEGACY_NAME)])try{const t=fs.statSync(path.join(folder,'robots.json')).mtimeMs;if(!best||t>best.t)best={folder,t};}catch{}}
     if(!best)return;fs.mkdirSync(dir,{recursive:true});
     for(const file of ['robots.json','update-settings.json'])if(fs.existsSync(path.join(best.folder,file))&&!fs.existsSync(path.join(dir,file)))fs.copyFileSync(path.join(best.folder,file),path.join(dir,file));
   }catch{}
@@ -434,7 +583,7 @@ app.whenReady().then(async()=>{
   updater=new Updater({directory:app.getPath('userData'),version:meta.version,repo:meta.repository.url,channel:meta.updateChannel,base:build.electron===process.versions.electron?build.base:'',onProgress:p=>emit('update-progress',p)});
   try{library=new Library(path.join(app.getPath('userData'),'robots.json'));}catch(e){state.error=`Saved library could not be read: ${e.message}`;library=new Library(path.join(app.getPath('userData'),`robots-recovered-${Date.now()}.json`));}
   const d=screen.getPrimaryDisplay().workAreaSize;
-  win=new BrowserWindow({show:process.env.DECK_HEADLESS!=='1',width:Math.min(1280,d.width),height:Math.min(800,d.height),minWidth:360,minHeight:480,title:'Deck Driver Station',icon:path.join(__dirname,'../ui/icon.png'),backgroundColor:'#080808',autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),additionalArguments:[...controllerArguments,'--deck-controller-shell'],partition:'persist:launcher',sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
+  win=new BrowserWindow({show:process.env.DECK_HEADLESS!=='1',width:Math.min(1280,d.width),height:Math.min(800,d.height),minWidth:360,minHeight:480,title:'Torque',icon:path.join(__dirname,'../ui/icon.png'),backgroundColor:'#080808',autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),additionalArguments:[...controllerArguments,'--deck-controller-shell'],partition:'persist:launcher',sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
   robotKeyboard=new RobotKeyboard({WebContentsView,ipcMain,window:()=>win,robot:()=>managerView||robotView,allowed:()=>touchKeyboard&&!!win&&!win.isDestroyed()&&state.page==='drive'&&!overlay&&!auth&&!state.error,changed:()=>fitView(),released:()=>{for(const pad of controllerHub.state().slots)if(pad)controllerHub.blocked.add(`${pad.index}:${pad.id}`);}});
   controllerSession(win.webContents.session);const controllerTimer=setInterval(()=>{if(lastControllerInput&&performance.now()-lastControllerInput>500)ingestPads([]);sendControllers();},100);controllerTimer.unref();
   win.webContents.on('render-process-gone',()=>{lastControllerInput=0;ingestPads([]);sendControllers(true);simulation.stop();});
@@ -450,6 +599,7 @@ app.whenReady().then(async()=>{
     if(!closeAsked&&process.env.DECK_HEADLESS!=='1'&&!win.webContents.isDestroyed()){e.preventDefault();closeAsked=true;
       const ask=Promise.race([win.webContents.executeJavaScript('window.deckUnfinishedSetup?.()??null',true),new Promise(r=>setTimeout(r,1500,null))]).catch(()=>null);
       void ask.then(async name=>{if(win.isDestroyed())return;
+        if(axon?.flashing){const r=await dialog.showMessageBox(win,{type:'warning',buttons:['Keep running','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Firmware update running',message:'An Axon servo is being updated.',detail:'Closing now can leave the servo needing Recover. It takes about a minute.'});if(r.response!==1){closeAsked=false;return;}}
         if(typeof name==='string'){const r=await dialog.showMessageBox(win,{type:'question',buttons:['Keep setting up','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Setup not finished',
           message:`You haven’t finished setting up “${name}”.`,detail:'Your changes are saved. Finish the Robot, Robot controller and Mechanisms steps, then go to Path planning to plan its route.'});
           if(r.response!==1){closeAsked=false;return;}}
@@ -458,4 +608,6 @@ app.whenReady().then(async()=>{
     robotKeyboard?.close();});win.on('closed',()=>{robotExitView?.webContents.close();robotExitView=null;});
   pollTimer=setInterval(()=>{if(!network.busy)void refreshNetwork().then(()=>autoOpenFtc());},5000);pollTimer.unref();
 });
-let closing=false;app.on('before-quit',e=>{simulation?.stop();robotCheck?.stop();if(closing)return;e.preventDefault();closing=true;clearInterval(pollTimer);void closeRobot().finally(()=>app.quit());});app.on('window-all-closed',()=>app.quit());
+// Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
+let closing=false;app.on('before-quit',e=>{usbWatch?.quit();axon?.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
+  void Promise.all([Promise.race([Promise.all([debugStop(),robotCheck?.ended.catch(()=>{})]),delay(2000)]),closeRobot().catch(()=>{})]).finally(()=>{robotLink.stopUsbRelay();app.quit();});});app.on('window-all-closed',()=>app.quit());

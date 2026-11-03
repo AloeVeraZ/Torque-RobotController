@@ -4,7 +4,7 @@
 // (tools/ftc-sim.cjs), which answers the same commands and routes as FTC SDK 12.0.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const RobotConfig=require('../ui/ftc/robot-config.js'),Hardware=require('../ui/sim-hardware.js'),C=require('../ui/sim-config.js'),F=require('../ui/sim-ftc.js'),Mech=require('../ui/sim-mechanisms.js'),P=require('../ui/sim-planner.js'),X=require('../ui/sim-export.js');
-const {startUdpRobot,startOnBotJava,CONFIG_XML,SENSOR_CONFIG_XML,HUBS,OP_MODES}=require('../tools/ftc-sim.cjs'),{readRobot,writeConfiguration,runCheck,OnBotJava,send,buildErrors,formEncode,checkHost}=require('../src/robot-link.cjs');
+const {startUdpRobot,startOnBotJava,CONFIG_XML,SENSOR_CONFIG_XML,HUBS,OP_MODES}=require('../tools/ftc-sim.cjs'),{readRobot,writeConfiguration,runCheck,OnBotJava,send,buildErrors,buildProblem,debugCurrent,debugSource,DEBUG_FILE,formEncode,checkHost}=require('../src/robot-link.cjs');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const {FtcSocket}=require('../src/ftc.cjs'),robot={drivetrain:'mecanum',length:17,width:17,heightIn:12,driveRpm:312,intakeIn:0};
 // The simulated robot and this station use their own loopback addresses (Robocol needs port 20884 on both ends), so these
@@ -86,7 +86,7 @@ test('Setup’s wiring: a device lands on the port Setup gave it, a taken port o
   assert.deepEqual(assignments.map(a=>[a.name,RobotConfig.portLabel(a),a.tag,!!a.fixed]),[['front_left','Control Hub motor port 3','RevRoboticsCoreHexMotor',true],['front_right','Control Hub motor port 0','goBILDA5202SeriesMotor',false],
     ['back_left','Control Hub motor port 1','goBILDA5202SeriesMotor',false],['back_right','Control Hub motor port 2','goBILDA5202SeriesMotor',false],['imu','Control Hub I2C bus 0','ControlHubImuBHI260AP',false],
     ['pinpoint','Control Hub I2C bus 1','goBILDAPinpoint',false],['intake','Expansion Hub 2 motor port 0','goBILDA5202SeriesMotor',true],['shooter','Expansion Hub 2 motor port 1','goBILDA5202SeriesMotor',false],['indexer','Expansion Hub 2 motor port 2','goBILDA5202SeriesMotor',false]]);
-  assert.deepEqual(problems,['Intake 1 ramp servo: Setup has it on a Servo Hub, which the robot does not have.','Shooter 1 turret: Expansion Hub 2 motor port 0 has "intake".']);
+  assert.deepEqual(problems,['Intake 1 ramp: Setup has it on a Servo Hub, which the robot does not have.','Shooter 1 turret: Expansion Hub 2 motor port 0 has "intake".']);
   // A device Setup placed keeps its port when sending (change it in Setup); another device cannot be swapped onto it.
   assert.deepEqual(RobotConfig.portChoices(assignments,0,{modules}),[]);
   const choices=RobotConfig.portChoices(assignments,assignments.findIndex(a=>a.name==='shooter'),{modules});assert.deepEqual(choices.find(c=>c.label==='Expansion Hub 2 motor port 0').taken,'intake');
@@ -218,7 +218,7 @@ test('Send to robot scans the hubs and saves a new configuration as the active o
   let robot2;try{robot2=await startUdpRobot({address:ROBOT});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
   t.after(()=>robot2.close());
   const r=await read({scan:true});assert.deepEqual(r.portals,[{serial:'(embedded)',modules:[{address:173,parent:true,imu:'BHI260'},{address:2,parent:false,imu:'BNO055'}]}]);
-  const plan=RobotConfig.planPorts([{name:'kicker',label:'Intake 1 kicker servo',device:'servo'}],{modules:RobotConfig.modulesOf(r,r.portals),devices:r.devices}),xml=RobotConfig.addDevices(r.xml,plan.assignments);
+  const plan=RobotConfig.planPorts([{name:'kicker',label:'Intake 1 kicker',device:'servo'}],{modules:RobotConfig.modulesOf(r,r.portals),devices:r.devices}),xml=RobotConfig.addDevices(r.xml,plan.assignments);
   const write=async(name,text)=>{const socket=await station();try{return await writeConfiguration(ROBOT,{name,xml:text},{socket});}finally{await socket.close();}};
   assert.deepEqual(await write('competition Deck',xml),{name:'competition Deck',devices:11,restarted:true});
   assert.equal(robot2.sim.active,'competition Deck');assert.equal(robot2.sim.restarts,1,'the robot restarts to build its hardware map from it');
@@ -234,7 +234,7 @@ test('Send to robot scans the hubs and saves a new configuration as the active o
 
 test('the guided check runs from Deck: INIT and START, answers pressed on gamepad 1, the results read back, then STOP',async t=>{
   // The simulated hub runs a stand-in for any op mode named "... check (Deck)": a wheel question, then a servo to move.
-  let robot2;try{robot2=await startUdpRobot({address:ROBOT,opModes:[...OP_MODES,{flavor:'TELEOP',group:'Deck Driver Station',name:'Test check (Deck)',source:'ONBOTJAVA'}]});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
+  let robot2;try{robot2=await startUdpRobot({address:ROBOT,opModes:[...OP_MODES,{flavor:'TELEOP',group:'Torque',name:'Test check (Deck)',source:'ONBOTJAVA'}]});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
   t.after(()=>robot2.close());const socket=await station(),updates=[];
   try{
     const check=runCheck(ROBOT,'Test check (Deck)',{socket,onUpdate:u=>updates.push(u)});
@@ -278,6 +278,10 @@ test('Send to robot uploads the export with OnBot Java, builds it, keeps a copy 
   // A build that fails reports each error with its file and line.
   const failing=await startOnBotJava({address:'127.0.0.2',port:0,compile:()=>['/src/org/firstinspires/ftc/teamcode/PlannedRouteAuto.java:42: error: cannot find symbol']});t.after(()=>failing.close());
   const bad=await send('127.0.0.2',out.files,{client:new OnBotJava('127.0.0.2',{port:failing.port})});assert.equal(bad.built,false);assert.deepEqual(bad.errors,[{file:'PlannedRouteAuto.java',line:42,message:'cannot find symbol'}]);
+  // Whether the robot's Torque Debug is this one: only its name, which says when it went on, may differ. Nothing on the robot, or an older copy, is not.
+  assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:false,opMode:null});
+  await client.save(DEBUG_FILE,debugSource('TorqueDebug-10.00-01-01-26').replace(/\n/g,'\r\n'));assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:true,opMode:'TorqueDebug-10.00-01-01-26'},'its line endings do not matter');
+  await client.save(DEBUG_FILE,debugSource('TorqueDebug-10.00-01-01-26').replace('STALL_MS = 400','STALL_MS = 500'));assert.deepEqual(await debugCurrent('127.0.0.2',{client}),{current:false,opMode:null},'an older copy');await client.remove(DEBUG_FILE).catch(()=>{});
   // Paths stay under /src as Java files.
   await assert.rejects(send('127.0.0.2',{'../evil.java':'x'},{client}),/not a Java source path/);
 });
@@ -286,8 +290,16 @@ test('the OnBot Java form encoding and build log parsing',async()=>{
   const text='a+b = 100% & "quoted" \'single\' (x)*! é\r\nline';assert.equal(new URLSearchParams('data='+formEncode(text)).get('data'),text,'every character survives the robot\'s form decoding');
   assert.doesNotMatch(formEncode("!'()*"),/[!'()*]/);
   // OnBot Java's own log, as a real Control Hub wrote it.
-  assert.deepEqual(buildErrors('org/firstinspires/ftc/teamcode/mySecondJavaOpModeFritz.java(49:9): ERROR: cannot find symbol\n  symbol:   variable imu'),[{file:'mySecondJavaOpModeFritz.java',line:49,message:'cannot find symbol'}]);
+  assert.deepEqual(buildErrors('org/firstinspires/ftc/teamcode/mySecondJavaOpModeFritz.java(49:9): ERROR: cannot find symbol\n  symbol:   variable imu'),[{file:'mySecondJavaOpModeFritz.java',line:49,message:'cannot find symbol: variable imu'}]);
   assert.deepEqual(buildErrors('Foo.java:3:5: error: ; expected\nnote: something\nsrc/org/Bar.java:10: error: incompatible types'),[{file:'Foo.java',line:3,message:'; expected'},{file:'Bar.java',line:10,message:'incompatible types'}]);
+  // Exactly what a Control Hub on SDK 12.0 said about the old Torque Debug, and javac's own shape with the source line and caret between.
+  const real='TorqueDebug.java(421:77): ERROR: cannot find symbol\n  symbol:   variable decisionMargin\n  location: variable d of type org.firstinspires.ftc.vision.apriltag.AprilTagDetection\nTorqueDebug.java(422:18): ERROR: cannot find symbol\n  symbol:   variable metadata\n  location: variable d of type org.firstinspires.ftc.vision.apriltag.AprilTagDetection\n';
+  assert.deepEqual(buildErrors(real),[{file:'TorqueDebug.java',line:421,message:'cannot find symbol: variable decisionMargin'},{file:'TorqueDebug.java',line:422,message:'cannot find symbol: variable metadata'}]);
+  assert.equal(buildErrors('Foo.java:3: error: cannot find symbol\n    x.y();\n    ^\n  symbol:   variable x\n  location: class Foo\n')[0].message,'cannot find symbol: variable x');
+  // One line, saying whose file it is: OnBot Java builds them all, so a team's broken file stops Torque's too.
+  assert.match(buildProblem(buildErrors(real)),/^Torque’s own program did not build on this robot \(TorqueDebug\.java line 421: cannot find symbol: variable decisionMargin\)\. This is not your code\./);
+  const theirs=buildProblem(buildErrors('TorqueDebug.java(1:1): ERROR: x\nTeamAuto.java(12:4): ERROR: cannot find symbol\n  symbol:   method bar()\n'));assert.match(theirs,/^Your file TeamAuto\.java has an error on line 12: cannot find symbol: method bar\(\)\. OnBot Java builds every file together/);assert.match(theirs,/Torque did not change it/);
+  assert.match(buildProblem([]),/OnBot Java page/);
   // Nothing listening: the message says where it looked and what to check.
   await assert.rejects(new OnBotJava('127.0.0.2',{port:9,timeout:2000}).available(),/Could not reach the robot's OnBot Java at http:\/\/127\.0\.0\.2:9.*Join the robot's Wi-Fi/);
 });
@@ -305,4 +317,16 @@ test('Configure Robot from Deck over Wi-Fi: every configuration read, an edited 
   const back=await withSocket(socket=>activateConfiguration(ROBOT,'competition',{socket}));assert.deepEqual(back,{name:'competition',restarted:true});
   const now=await withSocket(socket=>readConfigurations(ROBOT,{socket}));assert.deepEqual(now.configurations.sort(),['competition','competition Deck']);assert.equal(now.active.name,'competition');
   await assert.rejects(withSocket(socket=>activateConfiguration(ROBOT,'nope',{socket})),/no configuration named/);
+});
+
+test('Setup checks the connection, replaces a configuration when editing it, and deletes one',async t=>{
+  let robot;try{robot=await startUdpRobot({address:ROBOT});}catch(e){t.skip(ROBOT+' loopback is unavailable: '+e.message);return;}
+  t.after(()=>robot.close());const {connectionCheck,deleteConfiguration,readConfigurations}=require('../src/robot-link.cjs');
+  const withSocket=async f=>{const socket=await station();try{return await f(socket);}finally{await socket.close();}};
+  const steps=await withSocket(socket=>connectionCheck(ROBOT,{socket}));assert.equal(steps[0].ok,true);assert.match(steps[0].detail,/FTC SDK/);assert.equal(steps[1].ok,true);assert.match(steps[1].detail,/configuration/);
+  await assert.rejects(withSocket(socket=>writeConfiguration(ROBOT,{name:'competition',xml:CONFIG_XML},{socket})),/already has/);
+  assert.equal((await withSocket(socket=>writeConfiguration(ROBOT,{name:'competition',xml:CONFIG_XML,replace:true},{socket}))).name,'competition');
+  await withSocket(socket=>writeConfiguration(ROBOT,{name:'spare',xml:CONFIG_XML},{socket}));await withSocket(socket=>deleteConfiguration(ROBOT,'spare',{socket}));
+  assert.ok(!(await withSocket(socket=>readConfigurations(ROBOT,{socket}))).configurations.includes('spare'));
+  await assert.rejects(withSocket(socket=>deleteConfiguration(ROBOT,'nope',{socket})),/no configuration named/);
 });

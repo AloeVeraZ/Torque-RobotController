@@ -7,10 +7,18 @@ const {SENSOR_CONFIG_XML,CONFIG_XML}=require('../tools/ftc-sim.cjs');
 const examples=path.join(__dirname,'../examples/robot-configurations'),read=name=>fs.readFileSync(path.join(examples,name),'utf8');
 const sheet=(xml,extra={})=>{const {devices,hubs}=C.parse(xml);return P.build({name:'test',hubs,devices:devices.filter(d=>d.module).map(d=>({...d,family:C.familyOfTag(d.tag)})),other:devices.filter(d=>!d.module),notes:C.notesOf(xml),java:d=>C.javaFor(d).type,...extra});};
 
+test('Configure draws the configuration on screen: unsaved names, gears and webcams included',()=>{
+  global.window=global;global.DeckRobotConfig=C;global.DeckDeviceArt=A;const CE=require('../ui/sim-config-editor.js'),e=CE.load('lunala',C.withWebcams(CONFIG_XML,[{name:'Webcam 1',serial:'ABC'}]),null);
+  const motor=e.devices.find(d=>d.family==='motor');motor.name='renamed';motor.gear=Object.keys(A.GEARING||{})[0];const blank=e.devices.find(d=>d!==motor);blank.name='';
+  const config=CE.pinoutConfig(e),s=P.build({...config,name:'lunala',java:d=>C.javaFor({...d,kind:C.kindOf(d.tag)}).type});
+  assert.ok(s.svg.includes('renamed'),'the unsaved name');assert.ok(s.svg.includes('(no name)'),'a device still to be named');assert.ok(s.svg.includes('Webcam 1'),'the webcam');assert.equal(config.other.length,1);
+  assert.equal(blank.name,'','drawing it changes nothing being edited');
+});
+
 test('every device type Configure Robot offers has a picture, a maker and a description',()=>{
   const tags=[...Object.keys(C.MOTOR_TYPES),...Object.values(C.EDIT_TYPES).flat().map(([t])=>t)];
   for(const tag of tags){const i=A.info(tag);assert.ok(A.DEVICES[tag],`${tag} has an entry`);assert.ok(i.name&&i.what&&i.maker,`${tag} has facts`);assert.match(A.svg(tag),/^<svg[^>]+viewBox="0 0 160 120"/);}
-  for(const tag of Object.keys(A.PHOTOS))assert.ok(tag.startsWith('#')||A.DEVICES[tag],`${tag} photo is for a known device`);
+  for(const tag of Object.keys(A.PHOTOS))assert.ok(tag.startsWith('#')||tag.startsWith('model-')||A.DEVICES[tag],`${tag} photo is for a known device`);
   for(const [tag,[page]] of Object.entries(A.PHOTOS))assert.match(page,/^https:\/\//,`${tag} listing is https`);
   assert.equal(A.photoOf('goBILDA5202SeriesMotor').site,'gobilda.com');assert.equal(A.photoOf('Motor'),null);
   // Every type a port takes shows a product photo; only the generic Unspecified Motor keeps its drawing.

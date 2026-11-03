@@ -1,11 +1,13 @@
 /* The Video tab: preview and settings on top, the timeline across the bottom. It only shows once a run is recorded. */
-.sim-tabs>button[data-tab=video] span{background:var(--danger);color:#1b0c0e}
 #sim-panel-video[hidden]{display:none!important}
 #sim-panel-video{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:8px;min-height:0;flex:1;text-align:left}
 .studio-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 .studio-name{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
 .studio-name input{flex:0 1 320px;min-width:120px;height:34px;min-height:34px;font:700 15px var(--font);padding:4px 9px}
 .studio-name .hint{margin:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.studio-part{display:flex;align-items:center;gap:6px;flex:none;margin:0;font-size:12px;color:var(--muted)}
+.studio-part[hidden]{display:none}
+.studio-part select{width:auto;height:34px;min-height:34px;padding:4px 9px}
 .studio-head-actions{display:flex;gap:6px;flex:none}
 #sim-panel-video button{min-height:32px;margin:0;padding:4px 11px;font-size:12px;white-space:nowrap}
 #sim-panel-video button.danger{border-color:var(--danger);color:var(--danger)}
@@ -21,6 +23,10 @@
 .studio-time{font:600 13px var(--mono);font-variant-numeric:tabular-nums;margin-left:6px;white-space:nowrap}
 .studio-status{margin:0 0 0 8px;font-size:12px;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .studio-side{display:flex;flex-direction:column;gap:2px;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:10px 12px 12px}
+.studio-side-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}.studio-side-tabs [hidden]{display:none}
+.driver-station .studio-side-tabs button{min-height:30px;padding:4px 10px;font-size:12px;font-weight:600;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+.driver-station .studio-side-tabs button[aria-selected=true]{background:var(--text);color:var(--bg);border-color:var(--text)}
+.studio-pane[hidden]{display:none}
 .studio-intro{margin:0 0 4px;font-size:12px;line-height:1.4;color:var(--muted)}
 .studio-intro strong{color:var(--text)}
 .studio-pane{font-size:12px}
@@ -37,8 +43,8 @@
 .studio-spacer{flex:1}
 .studio-more{display:contents}
 .studio-more[hidden]{display:none}
-.studio-pane .hint{font-size:12px;margin:2px 0 8px}
-.studio-pane label{display:block;font-size:12px;margin:8px 0 3px;color:var(--muted)}
+.studio-pane .hint{font-size:12px;margin:2px 0 6px}
+.studio-pane label{display:block;font-size:12px;margin:6px 0 2px;color:var(--muted)}
 .studio-pane label>input:not([type=checkbox]):not([type=range]),.studio-pane label>select{display:block;width:100%;margin-top:3px;height:32px;min-height:32px;font-size:13px;padding:3px 8px;box-sizing:border-box}
 .studio-pane input[type=range]{display:block;width:100%;margin:2px 0 0}
 .studio-pane label output{float:right;color:var(--text);font-variant-numeric:tabular-nums}
@@ -107,3 +113,4 @@
  #sim-panel-video{flex:none;grid-template-rows:auto auto auto}
  .studio-status{display:none}
 }
+.studio-mark{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:var(--c)}

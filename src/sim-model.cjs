@@ -81,18 +81,18 @@ function tree(meshes){
 }
 // Every distinct assembly and part name ("104mm Mecanum Wheel"...), without instance numbers.
 function names(meshes){const out=new Set();for(const m of meshes)for(const name of [...(m.path||[]),m.name])if(name&&out.size<2000)out.add(String(name).replace(/\s*<\d+>$/,'').slice(0,80));return [...out];}
-// Reads pieces on up to `threads` workers; `progress(done,total)` after each.
-async function readPieces(planned,runtimeDir,params,threads,progress){
-  const module=await wasmModule(runtimeDir),total=planned.count,results=new Array(total);let next=0,done=0;
+// Reads the pieces `ids` on up to `threads` workers, each with paramsFor(id); done(id, meshes) and progress(done,total)
+// after each.
+async function readPieces(planned,ids,runtimeDir,paramsFor,threads,{progress,done:read}={}){
+  const module=await wasmModule(runtimeDir),total=ids.length;let next=0,done=0;
   const workers=Array.from({length:Math.min(threads,total)},()=>new Worker(path.join(__dirname,'step-worker.cjs'),{workerData:{runtimeDir,module}}));
   try{
     await Promise.all(workers.map(worker=>new Promise((resolve,reject)=>{
-      const send=()=>{if(next>=total)return resolve();const id=next++;worker.postMessage({id,bytes:Buffer.from(planned.piece(id),'latin1'),params});};
-      worker.on('message',m=>{if(!m.ok)return reject(Error(m.error));results[m.id]=m.meshes;progress?.(++done,total);send();});
+      const send=()=>{if(next>=total)return resolve();const id=ids[next++];worker.postMessage({id,bytes:Buffer.from(planned.piece(id),'latin1'),params:paramsFor(id)});};
+      worker.on('message',m=>{if(!m.ok)return reject(Error(m.error));read?.(m.id,m.meshes);progress?.(++done,total);send();});
       worker.on('error',reject);worker.on('exit',code=>{if(code)reject(Error(`The CAD reader stopped (code ${code}).`));});
       send();})));
   }finally{for(const w of workers)void w.terminate();}
-  return results.flat();
 }
 const cacheFile=(dir,key)=>dir&&path.join(dir,`${key}.bin`);
 // An import as bytes (the cache's layout; a prepared bundled robot, ui/assets/robots/*.deck.gz, is one gzipped): a JSON
@@ -123,13 +123,28 @@ async function convertStep(file,runtimeDir,{cacheDir=null,progress=null,threads=
   progress?.({stage:'split'});
   const text=bytes.toString('latin1'),cores=threads||Math.max(1,Math.min(8,(os.availableParallelism?.()||os.cpus().length)-1));
   const planned=plan(text,pieces||(size<PIECE_BYTES?1:Math.max(cores,Math.min(64,Math.ceil(size/PIECE_BYTES)))),{exact:exactBytes});
-  let deflection=deflectionFor(size),meshes,triangles;
-  for(let pass=0;pass<2;pass++){
-    meshes=await readPieces(planned,runtimeDir,{linearUnit:'inch',linearDeflectionType:'absolute_value',linearDeflection:deflection,angularDeflection:.5},cores,(done,total)=>progress?.({stage:'read',done,total}));
+  // The facet size is chosen while reading. Reading a piece takes as long at any facet size (OpenCascade's time goes into
+  // the solids, not the triangles), so reading the robot twice to make it lighter doubled the import. From the pieces read
+  // so far (triangles per byte of geometry) the whole robot's triangles are projected, and a robot heading past
+  // TRIANGLE_LIMIT reads its other pieces coarser (triangles go about as facet size^-0.4 on robot parts). Pieces read
+  // finer are read again only when the robot ends far over the limit.
+  const count=planned.count,loads=planned.loads||new Array(count).fill(1),totalLoad=loads.reduce((a,b)=>a+b,0)||1,got=new Array(count),used=new Array(count),tris=new Array(count).fill(0);
+  let deflection=deflectionFor(size),meshes,triangles,load=0;
+  const paramsFor=id=>{used[id]=deflection;return {linearUnit:'inch',linearDeflectionType:'absolute_value',linearDeflection:deflection,angularDeflection:.5};};
+  const read=(id,list)=>{
     // Heavy parts came back as markers: each becomes its hull where the assembly placed it.
-    if(planned.shapes.length)for(const m of meshes){const swapped=swapMarkers(m,planned.shapes);if(swapped)Object.assign(m,swapped);}
-    triangles=meshes.reduce((n,m)=>n+m.index.length/3,0);if(triangles<=TRIANGLE_LIMIT)break;deflection*=3;
+    if(planned.shapes.length)for(const m of list){const swapped=swapMarkers(m,planned.shapes);if(swapped)Object.assign(m,swapped);}
+    got[id]=list;tris[id]=list.reduce((n,m)=>n+m.index.length/3,0);
+    load=0;for(let k=0;k<count;k++)if(got[k])load+=loads[k];
+    const projected=()=>{let n=0;for(let k=0;k<count;k++)if(got[k])n+=tris[k]*(used[k]/deflection)**.4;return n/load*totalLoad;};
+    if(load>=totalLoad*.04)while(projected()>TRIANGLE_LIMIT*.85&&deflection<.5)deflection*=1.5;};
+  let ids=[...Array(count).keys()];
+  for(let pass=0;pass<4&&ids.length;pass++){
+    await readPieces(planned,ids,runtimeDir,paramsFor,cores,{done:read,progress:(done,total)=>progress?.({stage:'read',done,total})});
+    triangles=tris.reduce((a,b)=>a+b,0);if(triangles<=TRIANGLE_LIMIT*(pass?1:1.4))break;
+    if(!ids.some(id=>used[id]<deflection))deflection*=3;ids=ids.filter(id=>used[id]<deflection);
   }
+  meshes=got.flat();
   if(!meshes.length)throw Error('That STEP file has no solid parts. Export it again as STEP AP214 or AP242.');
   if(!triangles)throw Error('The CAD reader found parts but could not mesh them. Export the robot as a GLB, STL or OBJ mesh instead.');
   const value={name:path.basename(file),...merge(meshes),tree:tree(meshes),groups:groups(meshes),names:names(meshes),pieces:planned.count,simplified:meshes.reduce((n,m)=>n+(m.hulls||0),0)};

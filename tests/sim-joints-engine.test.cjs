@@ -22,7 +22,7 @@ test('frames carry joint values: the ramp folds down on Y and stays there, the h
     e.practiceInput(pad());await e.practiceTick();
     // Right bumper: intake. The rollers turn; the ramp stays up (it moves only when sent).
     for(let i=0;i<30;i++){e.practiceInput(pad({5:true}));await e.practiceTick();}
-    let j=e.frame().joints;assert.equal(j.ramp1,0,'intaking leaves the ramp up');assert.ok(j.roll1>0,'rollers turning');
+    let j=e.frame().joints;assert.equal(j.ramp1,0,'intaking leaves the ramp up');e.practiceInput(pad({5:true}));await e.practiceTick();assert.notEqual(e.frame().joints.roll1,j.roll1,'rollers turning');
     // Y: the ramp folds down over its 0.3 s, and stays down after Y is let go.
     e.practiceInput(pad({3:true}));await e.practiceTick();for(let i=0;i<30;i++){e.practiceInput(pad());await e.practiceTick();}
     assert.equal(e.frame().joints.ramp1,70,'all the way down after 0.5 s');

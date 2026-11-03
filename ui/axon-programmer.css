@@ -1,0 +1,216 @@
+/* Setup & Calibrate → Axon Programmer. Axon Bridge's layout in Torque's look: shared tokens only, and colour only ever for hardware state. */
+.driver-station .flow-steps > .flow-axon { margin-left: auto; }
+
+.rs-axon { min-width: 0; }
+.axon-tab { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.axon-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.axon-top h2 { flex: none; margin: 0; font-size: 15px; }
+.axon-chips { display: flex; flex: none; gap: 6px; margin-left: auto; }
+.axon-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 12px; white-space: nowrap; }
+.axon-chip > i { width: 8px; height: 8px; border-radius: 50%; background: var(--quiet); }
+.axon-chip[data-tone=good] > i { background: var(--connected); }
+.axon-chip[data-tone=warn] > i { background: var(--warning); }
+.axon-chip[data-tone=bad] > i { background: var(--danger); }
+.driver-station .axon-top > button { flex: none; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--radius-control); background: var(--raised); color: var(--text); font-size: 12px; }
+
+.axon-step-title { display: flex; align-items: baseline; gap: 6px; margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.axon-step-title > span { font-weight: 600; }
+.axon-step-title > b { font-weight: 400; }
+.axon-step-title > em { font-style: normal; color: var(--text); }
+.axon-picks { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px; min-width: 0; }
+.axon-picks > section { display: grid; gap: 4px; min-width: 0; }
+.axon-cards { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.driver-station .axon-card { display: grid; gap: 1px; align-content: center; min-height: 52px; min-width: 0; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--text); text-align: left; font-weight: 400; box-shadow: none; }
+.driver-station .axon-card:hover:not(:disabled) { background: var(--hover); }
+.driver-station .axon-card[aria-pressed=true] { background: var(--raised); border-color: var(--line-strong); box-shadow: 0 0 0 1px var(--line-strong); }
+.axon-card strong { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 13px; font-weight: 600; }
+.axon-card span { overflow: hidden; font-size: 11px; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+.axon-card span[data-good], .axon-card em { color: var(--connected); }
+.axon-card em { font-size: 10px; font-style: normal; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+
+.axon-main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 8px; min-width: 0; }
+.axon-settings { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.axon-settings-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 4px; }
+#axon-tag { font-size: 11px; color: var(--muted); }
+#axon-tag[data-good] { color: var(--connected); }
+.axon-settings-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; flex: 1; align-content: start; min-height: 0; }
+.axon-column { min-width: 0; }
+.axon-group { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.axon-group::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.axon-group > span { flex: none; }
+.axon-row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 30px; }
+.axon-row-label { display: grid; min-width: 0; }
+.driver-station .axon-row-label label { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 5px; margin: 0; font-size: 12px; font-weight: 600; line-height: 1.2; }
+.axon-row-label [data-axon-mark] { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
+.axon-row-label small { overflow: hidden; font-size: 10px; line-height: 1.25; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+.axon-row-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.driver-station .axon-nudge { flex: none; display: grid; place-items: center; width: 24px; min-width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-detail); background: var(--raised); color: var(--text); font-size: 14px; line-height: 1; }
+.driver-station .axon-nudge:hover:not(:disabled) { background: var(--hover); }
+.driver-station input.axon-slider { flex: 1; min-width: 0; min-height: 24px; height: 24px; margin: 0; }
+.axon-row-control output { flex: none; min-width: 48px; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.driver-station .axon-seg { flex: 1; display: flex; flex-wrap: wrap; gap: 1px; padding: 2px; min-width: 0; }
+.driver-station .axon-seg > button { flex: 1 1 auto; min-width: max-content; min-height: 22px; padding: 0 4px; font-size: 11px; white-space: nowrap; }
+.driver-station .axon-toggle { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 8px; margin: 0; min-height: 24px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.driver-station .axon-toggle input { appearance: none; position: relative; flex: none; width: 34px; min-width: 34px; height: 18px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 9px; background: var(--line-strong); cursor: pointer; }
+.driver-station .axon-toggle input::before { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); }
+.driver-station .axon-toggle input:checked { background: var(--accent); }
+.driver-station .axon-toggle input:checked::before { left: 18px; background: var(--on-accent); }
+.driver-station .axon-toggle input:disabled { cursor: default; opacity: .45; }
+.driver-station input.axon-text { flex: 1; width: 100%; min-width: 0; min-height: 26px; height: 26px; margin: 0; padding: 0 8px; font-size: 12px; }
+.axon-switch-note { grid-column: 1 / -1; align-self: center; max-width: 520px; margin: 48px auto; text-align: center; }
+.axon-switch-note h4 { margin: 0 0 6px; font-size: 18px; }
+.axon-switch-note p { margin: 0; font-size: 13px; color: var(--muted); }
+#axon-hint { flex: none; min-height: 28px; margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.25; }
+
+.axon-side { display: grid; gap: 8px; align-content: start; min-width: 0; min-height: 0; overflow-y: auto; }
+.axon-side-title { margin: 0 0 4px; font-size: 11px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.axon-rows { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 1px 8px; margin: 0; font-size: 12px; line-height: 1.35; }
+.axon-rows dt { color: var(--muted); }
+.axon-rows dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+#axon-report .axon-side-title { margin-top: 6px; }
+.axon-note { margin: 4px 0 0; font-size: 11px; line-height: 1.3; color: var(--warning); }
+.axon-actions { display: flex; gap: 6px; }
+.driver-station .axon-actions > button { flex: 1 1 0; min-width: 0; min-height: 32px; padding: 0 4px; border: 0; border-radius: var(--radius-control); background: var(--raised); color: var(--text); font-size: 12px; }
+.axon-happened { min-height: 60px; }
+.axon-log { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 11px; line-height: 1.3; color: var(--muted); }
+.axon-log li[data-tone=good] { color: var(--connected); }
+.axon-log li[data-tone=warn] { color: var(--warning); }
+.axon-log li[data-tone=bad] { color: var(--danger); }
+.axon-table { width: 100%; margin: 0 0 6px; border-collapse: collapse; font-size: 11px; }
+.axon-table th, .axon-table td { padding: 2px 6px 2px 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; vertical-align: top; }
+.axon-table thead th { color: var(--muted); font-weight: 600; }
+.axon-table tbody th { font-weight: 600; }
+.axon-table td[data-took=true] { color: var(--connected); }
+.axon-table td[data-took=false] { color: var(--danger); font-weight: 600; }
+.axon-result-line { margin: 0 0 6px; font-size: 11px; color: var(--connected); }
+.axon-result-line[data-ok=false] { color: var(--danger); }
+.axon-advanced { display: grid; gap: 8px; min-width: 0; }
+.axon-advanced .hint { font-size: 11px; margin: 0 0 4px; }
+.axon-advanced .axon-side-title:not(:first-child) { margin-top: 8px; }
+.axon-bytes { max-height: 160px; margin: 4px 0 0; padding: 6px; overflow: auto; border-radius: var(--radius-detail); background: var(--well); font: 10px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.axon-limits { margin: 0; padding-left: 16px; font-size: 11px; color: var(--muted); }
+.axon-limits li { margin: 3px 0; }
+.axon-limits strong { color: var(--text); font-weight: 600; }
+#axon-usb > summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+
+.axon-bar { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.axon-banner { position: relative; flex: 1; display: grid; align-content: center; gap: 1px; min-width: 0; min-height: 56px; padding: 6px 12px 6px 18px; overflow: hidden; border-radius: var(--radius-control); background: var(--surface); }
+.axon-banner::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--quiet); }
+.axon-banner[data-tone=good]::before { background: var(--connected); }
+.axon-banner[data-tone=warn]::before { background: var(--warning); }
+.axon-banner[data-tone=bad]::before { background: var(--danger); }
+.axon-banner[data-tone=busy]::before { background: var(--accent); }
+.axon-banner strong { font-size: 14px; font-weight: 600; }
+.axon-banner span { font-size: 12px; line-height: 1.3; color: var(--muted); }
+#axon-progress { display: block; width: 100%; height: 5px; margin-top: 3px; accent-color: var(--accent); }
+.driver-station .axon-banner button { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); min-height: 34px; padding: 0 12px; border: 0; background: var(--raised); color: var(--text); font-size: 12px; }
+.driver-station .axon-bar > button { flex: none; min-height: 56px; padding: 0 18px; font-size: 13px; }
+.driver-station .axon-bar > .primary { width: 200px; font-size: 14px; }
+.driver-station .axon-bar > .secondary { border: 0; background: var(--raised); color: var(--text); }
+#axon-ask { max-width: 520px; padding: 20px; }
+#axon-ask h2 { margin: 0 0 8px; font-size: 18px; }
+#axon-ask p { margin: 0 0 10px; font-size: 13px; }
+#axon-ask .button-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+#axon-ask .button-row > button { flex: none; min-height: 40px; padding: 0 16px; }
+
+/* The whole tab fits the window, as the Axon Bridge app does: long lists scroll in their own panel, never the page. */
+@media (min-width: 861px) and (min-height: 560px) {
+  .rs-axon { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .rs-axon[hidden] { display: none; }
+  .axon-tab { flex: 1; min-height: 0; }
+  .axon-main { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .axon-settings-body { overflow-y: auto; }
+  #setup-view .axon-settings { padding: 8px 12px; }
+  #setup-view .axon-side .cal-card { padding: 8px 12px; }
+}
+/* A short window keeps every setting by dropping the notes under them. Pointing at one still shows its note on the line below. */
+@media (min-width: 861px) and (max-height: 700px) {
+  .axon-settings-body[data-level=advanced] .axon-row { min-height: 25px; }
+  .axon-settings-body[data-level=advanced] .axon-row-label small { display: none; }
+  .driver-station .axon-card { min-height: 44px; padding-block: 3px; }
+}
+/* A tall window has room for bigger touch targets. */
+@media (min-width: 861px) and (min-height: 860px) {
+  .axon-row { min-height: 38px; }
+}
+@media (max-width: 1120px) {
+  .axon-top { flex-wrap: wrap; }
+  .axon-main { grid-template-columns: minmax(0, 1fr) 280px; }
+  .axon-settings-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .axon-top { flex-wrap: wrap; }
+  .axon-chips { flex: 1 1 100%; flex-wrap: wrap; order: 3; margin-left: 0; min-width: 0; }
+  .axon-picks, .axon-main, .axon-settings-body { grid-template-columns: minmax(0, 1fr); }
+  .axon-cards { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .axon-side { overflow: visible; }
+  .axon-bar { position: sticky; bottom: 0; flex-wrap: wrap; background: var(--bg); }
+  .axon-banner { flex-basis: 100%; }
+  .driver-station .axon-bar > .primary { flex: 1; width: auto; }
+  .axon-row { grid-template-columns: 120px minmax(0, 1fr); min-height: 44px; }
+  .driver-station .axon-nudge { width: 36px; min-width: 36px; height: 36px; }
+}
+/* Simple is a few settings, with room for a finger. */
+.axon-settings-body[data-level=simple] .axon-row { min-height: 44px; }
+#axon-view { flex: none; margin-left: auto; }
+.axon-settings-head { flex-wrap: wrap; }
+.axon-settings-head .axon-step-title { white-space: nowrap; }
+#axon-view:empty { display: none; }
+.driver-station .axon-view { flex: none; }
+.driver-station .axon-view > button { padding: 0 10px; font-size: 12px; min-height: 26px; }
+.driver-station .axon-actions > button[hidden] { display: none; }
+/* The response graph: a test tool, not a tuning page. */
+.axon-settings-body[data-testing] { display: block; overflow: auto; }
+.axon-try { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 16px; min-width: 0; }
+.axon-try-chart { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.axon-try-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.axon-try-head strong { font-size: 13px; font-weight: 600; }
+.axon-try-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--muted); }
+.axon-try-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.axon-try-legend i { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+.axon-try-legend i[data-key=curve] { background: var(--text); }
+.axon-try-legend i[data-key=target] { background: var(--connected); }
+.axon-try-legend i[data-key=band] { height: 9px; background: color-mix(in srgb, var(--connected) 22%, transparent); }
+.axon-try-svg { display: block; width: 100%; height: auto; }
+.axon-try-grid { stroke: var(--line); stroke-width: 1; }
+.axon-try-tick { fill: var(--muted); font-size: 12px; }
+.axon-try-band { fill: color-mix(in srgb, var(--connected) 18%, transparent); }
+.axon-try-target { stroke: var(--connected); stroke-width: 2; stroke-dasharray: 7 5; }
+.axon-try-curve { fill: none; stroke: var(--text); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.axon-try-past { fill: color-mix(in srgb, var(--warning) 34%, transparent); stroke: none; }
+.axon-try-short { fill: color-mix(in srgb, var(--danger) 22%, transparent); stroke: none; }
+.axon-try-over { fill: var(--warning); stroke: var(--surface); stroke-width: 1.5; }
+.axon-try-under { fill: var(--danger); stroke: var(--surface); stroke-width: 1.5; }
+.axon-try-settled { stroke: var(--connected); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.axon-try-note { fill: var(--text); font-size: 13px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.axon-try-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.axon-try-facts > div { min-width: 0; padding: 6px 8px; border-radius: var(--radius-detail); background: var(--raised); }
+.axon-try-facts dt { overflow: hidden; font-size: 10px; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+.axon-try-facts dd { margin: 1px 0 0; font-size: 16px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.axon-try-facts small { display: block; font-size: 10px; line-height: 1.2; color: var(--muted); }
+.axon-try-controls { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.axon-try-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.driver-station .axon-try-label label, .driver-station .axon-try-pick label { margin: 0; font-size: 12px; font-weight: 600; }
+.axon-try-label output { font-size: 12px; font-variant-numeric: tabular-nums; }
+.driver-station .axon-try-row input.num-slider { margin: 0; min-height: 22px; height: 22px; }
+.axon-try-ends { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); }
+.axon-try-pick { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 8px; }
+.driver-station .axon-try-pick select { min-height: 32px; height: 32px; padding-block: 0; font-size: 12px; }
+.axon-try-presets { display: grid; grid-template-columns: 78px repeat(3, minmax(0, 1fr)); align-items: center; gap: 6px; margin-top: 2px; }
+.axon-try-presets > span { font-size: 12px; font-weight: 600; }
+.axon-try-presets > [data-axon-try-set=servo] { grid-column: 1 / -1; }
+.driver-station .axon-try-presets > button { min-height: 32px; min-width: 0; padding: 0 4px; font-size: 12px; }
+@media (max-width: 1120px) { .axon-try { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .axon-try-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Axon's own program unlocks its servos. */
+.axon-gate { grid-column: 1 / -1; max-width: 620px; margin: 8px auto; min-width: 0; }
+.axon-gate h4 { margin: 0 0 6px; font-size: 18px; line-height: 1.25; }
+.axon-gate p { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.axon-gate ol { display: grid; gap: 8px; margin: 0 0 16px; padding-left: 20px; font-size: 13px; line-height: 1.4; }
+.axon-gate-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.driver-station .axon-gate-buttons > button { min-height: 44px; padding: 0 16px; }
+.axon-gate-found { display: grid; gap: 4px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.axon-gate-found > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; }
+.axon-gate-found dt { color: var(--muted); }
+.axon-gate-found dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.axon-gate-found > [data-found=true] dd { color: var(--connected); }

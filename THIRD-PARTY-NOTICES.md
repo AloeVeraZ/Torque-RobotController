@@ -1,6 +1,6 @@
 # Credits and third-party notices
 
-Deck Driver Station's own code is MIT licensed (see [LICENSE](LICENSE)). It stands on the
+Torque's own code is MIT licensed (see [LICENSE](LICENSE)). It stands on the
 work of the people and projects below. Thank you to every one of them for publishing their
 work openly so FIRST teams can learn from it and build on it.
 
@@ -27,7 +27,7 @@ and `app/licenses/`, and Electron's runtime notices are in `runtime/LICENSE` and
 
 **DSIM's Required Notice:** Copyright 2026 Dohun Kim (https://github.com/genius0412).
 DSIM is not open source. Its license lets anyone use, study, change and share it for
-noncommercial purposes; commercial use needs the author's permission. Deck Driver Station
+noncommercial purposes; commercial use needs the author's permission. Torque
 is free and noncommercial. The simulator changes DSIM at build time (see
 `tools/simulation/build.cjs`): field outlines for custom footprints, drive current and
 braking models, coasting with `FLOAT` motors, and static friction. Those changes are
@@ -75,14 +75,19 @@ BIOBUZZ field mesh are not shipped. Without them the simulator draws fields from
 code-drawn layouts and the real physics outlines, and robots as plain footprints. You can still
 import your own STEP robot model, which stays on your computer.
 
+Axon's servo firmware is not included either, and nor are the keys to its encrypted files. When a
+student switches a servo's mode, Torque asks, then downloads the file from Axon's own link or uses one
+the student picks, and opens it with a key file the student imports (docs/AXON.md). Axon's own programs are
+not included either: a student downloads them from Axon's page, and Torque only checks the file is there.
+
 ## Trademarks
 
-Deck Driver Station is an independent, free project. It is not affiliated with, endorsed by or
+Torque is an independent, free project. It is not affiliated with, endorsed by or
 sponsored by FIRST, FIRST Tech Challenge, RTX, Valve, goBILDA (Servocity), REV Robotics,
-Qualcomm, Google, the Pedro Pathing team or Dohun Kim. FIRST®, FIRST® Tech Challenge, FTC®,
+Axon Robotics, Qualcomm, Google, the Pedro Pathing team or Dohun Kim. FIRST®, FIRST® Tech Challenge, FTC®,
 DECODE™ and the FIRST logo are trademarks of FIRST (For Inspiration and Recognition of Science
 and Technology). Steam Deck is a trademark of Valve Corporation. Other names are trademarks of
 their owners and are used only to describe compatibility.
 
 If you hold rights in anything here and have a concern, please open an issue at
-https://github.com/AloeVeraZ/SteamDeck-RobotController/issues and it will be addressed promptly.
+https://github.com/AloeVeraZ/Torque-RobotController/issues and it will be addressed promptly.

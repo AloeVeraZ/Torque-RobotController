@@ -58,7 +58,7 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
     info=next;
     for(let i=0;i<2;i++){
       const pad=info.slots?.[i],identity=identify(pad),row=$('#controller-'+(i+1)),standby=i===1&&info.count===1;
-      row.hidden=false;row.classList.toggle('standby',standby);row.querySelector('small').textContent=pad?(pad.mapping!=='standard'?'Unmapped · ':standby?'Standby · ':'')+identity.name:standby?'Optional · USB / Bluetooth':'Set up gamepad input';
+      row.hidden=false;row.classList.toggle('standby',standby);row.querySelector('small').textContent=pad?(pad.mapping!=='standard'?'Unmapped · ':standby?'Standby · ':'')+identity.name:standby?'Optional':'Set up gamepad';
       row.querySelector('.dot').className='dot'+(pad?(pad.mapping==='standard'?' live':' error'):'');row.title='Test or assign controller '+(i+1)+(standby?' · optional for this robot':'');
       $('#setup-controller-'+(i+1)+'-name').textContent=(pad?identity.name:null)||(i===0?(hardware().builtInController?hardware().model+' · automatic default':'First standard gamepad · automatic default'):'Connect a USB or Bluetooth controller');
     }
@@ -79,5 +79,6 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
   $('#controller-cancel').onclick=()=>task(close);$('#controller-done').onclick=()=>task(close);dialog.addEventListener('cancel',event=>{event.preventDefault();task(close);});
   $('#input-notice-test').onclick=()=>show(1);
   api.onControllerState?.(render);api.onControllerCapture?.(next=>{slot=next.capture?.slot||slot;show(slot);render(next);});
-  return {render};
+  // Calibrate's Gamepads card opens the Calibration view of a controller.
+  return {render,calibrate:selected=>{show(selected);$('#controller-calibration-tab').click();}};
 }};

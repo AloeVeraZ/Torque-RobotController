@@ -4,6 +4,8 @@
   // is clips on tracks that each show part of it through one camera (or a title, or an audio file), at a time on the
   // edited video's own clock. Placing a clip overwrites whatever was under it on its track, the way an editor's
   // overwrite edit does; every change is one undo step.
+  // A contact replay holds the picture 3.6 s: 0.9 s zooming in, 1.8 s on the contact, 0.9 s zooming out.
+  const CRASH_HOLD=3.6,CRASH_COLOR='#e5484d';
   const VERSION=1,EPS=1e-6,MIN=1/30,finite=Number.isFinite,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   // The five run cameras (sim-cameras.js) and the top-down view of the whole field that 2D recordings film.
   const CAMERA_IDS=['main','mech','turret','chase','intake','top'];
@@ -30,11 +32,14 @@
     const duration=recording?.duration||0;
     const doc={kind:'deck-video-edit',version:VERSION,id:uid('p'),name:String(name||recording?.name||'Run video').slice(0,80),recording:recording?.id||null,duration,
       settings:{width:1920,height:1080,fps:30},tracks:clone(TRACKS).map(t=>({...t,muted:false,hidden:false,locked:false})),clips:[],markers:[],range:null,
-      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false},cameras:{},audio:[]};
+      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false},endCard:true,cameras:{},audio:[]};
     if(duration>0)doc.clips.push(videoClip({track:'V1',start:0,in:0,out:duration,camera:'main'}));
     return doc;
   }
-  function videoClip(o){return {id:uid('c'),kind:'video',track:o.track||'V1',start:o.start||0,in:o.in||0,out:o.out??o.in??0,camera:CAMERA_IDS.includes(o.camera)?o.camera:'main',speed:o.speed||1,freeze:!!o.freeze,hold:o.hold||0,fadeIn:o.fadeIn||0,fadeOut:o.fadeOut||0,transition:o.transition||'cut',transitionLength:o.transitionLength??.5,pip:!!o.pip,volume:1};}
+  function videoClip(o){return {id:uid('c'),kind:'video',track:o.track||'V1',start:o.start||0,in:o.in||0,out:o.out??o.in??0,camera:CAMERA_IDS.includes(o.camera)?o.camera:'main',speed:o.speed||1,freeze:!!o.freeze,hold:o.hold||0,fadeIn:o.fadeIn||0,fadeOut:o.fadeOut||0,transition:o.transition||'cut',transitionLength:o.transitionLength??.5,pip:!!o.pip,volume:1,focus:focusOf(o.focus)};}
+  // A contact replay's subject: where on the field the robot touched something ({x, y} in field inches), what it
+  // touched and when (seconds of the recording). Anything else is no focus.
+  function focusOf(f){return f&&finite(f.x)&&finite(f.y)?{x:clamp(f.x,-50,250),y:clamp(f.y,-50,250),label:String(f.label||'something').slice(0,60),at:finite(f.at)?Math.max(0,f.at):0}:null;}
   function textClip(o){return {id:uid('c'),kind:'text',track:o.track||'T1',start:o.start||0,dur:o.dur||3,text:String(o.text??'Title').slice(0,200),sub:String(o.sub??'').slice(0,200),style:TEXT_STYLES[o.style]?o.style:'title',fadeIn:o.fadeIn??.3,fadeOut:o.fadeOut??.3};}
   function audioClip(o){return {id:uid('c'),kind:'audio',track:o.track||'A1',start:o.start||0,in:o.in||0,out:o.out||0,asset:o.asset,volume:o.volume??1,muted:!!o.muted,fadeIn:o.fadeIn||0,fadeOut:o.fadeOut||0};}
   // A project from a file or storage, with anything out of range put right and anything unknown dropped.
@@ -45,6 +50,7 @@
     const s=raw.settings||{};doc.settings={width:[1280,1920,2560,3840,720,1080].includes(s.width)?s.width:1920,height:[720,1080,1440,2160,1280,1920].includes(s.height)?s.height:1080,fps:[24,30,60].includes(s.fps)?s.fps:30};
     if(Array.isArray(raw.tracks))doc.tracks=doc.tracks.map(t=>{const r=raw.tracks.find(x=>x?.id===t.id)||{};return {...t,muted:!!r.muted,hidden:!!r.hidden,locked:!!r.locked};});
     for(const k of Object.keys(doc.overlays))if(typeof raw.overlays?.[k]==='boolean')doc.overlays[k]=raw.overlays[k];
+    if(raw.endCard===false)doc.endCard=false;
     doc.cameras=raw.cameras&&typeof raw.cameras==='object'?clone(raw.cameras):{};
     doc.audio=Array.isArray(raw.audio)?raw.audio.filter(a=>a&&typeof a.id==='string').slice(0,16).map(a=>({id:a.id.slice(0,60),name:String(a.name||'Audio').slice(0,120),duration:num(a.duration,0,0,36000)})):[];
     const assets=new Set(doc.audio.map(a=>a.id)),ids=new Set();
@@ -117,10 +123,25 @@
       for(const o of doc.clips)if(o.track===track&&o.start>=t-EPS)o.start+=hold;
       const f=videoClip({track,start:t,in:src,out:src,camera:c.camera,freeze:true,hold});doc.clips.push(f);settle(doc,track);void right;return f.id;},
     set(doc,id,patch){const c=doc.clips.find(x=>x.id===id);if(!c)return;const before=len(c);Object.assign(c,patch);if(Math.abs(len(c)-before)>EPS){place(doc,c);}settle(doc,c.track);},
+    // A contact replay: the picture holds at edit time t for `hold` seconds while the camera zooms in on where the robot
+    // touched something (focus), marks it, and zooms back out; then the run carries on.
+    crash(doc,t,focus,hold=CRASH_HOLD,track='V1'){const id=ops.freeze(doc,t,hold,track);const c=id&&doc.clips.find(x=>x.id===id);if(!c)return null;c.focus=focusOf(focus);return id;},
     marker(doc,t,label='',color='#f2bc62'){const m={id:uid('m'),t:Math.max(0,t),label:String(label).slice(0,60),color};doc.markers.push(m);doc.markers.sort((a,b)=>a.t-b.t);return m.id;},
     // Replaces the video on `track` with suggested camera cuts (see autoCut).
     replaceTrack(doc,track,clips){doc.clips=doc.clips.filter(c=>c.track!==track).concat(clips.map(c=>({...c,track})));settle(doc,track);}
   };
+  // The edit time that shows recording time `source` on a track: in the first playing (not frozen) clip whose part
+  // of the recording covers it, or null when no clip does.
+  function editTimeOf(doc,source,track='V1'){const c=onTrack(doc,track).find(x=>x.kind==='video'&&!x.freeze&&x.in<=source+EPS&&x.out>source+EPS);return c?c.start+(source-c.in)/c.speed:null;}
+  // A contact replay at each contact ({at, x, y, label}, at in seconds of the recording), in time order, with a red
+  // marker on the timeline; returns the replays' clip ids. Contacts no clip on the track shows are left out.
+  function addCrashes(doc,crashes,{track='V1',hold=CRASH_HOLD}={}){const out=[];
+    for(const c of [...(crashes||[])].filter(c=>finite(c?.at)).sort((a,b)=>a.at-b.at)){const t=editTimeOf(doc,c.at,track);if(t===null)continue;
+      const id=ops.crash(doc,t,c,hold,track);if(!id)continue;out.push(id);doc.markers=doc.markers.filter(m=>Math.abs(m.t-t)>EPS||m.color!==CRASH_COLOR);
+      for(const m of doc.markers)if(m.t>=t-EPS)m.t+=hold;doc.markers.push({id:uid('m'),t,label:`Contact with ${String(c.label||'something').slice(0,46)}`,color:CRASH_COLOR});doc.markers.sort((a,b)=>a.t-b.t);}
+    return out;}
+  // How far a contact replay has zoomed in at edit time t (0 to 1): in over its first part, held, out over its last.
+  function crashZoom(c,t){const L=len(c),ramp=Math.min(.9,L/3),u=clamp(t-c.start,0,L),ease=k=>k*k*(3-2*k);return u<ramp?ease(u/ramp):u>L-ramp?ease((L-u)/ramp):1;}
   // ---------------------------------------------------------------- undo
   // The edit with its undo history: change(label, fn) runs fn on the document as one step.
   class Editor{
@@ -156,11 +177,13 @@
   function exportRange(doc){const d=duration(doc);if(doc.range){const a=clamp(doc.range.in,0,d),b=clamp(doc.range.out,0,d);if(b-a>=MIN)return {in:a,out:b};}return {in:0,out:d};}
   // ---------------------------------------------------------------- what happened in the run
   // Moments in the recording worth a camera: intake on and off, a ramp going down, shots, the turret swinging,
-  // strafing, driving off and stopping. {t (seconds from the start), kind, label, camera}.
+  // strafing, driving off and stopping, and each new period of a full match. {t (seconds from the start), kind, label, camera}.
+  const PERIODS={transition:'Transition',teleop:'Teleop starts'};
   function events(frames){
     const out=[];if(!frames?.length)return out;const t0=frames[0].time,push=(f,kind,label,camera)=>out.push({t:+(f.time-t0).toFixed(3),kind,label,camera});
-    let intake=false,ramp=false,launched=null,picked=null,moving=false,strafing=false,swing=false,still=0,lastT=t0;
+    let intake=false,ramp=false,launched=null,picked=null,moving=false,strafing=false,swing=false,still=0,lastT=t0,period=null;
     frames.forEach((f,i)=>{const m=f.mechanisms,c=m?.command||{},tr=f.truth||{},dt=i?f.time-lastT:0;lastT=f.time;
+      const p=f.practice?.phase;if(p&&p!==period){if(period&&PERIODS[p])push(f,'period',PERIODS[p],'main');period=p;}
       if(m){if(!!c.intake!==intake){intake=!!c.intake;push(f,intake?'intake-on':'intake-off',intake?'Intake on':'Intake off','intake');}
         const r=(m.ramps||[]).some(v=>v>.5);if(r!==ramp){ramp=r;push(f,r?'ramp-down':'ramp-up',r?'Ramp down':'Ramp up','mech');}
         if(launched!==null&&m.launched>launched)push(f,'shot',`Shot ${m.launched}`,'turret');launched=m.launched??launched;
@@ -175,9 +198,12 @@
   }
   // Suggested camera cuts for the whole recording, from what the run does: the follow camera to start and finish,
   // the turret around each volley, the front-right camera while a ramp is down, the intake while it runs, the chase
-  // camera while it drives fast or strafes. No shot shorter than `min` seconds; long ones change angle.
-  function autoCut(frames,{min=1.6,max=6.5,duration}={}){
+  // camera while it drives fast or strafes. Calm, like a broadcast: no shot shorter than `min` seconds (an eighth of
+  // the run, 1.6 to 3.5 s), a clear reason to change angle on a long run, long shots change angle, and each change
+  // dissolves over 0.6 s instead of cutting.
+  function autoCut(frames,{min,max,duration}={}){
     if(!frames?.length)return [];const t0=frames[0].time,D=duration??frames.at(-1).time-t0,step=.1,n=Math.max(1,Math.round(D/step)),ev=events(frames);
+    min??=Math.max(1.6,Math.min(3.5,D/8));max??=Math.max(6.5,min*3);const margin=D>=15?.8:.3;
     const shots=ev.filter(e=>e.kind==='shot').map(e=>e.t),score=[];let j=0;
     for(let k=0;k<n;k++){const t=k*step;while(j<frames.length-1&&frames[j+1].time-t0<=t)j++;const f=frames[j],m=f.mechanisms,c=m?.command||{},tr=f.truth||{},h=(tr.heading||0)*Math.PI/180,speed=Math.hypot(tr.vx||0,tr.vy||0),side=Math.abs(-(tr.vx||0)*Math.sin(h)+(tr.vy||0)*Math.cos(h));
       const s={main:1,mech:0,turret:0,chase:0,intake:0};
@@ -189,14 +215,14 @@
     const cuts=[];let cur=null,since=0;
     for(let k=0;k<n;k++){const s=score[k],best=Object.keys(s).reduce((a,b)=>s[b]>s[a]?b:a,'main'),t=k*step;
       if(cur===null){cur=best;since=t;cuts.push({t,camera:cur});continue;}
-      const held=t-since;if(best!==cur&&held>=min&&s[best]>s[cur]+.3){cur=best;since=t;cuts.push({t,camera:cur});}
+      const held=t-since;if(best!==cur&&held>=min&&s[best]>s[cur]+margin){cur=best;since=t;cuts.push({t,camera:cur});}
       else if(held>=max){const alt=Object.keys(s).filter(c=>c!==cur).reduce((a,b)=>s[b]>s[a]?b:a);if(s[alt]>=s[cur]-1.2){cur=alt;since=t;cuts.push({t,camera:cur});}}}
     // A last shot shorter than `min` joins the one before it.
     while(cuts.length>1&&D-cuts.at(-1).t<min)cuts.pop();
-    return cuts.map((c,i)=>{const e=i+1<cuts.length?cuts[i+1].t:D;return videoClip({start:c.t,in:c.t,out:e,camera:c.camera});}).filter(c=>len(c)>=MIN);
+    return cuts.map((c,i)=>{const e=i+1<cuts.length?cuts[i+1].t:D;return videoClip({start:c.t,in:c.t,out:e,camera:c.camera,...(i?{transition:'cross',transitionLength:.6}:{})});}).filter(c=>len(c)>=MIN);
   }
   // ---------------------------------------------------------------- formatting
   // Edit time as the timeline shows it: m:ss.ff with ff the frame (at fps).
   function timecode(t,fps=30){t=Math.max(0,t||0);const total=Math.round(t*fps),f=total%fps,s=Math.floor(total/fps);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}.${String(f).padStart(2,'0')}`;}
-  return {VERSION,TRACKS,OVERLAYS,TEXT_STYLES,TRANSITIONS,CAMERA_IDS,MIN,create,sanitize,videoClip,textClip,audioClip,len,end,sourceAt,onTrack,at,duration,place,ops,Editor,resolve,audible,exportRange,events,autoCut,timecode,uid};
+  return {CRASH_HOLD,CRASH_COLOR,editTimeOf,addCrashes,crashZoom,VERSION,TRACKS,OVERLAYS,TEXT_STYLES,TRANSITIONS,CAMERA_IDS,MIN,create,sanitize,videoClip,textClip,audioClip,len,end,sourceAt,onTrack,at,duration,place,ops,Editor,resolve,audible,exportRange,events,autoCut,timecode,uid};
 });

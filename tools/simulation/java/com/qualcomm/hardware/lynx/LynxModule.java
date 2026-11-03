@@ -16,5 +16,6 @@ public abstract class LynxModule implements HardwareDevice {
     /** The RS485 address: 173 for a Control Hub's own board, 2 for the first Expansion Hub. */
     public abstract int getModuleAddress();
     public abstract boolean isParent();
+    public <T> T acquireI2cLockWhile(Supplier<T> supplier) throws InterruptedException, com.qualcomm.robotcore.exception.RobotCoreException, LynxNackException { return supplier.get(); }
     @Override public Manufacturer getManufacturer() { return Manufacturer.Lynx; }
 }

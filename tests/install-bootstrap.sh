@@ -29,11 +29,11 @@ for argument in "$@"; do
   previous="$argument"
 done
 url="${!#}"
-if [[ "$url" == https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/latest ]]; then
-  printf '%s' "https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/tag/$BOOTSTRAP_TEST_TAG"
-elif [[ "$url" == "https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/download/v9.8.7/$BOOTSTRAP_ASSET.sha256" ]]; then
+if [[ "$url" == https://github.com/AloeVeraZ/Torque-RobotController/releases/latest ]]; then
+  printf '%s' "https://github.com/AloeVeraZ/Torque-RobotController/releases/tag/$BOOTSTRAP_TEST_TAG"
+elif [[ "$url" == "https://github.com/AloeVeraZ/Torque-RobotController/releases/download/v9.8.7/$BOOTSTRAP_ASSET.sha256" ]]; then
   printf '%s  %s\r\n' "$(cat "$BOOTSTRAP_FIXTURE/hash")" "$BOOTSTRAP_ASSET" > "$destination"
-elif [[ "$url" == "https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/download/v9.8.7/$BOOTSTRAP_ASSET" ]]; then
+elif [[ "$url" == "https://github.com/AloeVeraZ/Torque-RobotController/releases/download/v9.8.7/$BOOTSTRAP_ASSET" ]]; then
   if [[ "${BOOTSTRAP_CORRUPT:-}" == 1 ]]; then echo corrupt > "$destination"; else cp "$BOOTSTRAP_FIXTURE/payload" "$destination"; fi
 else
   echo "Unexpected download URL: $url" >&2; exit 47

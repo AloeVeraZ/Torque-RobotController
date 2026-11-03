@@ -9,7 +9,7 @@ const platform=process.platform,kind={win32:'Windows',linux:'SteamDeck',darwin:'
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(check,label,ms=120000){const end=Date.now()+ms;for(;;){const value=await check();if(value)return value;if(Date.now()>end)throw Error('Timed out: '+label);await sleep(500);}}
 const home=fs.mkdtempSync(path.join(os.tmpdir(),'deck-e2e-')),data=path.join(home,'user-data');
-const env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data,DECK_NO_LAUNCH:'1'};delete env.ELECTRON_RUN_AS_NODE;
+const env={...process.env,ADB:process.env.ADB||(process.platform==='win32'?'C:\\Windows\\System32\\where.exe':process.platform==='darwin'?'/usr/bin/true':'/bin/true'),DECK_HEADLESS:'1',DECK_DATA_DIR:data,DECK_NO_LAUNCH:'1'};delete env.ELECTRON_RUN_AS_NODE;
 if(platform!=='win32')Object.assign(env,{HOME:home,XDG_DATA_HOME:path.join(home,'share')});
 const install=platform==='win32'?{root:path.join(process.env.LOCALAPPDATA,'DeckDriverStation'),bin:'runtime/electron.exe',app:'app'}:platform==='darwin'?{root:path.join(home,'Applications','Deck Driver Station.app'),bin:'Contents/MacOS/Electron',app:'Contents/Resources/app'}:{root:path.join(home,'share','deck-driver-station'),bin:'runtime/electron',app:'app'};
 const at=p=>path.join(install.root,p),installedVersion=()=>{try{return JSON.parse(fs.readFileSync(at(install.app+'/package.json'),'utf8')).version;}catch{return '';}};
@@ -28,13 +28,13 @@ async function launch(label){
   try{const result=JSON.parse(await until(()=>fs.existsSync(smoke)&&fs.readFileSync(smoke,'utf8'),'app start: '+label,90000));await until(()=>child.exitCode!==null||child.signalCode!==null,label+' app exit',30000).catch(()=>{});return result;}finally{child.kill();}
 }
 function release(version,assets){
-  const list=assets.map(name=>{const f=file(name),bytes=fs.readFileSync(f);return {name,state:'uploaded',size:bytes.length,digest:'sha256:'+createHash('sha256').update(bytes).digest('hex'),browser_download_url:`https://github.com/AloeVeraZ/SteamDeck-RobotController/releases/download/testing-v${version}/${name}`};});
+  const list=assets.map(name=>{const f=file(name),bytes=fs.readFileSync(f);return {name,state:'uploaded',size:bytes.length,digest:'sha256:'+createHash('sha256').update(bytes).digest('hex'),browser_download_url:`https://github.com/AloeVeraZ/Torque-RobotController/releases/download/testing-v${version}/${name}`};});
   return [{tag_name:'testing-v'+version,prerelease:true,draft:false,assets:list}];
 }
 async function update(label,{version,base,assets,expect}){
   const {Updater,prepareInstall,launchInstall}=require(at(install.app+'/src/updater.cjs'));
   const releases=release(versionB,assets),served=[];
-  const updater=new Updater({directory:path.join(home,'updates-'+label),version,repo:'AloeVeraZ/SteamDeck-RobotController',channel:'testing',base,fetcher:async url=>{served.push(url);if(url.endsWith('/testing-channel/channel.json'))return new Response(JSON.stringify({schema:1,channel:'testing',releases}));if(url.includes('api.github.com'))throw Error('the channel manifest should make API calls unnecessary');return new Response(fs.readFileSync(file(decodeURIComponent(url.split('/').pop()))));}});
+  const updater=new Updater({directory:path.join(home,'updates-'+label),version,repo:'AloeVeraZ/Torque-RobotController',channel:'testing',base,fetcher:async url=>{served.push(url);if(url.endsWith('/testing-channel/channel.json'))return new Response(JSON.stringify({schema:1,channel:'testing',releases}));if(url.includes('api.github.com'))throw Error('the channel manifest should make API calls unnecessary');return new Response(fs.readFileSync(file(decodeURIComponent(url.split('/').pop()))));}});
   const check=await updater.check();assert.equal(check.status,'available');assert.equal(check.asset.kind,expect,label+' picked '+check.asset.kind);
   // The helper waits for "the app" to exit; a short-lived stand-in plays that part here.
   const standIn=spawn(process.execPath,['-e','setTimeout(()=>{},1500)']);const restartSmoke=path.join(home,`restart-${label}.json`);process.env.DECK_SMOKE_FILE=restartSmoke;Object.assign(process.env,{DECK_HEADLESS:'1',DECK_DATA_DIR:data});

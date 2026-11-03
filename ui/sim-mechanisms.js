@@ -36,7 +36,7 @@
     pusher:'A servo swings to its feed position to push each piece into the flywheel, then back to rest while the next piece drops in.',gate:'A servo opens to its feed position while the robot shoots, letting pieces through, and closes after.'};
   const ROLLERS={motor:'DC motor',crservo:'Continuous servo'};
   const FLYWHEELS={velocity:'Velocity control (encoder)',power:'Set power (no encoder)'};
-  const TURRETS={motor:'Motor with encoder',servo:'Servo'};
+  const TURRETS={motor:'Motor with encoder',servo:'Servo',crservo:'Continuous servo + its feedback wire'};
   const servoFeeder=kind=>kind==='pusher'||kind==='gate';
   // BIOBUZZ robots hold at most 4 pieces (pollen and nectar together) and start with up to 4 pollen.
   const STORAGE_MAX=4,FIRE_RECOVERY=.25,MAX_SHOOTERS=2;
@@ -49,9 +49,24 @@
     transfer:{seconds:1},indexer:{seconds:.35,power:1,pushSeconds:.15},
     // control: velocity (an encoder on the flywheel, at speed within tolerance) or power (no encoder, timed spin-up).
     shooter:{hood:75,rpm:3000,ticksPerRev:28,spinUp:.8,control:'velocity',power:1,tolerance:.05},
-    // kind: a motor with an encoder (ticksPerDegree) or a servo (servoCenter faces the front; servoDegrees from position 0 to 1).
+    // kind: a motor with an encoder (ticksPerDegree), a servo (servoCenter faces the front; servoDegrees from position 0 to 1)
+    // or a continuous servo steered by its feedback wire (an Axon in continuous mode).
     turret:{speed:240,min:-170,max:170,ticksPerDegree:4.6,kind:'motor',servoCenter:.5,servoDegrees:300},
     target:null};
+  // Calibrated hood angles by flywheel speed (Calibrate → Mechanisms): each point is an RPM, the hood angle (degrees,
+  // within the game's 70-85) that lands a shot at that speed and optionally the hood servo's position there. Sorted by
+  // RPM, one point per RPM, 8 at most; null without a point.
+  const hoodMap=v=>{if(!Array.isArray(v))return null;const seen=new Set(),out=[];
+    for(const p of v){if(!p||!finite(p.rpm)||!finite(p.deg))continue;const rpm=Math.round(clamp(p.rpm,100,6000));if(seen.has(rpm))continue;seen.add(rpm);out.push({rpm,deg:+clamp(p.deg,70,85).toFixed(2),...(finite(p.pos)?{pos:+clamp(p.pos,0,1).toFixed(4)}:{})});}
+    out.sort((a,b)=>a.rpm-b.rpm);return out.length?out.slice(0,8):null;};
+  // The hood angle (and servo position, when the points have one) for a flywheel speed: between two points it is
+  // interpolated, past the ends it holds the end point. Without points it is the fixed hood angle.
+  function hoodAt(m,rpm){const s=m.shooter,map=s.hoodMap;if(!map)return {deg:s.hood,pos:null};const r=finite(rpm)?rpm:s.rpm;
+    const lo=[...map].reverse().find(p=>p.rpm<=r)||map[0],hi=map.find(p=>p.rpm>=r)||map[map.length-1],f=hi.rpm>lo.rpm?(r-lo.rpm)/(hi.rpm-lo.rpm):0,mix=(a,b)=>a+(b-a)*f;
+    return {deg:+mix(lo.deg,hi.deg).toFixed(2),pos:finite(lo.pos)&&finite(hi.pos)?+mix(lo.pos,hi.pos).toFixed(4):null};}
+  // How far below its target speed (0..1 of it) the flywheel may be and still fire: within the tolerance, or with a
+  // calibrated hood down to the slowest speed it has a point for (the hood makes up for the lower speed).
+  const readyAt=m=>{const s=m.shooter,floor=1-(s.tolerance??.05);return s.hoodMap&&s.hoodMap.length>1?Math.min(floor,s.hoodMap[0].rpm/s.rpm):floor;};
   // Velocity PIDF for the flywheel motors, or null for the SDK's own defaults.
   const pidf=v=>v&&typeof v==='object'&&['p','i','d','f'].every(k=>finite(v[k])&&v[k]>=0&&v[k]<=1000)?{p:v.p,i:v.i,d:v.d,f:v.f}:null;
   // Optional hardware fields are stored only when they differ from the plain setup, so older saves stay as they were.
@@ -79,13 +94,13 @@
         motor:name(raw.motor,n?`intake${n+1}`:'intake'),power:num(raw.power,1,.05,1),...(kind!=='kicker'?roller(raw):{}),...(point(raw.at)?{at:point(raw.at)}:{}),...cadParts(raw),
         // A kicker or a ramp moves on a servo: seconds to go down and back up, the servo, and its positions (0-1) down and up.
         // A ramp keeps its rollers (motor and power) too; the game physics folds a ramp down in 0.3 s.
-        ...(deploys(kind)?{down:num(raw.down,kind==='ramp'?.3:.4,0,3),up:num(raw.up,kind==='ramp'?.3:.4,0,3),servo:name(raw.servo,`${kind}${n?n+1:''}`),downPos:num(raw.downPos,0,0,1),upPos:num(raw.upPos,1,0,1)}:{})});}
+        ...(raw.withFeeder===true?{withFeeder:true}:{}),...(deploys(kind)?{...(kind==='ramp'&&['linear','crservo','dcmotor'].includes(raw.rampKind)?{rampKind:raw.rampKind}:{}),down:num(raw.down,kind==='ramp'?.3:.4,0,3),up:num(raw.up,kind==='ramp'?.3:.4,0,3),servo:name(raw.servo,`${kind}${n?n+1:''}`),downPos:num(raw.downPos,0,0,1),upPos:num(raw.upPos,1,0,1),...(Number.isFinite(raw.travel)?{travel:num(raw.travel,90,1,360)}:{})}:{})});}
     // Shooters. Older saves have one `shooter` with a type (or 'none').
     const shooterList=Array.isArray(r.shooters)?r.shooters:s.type==='none'?[]:[{type:s.type,pieces:'pollen',mount:s.mount,facing:'front',motor:s.motor,indexer:x.name,indexerKind:x.kind,turretMotor:t.motor}];
     // hood: the servo that tilts the hood, by its configuration name (none: the hood is fixed).
     let shooters=shooterList.filter(v=>v&&typeof v==='object').slice(0,MAX_SHOOTERS).map((v,n)=>{const indexerKind=pick(v.indexerKind,INDEXERS,'motor'),second=name(v.motor2,''),hood=name(v.hood,'');
       return {type:v.type==='fixed'?'fixed':'turret',pieces:pick(v.pieces,PIECES,'pollen'),mount:pick(v.mount,MOUNTS,'center'),facing:pick(v.facing,FACING,'front'),
-      motor:name(v.motor,n?'shooter2':'shooter'),indexer:name(v.indexer,n?'indexer2':'indexer'),indexerKind,turretMotor:name(v.turretMotor,n?'turret2':'turret'),...(hood?{hood}:{}),
+      motor:name(v.motor,n?'shooter2':'shooter'),indexer:name(v.indexer,n?'indexer2':'indexer'),indexerKind,turretMotor:name(v.turretMotor,n?'turret2':'turret'),...(v.turretMotor2?{turretMotor2:name(v.turretMotor2,n?'turret2b':'turretb')}:{}),...(hood?{hood}:{}),
       // The flywheel's motors (a second one for two-motor flywheels) and which way each turns; the feeder's direction, or
       // a servo feeder's positions; the turret's direction.
       ...flag('reversed',v.reversed),...(second?{motor2:second,...flag('reversed2',v.reversed2)}:{}),
@@ -111,15 +126,23 @@
     const capacity=pollen+nectar?{pollen,nectar}:{pollen:1,nectar:0},storage=Math.min(STORAGE_MAX,capacity.pollen+capacity.nectar);
     const pre=r.preload&&typeof r.preload==='object'?r.preload.pollen:r.preload,preload={pollen:Math.round(num(pre,capacity.pollen,0,capacity.pollen))};
     const first=shooters[0],turret=shooters.find(v=>v.type==='turret'),sides=EDGES.filter(e=>used.has(e));
-    return {enabled:r.enabled===true,intakes,shooters,capacity,preload,storage,
+    // others: the CAD's motors and servos that power nothing modelled here (DeckHardware.cadOthers); they count against R503.
+    const others=(Array.isArray(r.others)?r.others:[]).filter(o=>o&&typeof o.name==='string'&&['dcmotor','servo','crservo','linear'].includes(o.kind)).slice(0,16).map(o=>({name:o.name.slice(0,120),kind:o.kind,...(typeof o.model==='string'?{model:o.model}:{}),in:typeof o.in==='string'?o.in.slice(0,120):''}));
+    // guessed: keys of devices the CAD does not show (DeckHardware.conflicts).
+    const guessed=(Array.isArray(r.guessed)?r.guessed:[]).filter(k=>typeof k==='string').slice(0,32);
+    // power: per device key, what the CAD's transmission shows: how many actuators turn it, and the parts of that train.
+    const power=Object.fromEntries(Object.entries(r.power&&typeof r.power==='object'?r.power:{}).slice(0,64).filter(([,v])=>v&&Array.isArray(v.refs)).map(([k,v])=>[k,{refs:v.refs.filter(x=>typeof x==='string').slice(0,300),count:Math.max(1,Math.min(4,Math.round(+v.count||1)))}]));
+    return {enabled:r.enabled===true,intakes,shooters,others,guessed,power,traced:r.traced===1?1:0,capacity,preload,storage,
       transfer:{seconds:num(r.transfer?.seconds,DEFAULTS.transfer.seconds,0,10)},
       indexer:{seconds:num(x.seconds,DEFAULTS.indexer.seconds,0,5),power:num(x.power,1,.05,1),kind:first?.indexerKind||'motor',name:first?.indexer||'indexer',pushSeconds:num(x.pushSeconds,DEFAULTS.indexer.pushSeconds,.05,2)},
-      shooter:{hood:num(s.hood,DEFAULTS.shooter.hood,70,85),rpm:num(s.rpm,DEFAULTS.shooter.rpm,100,6000),ticksPerRev:num(s.ticksPerRev,28,1,10000),spinUp:num(s.spinUp,DEFAULTS.shooter.spinUp,0,10),
+      shooter:{hood:num(s.hood,DEFAULTS.shooter.hood,70,85),rpm:num(s.rpm,DEFAULTS.shooter.rpm,100,30000),ticksPerRev:num(s.ticksPerRev,28,1,10000),spinUp:num(s.spinUp,DEFAULTS.shooter.spinUp,0,10),
         control:pick(s.control,FLYWHEELS,'velocity'),power:num(s.power,1,.05,1),tolerance:num(s.tolerance,DEFAULTS.shooter.tolerance,.01,.5),...(pidf(s.pidf)?{pidf:pidf(s.pidf)}:{}),
+        // Speed lost with each shot (0..0.6 of the target: the piece takes the flywheel's energy) and the calibrated hood.
+        ...(finite(s.dropPerShot)&&s.dropPerShot>0?{dropPerShot:+clamp(s.dropPerShot,0,.6).toFixed(3)}:{}),...(hoodMap(s.hoodMap)?{hoodMap:hoodMap(s.hoodMap)}:{}),
         // The first shooter, for code that describes one.
         type:first?.type||'none',mount:first?.mount||'center',motor:first?.motor||'shooter'},
       turret:{speed:num(t.speed,DEFAULTS.turret.speed,5,2000),min:num(t.min,DEFAULTS.turret.min,-180,0),max:num(t.max,DEFAULTS.turret.max,0,180),ticksPerDegree:num(t.ticksPerDegree,DEFAULTS.turret.ticksPerDegree,.01,10000),
-        kind:pick(t.kind,TURRETS,'motor'),servoCenter:num(t.servoCenter,DEFAULTS.turret.servoCenter,0,1),servoDegrees:num(t.servoDegrees,DEFAULTS.turret.servoDegrees,10,3600),motor:turret?.turretMotor||'turret'},
+        kind:pick(t.kind,TURRETS,'motor'),servoCenter:num(t.servoCenter,DEFAULTS.turret.servoCenter,0,1),servoDegrees:num(t.servoDegrees,DEFAULTS.turret.servoDegrees,10,3600),...(Array.isArray(t.gears)&&t.gears.length?{gears:t.gears.slice(0,8).map(g=>[Math.round(num(g?.[0],20,1,2000)),Math.round(num(g?.[1],20,1,2000))])}:{}),motor:turret?.turretMotor||'turret'},
       // All intakes together, for code that describes one.
       intake:{enabled:intakes.length>0,kind:intakes[0]?.kind||'sweeper',sides,side:mountOf(sides)||'custom',motor:intakes[0]?.motor||'intake',power:intakes[0]?.power||1},
       target:point(r.target)};
@@ -218,7 +241,7 @@
       this.settles=pusherOnly(m);}
     tick(dt,cmd,{pose,target,held}){
       const m=this.m,s=m.shooter,t=m.turret;this.time+=dt;
-      if(held<this.held){const gone=this.held-held;if(this.pending){this.shots+=gone;this.pending=false;this.sinceShot=0;}this.queue.splice(0,gone);
+      if(held<this.held){const gone=this.held-held;if(this.pending){this.shots+=gone;this.pending=false;this.sinceShot=0;if(s.dropPerShot)this.flywheel=Math.max(0,this.flywheel-s.dropPerShot*gone);}this.queue.splice(0,gone);
         // The next piece moves up into the shooter: it needs the indexing time.
         if(this.queue[0])this.queue[0].index=Math.max(this.queue[0].index,m.indexer.seconds);}
       // A kicker goes down while the intake runs and back up when it stops; it picks up only once all the way down.
@@ -245,8 +268,9 @@
       // A shooter on the first one's turret points wherever that turret does.
       if(m.shooters[1]?.sharesTurret)this.turrets[1]=this.turrets[0];
       const first=m.shooters.findIndex(sh=>sh.type==='turret');if(first>=0)this.turret=this.turrets[first];
-      // At speed within the shooter's tolerance (5% unless set), as the robot code decides.
-      this.aligned=aligned;this.ready=this.flywheel>=1-(s.tolerance??.05);
+      // At speed within the shooter's tolerance (5% unless set), as the robot code decides; with a calibrated hood, down
+      // to the slowest speed it has a hood angle for.
+      this.aligned=aligned;this.ready=this.flywheel>=readyAt(m)-1e-9;
       // The front piece moves up into the shooter while the indexer runs (behind a pusher, while it is back at rest).
       const front=this.queue[0];if(front&&(cmd.feed||this.settles)&&front.arrives<=this.time)front.index=Math.max(0,front.index-dt);
       let fire=false;
@@ -262,9 +286,12 @@
       const going=ramps.filter(([i])=>sentDown(i));
       return going.length?{down:true,eta:Math.min(...going.map(([i,v])=>(1-v)*i.down))}:{down:false,eta:Math.max(...ramps.map(([i,v])=>v*i.up))};
     }
+    // The flywheel's speed now (RPM) and the hood angle the calibration gives for it.
+    rpm(){return this.flywheel*this.m.shooter.rpm;}
+    hood(){return hoodAt(this.m,this.rpm()).deg;}
     // Where shooter n points, in degrees from the robot's front.
     aim(n){const s=this.m.shooters[n];return !s?0:s.type==='turret'?this.turrets[n]:FACING[s.facing];}
-    state(){const q=this.queue,front=q[0];return {flywheel:this.flywheel,turret:this.turret,turrets:this.turrets.slice(),aligned:!!this.aligned,ready:!!this.ready,shots:this.shots,held:this.held,
+    state(){const q=this.queue,front=q[0];return {flywheel:this.flywheel,rpm:this.rpm(),hood:this.hood(),turret:this.turret,turrets:this.turrets.slice(),aligned:!!this.aligned,ready:!!this.ready,shots:this.shots,held:this.held,
       deploy:this.kick.slice(),lift:this.lift.slice(),kickers:this.kick.filter((v,k)=>v!==null&&this.m.intakes[k].kind==='kicker'),ramps:this.kick.filter((v,k)=>v!==null&&this.m.intakes[k].kind==='ramp'),moving:q.filter(p=>p.arrives>this.time).length,staged:!!front&&front.arrives<=this.time&&front.index<=1e-9};}
   }
   // Runs route actions the way the generated robot code does, with no piece sensor. At a pin the action
@@ -361,21 +388,31 @@
   const CARRIED={shooter:[/fly ?wheel/i,/\bhood\b/i,/shoot|launch|cannon/i],intake:[/ramp|deploy|flap|kicker|scoop/i,/roller|\bwheels?\b|gecko|compliant|sweeper|brush/i]};
   const PART_WORDS=/\b(shaft|axle|motor|servo|plate|spacer|bearing|bushing|collar|pulley|belt|gear|bolt|screw|nut|washer|standoff|bracket|mount|encoder|sensor|cable|hub)s?\b/i;
   const bareName=n=>String(n||'').replace(/\s*<\d+>$/,'').trim();
+  // An assembly whose own name says nothing is known by what is in it. A hood or a flywheel makes it a shooter, and so does
+  // a fast motor (6000 rpm, bare or 1:1) beside wheels 60 mm or bigger, whatever a vendor's part name says: goBILDA's
+  // "Intake Roller Wheel" feeding a flywheel does not make a shooter an intake.
+  const SHOOTS_INSIDE=/\bhood\b|fly ?wheel|shoot|launch|cannon/i,FAST_MOTOR=/(5[5-9]\d\d|6000) ?rpm|bare (rex|motor)|\b1:1\b/i;
+  const bigWheel=n=>/wheel|rhino|compliant/i.test(n)&&[...String(n).matchAll(/(\d{2,3})\s*mm\s*(?:diameter|dia\b|od\b|wheel)/gi)].some(m=>+m[1]>=60);
+  const shooterInside=inner=>inner.some(n=>SHOOTS_INSIDE.test(n))||inner.some(n=>FAST_MOTOR.test(n))&&inner.some(bigWheel);
   function partRole(name,inner=[]){
     const find=text=>ROLE_WORDS.find(([,re])=>re.test(text))?.[0]||null,text=String(name||''),all=[text,...inner].join(' ');
-    const nectar=/nectar/i.test(all),pollen=/pollen/i.test(all),role=find(text)||find(inner.join(' '))||(nectar||pollen?'shooter':'other');
+    const nectar=/nectar/i.test(all),pollen=/pollen/i.test(all),role=find(text)||(shooterInside(inner)?'shooter':null)||find(inner.join(' '))||(nectar||pollen?'shooter':'other');
     const carries=[...new Set((CARRIED[role]||[]).map(re=>inner.find(n=>re.test(n)&&!PART_WORDS.test(n))).filter(Boolean).map(bareName))];
     const rollers=role==='intake'&&(/roller|sweeper/i.test(text)||inner.some(n=>CARRIED.intake[1].test(n)));
     return {role,pieces:nectar&&pollen?'both':nectar?'nectar':pollen?'pollen':null,type:role==='shooter'?(/turret/i.test(all)?'turret':'fixed'):null,
       kind:role==='intake'?(/kicker|scoop/i.test(text)?'kicker':/side ?roller/i.test(all)?'siderollers':/ramp|deploy|flap/i.test(all)?'ramp':/kicker|scoop/i.test(all)?(rollers?'ramp':'kicker'):'sweeper'):null,...(carries.length?{carries}:{})};
   }
   // The drivetrain from the part names anywhere in the assembly ("104mm Mecanum Wheel", "Swerve module"...).
-  const DRIVE_WORDS=[['swerve',/swerve/i],['mecanum',/mecanum/i],['kiwi',/kiwi/i],['hdrive',/\bh-?drive/i],['xdrive',/\bx-?drive|omni/i],['tracks',/\btracks\b|tread/i],['tank6',/drop ?cent(er|re)|west ?coast|\bwcd\b|6 ?wd/i],['tank',/traction|\btank\b/i]];
+  const DRIVE_WORDS=[['swerve',/swerve/i],['mecanum',/mecanum/i],['kiwi',/kiwi/i],['xdrive',/\b[xh]-?drive|omni/i],['tank',/\btracks\b|tread|drop ?cent(er|re)|west ?coast|\bwcd\b|6 ?wd|traction|\btank\b/i]];
   function drivetrainFromNames(names=[]){const text=names.join('\n');return DRIVE_WORDS.find(([,re])=>re.test(text))?.[0]||null;}
   // Copies of one assembly: "Turret <1>" and "Turret <2>" (instances), "Turret L" and "Turret R", "Left shooter" and
   // "Right shooter", "Shooter 1" and "Shooter 2". Two such parts are two mechanisms, never one, however close they sit.
   const SIDE_WORDS=new Set(['left','right','front','back','rear','l','r','lh','rh','a','b','one','two','first','second','1st','2nd','top','bottom','upper','lower','inner','outer']);
   const copyBase=name=>String(name||'').toLowerCase().replace(/<(\d+)>/g,' $1 ').replace(/([a-z])(\d)/g,'$1 $2').replace(/(\d)([a-z])/g,'$1 $2').split(/[^a-z0-9]+/).filter(w=>w&&!SIDE_WORDS.has(w)&&!/^\d+$/.test(w)).join(' ');
+  // An intake's rollers and a shooter's feeder chained to one motor (one name): running one runs the other.
+  const onOneMotor=m=>!!m?.intakes?.some(i=>[i.motor,i.motor2].filter(Boolean).some(n=>m.shooters?.some(s=>s.indexer===n))),
+    // Or on two motors, when the feeder's wheels reach the intake's mouth and the two run as one (Configure from CAD, or the team says).
+    chained=m=>onOneMotor(m)||!!m?.intakes?.some(i=>i.withFeeder);
   const copies=(a,b)=>String(a).trim().toLowerCase()!==String(b).trim().toLowerCase()&&copyBase(a)!==''&&copyBase(a)===copyBase(b);
   // A deployable ramp (or kicker) by its name: one that says it moves (deploy, fold, flip, drop down, kicker, flap).
   const MOVES_WORDS=/deploy|kicker|flap|fold|flip|drop ?down|swing/i;
@@ -384,13 +421,15 @@
   // center, z up from the floor). Returns the chassis size, intakes and shooters, and what was found.
   // Parts that hold other listed parts (their key is above the others' keys: an assembly the import split into the
   // turrets inside it) are not mechanisms themselves.
+  // What a part of a mechanism is, from its name: a wheel or roller turns, a claw grips, and the rest is its body.
+  function partKindOf(name){const n=String(name||'');if(/wheel|roller|gecko|mecanum|omni|compliant|tread|tire|tyre|sprocket/i.test(n))return 'wheel';if(/claw|gripper|grabber|pincer|\bjaw|finger/i.test(n))return 'claw';return 'body';}
   function fromCad(parts,{length,width,chassis:derived}={}){
     const chassis=parts.find(p=>p.role==='chassis')||(derived?{name:derived.name,derived:true,box:{x0:-derived.length/2,x1:derived.length/2,y0:-derived.width/2,y1:derived.width/2}}:null),round=v=>Math.round(v*4)/4,found=[];
     const L=chassis?chassis.box.x1-chassis.box.x0:length,W=chassis?chassis.box.y1-chassis.box.y0:width,hl=L/2,hw=W/2;
     if(chassis)found.push(chassis.derived?`Chassis (all parts except the intakes): ${round(L)} × ${round(W)} in`:`Chassis “${chassis.name}”: ${round(L)} × ${round(W)} in`);
     const holds=p=>typeof p.key==='string'&&parts.some(q=>q!==p&&typeof q.key==='string'&&q.key.startsWith(p.key+'/')),holderOf=name=>{const p=parts.find(q=>q.name===name);return p&&typeof p.key==='string'?parts.find(q=>q!==p&&holds(q)&&p.key.startsWith(q.key+'/'))?.name:null;};
     const usable=parts.filter(p=>!holds(p));
-    const intakes=[],shooters=[],ramps=new Map();
+    const intakes=[],shooters=[],ramps=new Map(),extents=new Map(),grow=(i,b)=>{const e=extents.get(i);extents.set(i,e?{x0:Math.min(e.x0,b.x0),x1:Math.max(e.x1,b.x1),y0:Math.min(e.y0,b.y0),y1:Math.max(e.y1,b.y1),z1:Math.max(e.z1,b.z1)}:{...b});},up=v=>Math.ceil(v*4-1e-6)/4;
     for(const p of usable.filter(p=>p.role==='intake')){const b=p.box,out={front:b.x1-hl,back:-hl-b.x0,left:b.y1-hw,right:-hw-b.y0},center={x:(b.x0+b.x1)/2,y:(b.y0+b.y1)/2};
       let edge=Object.entries(out).sort((a,c)=>c[1]-a[1])[0];edge=edge[1]>.25?edge[0]:locate(center,L,W).edge;
       const along=edge==='front'||edge==='back',span=Math.min(along?b.y1-b.y0:b.x1-b.x0,along?W:L),deploying=p.kind==='ramp'||p.kind==='kicker';
@@ -399,14 +438,15 @@
       // or kicker that moves (a "Ramp deploy", a "Kicker"): rollers with a ramp folding down in front of them are a
       // deployable ramp. A ramp named only "Ramp" may be fixed; the CAD's hinge decides (Moving parts).
       const same=intakes.find(i=>i.sides.includes(edge));
-      if(same){if(same.parts.length<8&&!same.parts.includes(p.name))same.parts.push(p.name);
+      if(same){grow(same,b);if(same.parts.length<8&&!same.parts.includes(p.name))same.parts.push(p.name);
         if(deploying){ramps.set(same,[...(ramps.get(same)||[]),p.name]);if(same.kind==='sweeper'&&MOVES_WORDS.test(p.name)){same.kind='ramp';same.why=`“${p.name}” is named as a ramp that moves, on the same edge as the rollers`;}}
         continue;}
       const intake={kind:p.kind||'sweeper',sides:[edge],reach:round(Math.max(0,out[edge])),width:round(span),height:round(clamp(b.z1-b.z0,1,24)),motor:intakes.length?`intake${intakes.length+1}`:'intake',from:p.name,parts:[p.name]};
       // One assembly holding the ramp (or kicker) and the rollers says so by the names inside it.
       const inside=p.carries||[],rampIn=inside.find(n=>CARRIED.intake[0].test(n)),rollIn=inside.find(n=>n!==rampIn&&CARRIED.intake[1].test(n));
       if(rampIn&&deploying)intake.holds=`it holds “${rampIn}”${rollIn?` beside its rollers “${rollIn}”`:''}`;
-      if(deploying)ramps.set(intake,[p.name]);intakes.push(intake);}
+      if(deploying)ramps.set(intake,[p.name]);grow(intake,b);intakes.push(intake);}
+    for(const i of intakes){const e=extents.get(i),edge=i.sides[0],along=edge==='front'||edge==='back',o={front:e.x1-hl,back:-hl-e.x0,left:e.y1-hw,right:-hw-e.y0}[edge];i.reach=up(clamp(o,0,18));i.width=up(clamp(2*(along?Math.max(Math.abs(e.y0),Math.abs(e.y1)):Math.max(Math.abs(e.x0),Math.abs(e.x1))),1,48));if(Number.isFinite(e.z1))i.height=up(clamp(e.z1,1,24));}
     for(const i of intakes){const r=(ramps.get(i)||[]).filter(n=>n!==i.from),own=i.parts.filter(n=>!r.includes(n)),what=i.kind==='ramp'?'deployable ramp':i.kind==='kicker'?'kicker':null;
       const why=i.why?` · a ${what} because ${i.why}`:r.length?` · whether the ${i.kind==='kicker'?'kicker':'ramp'} swings down is checked on its hinge (Moving parts)`:what?` · a ${what} ${i.holds?`because ${i.holds}`:'by its name'}`:'';
       found.push(`Intake ${quoted(own)}${r.length?` + ${i.kind==='kicker'?'kicker':'ramp'} ${quoted(r)}`:''}: ${i.sides[0]}, ${i.reach} in out, ${i.width} in wide${why}`);
@@ -515,18 +555,16 @@
   }
   // ---- preset robots ----------------------------------------------------------------------------
   // Ready-made robots: chassis and mechanisms, set together and not changed (Custom robot is for that). Three starter
-  // robots: a mecanum kit bot that drives on odometry and pushes pieces, the NYC FIRST A301 swerve as the fastest push
-  // bot, and REV's DUO FTC Starter Bot: a two-motor six-wheel tank whose one fixed launcher fires pollen and nectar out
-  // of its back (drive: the card's drivetrain words, where the drivetrain's own name says less). Their CAD, joints, wiring,
+  // robots: a mecanum kit bot that pushes pieces, on its Control Hub's IMU and drive motor encoders (adjustable: a team's own kit, so its size,
+  // weight, wheels, power and wiring can be set to match), and the NYC FIRST A301 swerve as the fastest push
+  // bot (drive: the card's drivetrain words, where the drivetrain's own name says less). Their CAD, joints, wiring,
   // sensors and demo routes are in ui/sim-preset-robots.js.
   const PRESETS={
-    startermecanum:{name:'Starter Mecanum',blurb:'Kit bot: drives on odometry, pushes pieces',robot:{drivetrain:'mecanum',length:17.56,width:17.79,massLb:22,driveRpm:800}},
-    a301swerve:{name:'A301 Swerve',blurb:'NYC FIRST A301 push bot: the fastest',robot:{drivetrain:'swerve',length:17,width:17,massLb:28,driveRpm:1150}},
-    startertank:{name:'Starter Tank',blurb:'REV DUO FTC Starter Bot: flap intake, flywheel launcher firing out the back, pollen pusher',drive:'Tank · 6 wheels, 2 motors',robot:{drivetrain:'tank2',length:16.66,width:16.54,massLb:22,driveRpm:317},
-      mechanisms:{intakes:[{kind:'sweeper',sides:['front'],reach:1.5}],shooters:[{type:'fixed',pieces:'both',mount:'center',facing:'back',indexerKind:'crservo'}],capacity:{pollen:4,nectar:4},transfer:{seconds:.5},indexer:{seconds:.15},shooter:{spinUp:.4}}}};
+    startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer-style kit bot: Control Hub IMU and motor encoders, pushes pieces. Set its size and wiring to match yours',adjustable:true,robot:{drivetrain:'mecanum',length:17.56,width:17.79,massLb:22,driveRpm:800}},
+    a301swerve:{name:'A301 Swerve',blurb:'NYC FIRST A301 push bot: the fastest',robot:{drivetrain:'swerve',length:17,width:17,massLb:28,driveRpm:1150}}};
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
     return sanitize({...base,...p,enabled:true,capacity:p.capacity||{pollen:4,nectar:0},preload:{pollen:4},transfer:p.transfer||base.transfer,indexer:{...base.indexer,...p.indexer},shooter:{...base.shooter,...p.shooter},target:null});};
-  return {liftSeconds,PRESETS,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
-    sanitize,engineSpec,flowerKind,deploys,servoFeeder,pusherOnly,feedCycle,engineIntakeMount,target,action,actions,turretAction,hasRamp,prepare,summary,hasTurret,locate,mountOf,adjacent,PARTNER,travel,shootSeconds,FIRE_MARGIN,Model,Runner};
+  return {partKindOf,chained,onOneMotor,liftSeconds,PRESETS,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
+    sanitize,hoodAt,readyAt,engineSpec,flowerKind,deploys,servoFeeder,pusherOnly,feedCycle,engineIntakeMount,target,action,actions,turretAction,hasRamp,prepare,summary,hasTurret,locate,mountOf,adjacent,PARTNER,travel,shootSeconds,FIRE_MARGIN,Model,Runner};
 });

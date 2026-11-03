@@ -1,10 +1,10 @@
-# Install and use Deck Driver Station 2
+# Install and use Torque 2
 
 Download the **Main** installer directly from the [GitHub README](../README.md#%EF%B8%8F-download),
 or paste one line into a terminal:
 
-- Steam Deck / Linux and Mac: `curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.sh | bash`
-- Windows (PowerShell): `irm https://raw.githubusercontent.com/AloeVeraZ/SteamDeck-RobotController/main/install.ps1 | iex`
+- Steam Deck / Linux and Mac: `curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.sh | bash`
+- Windows (PowerShell): `irm https://raw.githubusercontent.com/AloeVeraZ/Torque-RobotController/main/install.ps1 | iex`
 
 The sections below describe the downloadable packages and manual setup.
 All initial installs use the latest stable Main release. After installing, open
@@ -18,7 +18,7 @@ releases. Close the app before running an installer again; saved data is kept se
 1. Download `DeckDriverStation-2.4.2-SteamDeck.run` onto the Deck.
 2. In Desktop Mode, open a terminal in your Downloads folder.
 3. Run `bash DeckDriverStation-2.4.2-SteamDeck.run`. It verifies its payload and creates desktop and application-menu shortcuts. The tar archive remains available for portable use.
-4. Launch **Deck Driver Station**. To use Gaming Mode, add it through Steam's
+4. Launch **Torque**. To use Gaming Mode, add it through Steam's
    **Games → Add a Non-Steam Game**. If needed, browse to
    `~/.local/share/deck-driver-station/launch.sh`.
 5. Select a **Gamepad** template with both sticks set to joysticks and leave Proton disabled.
@@ -62,7 +62,7 @@ Local-network access may require macOS's normal permission prompt.
 
 ## Daily workflow
 
-**Settings → Wi-Fi → robot address → Open robot.** Enter an IP such as
+**⋮ → Settings → Wi-Fi → robot address → Open robot.** Enter an IP such as
 `192.168.4.1`, a hostname such as `pushbot.local`, or a full URL including a port
 or path. No robot protocol or type is selected: an FTC Control Hub (usually
 `192.168.43.1`) is recognized and opens the [FTC Driver Station](FTC.md); any other
@@ -93,6 +93,21 @@ For website authentication, ordinary login forms appear within the robot page.
 HTTP authentication challenges open a username/password prompt. Robot passwords
 are not saved in the address list. The browser's robot-specific cookie storage
 can retain website sessions; HTTP authentication may ask again after reopening.
+
+### Setup & Calibrate
+
+One tab, three steps, and the Axon Programmer apart at the far right. **1 Setup** picks the robot control system, checks the connection over USB-C or Wi-Fi, and shows what is connected in two columns: on the left the Control Hub this computer is connected to, then every Expansion Hub and Servo Hub on the RS485 cable; on the right the USB devices, webcams and the rest, each saying whether it is in the configuration. Over USB-C it follows what you plug in by itself; over Wi-Fi, press **Scan**. **Available configurations** lists the ones on the robot, to edit, activate, delete or make new.
+
+**2 Configure** edits one, port by port on each hub, with only the parts a Control Hub allows. The hubs and the USB devices are on the right. **Auto-configure** does it in one press: every webcam plugged in, a Limelight that answers, the hubs on the cable and the Control Hub's own IMU go into the active configuration, the robot restarts to use it, and you land on **Calibrate → Camera**. If everything is already there it writes nothing and takes you to Camera anyway. If you have unsaved changes it asks once whether they go too, and they are never lost. A HuskyLens works on an I2C port, not USB, so it cannot be added from USB: its row says so and takes you to the I2C bus with it ready to pick. **Save** does the same for what is plugged in, along with your changes. **3 Calibrate** works on the real robot, and is already running when you get there. Over USB-C this needs ADB, which the REV Hardware Client installs. At an event, turn on **Competition mode** in the three-dot menu: [the FTC rules](COMPETITION-RULES.md) only allow streaming over Wi-Fi through the FTC Driver Station app.
+
+**Calibrate** has three tabs, in the order you work through them: **Camera**, **Debug** and **Calibrate**.
+**Camera** lists every camera in the active configuration or plugged into the Control Hub, and shows the picture by itself. Over Wi-Fi, the first time takes one press: **Put the camera program on the robot**. **Debug** has **Live debug**, a box for each device on the hub, with what is on the hub's USB ports under them. **Calibrate**, the very end, has two more tabs.
+**Electronics** reads the Control Hub (Set up from the Control Hub over USB-C), shows every motor, servo and
+sensor with its port, explains each USB device with what the rules say about it, and runs the guided check. In **Live debug**, over USB it starts by itself. Every
+port reads live. Anything that spins runs only while you hold its slider, a servo has a dial, a light has a switch, each box checks its own device with settings you can change, and STOP or Space stops everything. **Mechanisms** unlocks
+once the hub is read and walks each mechanism through the steps its sensors allow (confirm it, its direction,
+units, zero, range, feedforward, feedback, sensor thresholds, commit). Put the robot on blocks first.
+See [CALIBRATION.md](CALIBRATION.md).
 
 ## Drive view and controllers
 
@@ -126,7 +141,7 @@ from GitHub. **Download update** verifies the package, automatically installs it
 the app. Saved robot data is retained. No update is available until a
 release is published. [Release setup](UPDATES.md).
 
-Desktop settings normally live in Electron's **Deck Driver Station** user-data
+Desktop settings normally live in Electron's **Torque** user-data
 directory: `~/.config` on Linux, `%APPDATA%` on Windows, and
 `~/Library/Application Support` on Mac. `robots.json` stores bookmarks and SSIDs,
 not passwords.
@@ -139,7 +154,7 @@ also want to discard the saved robot library.
 ## Windows: reinstalling over a sandboxed copy
 
 If the desktop shortcut shows a blank page icon, the app was installed by a sandboxed program
-(for example an AI coding app) into that program's private folder. Close Deck Driver Station,
+(for example an AI coding app) into that program's private folder. Close Torque,
 then double-click **DeckDriverStation-<version>-Windows-Setup.exe** in File Explorer. It installs
 to the normal location and replaces the shortcuts; on first start the app brings over the robot
 list saved by the sandboxed copy.

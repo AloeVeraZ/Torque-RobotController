@@ -16,12 +16,6 @@ user. No vendor hardware, control software or CAD authoring program is included.
   The chassis is inverted at the user's request: source +Y becomes front and -Z becomes up,
   placing the powered swerve wheels below the passive mecanum frame. Four measured wheel
   compounds and their lower holders animate; this does not reproduce a particular motor API.
-- **REV DUO FTC Starter Bot (2026-27):** REV Robotics' public Onshape document
-  https://cad.onshape.com/documents/9cb9eb90e973fd37d10ee178/w/b9c02b0f4e09998f08becbd2/e/a55c018c62564f3ea8812a47 ,
-  linked from https://docs.revrobotics.com/ftc-kickoff-concepts/home/2026-27-rev-duo-ftc-preview-starter-bot ,
-  exported as STEP AP242. Original STEP SHA-256: `0aebfc11f596f8234f57bcbebe71bdc473c4eb3eb38877dca68e44b1c5b7995a`.
-  Source -Y becomes front and +X left. Each wheel, both intake flap rollers, the feeder roller and its drive gear, the
-  flywheel and the pollen pusher's arm are separate assemblies so the Starter Tank preset's joints move them.
 
 Source CAD attribution and ownership remain with the original authors. No additional CAD
 license or redistribution permission is asserted by this repository. These assets were
@@ -46,10 +40,6 @@ into `.cache/cad-build-deps`. Then, for each `strafer` / `swechanum`:
 1. Run `tools/simulation/prepare-robot.py <STEP file> <name>` with that Python.
 2. Cache its native GLB as `.cache/simulation-cad/<name>-native.glb`.
 3. Run `node tools/simulation/finish-robot.mjs <name>` to build the compressed asset.
-
-For REV's Starter Bot, cache its STEP as `.cache/simulation-cad/revduo.step` and run
-`node tools/simulation/prepare-revduo.cjs` (the app's own STEP importer and meshoptimizer; no Python). It writes
-`ui/assets/robots/revduo.deck.gz`, an import the window stores and rigs like a team's STEP.
 
 `inspect-robot.mjs` can inspect the intermediate assembly names and bounds. Only the curated
 named wheel compounds and measured lower-pod height ranges are separated for animation.

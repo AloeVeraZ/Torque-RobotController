@@ -69,8 +69,9 @@ for(const [style,want] of Object.entries(STYLES))test(`a robot with two turrets,
   assert.ok(ui.leaves(j('roller1')).has(L.roller));
   // The intake is a deployable ramp, whatever its CAD called the ramp.
   assert.equal(ui.project.mechanisms.intakes[0].kind,'ramp');
-  // What the panel says: each shooter and the intake by the parts in the CAD, and why.
-  const text=ui.status();
+  // What Configure from CAD lists under "What was found": each shooter and the intake by the parts in the CAD, and why.
+  // The panel itself keeps one short line.
+  const text=r.told.join(' ');assert.match(ui.status(),/^\d+ moving parts found\./);
   for(const n of [0,1])assert.ok(text.includes(`Shooter ${n+1} is ${said[n]} in your CAD: a turret on “Turntable”, flywheel “Flywheel”, hood “Hood”.`),text);
   assert.ok(text.includes(`Intake 1 is ${want.intakeSaid} in your CAD: rollers “Roller”, a ramp that swings down on “Servo Hub Shaft”`),text);
   assert.ok(r.told.some(t=>t.startsWith('Shooter 2 is ')),'Configure from CAD says it too');

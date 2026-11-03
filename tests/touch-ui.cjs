@@ -24,7 +24,7 @@ const pad=(id,index,y=0)=>({id,index,connected:true,mapping:'standard',axes:[0,y
   // Refresh the fixture SSID explicitly so the current network is always the
   // 25th entry, independent of process startup timing or the runner's Wi-Fi.
   await page.evaluate(()=>window.deck.network());await page.waitForFunction(()=>wifi.ssid==='Touch test network (simulated)'&&scanPromise===null);
-  await tap(page,page.locator('#settings-tab'));await page.waitForFunction(()=>state.page==='settings');
+  await tap(page,page.locator('#more'));await tap(page,page.locator('#menu-settings'));await page.waitForFunction(()=>state.page==='settings');
   console.log('Touch check: Settings opened with a real touch event.');
   // The on-screen keyboard is off by default; switch it on as the three-dot menu does.
   await page.evaluate(()=>{const on=document.querySelector('#touch-keyboard-auto');if(!on.checked)document.querySelector('#menu-keyboard').click();});

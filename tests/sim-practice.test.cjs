@@ -10,7 +10,7 @@ test('practice defaults follow FTC periods; phase time is simulation time',()=>{
   assert.equal(new PracticeClock('teleop').phase,'teleop');assert.equal(new PracticeClock('autonomous').advance(30).to,'finished');
 });
 test('robot families, numeric intake and large custom fields retain their dimensions',()=>{
-  assert.ok(C.drives.kiwi&&C.drives.tank6&&C.drives.hdrive&&C.drives.swerve);assert.equal(C.robot({length:96,width:80,intakeIn:7.25}).length,96);
+  assert.ok(C.drives.kiwi&&C.drives.tank2&&C.drives.swerve&&!C.drives.tank6&&!C.drives.hdrive);assert.equal(C.robot({drivetrain:'tank6'}).drivetrain,'tank');assert.equal(C.robot({drivetrain:'hdrive'}).drivetrain,'xdrive');assert.equal(C.robot({length:96,width:80,intakeIn:7.25}).length,96);
   assert.deepEqual(C.footprint({length:96,width:80,intakeIn:7.25}),{front:55.25,rear:48,half:40});
   assert.equal(C.intake({intake:'vector'}),3.5);assert.equal(C.bounds({field:'decode',width:300}).x1,144);
   const b=C.bounds({field:'empty',width:720,height:360}),fp=C.footprint({length:96,width:80,intakeIn:7.25});
@@ -52,7 +52,7 @@ test('custom field walls use the configured dimensions in physics, not the stand
   }finally{e.dispose();}
 });
 test('tank families cannot strafe; their straight autonomous uses the Deck controller and reaches its pin',{skip:!built},async()=>{
-  const e=engine();try{const start={x:30,y:72,heading:0},info=await e.load({field:'empty',start,robot:{drivetrain:'tank6',length:24,width:22,intakeIn:0,massLb:23.5,driveRpm:400},sensors:{localization:'ideal'}});assert.equal(info.drive.maxStrafe,0);
+  const e=engine();try{const start={x:30,y:72,heading:0},info=await e.load({field:'empty',start,robot:{drivetrain:'tank',length:24,width:22,intakeIn:0,massLb:23.5,driveRpm:400},sensors:{localization:'ideal'}});assert.equal(info.drive.maxStrafe,0);
     const lateral=P.plan({start,pins:[{x:30,y:110}],zones:[]},info.footprint,[],info.bounds);assert.equal((await e.run({kind:'route',route:lateral})).ok,true);for(let i=0;i<1200&&e.mode==='program';i++)await e.programTick();assert.ok(e.result);assert.ok(Math.hypot(e.result.truth.x-30,e.result.truth.y-110)<1.5,JSON.stringify(e.result));
     const straight=P.plan({start,pins:[{x:110,y:72}],zones:[]},info.footprint,[],info.bounds);assert.equal((await e.run({kind:'route',route:straight})).ok,true);
     for(let i=0;i<1200&&e.mode==='program';i++)await e.programTick();assert.ok(e.result,'tank autonomous finished');assert.ok(Math.hypot(e.result.truth.x-110,e.result.truth.y-72)<1.5,JSON.stringify(e.result));

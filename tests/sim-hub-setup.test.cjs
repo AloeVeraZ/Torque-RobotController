@@ -45,3 +45,19 @@ test('sides never cross: leftLift is not the right lift, and a lift motor is not
   assert.equal(HS.score(row('robot.left','left_drive','drive'),{name:'leftLift',kind:'motor'})<HS.score(row('kin.l','lift','kin-motor','Lift'),{name:'leftLift',kind:'motor'}),true);
   assert.equal(HS.score(row('robot.frontLeft','front_left','drive'),{name:'frontLeft',kind:'servo'}),0,'a servo is not a drive motor');
 });
+
+test('Calibrate shows ports only as the Control Hub reported them: its read-out, and each device’s port from it',()=>{
+  const cfg=hub('<goBILDA5202SeriesMotor name="frontLeft" port="2" /><Servo name="mystery" port="4" />'),p0=testSetup(),p=HS.apply(p0,HS.plan(p0,cfg)),read=HS.readout(cfg),st=W.state(p);
+  assert.deepEqual(read.find(d=>d.name==='frontLeft'),{name:'frontLeft',kind:'motor',tag:'goBILDA5202SeriesMotor',hub:'control',port:2});
+  const table=W.readoutHtml(read,st);assert.match(table,/<tr data-read-row="frontLeft"><td>Motor port 2<\/td>/);assert.match(table,/<tr data-read-row="mystery"><td>Servo port 4<\/td>/);
+  const row=k=>st.rows.find(r=>r.key===k),on=W.deviceHtml(row('robot.frontLeft'),st,{sensors:true,read});
+  assert.match(on,/data-wire-read="on">Control Hub motor port 2</);assert.doesNotMatch(on,/data-wire-port|Deck picks/);
+  const off=W.deviceHtml(row('robot.frontRight'),st,{sensors:true,read});
+  assert.match(off,/data-wire-read="off">Not on the Control Hub</);assert.doesNotMatch(off,/data-wire-port|Deck picks|motor port \d/);
+});
+
+test('a moving part takes motor or servo from the robot: a ramp set as continuous runs as the set-position servo the configuration has',()=>{
+  const project=C.defaults?C.defaults():T.setup();project.controller='ftc';project.kinematics=require('../ui/sim-kinematics.js').sanitize({joints:[{id:'ramp',name:'Deployable ramp',type:'revolute',lower:0,upper:90,states:{up:0,down:90}}],actuators:[{id:'rampServo',name:'Deployable ramp',joint:'ramp',kind:'crservo',device:'ramp',speed:90}]});
+  const config=RC.parse(`<?xml version='1.0'?><Robot type="FirstInspires-FTC"><LynxUsbDevice name="Control Hub Portal" serialNumber="(embedded)" parentModuleAddress="173"><LynxModule name="Control Hub" port="173"><Servo name="ramp" port="2" /></LynxModule></LynxUsbDevice></Robot>`);
+  const next=HS.apply(project,HS.plan(project,config));assert.equal(next.kinematics.actuators.find(a=>a.id==='rampServo').kind,'servo');
+});

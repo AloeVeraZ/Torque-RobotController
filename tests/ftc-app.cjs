@@ -16,7 +16,7 @@ async function targets(){return (await fetch('http://127.0.0.1:9333/json/list'))
   const robot=await startUdpRobot({address:'127.0.0.2'}),data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-e2e-')),out=path.join(root,'test-results','ftc');fs.mkdirSync(out,{recursive:true});
   // Ubuntu CI restricts unprivileged user namespaces. The sandbox exception is
   // confined to this simulated-robot test process, never the packaged launcher.
-  const launch=()=>spawn(process.env.DECK_ELECTRON||path.join(root,'.cache/runtime-win32-x64-44.8.0/electron.exe'),[root,'--remote-debugging-port=9333',...(process.env.DECK_ELECTRON_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[])],{env:(()=>{const e={...process.env,DECK_DATA_DIR:data,DECK_DEVICE_MODEL:model,DECK_CONTROLLER_TEST:'1',DECK_HEADLESS:process.env.DECK_FTC_SCREENSHOTS==='1'?'0':'1'};delete e.ELECTRON_RUN_AS_NODE;return e;})(),stdio:'ignore'});
+  const launch=()=>spawn(process.env.DECK_ELECTRON||path.join(root,'.cache/runtime-win32-x64-44.8.0/electron.exe'),[root,'--remote-debugging-port=9333',...(process.env.DECK_ELECTRON_TEST_NO_SANDBOX==='1'?['--no-sandbox']:[])],{env:(()=>{const e={...process.env,ADB:process.env.ADB||(process.platform==='win32'?'C:\\Windows\\System32\\where.exe':process.platform==='darwin'?'/usr/bin/true':'/bin/true'),DECK_DATA_DIR:data,DECK_DEVICE_MODEL:model,DECK_CONTROLLER_TEST:'1',DECK_HEADLESS:process.env.DECK_FTC_SCREENSHOTS==='1'?'0':'1'};delete e.ELECTRON_RUN_AS_NODE;return e;})(),stdio:'ignore'});
   let app=launch();
   try{
     const launcherT=await until(async()=>(await targets()).find(t=>t.url.endsWith('ui/index.html')),15000,'launcher');const L=new Cdp(launcherT.webSocketDebuggerUrl);await L.ready;
@@ -65,11 +65,17 @@ async function targets(){return (await fetch('http://127.0.0.1:9333/json/list'))
     await D.eval(`document.querySelector('#main-action').click()`);await until(()=>robot.sim.opState==='running',5000,'robot running');
     await wait(500);if(process.env.DECK_FTC_SCREENSHOTS==='1'){await D.shot(path.join(out,'ds-running.png'));await L.shot(path.join(out,'launcher-running.png'));}
     // Settings keeps the robot connected and running; Drive shows it again.
-    await L.eval(`document.querySelector('#settings-tab').click()`);await wait(2600);
+    await L.eval(`document.querySelector('#menu-settings').click()`);await wait(2600);
     if(robot.sim.opState!=='running'||!robot.sim.peer)throw Error('Settings disconnected or stopped the robot');
     console.log('after settings 2.6s: sim',robot.sim.opState,'peer',robot.sim.peer,'| launcher url',await L.eval('state.url'),'| DS active input',await D.eval('document.querySelector("#link-text").textContent'));
     await L.eval(`document.querySelector('#drive-tab').click()`);await wait(300);
     const hb=robot.sim.heartbeats;await wait(1000);const rate=robot.sim.heartbeats-hb;console.log('heartbeats/s while shown:',rate);if(rate<6)throw Error('heartbeat rate too low');
+    // The station's bar replaces the browser toolbar and footer, follows the app's theme and drives fullscreen.
+    assert.equal(await L.eval(`getComputedStyle(document.querySelector('.browser-toolbar')).display`),'none');assert.equal(await L.eval(`getComputedStyle(document.querySelector('#drive-view footer')).display`),'none');
+    await L.eval(`document.querySelector('[data-theme-choice=light]').click()`);await until(()=>D.eval(`document.documentElement.dataset.theme==='light'`),3000,'station follows the light theme');
+    await L.eval(`document.querySelector('[data-theme-choice=system]').click()`);await until(()=>D.eval(`!document.documentElement.dataset.theme`),3000,'station follows the system theme');
+    await D.eval(`document.querySelector('#ds-fullscreen').click()`);await until(()=>D.eval(`document.body.classList.contains('fullscreen')`),3000,'station fullscreen');
+    await L.eval('window.deck.robotFullscreen(false)');await until(()=>D.eval(`!document.body.classList.contains('fullscreen')`),3000,'station leaves fullscreen');
     // Close robot: STOP is sent before the socket closes.
     await L.eval(`document.querySelector('#close-page').click()`);await until(()=>robot.sim.opState==='stopped',3000,'stop on close');console.log('close sent stop: sim',robot.sim.opState,robot.sim.opMode);
     const saved=JSON.parse(fs.readFileSync(path.join(data,'robots.json'),'utf8')).robots;console.log('saved:',JSON.stringify(saved.map(r=>({name:r.name,url:r.url,kind:r.kind}))));

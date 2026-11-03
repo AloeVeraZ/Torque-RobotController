@@ -243,7 +243,7 @@
     // Title block and legend at the top.
     const head=[r(0,0,width,height,'#ffffff'),r(0,0,width,6,'#f2683a'),t(M,62,config.name||'Robot configuration',{size:30,weight:800}),
       t(M,90,`Wiring diagram${config.robot?` · ${config.robot}`:''} · ${order.length?order.map(h=>h.name).join(' + '):'no hubs'} · ${devices.length} device${devices.length===1?'':'s'}`,{size:14,fill:'#475467'}),
-      t(width-M,62,date.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}),{size:13,fill:'#475467',anchor:'end'}),t(width-M,82,'Deck Driver Station · FTC SDK 12.0 configuration',{size:11,fill:'#98a2b3',anchor:'end'})];
+      t(width-M,62,date.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}),{size:13,fill:'#475467',anchor:'end'}),t(width-M,82,'Torque · FTC SDK 12.0 configuration',{size:11,fill:'#98a2b3',anchor:'end'})];
     let lx=M;const legend=[['Motor power','motor'],['Encoder','encoder'],['Servo','servo'],['Digital','digital'],['Analog','analog'],['I2C','i2c'],['RS485','rs485'],['USB','usb']];
     for(const [label,k] of legend){const s=STRANDS[k];s.forEach((c,i)=>head.push(r(lx,114+i*3.2-(s.length-1)*1.6,22,2.6,c,1)));head.push(t(lx+28,119,label,{size:11.5,fill:'#344054'}));lx+=28+label.length*6.6+22;}
     head.push(r(lx,108,22,12,'none',2,' stroke="#0d9488" stroke-width="2" stroke-dasharray="4 3"'),t(lx+28,119,'Built into the hub',{size:11.5,fill:'#344054'}));
@@ -263,5 +263,27 @@
     for(const o of (config.other||[]).filter(d=>d.tag==='Webcam'||d.tag==='EthernetDevice'))out.push({family:'usb',cells:['Control Hub','USB',o.name,A.info(o.tag).name,config.java?config.java(o):'']});
     return out;
   }
-  return {build,COLOR,spread};
+  // A photo on white with the store's stamps (mask: [x, y, w, h] fractions) painted out and, when it is a part on a white
+  // backdrop, trimmed to the part with a small margin so every part fills its frame alike. At most 480 px on its long
+  // side, as a JPEG: small enough to go into an exported pinout.
+  function shrink(url,mask=[]){return new Promise(done=>{const img=new Image();img.onload=()=>{
+    const W=img.naturalWidth,H=img.naturalHeight,s0=Math.min(1,1000/Math.max(W,H)),w=Math.max(1,Math.round(W*s0)),h=Math.max(1,Math.round(H*s0)),work=document.createElement('canvas');work.width=w;work.height=h;
+    const g=work.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);for(const [x,y,mw,mh] of mask)g.fillRect(x*w,y*h,mw*w,mh*h);
+    let box=[0,0,w,h];try{box=partBox(g.getImageData(0,0,w,h))||box;}catch{}
+    const pad=Math.round(Math.max(box[2],box[3])*.05),cw=box[2]+2*pad,ch=box[3]+2*pad,s=Math.min(1,480/Math.max(cw,ch)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(cw*s));c.height=Math.max(1,Math.round(ch*s));
+    const o=c.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,c.width,c.height);o.drawImage(work,box[0],box[1],box[2],box[3],pad*s,pad*s,box[2]*s,box[3]*s);try{done(c.toDataURL('image/jpeg',.9));}catch{done(url);}};
+    img.onerror=()=>done(null);img.src=url;});}
+  // The part's bounding box [x, y, w, h] in a photo whose edges are mostly white, else null (a photo on its own backdrop
+  // is kept whole). Rows and columns with only a stray pixel or two count as white.
+  function partBox({data,width:w,height:h}){
+    const ink=(x,y)=>{const i=(y*w+x)*4;return Math.min(data[i],data[i+1],data[i+2])<236;};
+    let edge=0,n=0;for(let x=0;x<w;x+=4){edge+=ink(x,0)+ink(x,h-1);n+=2;}for(let y=0;y<h;y+=4){edge+=ink(0,y)+ink(w-1,y);n+=2;}if(edge>n*.25)return null;
+    const rows=new Uint32Array(h),cols=new Uint32Array(w);for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(ink(x,y)){rows[y]++;cols[x]++;}
+    const min=2,first=a=>a.findIndex(v=>v>min),last=a=>a.length-1-[...a].reverse().findIndex(v=>v>min),x0=first(cols),y0=first(rows);if(x0<0||y0<0)return null;
+    const x1=last(cols),y1=last(rows);return [x0,y0,x1-x0+1,y1-y0+1];}
+  // The sheet as a PNG, at most 8000 px on its long side.
+  async function png(url,sheet){const img=new Image();img.src=url;await img.decode();const scale=Math.min(2,8000/Math.max(sheet.width,sheet.height)),c=document.createElement('canvas');c.width=Math.round(sheet.width*scale);c.height=Math.round(sheet.height*scale);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);const blob=await new Promise(done=>c.toBlob(done,'image/png'));if(!blob)throw Error('The picture is too large to save as a PNG. Save it as an SVG.');return blob;}
+  const base64=blob=>new Promise((done,fail)=>{const r=new FileReader();r.onload=()=>done(String(r.result).split(',')[1]);r.onerror=()=>fail(r.error);r.readAsDataURL(blob);});
+  return {build,COLOR,spread,shrink,png,base64};
 });

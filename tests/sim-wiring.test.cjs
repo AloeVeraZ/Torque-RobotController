@@ -7,7 +7,7 @@ test('the Test setup is wired with nothing red; the Robot step owns the drivetra
   const p=testSetup(),st=W.state(p);assert.equal(st.error,null);assert.deepEqual(st.problems,[]);
   assert.deepEqual(st.rows.filter(r=>W.stepOf(r.key)==='robot').map(r=>r.name),['front_left','front_right','back_left','back_right','imu','pinpoint']);
   assert.ok(W.state(p)===st,'the same project gives the same state');
-  const html=W.summaryHtml(st);assert.match(html,/Expansion Hub 2/);assert.match(html,/<code>shooter<\/code>/);
+  const html=W.summaryHtml(st);assert.match(html,/Expansion Hub</);assert.match(html,/<code>shooter<\/code>/);
   const fl=W.deviceHtml(st.rows[0],st);assert.match(fl,/data-wire-model="robot.frontLeft"/);assert.match(fl,/<option value="gobilda-5203-435" selected>/);assert.match(fl,/<option value="control:0" selected>/);
   assert.ok(W.modelChoices(st.rows[0]).every(m=>m.kind==='dcmotor'),'a drive motor picks from motors only');
   assert.ok(W.modelChoices(st.rows.find(r=>r.role==='hood')).every(m=>m.kind==='servo'||m.kind==='linear'));

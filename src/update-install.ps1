@@ -52,7 +52,13 @@ try {
             $link=$shell.CreateShortcut($file.FullName)
             if ($link.TargetPath -ieq $launcher) {
                 $link.IconLocation=$icon+',0'; $link.Save()
-                [DeckIconNotify]::Path(0x2000,0x1005,$file.FullName,[IntPtr]::Zero)
+                # Torque was Deck Driver Station: its shortcuts take the new name.
+                $path=$file.FullName
+                if ($file.BaseName -eq 'Deck Driver Station') {
+                    $renamed=Join-Path $folder 'Torque.lnk'
+                    if (Test-Path -LiteralPath $renamed) { Remove-Item -LiteralPath $path -Force } else { Rename-Item -LiteralPath $path -NewName 'Torque.lnk'; $path=$renamed }
+                }
+                [DeckIconNotify]::Path(0x2000,0x1005,$path,[IntPtr]::Zero)
             }
         }
     }
@@ -65,6 +71,7 @@ $uninstallKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DeckDri
 if ((Test-Path -LiteralPath $uninstallKey) -and (Get-ItemProperty -LiteralPath $uninstallKey).InstallLocation -eq $destination) {
     $installedVersion=(Get-Content -LiteralPath (Join-Path $destination 'app/package.json') -Raw | ConvertFrom-Json).version
     Set-ItemProperty -LiteralPath $uninstallKey -Name DisplayVersion -Value $installedVersion
+    Set-ItemProperty -LiteralPath $uninstallKey -Name DisplayName -Value 'Torque'
 }
 Start-Process -FilePath (Join-Path $destination 'runtime/electron.exe') -ArgumentList ('"'+(Join-Path $destination 'app')+'"') -WorkingDirectory $destination -WindowStyle Hidden
 Write-Output 'Update installed; restarted application'

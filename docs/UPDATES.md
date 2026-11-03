@@ -10,7 +10,7 @@ use prereleases such as `testing-v2.4.3`; stable builds use tags such as `v2.4.2
 The app can return to an older Main version.
 
 **Releases for some devices only.** A testing release can be built for only some platforms
-(see Publishing below; testing is currently Windows only). A release reaches a device only
+(see Publishing below; releases currently build all three). A release reaches a device only
 when it has that device's full download. If the newest release in the channel has none, the
 check offers the newest earlier release that does, if it is still newer than the installed
 version, and otherwise says, for example, *Testing 2.4.23 has no download for Steam Deck / Linux
@@ -69,7 +69,10 @@ checkouts are protected from replacement. Apple Silicon updates are ad-hoc signe
 
 ## Publishing later
 
-The remote is `https://github.com/AloeVeraZ/SteamDeck-RobotController.git`.
+The remote is `https://github.com/AloeVeraZ/Torque-RobotController.git`.
+The repository used to be `AloeVeraZ/SteamDeck-RobotController`. Installs from before the rename only accept
+download URLs with the old name, so the channel manifests keep it and GitHub redirects them. Never create a new
+repository with the old name: that would end the redirects and strand those installs.
 Main and Testing are published branches; Main publishes stable releases (v2.4.22 and later). New work
 continues on Testing until promotion is requested. Initial install commands always
 read `main/install.sh` or `main/install.ps1` and resolve the newest stable release,
@@ -86,9 +89,9 @@ After the user authorizes publication:
    platforms for that branch, and publishes their assets plus checksums (as a prerelease
    on testing) only after every build succeeds. Testing builds only the platforms in
    `package.json` `testingReleaseTargets` and main those in `mainReleaseTargets`
-   (`steamdeck`, `windows`, `macos-arm64`; every platform when the key is missing), both
-   currently `["windows"]`. A partial release is titled, for example,
-   *Deck Driver Station testing-v2.4.23 (Windows x64 only)*, its notes say which devices it
+   (`steamdeck`, `windows`, `macos-arm64`; every platform when the key is missing, which is how
+   both branches are set now). A partial release is titled, for example,
+   *Torque testing-v2.4.23 (Windows x64 only)*, its notes say which devices it
    is for, and it has no App package. Before publishing, `tools/release-targets.cjs` checks
    that each built platform has its download and checksum and that no other platform's files
    are there. It never runs on a normal branch push; pushing the tag `testing-v<version>`

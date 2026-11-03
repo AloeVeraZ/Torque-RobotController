@@ -81,7 +81,7 @@ async function autonomous(settings,truth){
 test('the check TeleOp: every step, its question, and the results it reports',()=>{
   const m=Mech.sanitize({enabled:true,intakes:[{kind:'kicker',sides:['front'],servo:'kicker'}],shooters:[{type:'turret',indexerKind:'pusher',indexer:'pusher'}],shooter:{control:'power'},turret:{kind:'servo'}});
   const java=F.files({route:P.plan({start,zones:[],pins:[{x:40,y:30}],clearance:2},{front:8.5,rear:8.5,half:8.5}),layout,tuning:{},robot:C.robot(base),localization:'fused',mechanisms:m,target,setupName:'Guided',routeJava:'class R {}'}).files['org/firstinspires/ftc/teamcode/PlannedRouteCheck.java'];
-  assert.match(java,/@TeleOp\(name = "Guided check \(Deck\)", group = "Deck Driver Station"\)/);
+  assert.match(java,/@TeleOp\(name = "Guided check \(Deck\)", group = "Torque"\)/);
   assert.match(java,/private static final int STEPS = 10;/,'IMU, four wheels, kicker, flywheel, pusher, turret, Pinpoint');
   assert.match(java,/Did the front left wheel turn so the robot would drive FORWARD\?/);assert.match(java,/position\(kicker1, Mechanisms\.KICKER_1_DOWN, "Move the kicker DOWN/);
   assert.match(java,/result\("shooters\.0\.restPos", number\(rest\)\)/);assert.match(java,/result\("turret\.servoCenter", number\(center\)\)/);
@@ -90,7 +90,7 @@ test('the check TeleOp: every step, its question, and the results it reports',()
   const values=F.checkResults('Deck results : v1 robot.frontRight.reversed=true robot.frontLeft.reversed=true intakes.0.downPos=0.150 shooters.0.turretReversed=true turret.servoDegrees=272.7 shooter.pidf=1.2,0.12,0,12 shooters.0.restPos=?missing imu.turn=?backward');
   assert.deepEqual(values,{'robot.frontRight.reversed':'true','robot.frontLeft.reversed':'true','intakes.0.downPos':'0.150','shooters.0.turretReversed':'true','turret.servoDegrees':'272.7','shooter.pidf':'1.2,0.12,0,12','shooters.0.restPos':'?missing','imu.turn':'?backward'});
   const a=F.applyCheck(values,{robot:C.robot(base),mechanisms:m,localization:'fused'});
-  assert.deepEqual(a.changes,['Front right wheel: turns the other way on.','Intake 1 kicker servo down position: 0 → 0.15.','Shooter 1 turret: turns the other way on.','Turret servo range: 300 → 272.7 degrees.','Flywheel velocity PIDF: P 1.2, I 0.12, D 0, F 12.'],'the front left wheel is reversed already, so it is no change');
+  assert.deepEqual(a.changes,['Front right wheel: turns the other way on.','Intake 1 kicker down position: 0 → 0.15.','Shooter 1 turret: turns the other way on.','Turret servo range: 300 → 272.7 degrees.','Flywheel velocity PIDF: P 1.2, I 0.12, D 0, F 12.'],'the front left wheel is reversed already, so it is no change');
   assert.deepEqual(a.problems,['Shooter 1 feeder is not on the robot: its name is not in the robot configuration, or it is another kind of device there.','IMU read the quarter turn left as a turn right: the Control Hub mounting in Deck (Setup → Robot controller) is wrong.']);
   assert.equal(C.robot(a.robot).devices.frontRight.reversed,true);assert.equal(Mech.sanitize(a.mechanisms).intakes[0].downPos,.15);
   assert.equal(F.checkResults('Step : Done'),null);assert.deepEqual(F.checkResults('v1'),{});

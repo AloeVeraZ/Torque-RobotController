@@ -78,7 +78,7 @@ test('the generated Mechanisms.java: per-device code with directions, two flywhe
 test('the check TeleOp is a guided check of every device: drive wheels, rollers, flywheels with top speed and PIDF, feeders, turrets and servo positions',()=>{
   const m=Mech.sanitize({enabled:true,...VARIANTS.pusher}),out=exportFor(m),check=out.files[dir+'PlannedRouteCheck.java'];
   assert.ok(check,'TeamCode gets PlannedRouteCheck.java');assert.equal(out.check.opMode,'org.firstinspires.ftc.teamcode.PlannedRouteCheck');
-  assert.match(check,/@TeleOp\(name = "Hardware check \(Deck\)", group = "Deck Driver Station"\)/);
+  assert.match(check,/@TeleOp\(name = "Hardware check \(Deck\)", group = "Torque"\)/);
   assert.match(check,/DRIVE = new String\[\] \{"front_left", "front_right", "back_left", "back_right"\};\n\s+private static final boolean\[\] DRIVE_REVERSED = \{true, false, true, false\};/);
   assert.match(check,/hardwareMap\.tryGet\(DcMotorEx\.class, DRIVE\[i\]\)/,'a missing drive motor is reported, not a crash');
   // Every device by its Mechanisms constant, so the check uses what the autonomous uses.

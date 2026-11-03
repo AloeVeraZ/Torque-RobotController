@@ -1,6 +1,6 @@
 # Mechanism research notes
 
-This file records the research behind the mechanism engine: what each kind of robot needs mathematically, how the engine represents it, which decisions came from which source, and what is tested. The design itself is in `MECHANISM_ENGINE.md`; the user guide is in `SIMULATION.md`.
+This file records the research behind the mechanism engine: what each kind of robot needs mathematically, how the engine represents it, which decisions came from which source, and what is tested. The design itself is in `MECHANISM_ENGINE.md`; the user guide is in `SIMULATION.md`. How each mechanism is calibrated on the real robot from its sensors (the gated flow, its sources and Live debug) is in [CALIBRATION.md](CALIBRATION.md).
 
 ## 1. What carries across every robot
 

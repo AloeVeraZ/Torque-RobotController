@@ -5,6 +5,8 @@
   // speed changes, freeze frames and transitions, and Export draws it picture by picture into an MP4 or WebM file
   // (sim-encode.js). The preview and the export draw the same pictures, so what plays here is what is saved.
   const E=window.DeckEdit,K=window.DeckCameras,N=window.DeckEncode,V=window.DeckSimVideo;
+  // A video ends on this card unless it is removed (Words on the video): "Edited with Torque" fades in over its last END_CARD seconds.
+  const BRAND='Torque',END_CARD=2.5;
   const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
   const OVERLAYS={match:'Period, clock & points',velocity:'Speed & what the robot is doing',path:'Field map in the corner',camera:'Camera name',position:'Position & heading',timestamp:'Run time'};
   const SPEEDS={0.25:'¼× (slow motion)',0.5:'½×',1:'1× (real speed)',1.5:'1.5×',2:'2×',4:'4×'};
@@ -22,7 +24,7 @@
   function create(opts){
     const host=opts.host;
     host.innerHTML=`<div class="studio-head">
-        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><span id="studio-meta" class="hint"></span></div>
+        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><label class="studio-part" id="studio-part-box" title="A full match can be edited whole, or just its autonomous or teleop; each keeps its own edit" hidden>Part<select id="studio-part"></select></label><span id="studio-meta" class="hint"></span></div>
         <div class="studio-head-actions">
           <button type="button" class="secondary" id="studio-undo" title="Undo (Ctrl+Z)">Undo</button><button type="button" class="secondary" id="studio-redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
           <button type="button" class="secondary" id="studio-discard" title="Throw away this recording">Discard</button>
@@ -35,11 +37,13 @@
             <button type="button" class="secondary" id="studio-fwd" title="Forward one frame (→, Shift+→ one second)" aria-label="Forward one frame">▸</button><button type="button" class="secondary" id="studio-end" title="Go to the end (End)" aria-label="Go to the end">⏭</button>
             <output id="studio-time" class="studio-time"></output><p id="studio-status" class="studio-status hint" role="status"></p></div></div>
         <aside class="studio-side" aria-label="Video settings">
-          <p class="studio-intro">Editing is optional: <strong>Save video</strong> keeps it just as you see it. To change it, pick cameras or add text below.</p>
+          <div class="studio-side-tabs" role="tablist" aria-label="Video settings"><button type="button" role="tab" data-sidetab="clip" hidden>Clip</button><button type="button" role="tab" data-sidetab="cameras">Camera</button><button type="button" role="tab" data-sidetab="tune">Adjust</button><button type="button" role="tab" data-sidetab="moments">Moments</button><button type="button" role="tab" data-sidetab="look">Text</button><button type="button" role="tab" data-sidetab="export">File</button></div>
           <section class="studio-pane studio-clip-pane" data-side="clip" hidden></section>
           <section class="studio-pane" data-side="cameras"></section>
-          <details class="sim-fold studio-fold"><summary>Words on the video</summary><div class="studio-pane" data-side="look"></div></details>
-          <details class="sim-fold studio-fold"><summary>Video file options</summary><div class="studio-pane" data-side="export"></div></details></aside></div>
+          <section class="studio-pane" data-side="tune" hidden><div id="studio-tune-body"></div></section>
+          <section class="studio-pane" data-side="moments" hidden></section>
+          <section class="studio-pane" data-side="look" hidden></section>
+          <section class="studio-pane" data-side="export" hidden></section></aside></div>
       <div class="studio-timeline">
         <div class="studio-tools" role="toolbar" aria-label="Edit">
           <button type="button" class="secondary" data-act="split" title="Cut the clip under the red line in two (S)">Split</button><button type="button" class="secondary" data-act="remove" title="Delete the chosen clip (Delete)">Delete</button>
@@ -53,7 +57,7 @@
         <div class="studio-scroll" id="studio-scroll"><div class="studio-tracks" id="studio-tracks"></div></div></div>`;
     const $=s=>host.querySelector(s),$$=s=>[...host.querySelectorAll(s)];
     const canvas=$('#studio-canvas'),pctx=canvas.getContext('2d'),scroll=$('#studio-scroll'),tracks=$('#studio-tracks'),screen=$('#studio-screen');
-    const pane=k=>$(`[data-side="${k}"]`);
+    const pane=k=>$(`[data-side="${k}"]`);for(const b of $$('[data-sidetab]'))b.onclick=()=>showSide(b.dataset.sidetab);
     let take=null,editor=null,paths={},pathKeys={},trail=null,events=[],selected=new Set(),t=0,playing=false,pps=40,cam=null,shown=false,exporting=null,side='cameras',lastTick=0,lastPaint=0,raf=0,drawQueued=false,formats=null,formatKey='',discardArmed=0,focusSnap=null;
     const lanes=E.TRACKS.filter(x=>x.kind!=='audio'),NAMES={T1:'Text',V2:'Corner',V1:'Camera'};
     const say=text=>{$('#studio-status').textContent=text||'';};
@@ -101,6 +105,39 @@
       if(lead.inset){const r=lead.inset;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(r.x,r.y,r.size,r.size,6*u);else ctx.rect(r.x,r.y,r.size,r.size);ctx.lineWidth=3*u;ctx.strokeStyle='rgb(232 236 241 / .85)';ctx.stroke();}
       ctx.restore();
     }
+    // ------------------------------------------------------------ contact replays
+    // A contact replay holds the picture where the robot touched something and zooms in on the spot (k: 0 not at all,
+    // 1 all the way). A 3D camera moves from its own pose to one about 40 in from the contact, looking down at it from
+    // the side the camera was on; the top-down picture is enlarged 3× round the contact instead.
+    const lerp=(a,b,k)=>a+(b-a)*k,CLOSE=40,TOP_ZOOM=3,RING=7;
+    function closeUp(pose,focus,k){
+      const dx=focus.x-pose.p[0],dy=focus.y-pose.p[1],d=Math.hypot(dx,dy)||1,near={p:[focus.x-dx/d*CLOSE*.7,focus.y-dy/d*CLOSE*.7,CLOSE*.75],l:[focus.x,focus.y,2],fov:50};
+      return {p:pose.p.map((v,n)=>lerp(v,near.p[n],k)),l:pose.l.map((v,n)=>lerp(v,near.l[n],k)),fov:lerp(pose.fov,near.fov,k)};
+    }
+    // Where a field point (inches, z up) lands in a W×H picture from a camera pose, and how many pixels RING inches
+    // are there; null behind the camera.
+    function project(pose,q,W,H){
+      const sub=(a,b)=>a.map((v,n)=>v-b[n]),dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],unit=a=>{const l=Math.hypot(...a)||1;return a.map(v=>v/l);};
+      const fw=unit(sub(pose.l,pose.p)),right=unit(cross(fw,[0,0,1])),up=cross(right,fw),d=sub(q,pose.p),z=dot(d,fw);if(z<=1)return null;
+      const px=H/2/Math.tan(pose.fov*Math.PI/360)/z;return {x:W/2+dot(d,right)*px,y:H/2-dot(d,up)*px,r:RING*px};
+    }
+    // The top-down picture fitted the way sim-3d.js fits it (the field's bounds, 6% margin), enlarged round the contact.
+    function topZoom(focus,k,W,H){
+      const b=take.state?.info?.bounds||{x0:0,y0:0,x1:144,y1:144},a=W/H,hh=Math.max((b.y1-b.y0)/2,(b.x1-b.x0)/2/a)*1.06,px=H/2/hh;
+      const sx=W/2+(focus.x-(b.x0+b.x1)/2)*px,sy=H/2-(focus.y-(b.y0+b.y1)/2)*px,scale=lerp(1,TOP_ZOOM,k),cx=lerp(W/2,sx,k),cy=lerp(H/2,sy,k);
+      return {scale,x:W/2-cx*scale,y:H/2-cy*scale,at:{x:W/2+(sx-cx)*scale,y:H/2+(sy-cy)*scale},r:RING*px*scale};
+    }
+    // The red mark on the contact (a dot, a ring and a ring pulsing out from it) and what was touched, with when.
+    function drawCrash(ctx,W,H,c,time){
+      const u=H/720,u0=time-c.clip.start,show=clamp(u0/.3,0,1)*clamp((E.len(c.clip)-u0)/.3,0,1)*c.alpha;if(show<=0)return;ctx.save();ctx.globalAlpha=show;
+      if(c.at){const r=clamp(c.r||20*u,14*u,90*u),pulse=(u0%1.1)/1.1;ctx.strokeStyle=E.CRASH_COLOR;ctx.fillStyle=E.CRASH_COLOR;
+        ctx.lineWidth=4*u;ctx.beginPath();ctx.arc(c.at.x,c.at.y,r,0,Math.PI*2);ctx.stroke();
+        ctx.globalAlpha=show*(1-pulse)*.9;ctx.lineWidth=3*u;ctx.beginPath();ctx.arc(c.at.x,c.at.y,r*(1+pulse*1.2),0,Math.PI*2);ctx.stroke();
+        ctx.globalAlpha=show;ctx.beginPath();ctx.arc(c.at.x,c.at.y,Math.max(4*u,r*.18),0,Math.PI*2);ctx.fill();}
+      const line=`Contact with ${c.focus.label} at ${c.focus.at.toFixed(1)} s`;ctx.font=`700 ${20*u}px ${FONT}`;const w=ctx.measureText(line).width+40*u,h=46*u,y=H-140*u;
+      pill(ctx,W/2-w/2,y,w,h,'rgb(178 34 40 / .92)');ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(line,W/2,y+h/2);
+      ctx.restore();
+    }
     // Text sized down until it fits the width it has.
     function fit(ctx,text,weight,size,max){let s=size;do{ctx.font=`${weight} ${s}px ${FONT}`;s*=.92;}while(ctx.measureText(text).width>max&&s>8);}
     function drawTitle(ctx,W,H,c,alpha){
@@ -118,19 +155,31 @@
     function paint(ctx,W,H,time){
       const doc=editor.doc,r=E.resolve(doc,time);ctx.save();ctx.globalAlpha=1;ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
       let lead=null;if(cam)cam.size(W,H);
-      for(const l of r.layers){if(!cam)break;const {f,i}=frameAt(l.source),shot={rect:[0,0,W,H]};
-        if(l.camera==='top')shot.top=true;else{shot.pose=K.poseAt(track(l.camera),take.frames,take.t0+l.source);shot.inset=!!doc.overlays.path&&!l.pip;}
+      let crash=null;
+      for(const l of r.layers){if(!cam)break;const {f,i}=frameAt(l.source),shot={rect:[0,0,W,H]},focus=!l.pip&&l.clip.focus,k=focus?E.crashZoom(l.clip,time):0;
+        if(l.camera==='top')shot.top=true;else{shot.pose=K.poseAt(track(l.camera),take.frames,take.t0+l.source);shot.inset=!!doc.overlays.path&&!l.pip;if(focus)shot.pose=closeUp(shot.pose,focus,k);}
         const pic=cam.picture(f,{...take.state,frame:f,trail:trailAt(i)},[shot]);ctx.globalAlpha=clamp(l.alpha*(l.fade??1),0,1);
-        if(l.pip){const w=Math.round(W*.34),h=Math.round(w*H/W),m=Math.round(H*.03),x=W-w-m,y=Math.round(H*.12);ctx.drawImage(pic,x,y,w,h);ctx.lineWidth=Math.max(2,H/300);ctx.strokeStyle='rgb(232 236 241 / .9)';ctx.strokeRect(x,y,w,h);}
+        if(focus){crash={clip:l.clip,focus,alpha:ctx.globalAlpha};if(l.camera==='top'){const z=topZoom(focus,k,W,H);ctx.drawImage(pic,0,0,pic.width,pic.height,z.x,z.y,W*z.scale,H*z.scale);crash.at=z.at;crash.r=z.r;}
+          else{ctx.drawImage(pic,0,0,W,H);const p=project(shot.pose,[focus.x,focus.y,3],W,H);crash.at=p;crash.r=p?.r;}lead={f,camera:l.camera,inset:l.camera==='top'?null:shot.insetRect||null};}
+        else if(l.pip){const w=Math.round(W*.34),h=Math.round(w*H/W),m=Math.round(H*.03),x=W-w-m,y=Math.round(H*.12);ctx.drawImage(pic,x,y,w,h);ctx.lineWidth=Math.max(2,H/300);ctx.strokeStyle='rgb(232 236 241 / .9)';ctx.strokeRect(x,y,w,h);}
         else{ctx.drawImage(pic,0,0,W,H);lead={f,camera:l.camera,inset:shot.insetRect||null};}}
-      ctx.globalAlpha=1;if(lead)drawOverlays(ctx,W,H,lead,doc.overlays);
+      ctx.globalAlpha=1;if(lead)drawOverlays(ctx,W,H,lead,doc.overlays);if(crash)drawCrash(ctx,W,H,crash,time);
       if(r.black>0){ctx.fillStyle=`rgb(0 0 0 / ${clamp(r.black,0,1)})`;ctx.fillRect(0,0,W,H);}
       for(const ti of r.titles)drawTitle(ctx,W,H,ti.clip,ti.alpha);
+      const left=E.exportRange(doc).out-time;if(doc.endCard!==false&&left<END_CARD)drawEndCard(ctx,W,H,clamp((END_CARD-left)/.6,0,1));
       ctx.restore();
     }
+    function drawEndCard(ctx,W,H,alpha){const s=H/720,font=(w,px)=>`${w} ${Math.round(px*s)}px Inter, "Segoe UI", system-ui, sans-serif`;ctx.save();ctx.globalAlpha=alpha;
+      ctx.fillStyle='rgb(8 10 14 / .8)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.textBaseline='alphabetic';
+      ctx.fillStyle='#9aa3ad';ctx.font=font(600,26);ctx.fillText('Edited with',W/2,H/2-24*s);ctx.fillStyle='#f2f4f7';ctx.font=font(800,72);ctx.fillText(BRAND,W/2,H/2+46*s);
+      ctx.fillStyle='#9aa3ad';ctx.font=font(500,22);if(editor.doc.name)ctx.fillText(editor.doc.name,W/2,H/2+96*s);ctx.restore();}
     function drawNow(){if(!take||!shown||exporting)return;lastPaint=performance.now();try{paint(pctx,canvas.width,canvas.height,t);}catch(e){console.error(e);say(e.message);}}
     function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;drawNow();});}
     // The preview is drawn at the size it shows (up to 1280 wide), so a small window stays quick.
+    // The preview is the video's own shape against the left edge, and the settings take the rest of the width: no black
+    // bars beside the picture (narrow windows stack them instead).
+    const body=$('.studio-body'),transportBar=$('.studio-transport');new ResizeObserver(()=>{if(innerWidth<=900){body.style.gridTemplateColumns='';return;}
+      const h=body.clientHeight-transportBar.offsetHeight-6,w=Math.max(320,Math.min(body.clientWidth-300-12,h*16/9));body.style.gridTemplateColumns=`${Math.floor(w)}px minmax(300px,1fr)`;}).observe(body);
     new ResizeObserver(()=>{const w=Math.round(clamp(Math.min(screen.clientWidth,screen.clientHeight*16/9)*Math.min(devicePixelRatio||1,1.5),320,1280));if(Math.abs(w-canvas.width)>8){canvas.width=w;canvas.height=Math.round(w*9/16);requestDraw();}}).observe(screen);
 
     // ------------------------------------------------------------ playing
@@ -152,6 +201,7 @@
     function rulerStep(){return [.25,.5,1,2,5,10,15,30,60].find(s=>s*pps>=56)||60;}
     function clipLabel(c){
       if(c.kind==='text')return c.text||'Title';const cam=CAM[c.camera]?.name||c.camera;
+      if(c.focus)return `Contact replay · ${c.focus.label}`;
       return c.freeze?`${cam} · freeze`:`${cam}${c.speed!==1?` · ${c.speed}×`:''}${c.pip?' · corner':''}`;
     }
     function timeline(){
@@ -160,10 +210,11 @@
       const ticks=[];for(let s=0;s<=D;s+=step)ticks.push(`<span class="studio-tick${Math.abs(s/(step*2)-Math.round(s/(step*2)))<1e-6?' major':''}" data-css="left:${(s*pps).toFixed(1)}px">${Math.abs(s/(step*2)-Math.round(s/(step*2)))<1e-6?E.timecode(s).replace(/\.\d+$/,''):''}</span>`);
       const range=doc.range?`<span class="studio-range" data-css="left:${(doc.range.in*pps).toFixed(1)}px;width:${((doc.range.out-doc.range.in)*pps).toFixed(1)}px" title="Exported part"></span>`:'';
       const rows=lanes.filter(track=>track.id!=='V2'||E.onTrack(doc,'V2').length).map(track=>{const tr=doc.tracks.find(x=>x.id===track.id),clips=E.onTrack(doc,track.id).map(c=>{const x=c.start*pps,w=Math.max(3,E.len(c)*pps);
-          const color=c.kind==='text'?'#d9cfb8':CAM[c.camera]?.color||'#888',fx=c.kind==='video'&&c.transition!=='cut'?`<span class="studio-fx" title="${esc(E.TRANSITIONS[c.transition])}"></span>`:'';
+          const color=c.kind==='text'?'#d9cfb8':c.focus?E.CRASH_COLOR:CAM[c.camera]?.color||'#888',fx=c.kind==='video'&&c.transition!=='cut'?`<span class="studio-fx" title="${esc(E.TRANSITIONS[c.transition])}"></span>`:'';
           return `<div class="studio-clip${selected.has(c.id)?' selected':''}${c.kind==='text'?' text':''}" data-id="${c.id}" data-css="left:${x.toFixed(1)}px;width:${w.toFixed(1)}px;--c:${color}" title="${esc(clipLabel(c))} · ${E.timecode(c.start)} to ${E.timecode(E.end(c))}">${fx}<span class="studio-trim l" aria-hidden="true"></span><span class="studio-clip-name">${esc(clipLabel(c))}</span><span class="studio-trim r" aria-hidden="true"></span></div>`;}).join('');
         return `<div class="studio-row${tr.hidden?' off':''}" data-track="${track.id}"><div class="studio-headcell"><span>${NAMES[track.id]}</span></div><div class="studio-lane" data-lane="${track.id}">${clips}</div></div>`;}).join('');
-      tracks.innerHTML=`<div class="studio-row studio-ruler-row"><div class="studio-headcell studio-corner">${E.timecode(duration())}</div><div class="studio-ruler" title="Click or drag to move the red line">${range}${ticks.join('')}</div></div>${rows}<div class="studio-playhead" id="studio-playhead" aria-hidden="true"></div>`;css(tracks);
+      const marks=doc.markers.map(m=>`<span class="studio-mark" data-css="left:${(m.t*pps).toFixed(1)}px;--c:${m.color}" title="${esc(m.label)} · ${E.timecode(m.t)}"></span>`).join('');
+      tracks.innerHTML=`<div class="studio-row studio-ruler-row"><div class="studio-headcell studio-corner">${E.timecode(duration())}</div><div class="studio-ruler" title="Click or drag to move the red line">${range}${ticks.join('')}${marks}</div></div>${rows}<div class="studio-playhead" id="studio-playhead" aria-hidden="true"></div>`;css(tracks);
       playhead(false);
     }
     function playhead(follow){
@@ -226,7 +277,7 @@
       selected=new Set([...selected].filter(id=>editor.doc.clips.some(c=>c.id===id)));
       if(t>duration())t=duration();refresh();requestDraw();
     }
-    function refresh(){timeline();clock();buttons();clipPane();cameraMarks();lookPane();void exportPane();}
+    function refresh(){timeline();clock();buttons();clipPane();cameraMarks();lookPane();void exportPane();sideTabs();}
     function buttons(){
       const u=$('#studio-undo'),r=$('#studio-redo');u.disabled=!editor?.canUndo||!!exporting;r.disabled=!editor?.canRedo||!!exporting;
       u.title=editor?.canUndo?`Undo ${editor.nextUndo()} (Ctrl+Z)`:'Nothing to undo';r.title=editor?.canRedo?`Redo ${editor.nextRedo()} (Ctrl+Shift+Z)`:'Nothing to redo';
@@ -246,19 +297,28 @@
 
     // ------------------------------------------------------------ side panes
     // Brings one part of the side column into view (opening its fold).
-    function showSide(k){if(k==='clip')clipPane();const p=pane(k);p.closest('details')?.setAttribute('open','');requestAnimationFrame(()=>p.scrollIntoView({block:'nearest'}));}
+    // The side panel's tab: Clip while a clip is selected (it opens when one is picked), else what the team chose.
+    let sideTab='cameras',sideSel='';
+    function sideTabs(){const sel=editor&&one()?[...selected].join():'';if(sel&&sel!==sideSel)sideTab='clip';sideSel=sel;if(sideTab==='clip'&&!sel)sideTab='cameras';
+      for(const b of $$('[data-sidetab]')){const k=b.dataset.sidetab;if(k==='clip')b.hidden=!sel;b.setAttribute('aria-selected',String(k===sideTab));}
+      for(const k of ['clip','cameras','tune','moments','look','export'])pane(k).hidden=k!==sideTab;}
+    function showSide(k){if(k==='clip')clipPane();sideTab=k;sideTabs();}
+    // Replacing the Camera row puts the contact replays back where the run touched something.
+    function recrash(d){d.markers=d.markers.filter(m=>m.color!==E.CRASH_COLOR);E.addCrashes(d,take.crashes);}
     function camerasPane(){
       const p=pane('cameras');if(!take){p.innerHTML='';return;}
-      p.innerHTML=`<h4 class="studio-sub">Camera</h4><p class="hint">Move the red line in the timeline, then pick a camera. The video switches to it from there.</p>
+      p.innerHTML=`<p class="hint">Pick a camera: the video switches to it from the red line in the timeline.</p>
         <div class="studio-cams">${CAMS.map(c=>`<button type="button" class="studio-cam" data-cam="${c.id}" data-css="--c:${c.color}" title="${esc(c.hint)}"><kbd>${c.key}</kbd><span>${esc(c.name)}</span></button>`).join('')}</div>
         <p class="hint studio-cam-hint" id="studio-cam-hint"></p>
         <div class="studio-row-buttons"><button type="button" class="secondary" id="studio-autocut" title="Switch cameras automatically, following what the robot does">Pick cameras for me</button><button type="button" class="secondary" id="studio-onecam" title="Go back to one camera for the whole video">Start over</button></div>
-        <details class="sim-fold studio-tune" id="studio-tune"><summary>Adjust this camera</summary><div id="studio-tune-body"></div></details>
-        <details class="sim-fold studio-tune"><summary>Jump to a moment</summary><ol class="studio-moments">${events.map(e=>`<li><button type="button" data-moment="${e.t}" data-css="--c:${CAM[e.camera]?.color||'#aaa'}"><span>${E.timecode(e.t)}</span>${esc(e.label)}</button></li>`).join('')||'<li class="hint">Nothing stood out in this run.</li>'}</ol></details>`;
+`;
+      // What happened in the run, as one list to pick from: the video jumps there.
+      const moments=[...editor.doc.clips.filter(c=>c.focus).map(c=>({t:c.start,label:`Contact with ${c.focus.label} (replay)`})),...events].sort((a,b)=>a.t-b.t);
+      pane('moments').innerHTML=moments.length?`<label>Jump to a moment<select id="studio-moment"><option value="">Choose what happened…</option>${moments.map(e=>`<option value="${e.t}">${E.timecode(e.t)} · ${esc(e.label)}</option>`).join('')}</select></label>`:'<p class="hint">Nothing stood out in this run.</p>';css(pane('moments'));
       css(p);for(const b of p.querySelectorAll('[data-cam]'))b.onclick=()=>cutTo(b.dataset.cam);
-      for(const b of p.querySelectorAll('[data-moment]'))b.onclick=()=>{pause();setTime(+b.dataset.moment);};
-      p.querySelector('#studio-autocut').onclick=()=>{const clips=E.autoCut(take.frames,{duration:take.duration});if(!clips.length)return say('This run is too short to cut.');editor.change('Pick cameras',d=>E.ops.replaceTrack(d,'V1',clips));selected.clear();refresh();say(`The video now switches between ${new Set(clips.map(c=>c.camera)).size} cameras ${clips.length-1} times. Press Play to watch; Undo puts it back.`);};
-      p.querySelector('#studio-onecam').onclick=()=>{const camera=take.view==='2d'?'top':'main';editor.change('Start over',d=>E.ops.replaceTrack(d,'V1',[E.videoClip({start:0,in:0,out:take.duration,camera})]));selected.clear();refresh();say('Back to one camera for the whole video.');};
+      const moment=pane('moments').querySelector('#studio-moment');if(moment)moment.onchange=()=>{if(moment.value==='')return;pause();setTime(+moment.value);};
+      p.querySelector('#studio-autocut').onclick=()=>{const clips=E.autoCut(take.frames,{duration:take.duration});if(!clips.length)return say('This run is too short to cut.');editor.change('Pick cameras',d=>{E.ops.replaceTrack(d,'V1',clips);recrash(d);});selected.clear();refresh();say(`The video now switches between ${new Set(clips.map(c=>c.camera)).size} cameras ${clips.length-1} times. Press Play to watch; Undo puts it back.`);};
+      p.querySelector('#studio-onecam').onclick=()=>{const camera=take.view==='2d'?'top':'main';editor.change('Start over',d=>{E.ops.replaceTrack(d,'V1',[E.videoClip({start:0,in:0,out:take.duration,camera})]);recrash(d);});selected.clear();refresh();say('Back to one camera for the whole video.');};
       cameraMarks();
     }
     // Which camera shows at the playhead, and its fine-tuning.
@@ -266,7 +326,7 @@
       const p=pane('cameras');if(!editor)return;const c=E.at(editor.doc,'V1',t),id=c?.kind==='video'?c.camera:null;
       for(const b of p.querySelectorAll('[data-cam]'))b.setAttribute('aria-pressed',String(b.dataset.cam===id));
       const hint=p.querySelector('#studio-cam-hint');if(hint)hint.textContent=id?`Showing now: ${CAM[id].label}. ${CAM[id].hint}`:'Nothing on the Camera row at the red line.';
-      const body=p.querySelector('#studio-tune-body');if(!body)return;const key=id||'';if(body.dataset.cam===key&&!body.dataset.stale)return;body.dataset.cam=key;delete body.dataset.stale;
+      const body=$('#studio-tune-body');if(!body)return;const key=id||'';if(body.dataset.cam===key&&!body.dataset.stale)return;body.dataset.cam=key;delete body.dataset.stale;
       if(!id||id==='main'||id==='top'){body.innerHTML=`<p class="hint">${id?`${CAM[id].name} has nothing to adjust: it films the way the recordings always have.`:'Move the playhead over a clip.'}</p>`;return;}
       const s=K.settings(editor.doc.cameras)[id],modes=K.CAMERAS.find(x=>x.id===id).modes||{};
       const slider=(k,label,min,max,step,unit='')=>`<label>${label} <output>${s[k]}${unit}</output><input type="range" data-tune="${k}" min="${min}" max="${max}" step="${step}" value="${s[k]}"></label>`;
@@ -302,7 +362,8 @@
     }
     function lookPane(){
       const p=pane('look');if(!editor){p.innerHTML='';return;}const o=editor.doc.overlays;
-      p.innerHTML=`<p class="hint">Shown on top of the picture. To add your own words, use + Text under the video.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}`;
+      p.innerHTML=`<p class="hint">Shown on top of the picture. To add your own words, use + Text under the video.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
+      p.querySelector('#studio-end-card').onclick=()=>{const on=editor.doc.endCard===false;editor.change(on?'Add end card':'Remove end card',d=>{d.endCard=on;});lookPane();requestDraw();};
       for(const input of p.querySelectorAll('[data-overlay]'))input.onchange=()=>editor.change(input.checked?'Show overlay':'Hide overlay',d=>{d.overlays[input.dataset.overlay]=input.checked;});
     }
 
@@ -367,20 +428,37 @@
     // ------------------------------------------------------------ the recording
     // next: {frames, ctx (the cameras' view of the robot), state (what the 3D field shows), name, view, seconds}.
     // The cameras also get the field's solid parts from the field info, to keep out of them.
+    // A full match (a run with an autonomous and a teleop) can be edited whole or one period at a time; a period
+    // is the frames of that part alone, with the contacts in it, and each part keeps its edit while another is open.
+    let run=null,parts=null,part='all',partDocs={};
     async function load(next){
-      pause();const F=next.frames;if(!F?.length)return;
+      if(!next.frames?.length)return;
+      const s=V.sections(next.frames);run=next;parts=s.auto&&s.teleop?s:null;part='all';partDocs={};
+      $('#studio-part-box').hidden=!parts;if(parts)$('#studio-part').innerHTML=options({all:'Whole match',auto:V.SECTIONS.auto,teleop:V.SECTIONS.teleop},'all');
+      await open(next);
+    }
+    function openPart(key){
+      partDocs[part]=editor.doc;part=key;const [a,b]=parts[key],F=run.frames.slice(a,b+1),off=F[0].time-run.frames[0].time,span=F.at(-1).time-F[0].time;
+      const crashes=(run.crashes||[]).filter(c=>c.at>=off&&c.at<=off+span).map(c=>({...c,at:c.at-off}));
+      return open({...run,frames:F,crashes,name:key==='all'?run.name:`${run.name||'Run video'} - ${V.SECTIONS[key]}`},partDocs[key]);
+    }
+    $('#studio-part').onchange=e=>{if(!take||exporting){e.target.value=part;return;}void openPart(e.target.value);};
+    async function open(next,kept){
+      pause();const F=next.frames;
       take={...next,t0:F[0].time,duration:Math.max(E.MIN,F.at(-1).time-F[0].time),ctx:{...next.ctx,rig:K.rig(next.ctx),field:K.field(next.state?.info)}};
-      const doc=E.create({recording:{id:'take',duration:take.duration},name:next.name||'Run video'});if(next.view==='2d')doc.clips[0].camera='top';
-      Object.assign(doc.overlays,{match:true,velocity:true,path:next.view!=='2d'});
+      const doc=kept||E.create({recording:{id:'take',duration:take.duration},name:next.name||'Run video'});
+      // Where the robot touched a wall, a field structure or a no-go zone, the video stops and zooms in on it.
+      take.crashes=(next.crashes||[]).filter(c=>Number.isFinite(c?.at)&&c.at<take.duration);
+      if(!kept){if(next.view==='2d')doc.clips[0].camera='top';Object.assign(doc.overlays,{match:true,velocity:true,path:next.view!=='2d'});E.addCrashes(doc,take.crashes);}
       editor=new E.Editor(doc,{onChange:changed});paths={};pathKeys={};warmPaths();trail=buildTrail(F);events=E.events(F);selected.clear();t=0;
       $('#studio-name').value=doc.name;$('#studio-meta').textContent=`${E.timecode(take.duration).replace(/\.\d+$/,'')} long`;
-      say('Press Play to watch it. Save video keeps it; changing it first is optional.');
+      say(take.crashes.length?`The robot touched something ${take.crashes.length===1?'once':`${take.crashes.length} times`}: the video stops and zooms in on each one (red on the timeline). Press Play to watch it.`:'Press Play to watch it. Save video keeps it; changing it first is optional.');
       camerasPane();requestAnimationFrame(fitZoom);refresh();
       $('#studio-loading').hidden=false;$('#studio-loading').textContent='Getting the cameras ready…';
       try{cam=await opts.camera();$('#studio-loading').hidden=true;}catch(e){$('#studio-loading').textContent=e.message||'The cameras could not load.';}
       requestDraw();
     }
-    function clear(){pause();exporting?.abort();take=null;editor=null;paths={};pathKeys={};trail=null;events=[];selected.clear();pctx.clearRect(0,0,canvas.width,canvas.height);tracks.innerHTML='';for(const k of ['cameras','clip','look','export'])pane(k).innerHTML='';say('');}
+    function clear(){pause();exporting?.abort();run=null;parts=null;partDocs={};$('#studio-part-box').hidden=true;take=null;editor=null;paths={};pathKeys={};trail=null;events=[];selected.clear();pctx.clearRect(0,0,canvas.width,canvas.height);tracks.innerHTML='';for(const k of ['cameras','clip','look','export'])pane(k).innerHTML='';say('');}
     // The tab is on screen (or not): playing stops when it is hidden.
     function show(on){shown=!!on;if(!shown){pause();return;}if(take){requestAnimationFrame(()=>{if(pps===40)fitZoom();else timeline();requestDraw();});}}
     return {load,show,clear,has:()=>!!take,busy:()=>!!exporting};

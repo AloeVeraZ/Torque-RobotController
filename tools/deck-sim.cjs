@@ -205,7 +205,7 @@ function launcher(dev){
   const version=require('../package.json').devDependencies?.electron,cached=path.join(root,'.cache',`runtime-${process.platform}-${process.arch}-${version}`,process.platform==='win32'?'electron.exe':'electron');
   if(fs.existsSync(cached))return {exe:cached,app:root};
   try{return {exe:require('electron'),app:root};}catch{}
-  throw Error('Deck Driver Station was not found. Install it, or run from a checkout with its Electron runtime in .cache.');
+  throw Error('Torque was not found. Install it, or run from a checkout with its Electron runtime in .cache.');
 }
 function show(file,setup,flags){
   const {exe,app}=launcher(flags.dev===true),cad=setup.deckCli?.model,tab=['setup','plan','run'].includes(flags.tab)?flags.tab:'run';
@@ -214,7 +214,7 @@ function show(file,setup,flags){
   if(cad?.file&&fs.existsSync(cad.file))args.push(`--deck-sim-model=${cad.file}`,`--deck-sim-front=${cad.front||'+x'}`,`--deck-sim-top=${cad.top||'+z'}`);
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
   spawn(exe,args,{detached:true,stdio:'ignore',env,windowsHide:false}).unref();
-  return `Opening ${path.basename(file)} in Deck Driver Station (${tab==='run'?'Run & review':tab==='plan'?'Path planning':'Setup'}${flags.run?', starting the run':''}). Simulation closes any live robot connection.`;
+  return `Opening ${path.basename(file)} in Torque (${tab==='run'?'Run & review':tab==='plan'?'Path planning':'Setup'}${flags.run?', starting the run':''}). Simulation closes any live robot connection.`;
 }
 
 

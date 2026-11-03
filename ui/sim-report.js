@@ -20,10 +20,13 @@
   }
   const contactKind=id=>id==='field-wall'?'wall':/^(field|goal)-/.test(id)?'field':'zone';
   const KIND={wall:'the field wall',field:'a field structure',zone:'a no-go zone'};
-  // frames: recorded run frames. ctx: {pins:[{x,y,path:{power}}], defaultPower, autoSeconds, optimized}.
+  // frames: recorded run frames. ctx: {pins:[{x,y,path:{power}}], defaultPower, autoSeconds, optimized, whole}.
+  // Without `whole` the report covers the route, and a run with no route result has none; with it the report covers
+  // every frame, which is how teleop, driven by hand and with no result, is reported.
   function build(frames,ctx={}){
-    const end=[...frames].reverse().find(f=>f.result)?.result;if(!end||!frames.length)return null;
-    const pins=ctx.pins||[],t0=frames[0].time,stop=end.time,run=frames.filter(f=>f.time<=stop+1e-6),total=Math.max(0,stop-t0);
+    const found=[...frames].reverse().find(f=>f.result)?.result;if(!frames.length||!found&&!ctx.whole)return null;
+    const driven=!found,lastFrame=frames.at(-1),end=found||{time:lastFrame.time,violations:lastFrame.violations};
+    const pins=ctx.pins||[],t0=frames[0].time,stop=ctx.whole?lastFrame.time:end.time,run=frames.filter(f=>f.time<=stop+1e-6),total=Math.max(0,stop-t0);
     // Time per leg, split by activity.
     const legs=[],blank=i=>({index:i,drive:0,turn:0,pause:0,idle:0,total:0,start:null,actions:new Set()});let count=null,before=0;
     for(let i=0;i<run.length;i++){
@@ -37,7 +40,7 @@
     // Contacts that started during the run. Robots usually start against the wall, so contact made
     // before the robot has moved an inch from its start pose is where it was placed, not the route.
     const contacts=[],home=frames[0].truth,moved=f=>home&&f.truth&&Math.hypot(f.truth.x-home.x,f.truth.y-home.y)>1;let prev=new Set([...(frames[0].contacts||[]),...(frames[0].hit||[])]),away=false;
-    for(const f of run){const now=new Set([...(f.contacts||[]),...(f.hit||[])]);away||=moved(f);for(const id of now)if(!prev.has(id)&&away){const leg=legOf(f);contacts.push({id,kind:contactKind(id),time:f.time-t0,pin:editable&&leg?leg.index:null,label:leg?`${editable?'Path':'Leg'} ${leg.index+1}`:'the start'});}prev=now;}
+    for(const f of run){const now=new Set([...(f.contacts||[]),...(f.hit||[])]);away||=moved(f);for(const id of now)if(!prev.has(id)&&away){const leg=legOf(f);contacts.push({id,kind:contactKind(id),time:f.time-t0,pin:editable&&leg?leg.index:null,label:leg?`${editable?'Path':'Leg'} ${leg.index+1}`:driven?'teleop':'the start'});}prev=now;}
     const last=pins.at(-1),endError=last&&end.truth&&['route','timed'].includes(end.kind)?Math.hypot(end.truth.x-last.x,end.truth.y-last.y):null;
     const estimateError=end.estimate&&end.truth?Math.hypot(end.estimate.x-end.truth.x,end.estimate.y-end.truth.y):null;
     const zones=end.violations?.length||0,mech=[...run].reverse().find(f=>f.mechanisms)?.mechanisms||null;
@@ -49,7 +52,7 @@
     // Suggestions, most useful first. Each names what the run measured.
     const tips=[];
     if(timedOut){const at=out.at(-1);tips.push({pin:at?.pin??null,text:`The route needs more than the ${auto??'autonomous'}${auto?' s':''} period${at?` (it was on ${at.label})`:''}. Remove a path, shorten pauses or raise motor power.`});}
-    if(grouped.size)tips.push({pin:[...grouped.values()][0].pin,text:'Move that path’s points away from what it touched, or raise “Space around obstacles” in Path planning → Route options.',setting:'clearance'});
+    if(grouped.size&&!driven)tips.push({pin:[...grouped.values()][0].pin,text:'Move that path’s points away from what it touched, or raise “Space around obstacles” in Path planning → Route options.',setting:'clearance'});
     const slow=out.length>1?out.reduce((a,b)=>b.total>a.total?b:a):null;
     if(slow&&total>0){const parts=[slow.pause>.05&&`${s1(slow.pause)} stopped for ${slow.actions.length?slow.actions.join(', ').toLowerCase():'a pause'}`,slow.turn>.05&&`${s1(slow.turn)} turning in place`,slow.idle>.2&&`${s1(slow.idle)} stopped`].filter(Boolean);
       tips.push({pin:slow.pin,text:`${slow.label} takes the longest: ${s1(slow.total)} of ${s1(total)}${parts.length?`, including ${parts.join(' and ')}`:''}. Changes there save the most time.`});}
@@ -62,13 +65,15 @@
     if(ctx.optimized===false&&out.length>1)tips.push({pin:null,setting:'optimize',text:'Optimize (Path planning → Route options) test-drives straight and smooth shapes for your paths and keeps the fastest safe one.'});
     if(!timedOut&&!issues.length&&auto&&auto-total>5)tips.push({pin:null,text:`${s1(auto-total)} of the autonomous period is left: room for another path or more scoring.`});
     const level=timedOut?'bad':issues.some(i=>i.level==='bad')?'bad':issues.length?'warn':'ok';
-    const title=timedOut?'Autonomous ended before the route finished':issues.length?`Route finished in ${s1(total)}, with ${issues.length} thing${issues.length>1?'s':''} to check`:`Route finished cleanly in ${s1(total)}`;
+    const title=driven?`Teleop ran for ${s1(total)}${issues.length?`, with ${issues.length} thing${issues.length>1?'s':''} to check`:''}`:timedOut?'Autonomous ended before the route finished':issues.length?`Route finished in ${s1(total)}, with ${issues.length} thing${issues.length>1?'s':''} to check`:`Route finished cleanly in ${s1(total)}`;
     const facts=[['Time',auto?`${s1(total)} of the ${auto} s autonomous${timedOut?'':` · ${s1(Math.max(0,auto-total))} to spare`}`:s1(total),timedOut?'bad':'']];
     if(finite(endError))facts.push(['Final position',`${endError.toFixed(1)} in from the last end point`,endError>2?'warn':'']);
     if(finite(estimateError))facts.push(['Position tracking',`the robot’s own estimate was ${estimateError.toFixed(1)} in off at the end`,estimateError>2?'warn':'','Sensor estimate: how far the position the robot worked out from its odometry and IMU was from where it really was, at the end of the route. Large values mean its sensors or their offsets need checking.']);
     facts.push(['Contact',contacts.length?[...new Set(contacts.map(c=>KIND[c.kind]))].join(', '):'None',contacts.some(c=>c.kind!=='wall')||zones?'bad':contacts.length?'warn':'']);
     if(mech&&finite(mech.score))facts.push(['Points',`${mech.score}${mech.shots?` · ${mech.landed} of ${mech.shots} shots landed`:''}`,'']);
-    return {level,title,total,before,auto,legs:out,contacts,issues,tips:tips.slice(0,3),facts,endError,estimateError,timedOut};
+    // A full match's report is about its route; the points go on through teleop.
+    const matchScore=lastFrame.mechanisms?.score;if(!driven&&lastFrame.time>stop&&finite(matchScore)&&frames.some(f=>f.practice?.phase==='teleop'))facts.push(['Full match points',String(matchScore),'']);
+    return {level,title,total,before,auto,legs:out,contacts,issues,tips:tips.slice(0,3),facts,endError,estimateError,timedOut,driven};
   }
 
   // ------------------------------------------------------------------ drawing
@@ -83,7 +88,7 @@
     const fix=report.issues.find(i=>i.pin!==null)||(report.timedOut&&report.tips.find(t=>t.pin!==null));
     const steps=[];
     if(report.level!=='ok'&&fix&&onEdit)steps.push({id:'fix',label:`Fix path ${fix.pin+1} →`,primary:true,run:()=>onEdit(fix.pin)});
-    if(onExport)steps.push({id:'export',label:'Export to your robot →',primary:report.level==='ok',run:onExport});
+    if(onExport&&!report.driven)steps.push({id:'export',label:'Export to your robot →',primary:report.level==='ok',run:onExport});
     if(onOutput)steps.push({id:'output',label:'See each step',primary:false,run:onOutput});
     return steps;
   }

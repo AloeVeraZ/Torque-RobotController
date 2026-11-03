@@ -85,7 +85,7 @@ import deck.pathing.DeckFollower.Path;
 import deck.pathing.DeckFollower.Interpolator;
 
 /**
- * Route planned in Deck Driver Station: ${comment(layout.name||'route')} (${comment(layout.fieldName||layout.field)}).
+ * Route planned in Torque: ${comment(layout.name||'route')} (${comment(layout.fieldName||layout.field)}).
  * Deck route controller API. Field frame: inches, origin bottom-left, +X right, +Y up, heading CCW.
  * Robot footprint: ${n(route.footprint.front)} in front, ${n(route.footprint.rear)} in rear, ${n(route.footprint.half)} in each side; clearance ${n(route.clearance)} in.
  * ${route.nonholonomic?'TANK: stop and turn to START_HEADING[i] BEFORE each leg; wait for the IMU to settle.':route.turns?'TURNS: where START_HEADING[i] differs from the heading the robot already has, stop and turn in place to it BEFORE following the leg.':'Holonomic: keep the starting heading throughout.'}

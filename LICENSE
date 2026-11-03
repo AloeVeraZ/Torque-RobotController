@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 AloeVeraZ and Deck Driver Station contributors
+Copyright (c) 2026 AloeVeraZ and Torque contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ---------------------------------------------------------------------------
-This license covers the code written for Deck Driver Station. Released builds
+This license covers the code written for Torque. Released builds
 also include third-party components that keep their own licenses, listed in
 THIRD-PARTY-NOTICES.md. In particular, the simulator's physics come from DSIM,
 which is licensed for NONCOMMERCIAL use only (PolyForm Noncommercial 1.0.0), so

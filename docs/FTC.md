@@ -1,6 +1,6 @@
 # FTC robots (REV Control Hub / Robot Controller)
 
-Deck Driver Station includes its own FTC Driver Station. It is used only for FTC robots;
+Torque includes its own FTC Driver Station. It is used only for FTC robots;
 your other robots keep opening their own website.
 
 ## Setting up an FTC robot once
@@ -43,7 +43,7 @@ desktops, stacked on narrow windows like the phone app.
 
 | Area | What it does |
 | --- | --- |
-| Top bar | Driver Station name (`9999-C-DS` for robot network `9999-C-RC`), **Robot Connected** banner, Network, Ping, signal, User 1 / User 2 gamepads, ••• menu |
+| Top bar | Driver Station name (`9999-C-DS` for robot network `9999-C-RC`), **Robot Connected** banner, Network, Ping, signal, User 1 / User 2 gamepads, Close robot, fullscreen, ⋯ menu |
 | Practice Timer | 2:30 match clock with ▶: start at Autonomous (3 s lead-in), the Auto → TeleOp transition (8 s), TeleOp (2:00), or Endgame (last 30 s). Beeps mark each change. It runs independently of op modes |
 | Config tile | The robot's active configuration, or `<No Config Set>` |
 | ▼ Select Op Mode ▼ | Left ▼ lists Autonomous op modes, right ▼ lists TeleOp, grouped like the FTC Driver Station |
@@ -98,7 +98,8 @@ desktops, stacked on narrow windows like the phone app.
 ## Sending an autonomous from the simulator
 
 Simulation → Run & review → Export → **Send to robot** puts an OnBot Java autonomous and its
-check TeleOp on a Control Hub over its Wi-Fi. It reads the robot's active configuration with the
+check TeleOp on a Control Hub, over its USB cable or its Wi-Fi: the panel looks for a hub on USB and
+for a robot network, and picks what it finds (USB first). It reads the robot's active configuration with the
 same commands the FTC Driver Station uses (`CMD_REQUEST_CONFIGURATIONS`,
 `CMD_REQUEST_PARTICULAR_CONFIGURATION`) and checks every device name the code uses. A device the
 robot does not have goes into a new configuration: Deck scans the hubs (`CMD_SCAN`,
@@ -107,7 +108,9 @@ robot does not have goes into a new configuration: Deck scans the hubs (`CMD_SCA
 the hub's own OnBot Java server on port 8080, and Drive selects the new autonomous the next time
 the robot is opened. It never starts the autonomous.
 
-Its **Guided check** runs the check TeleOp from the same panel: INIT and START as a Driver Station,
+**Calibrate** (step 3 of the Setup & Calibrate tab) has the same Send to robot panel, then the **Guided check**,
+a list of what the check measures for the setup, the on-robot checklist, and gamepad stick
+calibration. The guided check runs the check TeleOp: INIT and START as a Driver Station,
 each question shown with buttons that press gamepad 1 on the robot (Controller 1 answers too), STOP
 or Space to stop. With odometry pods, a Pinpoint or an OTOS, its last steps are on the floor: two
 pushes by hand and one turn on the spot find which way each pod counts and where each one sits.

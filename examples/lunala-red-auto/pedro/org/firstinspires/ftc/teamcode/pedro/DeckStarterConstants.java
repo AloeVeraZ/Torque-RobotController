@@ -16,7 +16,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 /**
- * STARTING VALUES for Pedro Pathing 3.0.2, estimated by Deck Driver Station from the robot set up in its
+ * STARTING VALUES for Pedro Pathing 3.0.2, estimated by Torque from the robot set up in its
  * simulator (mecanum, goBILDA Pinpoint). They are not measurements of your robot.
  * Before driving fast: run Deck's guided check (it finds the motor directions and where the odometry sits)
  * and export again, then run the Pedro Quickstart tuners and replace the Foresight numbers with what they measure.

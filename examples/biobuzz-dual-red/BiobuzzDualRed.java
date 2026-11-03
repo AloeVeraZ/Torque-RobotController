@@ -29,7 +29,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
  * write anything else (or your own version of an action) in RobotActions.
  * Calibrate wheel travel, pod offsets and control gains on the actual robot.
  */
-@Autonomous(name = "BIOBUZZ dual red (Deck)", group = "Deck Driver Station")
+@Autonomous(name = "BIOBUZZ dual red (Deck)", group = "Torque")
 public class PlannedRouteAuto extends LinearOpMode {
     private DeckFollower follower;
     private RouteActions actions;

@@ -7,7 +7,7 @@ import com.pedropathing.paths.Path;
 import com.pedropathing.paths.interpolator.Interpolator;
 
 /**
- * Route "BIOBUZZ red auto" (BIOBUZZ), planned in Deck Driver Station, as
+ * Route "BIOBUZZ red auto" (BIOBUZZ), planned in Torque, as
  * Pedro Pathing 3.0.2 paths. Generated file: change the route in Deck and export again.
  *
  * Field frame (the same as Pedro's): inches, origin at the bottom-left field corner, +X right, +Y up,

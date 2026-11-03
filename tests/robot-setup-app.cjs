@@ -3,12 +3,14 @@
 // Control Hub and its OnBot Java server:
 //  A. a robot configured with other drive names and without two of the mechanism's devices: Deck takes the robot's
 //     names, adds the two devices to a copy of its configuration (a port moved by hand swaps with the other), uploads and
-//     builds; the Guided check runs from the panel (the simulated hub's stand-in check) and its answer goes into the
+//     builds; the Guided check runs from Calibrate (the simulated hub's stand-in check) and its answer goes into the
 //     setup; and Drive opens with the autonomous selected;
-//  B. a robot with no configuration: Deck scans its hubs and saves one with every device.
+//  B. a robot with no configuration: Deck scans its hubs and saves one with every device;
+//  C. Calibrate → Live debug: Torque Debug put on the robot and run (the simulated hub's stand-in), a motor held to run
+//     and read back, and the Mechanisms gates: the hub read by Live debug, the intake confirmed, pulsed and signed.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/robot-setup-app.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
-const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright'),{startUdpRobot,startOnBotJava,listBuilt,CONFIG_XML}=require('../tools/ftc-sim.cjs'),RobotConfig=require('../ui/ftc/robot-config.js');
+const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright'),{startUdpRobot,startOnBotJava,startDebugServer,listBuilt,CONFIG_XML}=require('../tools/ftc-sim.cjs'),RobotConfig=require('../ui/ftc/robot-config.js');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/robot-setup');fs.mkdirSync(out,{recursive:true});
 // The robot and the app's station use their own loopback addresses, so this runs beside the other app tests.
 const ROBOT='127.0.0.6',STATION='127.0.0.7',DEBUG_PORT=9337;
@@ -25,8 +27,10 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     .replace('            <goBILDA5202SeriesMotor name="indexer" port="1" />\n','').replace('            <goBILDA5202SeriesMotor name="turret" port="2" />\n','');
   const robot=await startUdpRobot({address:ROBOT,configurations:[{name:'competition',xml}]}),onbot=await startOnBotJava({address:ROBOT,port:8080,buildMs:300,built:listBuilt(robot.sim)});
   const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-robot-setup-')),env={...process.env,DECK_HEADLESS:'1',DECK_CONTROLLER_TEST:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  // This test's robot is the simulated one. A real Control Hub on this computer's USB takes no part: with this in ADB's place, nothing can talk to it.
+  env.ADB=process.platform==='win32'?path.join(process.env.SystemRoot||'C:\\Windows','System32','where.exe'):'/bin/false';
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root,`--remote-debugging-port=${DEBUG_PORT}`,`--deck-sim-open=${path.join(root,'examples/biobuzz-red-auto.json')}`,'--deck-sim-tab=run'],env});
-  const errors=[];let drive=null;
+  const errors=[];let drive=null,debug=null;
   try{
     const page=await app.firstWindow();page.setDefaultTimeout(60000);page.on('pageerror',e=>errors.push(e.message));
     await app.evaluate(({app},[robotHost,station])=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{FtcSocket}=req('./src/ftc.cjs'),open=FtcSocket.prototype.open;
@@ -37,7 +41,9 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     const text=s=>page.textContent(s),texts=s=>page.$$eval(s,l=>l.map(x=>x.textContent)),finished=()=>page.waitForFunction(()=>/Built on the robot|could not build|Could not|did not/.test(document.querySelector('#sim-send-status').textContent),null,{timeout:90000});
     const shotPlan=async name=>{await page.locator('#sim-send-plan').evaluate(e=>e.scrollIntoView({block:'start'}));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,name+'.png')});};
     await loaded();await page.evaluate(host=>window.deck.save({name:'Sim hub',url:host,kind:'ftc'}),ROBOT);await exportPanel();
-    await page.focus('#sim-send-robot');await page.waitForFunction(host=>[...document.querySelector('#sim-send-robot').options].some(o=>o.value===host),ROBOT);await page.selectOption('#sim-send-robot',ROBOT);
+    // Send to robot offers the USB cable or Wi-Fi; on Wi-Fi it reaches the robot saved in Settings.
+    const useWifi=async()=>{await page.click('[data-link=wifi]');await page.waitForFunction(host=>document.querySelector('#sim-send-robot').value===host,ROBOT);};
+    await useWifi();
 
     // ---- A: the robot's own names, two devices added to a copy of its configuration.
     await page.click('#sim-send-go');await page.waitForSelector('#sim-send-confirm:not([hidden])',{timeout:40000});
@@ -67,8 +73,10 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     assert.equal(RobotConfig.check(await page.evaluate(()=>window.DeckSimFtc.robotNeeds(JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot,'fused',JSON.parse(localStorage.getItem('deck-simulation-project-v2')).mechanisms)),{devices:saved}).ok,true,'every name now matches the new configuration');
     // The guided check, run from here: the simulated hub's stand-in asks about the front left wheel, then a servo.
     assert.deepEqual(robot.sim.opModes.filter(m=>m.source==='ONBOTJAVA').map(m=>m.name),['BIOBUZZ red auto (Deck)','BIOBUZZ red auto check (Deck)'],'the robot lists what it built');
-    await page.click('#sim-check-start');await page.click('#sim-check-go');
-    const answer=async label=>{const b=page.locator('#sim-check-answers button',{hasText:label});await b.waitFor({timeout:20000});await b.click();};
+    // The guided check is in Calibrate, which takes the Send to robot panel with it.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-calibrate');await page.waitForSelector('#calibrate-view #sim-send');await page.click('#sim-check-start');await page.click('#sim-check-go');
+    const answer=async label=>{const b=page.locator('#sim-check-answers button',{hasText:label});await b.waitFor({timeout:20000}).catch(async e=>{throw Error(`${e.message}
+Guided check said: ${await text('#sim-check-status').catch(()=>'')} | ${await text('#sim-check-prompt').catch(()=>'')}`);});await b.click();};
     await answer('B · no, the other way');assert.equal(robot.sim.opState,'running');
     await answer('▲ move');await page.waitForFunction(()=>/Now at 0\.410\./.test(document.querySelector('#sim-check-prompt').textContent));await answer('A · save');
     await page.waitForFunction(()=>/^Done/.test(document.querySelector('#sim-check-step').textContent));
@@ -91,7 +99,7 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
 
     // ---- B: no configuration on the robot; back to the simulator, which closes the robot in Drive.
     robot.sim.configurations=[];robot.sim.active='No Config Set';
-    await page.click('#simulate-tab');await loaded();await exportPanel();await page.selectOption('#sim-send-robot',ROBOT);
+    await page.click('#simulate-tab');await loaded();await exportPanel();await useWifi();
     await page.click('#sim-send-go');await page.waitForSelector('#sim-send-confirm:not([hidden])',{timeout:40000});
     assert.match(await text('#sim-send-status'),/The robot has no active configuration\. Send to robot makes one for this code\./);
     const fresh=await texts('#sim-send-steps li');assert.match(fresh[0],/Save a new configuration “Deck biobuzz-red-auto” with the robot's hubs and 10 devices/);
@@ -106,10 +114,41 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     assert.deepEqual(RobotConfig.parse(robot.sim.configurations[0].xml).devices.map(d=>`${d.name}@${d.hub}:${d.bus!==undefined?'i2c'+d.bus:d.port}`),
       ['intake@Expansion Hub 2:0','shooter@Expansion Hub 2:1','indexer@Expansion Hub 2:2','turret@Expansion Hub 2:3','leftFront@Control Hub:0','rightFront@Control Hub:1','leftRear@Control Hub:2','rightRear@Control Hub:3','imu@Control Hub:i2c0','pinpoint@Control Hub:i2c1']);
     // Space stops a running check, as it stops an op mode on a Driver Station.
-    await page.click('#sim-check-start');await page.click('#sim-check-go');await page.locator('#sim-check-answers button').first().waitFor({timeout:20000});
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-calibrate');await page.waitForSelector('#calibrate-view #sim-send');await page.click('#sim-check-start');await page.click('#sim-check-go');await page.locator('#sim-check-answers button').first().waitFor({timeout:20000});
     assert.equal(robot.sim.opState,'running');await page.keyboard.press('Space');await page.waitForFunction(()=>document.querySelector('#sim-check-run').hidden,null,{timeout:10000});
     assert.equal(robot.sim.opState,'stopped');assert.match(await text('#sim-check-status'),/^Stopped before the last step/);
+
+    // ---- C: Live debug, then the Mechanisms gates, on the robot's own configuration.
+    debug=await startDebugServer({address:ROBOT,sim:robot.sim,xml:robot.sim.configurations.find(c=>c.name===robot.sim.active).xml});
+    await page.click('#cal-tab-debug');await page.click('[data-debug-install]');await until(()=>robot.sim.opModes.some(m=>/^TorqueDebug-/.test(m.name)),30000,'Torque Debug built');
+    await page.waitForFunction(()=>/TorqueDebug-[0-9.-]+ is on the robot/.test(document.querySelector('[data-debug-status]').textContent));
+    await page.click('[data-debug-start]');await page.waitForSelector('#cal-debug [data-port="motor:intake"]',{timeout:20000});assert.match(robot.sim.opMode,/^TorqueDebug-/);
+    // What is really on a bus is what the hub heard, not that a read came back.
+    {const pill=name=>text(`#cal-debug [data-live="ib:${name}"]`);
+      await until(async()=>await pill('pinpoint')==='Connected',8000,'the Pinpoint answers');assert.equal(await pill('imu'),'Connected');
+      debug.absent.add('pinpoint');await until(async()=>await pill('pinpoint')==='Not answering: check its cable',8000,'unplugged, it says so');debug.absent.delete('pinpoint');await until(async()=>await pill('pinpoint')==='Connected',8000,'and back');}
+    // The device check: every device listed; a motor runs at the chosen speed both ways and its encoder proves it.
+    await page.waitForSelector('#cal-debug [data-check-row="intake"]');await page.click('#cal-debug [data-check-one="intake"]');await page.waitForSelector('#cal-debug [data-check-row="intake"][data-state="pass"]',{timeout:15000});assert.match(await page.locator('#cal-debug [data-check-row="intake"]').innerText(),/encoder counted/);
+    await page.locator('#cal-debug [data-check]').evaluate(e=>e.scrollIntoView({block:'start'}));await page.screenshot({path:path.join(out,'c-device-check.png')});
+    // Held, the intake runs and its encoder counts up; let go, it stops (the slider springs back to 0).
+    const slider=page.locator('#cal-debug [data-hold][data-name="intake"]');await slider.scrollIntoViewIfNeeded();const box=await slider.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width*.85,box.y+box.height/2,{steps:4});await wait(700);
+    const held=debug.positions[debug.manifest.motors.indexOf('intake')];await page.mouse.up();assert.ok(held>200,'the held intake turned ('+held+' ticks; robot heard '+JSON.stringify(debug.commands.filter(c=>c[0]!=='P').slice(-4))+')');
+    await until(async()=>+(await text('#cal-debug [data-live="m:intake:pos"]'))>200,5000,'ticks shown');assert.equal(await slider.inputValue(),'0');
+    await wait(500);const still=debug.positions[debug.manifest.motors.indexOf('intake')];await wait(500);assert.equal(debug.positions[debug.manifest.motors.indexOf('intake')],still,'stopped when let go');
+    await page.locator('#cal-debug').evaluate(e=>e.scrollIntoView({block:'start'}));await page.waitForTimeout(150);await page.screenshot({path:path.join(out,'c-live-debug.png')});
+    // Mechanisms: the hub counts as read; the intake is confirmed (G1), pulsed and signed (G2).
+    await page.click('#cal-tab-calibrate');await page.click('#cal-tab-mechanisms');await page.waitForSelector('.cal-g0[data-state=pass]');
+    const chip=g=>page.locator('[data-cal-mech-row="intake:0:roller"] [data-cal-gate="'+g+'"]').first();await chip('G1').click();await page.click('[data-cal-act=pass][data-cal-gate=G1]');await until(async()=>await chip('G1').getAttribute('data-state')==='pass',5000,'G1 passed');
+    await chip('G2').click();await page.click('[data-cal-act=g2-pulse]');await page.waitForSelector('[data-cal-act=g2-sign][data-sign="1"]',{timeout:15000});assert.match(await text('.cal-gate .cal-debug-pulse'),/intake:pos changed by/);
+    await page.click('[data-cal-act=g2-sign][data-sign="1"]');await until(async()=>await chip('G2').getAttribute('data-state')==='pass',5000,'G2 passed');
+    const cal=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).calibration);assert.equal(cal.hub.source,'live');assert.equal(cal.mechs['intake:0:roller'].motorSign,1);assert.equal(cal.mechs['intake:0:roller'].bind,'m:intake:vel');
+    await page.screenshot({path:path.join(out,'c-gates.png')});
+    // The Camera tab: the simulated webcam tunes itself the way the FTC docs say, and the view turns.
+    await page.click('#cal-tab-camera');await page.waitForSelector('#cal-camera [data-cam-canvas]',{state:'visible'});await page.selectOption('#cam-moving','1');await page.selectOption('#cam-rotate','90');assert.ok((await page.locator("#cal-camera [data-cam-canvas]").evaluate(e=>e.style.transform)).includes("rotate(90deg)"));await page.selectOption('#cam-rotate','0');
+    await page.click('#cal-camera [data-cam-tune]');await page.waitForFunction(()=>/Best: exposure/.test(document.querySelector('[data-cam-result]').textContent),null,{timeout:20000});assert.match(await text('[data-cam-result]'),/exposure 5 ms, gain 255/);assert.equal(await page.inputValue('#cam-exposure'),'5');
+    await page.waitForFunction(()=>/Tag 584/.test(document.querySelector('[data-cam-tags]').textContent),null,{timeout:5000});await page.locator('#cal-camera').evaluate(e=>e.scrollIntoView({block:'start'}));await page.waitForTimeout(200);await page.screenshot({path:path.join(out,'c-camera.png')});
+    await page.click('#cal-tab-debug');await page.click('[data-debug-start]');await until(()=>robot.sim.opState==='stopped',10000,'Torque Debug stopped');
     assert.deepEqual(errors,[]);
-    console.log('PASS: robot names taken, two devices added to a copy of the configuration with a port swapped, built, checked with the Guided check, selected in Drive; a robot with no configuration got one from its scan.');
-  }finally{drive?.close();await app.close();await robot.close();await onbot.close();fs.rmSync(data,{recursive:true,force:true});}
+    console.log('PASS: robot names taken, two devices added to a copy of the configuration with a port swapped, built, checked with the Guided check, selected in Drive; a robot with no configuration got one from its scan; Live debug ran a motor and read it back, and the Mechanisms gates confirmed, pulsed and signed the intake.');
+  }finally{drive?.close();await debug?.close();await app.close();await robot.close();await onbot.close();fs.rmSync(data,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exit(1);});

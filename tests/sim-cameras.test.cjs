@@ -12,8 +12,8 @@ test('five cameras, the first being the original follow camera, each with its ow
   assert.deepEqual(K.IDS,['main','mech','turret','chase','intake']);assert.deepEqual(K.CAMERAS.map(c=>c.key),['1','2','3','4','5']);
   assert.equal(K.CAMERAS[0].modes,undefined,'camera 1 has no modes: it stays the original');
   assert.deepEqual(K.settings({main:{fov:20},turret:{mode:'fixed',distance:9,fov:'x'}}).turret,{mode:'fixed',distance:2.5,height:1,swing:0,fov:60});
-  // The turret camera's old "follows the shot" mode is gone: an edit saved with it gets the camera inside the turret.
-  assert.equal(K.settings({turret:{mode:'projectile'}}).turret.mode,'pov');
+  // Camera 3 follows each scored piece unless set otherwise; an unknown mode gets that.
+  assert.equal(K.settings({turret:{mode:'projectile'}}).turret.mode,'piece');assert.equal(K.settings({turret:{mode:'pov'}}).turret.mode,'pov');
   assert.deepEqual(K.settings({}).main,{fov:50});
 });
 
@@ -43,7 +43,7 @@ test('no camera jumps between frames: smoothed paths move a little at a time',()
 const look=(track,i)=>{const p=at(track,i);return Math.atan2(p.l[1]-p.p[1],p.l[0]-p.p[0])*180/Math.PI;};
 const pitch=(track,i)=>{const p=at(track,i);return Math.atan2(p.l[2]-p.p[2],Math.hypot(p.l[0]-p.p[0],p.l[1]-p.p[1]))*180/Math.PI;};
 test('the turret camera rides inside the turret, looking where it aims, and holds steady through a volley',()=>{
-  const pov=K.path('turret',frames,ctx,K.DEFAULTS.turret);assert.equal(K.DEFAULTS.turret.mode,'pov');
+  const pov=K.path('turret',frames,ctx,{...K.DEFAULTS.turret,mode:'pov'});assert.equal(K.DEFAULTS.turret.mode,'piece');
   // Just over the turret (the robot's top) and on it: a few inches behind its pivot, whichever way it turns.
   for(const t of [.5,2.5,5.5,6.5]){const i=index(t),r=frames[i].truth,c=at(pov,i),d=Math.hypot(c.p[0]-r.x,c.p[1]-r.y);assert.ok(d>2.5&&d<4.5,`on the turret at ${t} s (${d.toFixed(2)} in)`);assert.ok(c.p[2]>ctx.robot.heightIn+1&&c.p[2]<ctx.robot.heightIn+4,`just over the robot's top at ${t} s`);}
   assert.ok(Math.abs(look(pov,index(4.5)))<3,'before the swing it looks forward');
@@ -68,8 +68,8 @@ test('with two shooters the turret camera rides the one that fires',()=>{
   const two={...base,aim:{...base.aim,shooters:[{type:'turret',mount:'back',facing:'front',pieces:'pollen'},{type:'turret',mount:'front',facing:'front',pieces:'nectar'}]}};
   const red=videoRun().map(f=>({...f,fieldState:{...f.fieldState,balls:f.fieldState.balls.map(b=>b.state.kind==='flight'?{...b,color:'red'}:b)}}));
   // Each shooter's pivot is 4.7 in from the centre; the camera sits 4 in behind the one it rides.
-  const c=at(K.path('turret',red,{...two,rig:K.rig(two)},K.DEFAULTS.turret),index(.5)),r=red[index(.5)].truth;assert.ok(Math.abs(c.p[0]-r.x-.7)<.3,`over the front shooter (${(c.p[0]-r.x).toFixed(2)})`);
-  const c2=at(K.path('turret',videoRun(),{...two,rig:K.rig(two)},K.DEFAULTS.turret),index(.5));assert.ok(Math.abs(c2.p[0]-r.x+8.7)<.3,`yellow pieces: over the back one (${(c2.p[0]-r.x).toFixed(2)})`);
+  const c=at(K.path('turret',red,{...two,rig:K.rig(two)},{...K.DEFAULTS.turret,mode:'pov'}),index(.5)),r=red[index(.5)].truth;assert.ok(Math.abs(c.p[0]-r.x-.7)<.3,`over the front shooter (${(c.p[0]-r.x).toFixed(2)})`);
+  const c2=at(K.path('turret',videoRun(),{...two,rig:K.rig(two)},{...K.DEFAULTS.turret,mode:'pov'}),index(.5));assert.ok(Math.abs(c2.p[0]-r.x+8.7)<.3,`yellow pieces: over the back one (${(c2.p[0]-r.x).toFixed(2)})`);
 });
 
 test('the rear chase camera trails the chassis, further back at speed; the intake camera looks back at the intake',()=>{
@@ -140,7 +140,7 @@ test('over a turret drawn on the robot’s top the turret camera stays out of it
   const turrets=[{n:0,pivot:[0,0],z0:14,z1:18.6,x0:-3.4,x1:3.4,y:3.4,tip:7.9}],c={...base,turrets},R=K.rig(c);
   assert.equal(R.height,14,'the robot’s own box stays the chassis');assert.equal(R.top,18.6,'it looks as tall as the turret');assert.deepEqual(R.shooters[0].point,[0,0,18.6]);
   assert.equal(K.rig({...base,turrets:[{...turrets[0],hidden:true}]}).top,14,'a turret that is not drawn is not there');
-  const pov=K.path('turret',frames,{...c,rig:R},K.DEFAULTS.turret);
+  const pov=K.path('turret',frames,{...c,rig:R},{...K.DEFAULTS.turret,mode:'pov'});
   for(const t of [.5,2.5,5.5,6.5,6.8]){const i=index(t),r=frames[i].truth,cam=at(pov,i),turn=(frames[i].mechanisms.turret+r.heading)*Math.PI/180;
     const frame=q=>{const dx=q[0]-r.x,dy=q[1]-r.y;return [dx*Math.cos(turn)+dy*Math.sin(turn),-dx*Math.sin(turn)+dy*Math.cos(turn),q[2]];};
     const [along,,up]=frame(cam.p);assert.ok(along<-3.4&&up>18.6+2,`behind the housing and over it at ${t} s (${along.toFixed(1)}, ${up.toFixed(1)})`);

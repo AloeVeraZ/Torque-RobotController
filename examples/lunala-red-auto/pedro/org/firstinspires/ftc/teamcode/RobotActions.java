@@ -4,7 +4,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 /**
- * YOUR mechanism code for the autonomous actions (intake, shooter, arm...). Deck Driver Station
+ * YOUR mechanism code for the autonomous actions (intake, shooter, arm...). Torque
  * created this file once and never overwrites it. The simulator plans the driving; this file does
  * the rest. Each method is called every loop while its action runs and returns true when finished
  * (RouteActions.java has the rules and the current list of actions).

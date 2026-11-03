@@ -12,7 +12,7 @@ set "ELECTRON_RUN_AS_NODE=1"
 set "RUNTIME=%~dp0.cache\runtime-win32-x64-44.8.0\electron.exe"
 if not exist "%RUNTIME%" set "RUNTIME=%LOCALAPPDATA%\DeckDriverStation\runtime\electron.exe"
 if not exist "%RUNTIME%" (
-  echo Node.js was not found. Install Node.js or Deck Driver Station, then try again.
+  echo Node.js was not found. Install Node.js or Torque, then try again.
   exit /b 1
 )
 "%RUNTIME%" "%SCRIPT%" %*

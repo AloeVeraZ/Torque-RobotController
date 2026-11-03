@@ -6,6 +6,8 @@ const {Readable,Transform}=require('node:stream');
 const {execFile,spawn}=require('node:child_process');
 const {promisify}=require('node:util');const run=promisify(execFile);
 const LIMIT=700*1024*1024;
+// GitHub redirects a renamed repository's old URLs. Channel manifests keep the old name for installs from before the rename.
+const RENAMED_FROM={'AloeVeraZ/Torque-RobotController':['AloeVeraZ/SteamDeck-RobotController']};
 function repository(value){const s=String(value||'').trim().replace(/^https:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/$/,'');if(!/^[\w-]+\/[\w.-]+$/.test(s))throw Error('Enter a GitHub repository as owner/repository.');return s;}
 function compare(a,b){const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<3;i++)if(x[i]!==y[i])return x[i]-y[i];return 0;}
 function assetName(version,platform,arch){const suffix=platform==='linux'&&arch==='x64'?'SteamDeck.tar.gz':platform==='win32'&&arch==='x64'?'Windows.zip':platform==='darwin'&&arch==='arm64'?'macOS-arm64.zip':null;if(!suffix)throw Error('Updates support Steam Deck x64, Windows x64, and Apple Silicon.');return `DeckDriverStation-${version}-${suffix}`;}
@@ -56,7 +58,7 @@ class Updater{
     return {releases};
   }
   async check(){if(this.busy)throw Error('An update operation is already in progress.');this.busy=true;this.release=null;this.downloaded=null;try{this.persist();const {releases,note}=await this.releases();const result=selectRelease(releases,this);if(note)result.message+=' '+note;if(result.asset){this.validateUrl(result.asset.browser_download_url,result.tag);this.release=result;}return {...this.info(),...result,asset:result.asset?{name:result.asset.name,size:result.asset.size,kind:result.kind}:undefined};}finally{this.busy=false;}}
-  validateUrl(url,tag){const u=new URL(url);if(u.protocol!=='https:'||u.hostname!=='github.com'||u.username||u.password||!u.pathname.startsWith(`/${this.repo}/releases/download/${encodeURIComponent(tag)}/`))throw Error('The update download must belong to this GitHub repository and release.');return u.href;}
+  validateUrl(url,tag){const u=new URL(url);if(u.protocol!=='https:'||u.hostname!=='github.com'||u.username||u.password||![this.repo,...(RENAMED_FROM[this.repo]||[])].some(repo=>u.pathname.startsWith(`/${repo}/releases/download/${encodeURIComponent(tag)}/`)))throw Error('The update download must belong to this GitHub repository and release.');return u.href;}
   async download(){if(this.busy)throw Error('An update operation is already in progress.');if(!this.release)throw Error('Check for updates first.');this.busy=true;try{
     const {asset,tag}=this.release;let hash=asset.digest?.match(/^sha256:([a-f0-9]{64})$/i)?.[1].toLowerCase();
     if(!hash){const url=this.validateUrl(asset.browser_download_url,tag)+'.sha256';const text=await(await this.response(url,20000)).text();const match=text.trim().match(/^([a-f0-9]{64})\s+\*?([^\r\n]+)$/i);if(!match||match[2]!==asset.name)throw Error('The release has no valid SHA-256 checksum.');hash=match[1].toLowerCase();}

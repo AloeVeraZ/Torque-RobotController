@@ -93,14 +93,14 @@ test('rows: every device the robot needs, with its role, model, port, sensors an
 test('an offline plan: drive motors on the Control Hub, other motors on the Expansion Hub, servos on the Control Hub, sensors by REV’s channel rules',()=>{
   const rows=H.rows(project(WIRING)),{assign,problems}=H.plan(rows,WIRING),at=key=>assign[key]?.label;
   assert.deepEqual(rows.map(r=>[r.key,at(r.key)]),[['robot.frontLeft','Control Hub motor port 0'],['robot.frontRight','Control Hub motor port 1'],['robot.backLeft','Control Hub motor port 2'],['robot.backRight','Control Hub motor port 3'],
-    ['robot.imu','Control Hub I2C bus 0'],['robot.pinpoint','Control Hub I2C bus 1'],['intakes.0.motor','Expansion Hub 2 motor port 0'],['intakes.0.servo','Control Hub servo port 0'],['shooters.0.motor','Expansion Hub 2 motor port 1'],
-    ['shooters.0.indexer','Expansion Hub 2 motor port 2'],['shooters.0.turretMotor','Expansion Hub 2 motor port 3'],['shooters.0.hood','Control Hub servo port 2'],['kin.liftMotor',undefined],
-    ['sensor.hoodAngle','Control Hub analog port 0'],['sensor.turretHome','Expansion Hub 2 digital port 1'],['sensor.turretTb','Expansion Hub 2 encoder port 3'],['sensor.liftHome','Control Hub digital port 0']]);
+    ['robot.imu','Control Hub I2C bus 0'],['robot.pinpoint','Control Hub I2C bus 1'],['intakes.0.motor','Expansion Hub motor port 0'],['intakes.0.servo','Control Hub servo port 0'],['shooters.0.motor','Expansion Hub motor port 1'],
+    ['shooters.0.indexer','Expansion Hub motor port 2'],['shooters.0.turretMotor','Expansion Hub motor port 3'],['shooters.0.hood','Control Hub servo port 2'],['kin.liftMotor',undefined],
+    ['sensor.hoodAngle','Control Hub analog port 0'],['sensor.turretHome','Expansion Hub digital port 1'],['sensor.turretTb','Expansion Hub encoder port 3'],['sensor.liftHome','Control Hub digital port 0']]);
   assert.equal(assign['shooters.0.hood'].wired,true);assert.equal(assign['robot.frontLeft'].wired,false);
   // The Through Bore on the turret is plugged into the turret motor's own encoder input (port 3 counts in hardware): the
   // robot reads it through "turret", whose own encoder is then not used.
   assert.equal(assign['sensor.turretTb'].via,'turret');
-  assert.deepEqual(problems,[{level:'amber',keys:['kin.liftMotor'],text:'No motor port is free for Lift. Run a roller on a continuous servo, or free a motor port.'}]);
+  assert.deepEqual(problems,[{level:'amber',keys:['kin.liftMotor'],text:'No motor port is free for Lift. Run a roller on a continuous servo, or free a motor port.',port:true}]);
   // Deterministic, and the same with no Expansion Hub says to add one; a Servo Hub takes servos past the Control Hub's six.
   assert.deepEqual(H.plan(rows,WIRING),H.plan(rows,WIRING));
   const alone=H.plan(rows,{devices:WIRING.devices});assert.match(alone.problems.map(p=>p.text).join('\n'),/No motor port is free for Intake 1 roller\. Add an Expansion Hub/);
@@ -124,15 +124,15 @@ test('problems: two devices on one port, a model that is not what the mechanism 
     sensors:[{id:'flyTb',model:'rev-through-bore',for:'shooters.0.motor',hub:'expansion',port:2},{id:'home',model:'rev-touch',for:'shooters.0.turretMotor',hub:'control',port:2},{id:'pot',model:'rev-potentiometer',for:'intakes.0.servo',hub:'control',port:1},
       {id:'ghost',model:'rev-color-v3',for:'shooters.1.indexer'},{id:'axon',model:'axon-feedback',for:'intakes.0.servo',hub:'control',port:3}]};
   const p=project(wiring),texts=H.conflicts(H.rows(p),p.robot.wiring).map(x=>`${x.level}: ${x.text}`);
-  for(const want of ['red: Expansion Hub 2 motor port 1 is used by Intake 1 roller and Shooter 1 turret.',
+  for(const want of ['red: Expansion Hub motor port 1 is used by Intake 1 roller and Shooter 1 turret.',
     'red: Shooter 1 feeder is set to run on a motor, but its model, Axon MAX (continuous), is a continuous servo.',
     'amber: Actuonix L16-R 50 mm on Shooter 1 hood is not on the 2026-27 pre-verified list: bring its data sheet to inspection.',
     'red: Shooter 1 flywheel: only its motor’s own encoder can read its speed (a REV Through Bore overflows the hub’s speed reading).',
     'red: Shooter 1 turret: REV Touch Sensor is on Control Hub digital port 2; it reads only on odd digital channels (1, 3, 5 and 7).',
-    'red: Intake 1 ramp servo: REV Potentiometer is on Control Hub analog port 1; it reads only on even analog channels (0 and 2).',
-    'amber: Shooter 1 flywheel: REV Through Bore is on Expansion Hub 2 encoder port 2: ports 1 and 2 count in software and can miss counts from a Through Bore. Use encoder port 0 or 3.',
+    'red: Intake 1 ramp: REV Potentiometer is on Control Hub analog port 1; it reads only on even analog channels (0 and 2).',
+    'amber: Shooter 1 flywheel: REV Through Bore is on Expansion Hub encoder port 2: ports 1 and 2 count in software and can miss counts from a Through Bore. Use encoder port 0 or 3.',
     'amber: shooters.1.indexer: REV Color Sensor V3 measures a device this robot no longer has.',
-    'amber: Intake 1 ramp servo: Axon feedback wire: goBILDA Torque servo has no feedback wire; pick an Axon for intake 1 ramp servo, or another sensor.'])assert.ok(texts.includes(want),want+'\n'+texts.join('\n'));
+    'amber: Intake 1 ramp: Axon feedback wire: goBILDA Torque servo has no feedback wire; pick an Axon for intake 1 ramp, or another sensor.'])assert.ok(texts.includes(want),want+'\n'+texts.join('\n'));
   // A continuous servo turret needs a sensor that tells where it is; the IMU's bus is the hub's own.
   const cr=H.conflicts([{key:'shooters.0.turretMotor',label:'Shooter 1 turret',role:'turret',family:'servo',kind:'crservo',name:'turret'},{key:'robot.imu',label:'IMU',role:'imu',family:'i2c',kind:'imu',name:'imu'},
     {key:'robot.pinpoint',label:'goBILDA Pinpoint',role:'pinpoint',family:'i2c',kind:'pinpoint',name:'pinpoint',hub:'control',bus:0}],null).map(x=>x.text);
@@ -145,9 +145,9 @@ test('problems: two devices on one port, a model that is not what the mechanism 
 test('plain words for each device: what it is, where it is plugged in and what its sensors tell',()=>{
   const p=project(WIRING),rows=H.placed(H.rows(p),p.robot.wiring),say=key=>H.explain(rows.find(r=>r.key===key),p.robot.wiring);
   assert.equal(say('shooters.0.hood'),'Axon MAX "hood" on Control Hub servo port 2; its feedback wire on analog port 0 tells where shooter 1 hood is.');
-  assert.equal(say('shooters.0.motor'),'goBILDA 6000 rpm (1:1) "shooter" on Expansion Hub 2 motor port 1; its encoder tells how fast shooter 1 flywheel spins.');
-  assert.equal(say('sensor.turretTb'),'REV Through Bore "turretEncoder" on Expansion Hub 2 encoder port 3. It tells where shooter 1 turret is. It is read through "turret", the motor on that port.');
-  assert.equal(say('sensor.turretHome'),'REV Touch Sensor "turretHome" on Expansion Hub 2 digital port 1. It tells when shooter 1 turret is at its zero.');
+  assert.equal(say('shooters.0.motor'),'goBILDA 6000 rpm (1:1) "shooter" on Expansion Hub motor port 1; its encoder tells how fast shooter 1 flywheel spins.');
+  assert.equal(say('sensor.turretTb'),'REV Through Bore "turretEncoder" on Expansion Hub encoder port 3. It tells where shooter 1 turret is. It is read through "turret", the motor on that port.');
+  assert.equal(say('sensor.turretHome'),'REV Touch Sensor "turretHome" on Expansion Hub digital port 1. It tells when shooter 1 turret is at its zero.');
   assert.equal(say('robot.imu'),'IMU "imu": the Control Hub’s own IMU, on I2C bus 0. It tells which way the robot faces.');
   assert.equal(say('kin.liftMotor'),'goBILDA 435 rpm (13.7:1) "lift": Deck picks its port; a limit switch tells when lift is at its zero.');
   assert.match(H.explain({key:'kin.x',label:'Arm',role:'kin-motor',family:'motor',kind:'dcmotor',name:'arm'}),/^Motor "arm": Deck picks its port\. Runs to encoder counts/);
@@ -166,4 +166,11 @@ test('motors and servos named in a CAD: the model from part numbers and names, a
   const d=(key,role,family)=>({key,role,family,scope:[S],own:[]});
   const got=Object.fromEntries(H.assignCad(parts,[d('shooters.0.turretMotor','turret','motor'),d('shooters.0.motor','flywheel','motor'),d('shooters.0.indexer','feeder','servo'),d('shooters.0.hood','hood','servo')]).map(x=>[x.key,x.part]));
   assert.deepEqual(got,{'shooters.0.motor':'Flywheel motor','shooters.0.turretMotor':'Turret motor','shooters.0.indexer':'Kicker servo','shooters.0.hood':'Hood servo'},'a turret motor mounted on the chassis still turns the turret');
+});
+
+test('an FTC robot can only be given what the Control Hub lets you configure',()=>{
+  const legal=new Set(Object.values(RobotConfig.DEVICE_TYPES).flat().map(([tag])=>tag));
+  for(const m of H.ACTUATORS)assert.ok(legal.has(m.xmlType),m.id);
+  for(const s of H.SENSORS)if(s.xmlType)assert.ok(legal.has(s.xmlType),s.id);
+  assert.ok(!H.ACTUATORS.concat(H.SENSORS).some(p=>/stepper|rplidar/i.test(p.name)));
 });

@@ -4,29 +4,30 @@
   // what it looks at ([x, y, z] in field inches, z up) and its field of view. The path depends only on the recorded
   // frames, the field and the camera's settings, so a picture at 12.5 s is the same in the preview, after seeking and
   // in an export, and changing cameras never changes the run. Camera 1 is the original run-video camera (the follow
-  // camera of Record), worked out as it always was; the others watch the robot's own mechanisms. Every camera then
+  // camera of Record), worked out as it always was; the others watch the game pieces, whatever the robot moves them
+  // with: where they come in, and each one leaving it (shot, lifted or dropped) on its way to score. Every camera then
   // keeps out of the walls, the field's structures and flowers and the robot, and does not watch through them (clear).
   const DEG=Math.PI/180,wrap=a=>Math.atan2(Math.sin(a),Math.cos(a)),clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),finite=Number.isFinite;
   const mech=()=>root.DeckMechanisms||(typeof require==='function'?require('./sim-mechanisms.js'):null);
   const CAMERAS=[
     {id:'main',name:'Main',label:'Main · follow camera',key:'1',color:'#4ea1ff',
       hint:'The original run-video camera: behind and above the robot, turning to the goal while it shoots, with the whole field in the corner.'},
-    {id:'mech',name:'Front-right',label:'Front-right · ramp & flower',key:'2',color:'#f2bc62',
-      hint:'Low at the robot’s front-right corner, on the intake or ramp and whatever it reaches into: a flower’s pollen, pieces on the floor.',
+    {id:'mech',name:'Front corner',label:'Front corner · what it reaches for',key:'2',color:'#f2bc62',
+      hint:'Low at the robot’s front corner, on whatever it reaches for: pieces on the floor or in a field element.',
       modes:{track:'Tracks the action',fixed:'Fixed on the robot'}},
-    {id:'turret',name:'Turret',label:'Turret · inside it',key:'3',color:'#b79bff',
-      hint:'Inside the turret, looking where it aims. It turns only with the turret, so each shot leaves from under the picture and flies on to the goal.',
-      modes:{pov:'Inside the turret',follow:'Behind the turret',fixed:'Fixed on the robot'}},
+    {id:'turret',name:'Scoring',label:'Scoring · each piece to the goal',key:'3',color:'#b79bff',
+      hint:'Rides behind each piece that leaves the robot (shot, lifted or dropped) until it lands; between them it waits behind where pieces leave, looking at the goal.',
+      modes:{piece:'Follows each piece',follow:'Behind where pieces leave',pov:'Over the shooter, looking where it aims',fixed:'Fixed on the robot'}},
     {id:'chase',name:'Rear chase',label:'Rear chase',key:'4',color:'#49cbb3',
       hint:'Low behind the chassis, trailing it smoothly through turns and strafes, further back the faster it drives.',
       modes:{smooth:'Smooth chase',tight:'Tight chase'}},
-    {id:'intake',name:'Intake',label:'Front intake',key:'5',color:'#e5484d',
-      hint:'In front of the intake, looking back at it, so pieces are seen going in.',
+    {id:'intake',name:'Pick-up',label:'Pick-up · pieces coming in',key:'5',color:'#e5484d',
+      hint:'In front of where pieces come into the robot, looking back at it, so each one is seen going in.',
       modes:{follow:'Dynamic follow',fixed:'Fixed close-up'}}];
   const IDS=CAMERAS.map(c=>c.id),byId=Object.fromEntries(CAMERAS.map(c=>[c.id,c]));
   // Fine-tuning per camera: its mode, how far and how high it sits (1 is as designed), how far it swings round the
   // robot (degrees) and its field of view. Camera 1 has none: it stays the original.
-  const DEFAULTS={main:{fov:50},mech:{mode:'track',distance:1,height:1,swing:0,fov:58},turret:{mode:'pov',distance:1,height:1,swing:0,fov:60},chase:{mode:'smooth',distance:1,height:1,swing:0,fov:55},intake:{mode:'follow',distance:1,height:1,swing:0,fov:62}};
+  const DEFAULTS={main:{fov:50},mech:{mode:'track',distance:1,height:1,swing:0,fov:58},turret:{mode:'piece',distance:1,height:1,swing:0,fov:60},chase:{mode:'smooth',distance:1,height:1,swing:0,fov:55},intake:{mode:'follow',distance:1,height:1,swing:0,fov:62}};
   function settings(raw){
     const out={};for(const id of IDS){const d=DEFAULTS[id],r=raw?.[id]||{};out[id]={...d};if(id==='main')continue;
       if(byId[id].modes[r.mode])out[id].mode=r.mode;for(const [k,[a,b]] of Object.entries({distance:[.5,2.5],height:[.3,3],swing:[-90,90],fov:[25,90]}))if(finite(r[k]))out[id][k]=clamp(r[k],a,b);}
@@ -162,6 +163,10 @@
   // The robot as camera 1 keeps it in view: the middle of it as drawn and the ball round it (a little inside its box's corners).
   const robotBall=(t,R)=>[[t.x,t.y,R.top/2+(t.z||0)],.8*Math.hypot(Math.max(R.footprint.front,R.footprint.rear),R.footprint.half,R.top/2)];
   // ---------------------------------------------------------------- cameras 2 to 5
+  // The piece in the air to follow (its id): the one followed so far while it flies, else the one that left the robot
+  // last (nearest it), or null.
+  function pieceInFlight(world,id,at){const flying=(world?.balls||[]).filter(b=>b.state?.kind==='flight');if(!flying.length)return null;if(id!=null&&flying.some(b=>b.id===id))return id;
+    let best=null,bd=Infinity;for(const b of flying){const p=ballXY(b),d=Math.hypot(p[0]-at[0],p[1]-at[1]);if(d<bd){bd=d;best=b.id;}}return best;}
   // Something worth looking at near a point: the closest flower piece or loose piece within `reach` inches.
   function interest(world,point,reach,kinds){
     let best=null,bd=reach;for(const b of world?.balls||[]){const k=b.state?.kind;if(!kinds.includes(k))continue;const p=ballXY(b),d=Math.hypot(p[0]-point[0],p[1]-point[1]);if(d<bd){bd=d;best=p;}}
@@ -213,9 +218,14 @@
       const tilt=s.hold>0&&facing?clamp(Math.atan2((G?.goalZ??36)-pos[2],Math.hypot(s.goal.x-pos[0],s.goal.y-pos[1]))-12*DEG,-10*DEG,18*DEG):-8*DEG;
       s.pitch=s.ready&&finite(s.pitch)?s.pitch+(tilt-s.pitch)*k(.5):tilt;
       look=[pos[0]+Math.cos(s.aim)*Math.cos(s.pitch)*60,pos[1]+Math.sin(s.aim)*Math.cos(s.pitch)*60,pos[2]+Math.sin(s.pitch)*60];
+    }else if(id==='turret'&&cfg.mode==='piece'&&(s.ball=pieceInFlight(world,s.ball,robot.at))){
+      // Behind the piece in the air, along the way it is going, a little above it, looking where it is headed: the
+      // piece stays in the middle of the picture all the way to the goal. The same piece is kept until it lands.
+      const b=(world.balls||[]).find(x=>x.id===s.ball),p=ballXY(b),v=[b.vel?.x||0,b.vel?.y||0],sp=Math.hypot(v[0],v[1]),dir=sp>1?[v[0]/sp,v[1]/sp]:[Math.cos(h),Math.sin(h)];
+      pos=[p[0]-dir[0]*16*D,p[1]-dir[1]*16*D,p[2]+5*H];look=[p[0]+dir[0]*12,p[1]+dir[1]*12,p[2]+(b.vz||0)*.05];watch={at:p,spread:2,edge:false};fov=cfg.fov+6;
     }else if(id==='turret'){
-      // Behind the turret (the same shooter), turning with it: the turret stays in the middle of the picture however
-      // fast it turns.
+      // Behind where pieces leave the robot (its shooter, or its top when it has none), turning with it: the shooter
+      // stays in the middle of the picture however fast it turns.
       const sh=R.shooters[s.which]||R.shooters[0],n=sh?.n??0,pivot=sh?sh.point:[0,0,R.height];
       const turret=sh?(sh.type==='turret'?(m?.turrets?.[n]??m?.turret??0):sh.facing):0,aimYaw=h+turret*DEG+(fixed?0:swing);
       s.aim=s.ready&&!fixed?s.aim+wrap(aimYaw-s.aim)*k(.12):aimYaw;
@@ -235,8 +245,12 @@
     }
     // The position is smoothed too, so a bump does not shake the picture (fixed cameras stay rigid, and the camera
     // inside the turret stays on it).
-    const tauPos=fixed||pov?0:{mech:.12,turret:.08,chase:cfg.mode==='tight'?.12:.2,intake:.1}[id];
-    s.pos=s.ready&&tauPos?lerp(s.pos,pos,k(tauPos)):pos;s.look=s.ready&&tauPos?lerp(s.look,look,k(tauPos*.8)):look;s.ready=true;
+    const tauPos=fixed||pov?0:{mech:.12,turret:cfg.mode==='piece'?.25:.08,chase:cfg.mode==='tight'?.12:.2,intake:.1}[id];
+    const was=s.ready?s.pos:null;s.pos=s.ready&&tauPos?lerp(s.pos,pos,k(tauPos)):pos;s.look=s.ready&&tauPos?lerp(s.look,look,k(tauPos*.8)):look;
+    // Following a piece, the camera glides after it (at most 90 in/s) and turns to keep it in the middle, so a fast shot
+    // pans the picture instead of throwing the camera across the field.
+    if(was&&id==='turret'&&cfg.mode==='piece'){const d=Math.hypot(s.pos[0]-was[0],s.pos[1]-was[1],s.pos[2]-was[2]),max=90*dt;if(d>max)s.pos=lerp(was,s.pos,max/d);}
+    s.ready=true;
     return {p:s.pos.slice(),l:s.look.slice(),fov,watch};
   }
   // ---------------------------------------------------------------- keeping clear of the field

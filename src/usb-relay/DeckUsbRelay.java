@@ -1,11 +1,3 @@
-package org.firstinspires.ftc.teamcode;
-
-import android.content.Context;
-
-import com.qualcomm.ftccommon.FtcEventLoop;
-
-import org.firstinspires.ftc.ftccommon.external.OnCreateEventLoop;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -22,58 +14,43 @@ import java.net.Socket;
 import java.util.Collections;
 
 /**
- * Deck Driver Station over the USB cable. Deck installs this file with OnBot Java; it is team code, started by the
- * SDK's @OnCreateEventLoop hook as FTC Dashboard is. It listens on this hub's loopback, TCP port 20885, which Deck
- * reaches through ADB on the USB cable, and passes the Driver Station's Robocol packets to the Robot Controller on this
- * hub and its answers back. Over TCP each packet is a 2-byte length and the packet.
+ * The Driver Station's cable to a Control Hub. ADB forwards TCP but not UDP, and the Robot Controller speaks Robocol over
+ * UDP, so this passes packets between the two. Over TCP each packet is a 2-byte length and the packet.
  *
- * The Robot Controller listens on its own network address (192.168.43.1 on a Control Hub) and answers a Driver Station
- * on port 20884 of the address it came from, so the link sends from 127.0.0.1:20884 and hears the answers there. One
- * station at a time, as over Wi-Fi. Deck writes this file again when it changes; delete it to remove the USB link.
+ * Deck runs it from a temporary file with `adb shell app_process`, as the hub's unprivileged shell user. Nothing is
+ * installed: the Robot Controller app, the team's code, its configurations and the hub's firmware are not touched. It
+ * ends when its standard input closes (the cable is pulled or Deck closes), and Deck removes the file as soon as it runs.
+ * Rebuild with tools/build-usb-relay.cjs.
  */
-public final class DeckUsbLink {
-    public static final int PORT = 20885;
-    private static final int ROBOCOL_PORT = 20884;
-    private static ServerSocket server;
+public final class DeckUsbRelay {
+    private static final int PORT = 20885, ROBOCOL_PORT = 20884;
 
-    private DeckUsbLink() {}
-
-    @OnCreateEventLoop
-    public static synchronized void start(Context context, FtcEventLoop eventLoop) {
-        if (server != null && !server.isClosed()) return;
-        try {
-            server = new ServerSocket(PORT, 1, InetAddress.getByName("127.0.0.1"));
-        } catch (IOException e) {
-            return;
-        }
-        Thread accept = new Thread(new Runnable() {
-            @Override public void run() { accept(); }
-        }, "Deck USB link");
-        accept.setDaemon(true);
-        accept.start();
-    }
-
-    private static void accept() {
-        while (true) {
-            Socket station;
-            try {
-                station = server.accept();
-            } catch (IOException e) {
-                if (server.isClosed()) return;
-                continue;
+    public static void main(String[] args) throws Exception {
+        final ServerSocket server = new ServerSocket(PORT, 1, InetAddress.getByName("127.0.0.1"));
+        Thread life = new Thread(new Runnable() {
+            @Override public void run() {
+                try { while (System.in.read() >= 0) { } } catch (IOException ignored) { }
+                System.exit(0);
             }
+        }, "life");
+        life.setDaemon(true);
+        life.start();
+        System.out.println("ready");
+        System.out.flush();
+        while (true) {
+            Socket station = server.accept();
             try {
                 relay(station);
             } catch (IOException ignored) {
                 // The station went away: wait for the next one.
             } finally {
-                try { station.close(); } catch (IOException ignored) {}
+                try { station.close(); } catch (IOException ignored) { }
             }
         }
     }
 
     /** Where the Robot Controller listens: 192.168.43.1 on a Control Hub, else this device's first network address. */
-    static InetAddress controllerAddress() throws IOException {
+    private static InetAddress controllerAddress() throws IOException {
         InetAddress first = null;
         for (NetworkInterface n : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             if (!n.isUp() || n.isLoopback()) continue;
@@ -112,7 +89,7 @@ public final class DeckUsbLink {
                     // Closed with the station.
                 }
             }
-        }, "Deck USB link answers");
+        }, "answers");
         answers.setDaemon(true);
         answers.start();
         try {

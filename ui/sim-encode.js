@@ -90,7 +90,7 @@
         blocks.sort((a,b)=>a.ms-b.ms||a.track-b.track);const last=blocks.at(-1).ms+33;
         const vEntry=el([0xae],uint([0xd7],1),uint([0x73,0xc5],1),uint([0x83],1),el([0x86],video.codec==='vp9'?'V_VP9':'V_VP8'),el([0xe0],uint([0xb0],video.width),uint([0xba],video.height)));
         const aEntry=audio?el([0xae],uint([0xd7],2),uint([0x73,0xc5],2),uint([0x83],2),el([0x86],'A_OPUS'),...(audio.description?[el([0x63,0xa2],audio.description)]:[]),uint([0x56,0xaa],6500000),uint([0x56,0xbb],80000000),el([0xe1],float([0xb5],audio.sampleRate||48000),uint([0x9f],audio.channels||2))):new Uint8Array();
-        const info=el(ID.Info,uint([0x2a,0xd7,0xb1],1000000),el([0x4d,0x80],'Deck Driver Station'),el([0x57,0x41],'Deck Driver Station'),float([0x44,0x89],last));
+        const info=el(ID.Info,uint([0x2a,0xd7,0xb1],1000000),el([0x4d,0x80],'Torque'),el([0x57,0x41],'Torque'),float([0x44,0x89],last));
         const tracks=el(ID.Tracks,vEntry,aEntry);
         // Clusters start at each key picture (or every 5 s), so a player can seek to any of them.
         const clusters=[];let cur=null;

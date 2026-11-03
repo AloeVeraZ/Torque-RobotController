@@ -81,6 +81,13 @@ test('run events: intake, ramp, shots, the turret, driving off, strafing and sto
   assert.equal(ev.filter(e=>e.kind==='shot').length,2);const first=ev.find(e=>e.kind==='intake-on');assert.ok(near(first.t,3.5,.05));assert.equal(first.camera,'intake');
 });
 
+test('a full match marks each new period as a moment',()=>{
+  const at=(time,phase)=>({time,truth:{x:0,y:0,heading:0},practice:{phase}});
+  const ev=E.events([at(0,'auto'),at(1,'auto'),at(2,'transition'),at(3,'teleop'),at(4,'teleop')]).filter(e=>e.kind==='period');
+  assert.deepEqual(ev.map(e=>[e.t,e.label]),[[2,'Transition'],[3,'Teleop starts']]);
+  assert.deepEqual(E.events([at(0,'teleop'),at(1,'teleop')]).filter(e=>e.kind==='period'),[]);
+});
+
 test('suggested cuts follow the run and are ordinary clips, at least the minimum length',()=>{
   const frames=videoRun(),cuts=E.autoCut(frames,{duration:8});assert.ok(cuts.length>=4,`${cuts.length} cuts`);
   assert.equal(cuts[0].camera,'main');assert.equal(cuts[0].start,0);assert.ok(near(E.end(cuts.at(-1)),8));
@@ -97,4 +104,20 @@ test('2D recordings edit with the top-down view, which cuts and survives a saved
   const ed=new E.Editor(fresh());ed.change('Cut',d=>E.ops.cut(d,5,'top'));assert.deepEqual(v1(ed.doc).map(c=>[c.start,c.camera]),[[0,'main'],[5,'top']]);
   assert.equal(E.sanitize(JSON.parse(JSON.stringify(ed.doc))).clips.find(c=>c.start===5).camera,'top');
   assert.equal(E.videoClip({camera:'nowhere'}).camera,'main','an unknown camera falls back to the main one');
+});
+
+test('a contact replay holds the picture at each contact, zooms in and out, and survives a saved project',()=>{
+  const doc=fresh(),ids=E.addCrashes(doc,[{at:7,x:30,y:40,label:'a field structure'},{at:3,x:1,y:2,label:'the field wall'}]);assert.equal(ids.length,2);
+  const replays=v1(doc).filter(c=>c.focus);assert.deepEqual(replays.map(c=>[+c.start.toFixed(3),c.in,c.focus.label]),[[3,3,'the field wall'],[7+E.CRASH_HOLD,7,'a field structure']]);
+  assert.ok(near(E.duration(doc),20+2*E.CRASH_HOLD),'each replay adds its hold');
+  assert.equal(E.resolve(doc,7+2*E.CRASH_HOLD+.5).layers[0].source.toFixed(2),'7.50','the run carries on after the replay');
+  const c=replays[0];assert.equal(E.crashZoom(c,c.start),0);assert.equal(E.crashZoom(c,c.start+E.CRASH_HOLD/2),1);assert.ok(E.crashZoom(c,E.end(c)-.01)<.01);
+  assert.equal(doc.markers.filter(m=>m.color===E.CRASH_COLOR).length,2);
+  assert.equal(E.sanitize(JSON.parse(JSON.stringify(doc))).clips.filter(x=>x.focus).length,2);
+  assert.equal(E.addCrashes(fresh(),[{at:99,x:0,y:0}]).length,0,'a contact outside the recording is left out');
+});
+
+test('the end card is on until it is removed, and stays removed when the edit is reopened',()=>{
+  const d=E.create({duration:20});assert.equal(d.endCard,true);assert.equal(E.sanitize(JSON.parse(JSON.stringify(d))).endCard,true);
+  assert.equal(E.sanitize({...JSON.parse(JSON.stringify(d)),endCard:false}).endCard,false);
 });

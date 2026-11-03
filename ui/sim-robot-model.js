@@ -455,6 +455,8 @@
       // The cube shows the robot frame the way the camera sees it (CSS y points down).
       navigator.update(camera);}
     const draw=()=>{if(!raf)raf=requestAnimationFrame(frame);};controls.addEventListener('change',draw);
+    // Shown after being hidden, or its window or panel resized: draw at the new size.
+    const sized=new ResizeObserver(()=>draw());sized.observe(box);
     // Straight up/down is degenerate for orbit controls, so top/bottom views tilt a hair.
     function look(side){const d=Array.isArray(side)?[...side]:side==='top'?[-.02,0,1]:side==='bottom'?[-.02,0,-1]:SIDES[side]||[1,-1,.8];if(!d[0]&&!d[1])d[0]=-.0001;const dir=new T.Vector3(...d).normalize();
       const aspect=Math.max(.1,box.clientWidth/Math.max(1,box.clientHeight)),halfAngle=Math.atan(Math.tan(camera.fov*Math.PI/360)*Math.min(1,aspect));
@@ -513,7 +515,7 @@
         if(m.size){const edges=new T.LineSegments(new T.EdgesGeometry(shape),new T.LineBasicMaterial({color:m.color||0xffffff}));edges.position.copy(mark.position);edges.renderOrder=11;markerGroup.add(edges);}}
       draw();
     }
-    return {update(...a){glowKey=null;glow=[];return update(...a);},look,pick,highlight,markers,gizmos,posed,body:()=>body,resize:draw,select(side){for(const f of cubeHost.querySelectorAll('.face'))f.classList.toggle('selected',f.dataset.side===side);},dispose(){cancelAnimationFrame(raf);navigator.dispose();controls.dispose();renderer.dispose();renderer.forceContextLoss();host.replaceChildren();}};
+    return {update(...a){glowKey=null;glow=[];return update(...a);},look,pick,highlight,markers,gizmos,posed,body:()=>body,resize:draw,select(side){for(const f of cubeHost.querySelectorAll('.face'))f.classList.toggle('selected',f.dataset.side===side);},dispose(){sized.disconnect();cancelAnimationFrame(raf);navigator.dispose();controls.dispose();renderer.dispose();renderer.forceContextLoss();host.replaceChildren();}};
   }
   return {partTree,meshesBox,partBoxes,AXES,UNITS,SIDES,orientation,rows,modelAxisAt,setFront,setTop,assignSide,turnBetween,meta,bodyFromImport,toGlb,fromGlb,lighten,place,silhouette,preview,viewCube,cubeGeometry,orbitCamera,builtin,animate,rig,retune,pose,gameValues,linksOf,hitboxes};
 });

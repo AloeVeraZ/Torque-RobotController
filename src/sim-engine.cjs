@@ -66,7 +66,7 @@ function hubSensors(robot,kin,mechanisms,localization){
     return {name:s.name||s.id,type,source,inverted:!!s.inverted,...port,...(type==='analog'?{zeroVolts:finite(s.zeroVolts)?s.zeroVolts:span/2,...(finite(s.voltsPerUnit)?{voltsPerUnit:s.voltsPerUnit}:finite(m?.degrees)&&m.degrees>0?{voltsPerUnit:span/m.degrees}:{})}:{}),
       ...pick('countsPerUnit'),...pick('at'),...pick('band'),...(finite(m?.cpr)?{cpr:m.cpr}:{})};}).filter(Boolean);
 }
-function hubModules(robot){const x=robot?.wiring?.hubs?.expansion,address=Number.isInteger(x?.address)?x.address:2;return [{name:'Control Hub',address:173,parent:true},...(x?[{name:'Expansion Hub '+address,address}]:[])];}
+function hubModules(robot){const hubs=robot?.wiring?.hubs||{},exp=Object.keys(hubs).filter(k=>/^expansion(\d+)?$/.test(k)&&hubs[k]).map(k=>Number.isInteger(hubs[k].address)?hubs[k].address:2);return [{name:'Control Hub',address:173,parent:true},...exp.map(address=>({name:'Expansion Hub '+address,address}))];}
 // How a game piece looks to a color sensor (0–1 a channel): nectar red or blue, pollen green; nothing: dark.
 const PIECE_COLOR={red:{r:.55,g:.12,b:.1,a:.6},blue:{r:.1,g:.2,b:.6,a:.6},green:{r:.12,g:.5,b:.15,a:.6},none:{r:.02,g:.02,b:.02,a:.05}};
 
@@ -174,7 +174,7 @@ class SimEngine{
     if(m.enabled){const mount=Mech.engineIntakeMount(m);if(mount)r.spec.intakeMount=mount;r.spec.deckCaps={...m.capacity};r.spec.deckFixedYaw=m.shooters.map(s=>s.type==='fixed');r.spec.deckShooterPieces=m.shooters.map(s=>s.pieces);
       // Each intake's box is its hitbox: it sticks out past the frame, and a piece must touch it to be taken.
       // flower: whether it is the intake kind the physics reaches into flowers with (a ramp or side rollers).
-      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;boxes[e]={reach:i.reach,width:Math.min(i.width??edge,edge),height:i.height,flower:i.kind===flower};}r.spec.deckIntakeBoxes=boxes;
+      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;boxes[e]={reach:i.reach,width:i.width??edge,height:i.height,flower:i.kind===flower};}r.spec.deckIntakeBoxes=boxes;
       // Two shooters on one turret launch from its one spot; the game's spawn checks moved the second apart.
       if(m.shooters[1]?.sharesTurret&&r.spec.bbMech?.launcher)r.spec.bbMech={...r.spec.bbMech,launcher:{...r.spec.bbMech.launcher,mount:m.shooters[0].mount,mount2:m.shooters[0].mount}};
       this.rampDown=false;this.rampOut=false;this.rampHeld=false;}
@@ -302,10 +302,11 @@ class SimEngine{
   // A route action that names a moving part's action, or a part and one of its positions, starts it once each time the
   // route reaches it; a pin holds while it moves.
   routeJoints(act){const key=act?(act.moving?'path'+(act.path??act.leg):'pin'+act.leg)+':'+act.name:'';if(key!==this.kinKey){this.kinKey=key;if(act?.name)this.kin.start(act.name);}return !!(act&&!act.moving&&this.kin.busy(act.name));}
-  // Joint values for this tick from the mechanism model's signals (turrets, flywheels, intakes, ramps, feeders).
+  // Joint values for this tick from the mechanism model's signals (turrets, flywheels, intakes, ramps, feeders). The hood
+  // follows the flywheel's speed now through the calibrated hood angles (the fixed hood angle without them).
   jointTick(dt=this.dsim.SIM_DT){
     if(!this.kin)return;const m=this.mech,c=this.mechCmd||{},on=this.config.mechanisms.enabled;
-    this.kin.tick(dt,on?{turrets:m.turrets,flywheel:m.flywheel,kick:m.kick,lift:m.lift,intake:!!c.intake,spin:!!c.spin,aim:!!c.aim,feed:!!c.feed,rpm:this.config.mechanisms.shooter.rpm,hood:this.config.mechanisms.shooter.hood}:{});
+    this.kin.tick(dt,on?{turrets:m.turrets,flywheel:m.flywheel,kick:m.kick,lift:m.lift,intake:!!c.intake,spin:!!c.spin,aim:!!c.aim,feed:!!c.feed,chained:Mech.chained(this.config.mechanisms),rpm:this.config.mechanisms.shooter.rpm,hood:m.hood()}:{});
   }
   // Where shooters aim: the cell the route's action names (the hive cell up at the start, or the other one);
   // in teleop, whichever cell faces up right now, as a driver would.

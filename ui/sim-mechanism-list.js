@@ -21,7 +21,7 @@
   // On BIOBUZZ these types are the game's own intake or shooter (the physics picks up and shoots with them).
   const AS_GAME={'roller-intake':['intake','sweeper'],'deploy-intake':['intake','ramp'],flywheel:['shooter','fixed'],turret:['shooter','turret']};
   // What drives a part: FTC's four, then other robots' actuators.
-  const FTC_KINDS=['servo','crservo','dcmotor','linear'];
+  const FTC_KINDS=['servo','crservo','dcmotor','linear'],SERVO_KINDS=[['servo','Set position'],['crservo','Continuous'],['linear','Linear']];
   function create({host,picker,api}){
     let picking=false,lastKey='';
     const kin=()=>api.kinematics(),status=t=>api.status?.(t||'');
@@ -49,8 +49,10 @@
     // What drives it, and the numbers the robot code needs.
     function actuator(j,a){
       const kinds=K().ACTUATORS,kind=a?.kind||'none',u=unitOf(j),Ax=A();
-      const kindSelect=`<select data-m-f="actuator" aria-label="Driven by"><optgroup label="FTC">${FTC_KINDS.map(k=>opt(k,Ax?.KINDS[k]||kinds[k],k===kind)).join('')}</optgroup>
-        <optgroup label="Other robots">${Object.keys(kinds).filter(k=>!FTC_KINDS.includes(k)&&k!=='none').map(k=>opt(k,kinds[k],k===kind)).join('')}</optgroup>${opt('none','Nothing: it moves at its own speed',kind==='none')}</select>`;
+      // Motor or servo first; a servo then says which kind. An FTC robot is offered only what a Control Hub can run.
+      const ftc=api.ftc?.()!==false,isServo=SERVO_KINDS.some(([k])=>k===kind),others=Object.keys(kinds).filter(k=>!FTC_KINDS.includes(k)&&k!=='none'&&(!ftc||k===kind));
+      const kindSelect=`<select data-m-f="actuator" aria-label="Driven by">${opt('dcmotor','DC motor',kind==='dcmotor')}${opt(isServo?kind:'servo','Servo',isServo)}${others.map(k=>opt(k,ftc?`${kinds[k]} (not legal on an FTC robot)`:kinds[k],k===kind)).join('')}${opt('none','Nothing: it moves at its own speed',kind==='none')}</select>`;
+      const servoSelect=isServo?`<div><label>Servo type<select data-m-f="actuator" aria-label="Servo type">${SERVO_KINDS.map(([k,t])=>opt(k,t,k===kind)).join('')}</select></label></div>`:'';
       let body='';
       if(!a)body=`<div class="start-xy">${num('data-m-f="speed"',j.speed??90,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">Without a motor or servo it moves to each named position at this speed.</p>`;
       else{
@@ -69,7 +71,7 @@
             <button type="button" class="text-button" data-m="gearing">Edit gearing</button></p>`;}
         else if(a.kind==='crservo'&&Ax)body+=`<div class="start-xy">${num('data-m-f="power"',a.power??1,{label:'Power while it runs · 0–1',min:.05,max:1,step:.05})}</div><p class="hint">${esc(Ax.describe(a,u))} CRServo.setPower: positive one way, negative the other.</p>`;
         else body+=`<div class="start-xy">${num('data-m-f="speed"',a.speed,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">Not an FTC part: it moves at this speed.</p>`;}
-      return `<span class="sim-mech-label">Actuator</span><div class="start-xy"><div><label>Driven by${kindSelect}</label></div></div>${body}`;}
+      return `<span class="sim-mech-label">Driven by</span><div class="start-xy"><div><label>Driven by${kindSelect}</label></div>${servoSelect}</div>${body}`;}
     function card(j,depth){
       const T=TY(),t=T.TYPES[j.kind],k=kin(),a=k.actuators.find(x=>x.joint===j.id),[lv,said]=badge(j),parent=depth?k.joints.find(x=>x.id===j.parent):null,cad=api.cad();
       const where=j.matched?`In your CAD: “${esc(j.matched)}”.`:j.parts?.length?'Its parts are chosen on the model.':cad?'Configure from CAD finds it by its name in your CAD, or choose its parts on the model.':'Import your robot’s CAD (step 2) to see it move.';
@@ -83,9 +85,9 @@
       const T=TY(),game=api.game(),words=t=>(t.name+' '+t.blurb+' '+String(t.words||'').replace(/\\[a-z]/gi,' ').replace(/[^a-z0-9]+/gi,' ')).toLowerCase();
       const tile=(id,name,blurb,find,note='')=>`<button type="button" class="sim-mech-type" data-m="add" data-v="${esc(id)}" data-find="${esc(find)}" title="${esc(blurb)}"><strong>${esc(name)}</strong><small>${esc(blurb)}</small>${note?`<em>${esc(note)}</em>`:''}</button>`;
       const groups=[...(game?[{name:'BIOBUZZ: picks up and shoots game pieces',tiles:GAME.map(g=>tile(g.id,g.name,g.blurb,(g.name+' '+g.blurb+' intake shooter game').toLowerCase()))}]:[]),
-        ...T.grouped().map(g=>({name:g.name,tiles:g.types.map(t=>tile(t.id,t.name,t.blurb,words(t),game&&AS_GAME[t.id]?`BIOBUZZ ${AS_GAME[t.id][0]}`:''))}))];
+        ...T.grouped().map(g=>({name:g.name,tiles:g.types.filter(t=>api.ftc?.()===false||!t.motor||FTC_KINDS.includes(t.motor.kind)).map(t=>tile(t.id,t.name,t.blurb,words(t),game&&AS_GAME[t.id]?`BIOBUZZ ${AS_GAME[t.id][0]}`:''))})).filter(g=>g.tiles.length)];
       return `<div class="sim-mech-types" role="group" aria-label="Add a mechanism"><div class="sim-mech-types-head"><input type="search" data-types-search aria-label="Search mechanisms" placeholder="Search: claw, lift, extendo, turret, hang…"><button type="button" class="secondary" data-m="close">Close</button></div>
-        <p class="hint">Mechanisms from every FTC season, FRC and other robots. Each comes with the motor or servo it usually has; change it on its card.</p>
+        <p class="hint">${api.ftc?.()===false?'Mechanisms from every FTC season, FRC and other robots.':'Mechanisms from every FTC season, with parts legal on an FTC robot.'} Each comes with the motor or servo it usually has; change it on its card.</p>
         ${groups.map(g=>`<div class="sim-mech-type-group"><span class="sim-mech-label">${esc(g.name)}</span><div class="sim-mech-type-grid">${g.tiles.join('')}</div></div>`).join('')}
         <p class="hint sim-mech-types-none" hidden>Nothing matches. Try another word, or use Something that pivots, slides or spins under Your own.</p></div>`;}
     function render(){

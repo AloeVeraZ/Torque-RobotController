@@ -21,6 +21,20 @@ function frames({contactAt=null,startWall=true,timeLimit=false}={}){
   return f;
 }
 
+test('teleop has no route result: it is reported only when asked to cover the whole run',()=>{
+  const driven=run([[0,0,9],[1,0,20,20],[2,0,40,20,0,{contacts:['field-wall'],mechanisms:{score:12,shots:0,landed:0}}]]);
+  assert.equal(R.build(driven,{pins}),null);
+  const r=R.build(driven,{pins,whole:true});assert.equal(r.driven,true);assert.match(r.title,/^Teleop ran for 2\.0 s, with 1 thing to check/);
+  assert.equal(r.contacts[0].label,'teleop');assert.equal(r.legs.length,0);assert.ok(r.facts.some(([k,v])=>k==='Points'&&/^12/.test(v)));
+  assert.ok(!R.nextSteps(r,{onExport(){}}).some(s=>s.id==='export'));
+});
+
+test('a full match reports its route, adds the match points, and whole-run contacts reach into teleop',()=>{
+  const route=frames(),end=route.at(-1),after=[{...end,time:end.time+1,practice:{phase:'teleop'},contacts:['field-wall'],mechanisms:{score:30}},{...end,time:end.time+2,practice:{phase:'teleop'},contacts:[],mechanisms:{score:42}}];
+  const r=R.build([...route,...after],{pins,autoSeconds:30});assert.match(r.title,/^Route finished/);assert.ok(r.facts.some(([k,v])=>k==='Full match points'&&v==='42'));assert.ok(!r.contacts.some(c=>c.id==='field-wall'&&c.time>end.time));
+  assert.ok(R.build([...route,...after],{pins,whole:true}).contacts.some(c=>c.id==='field-wall'&&c.time>end.time));
+});
+
 test('run report splits route time per path by driving, turning and pausing, from the recorded frames',()=>{
   const r=R.build(frames(),{pins,defaultPower:1,autoSeconds:30});
   assert.equal(r.level,'ok');assert.match(r.title,/^Route finished cleanly in 7\.7 s$/);
