@@ -314,7 +314,6 @@ function settings(){
   row('Gamepad type','What the robot is told each controller is. Code that reads gamepad1.type or uses PS button names sees this.',pad);
   row('Gamepad assignment','Click User 1 in the header, then press a button on that controller. Choose Two controllers in Deck’s Settings for User 2.');
   row('Show Robot Controller battery','The Control Hub or phone battery next to the robot voltage.',toggle('showRcBattery','Show Robot Controller battery'));
-  row('Sounds','The practice timer’s match sounds.',toggle('sounds','Sounds'));
   row('Autonomous timer on by default','Stop an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
   rows.push(el('h3','set-group','Robot Controller'));
   row('Robot Controller settings','The robot’s name, Wi-Fi password and channel are in Program & Manage → Manage, served by the robot.',button('Program & Manage','cfg-btn',()=>Promise.resolve(ctx.host.programAndManage?.()).catch(e=>ctx.toast(e.message))));

@@ -121,8 +121,9 @@ class DriverStation {
   nextStamp(){let t=BigInt(Math.round(this.mono()*1e6));if(t<=this.stamp)t=this.stamp+1n;this.stamp=t;return t;}
   transmit(bytes){try{this.sendRaw(bytes);}catch(e){this.emit('error',e);}}
   start(){
-    if(this.timers.length)return;this.update({connection:'searching'});this.discover();
-    this.timers.push(setInterval(()=>this.discover(),1000),setInterval(()=>this.tick(),40));
+    if(this.timers.length)return;this.beat=0;this.update({connection:'searching'});this.discover();
+    // Four times a second while searching, so a robot that has just come up answers within a quarter second; once a second when connected.
+    this.timers.push(setInterval(()=>{if(!this.connected()||++this.beat%4===0)this.discover();},250),setInterval(()=>this.tick(),40));
   }
   stop(){for(const t of this.timers)clearInterval(t);this.timers=[];this.update({connection:'idle'});}
   discover(){this.transmit(encodePeerDiscovery({seq:this.nextSeq(),peerType:PeerType.PEER,...this.identity}));}
@@ -185,7 +186,6 @@ class DriverStation {
       if(p.version<121){this.update({connection:'incompatible',robot});return;}
       Object.assign(this.identity,{version:p.version});this.update({adaptedVersion:true,robot});this.discover();return;
     }
-    if(p.month>=1&&p.month<=12)Object.assign(this.identity,{month:p.month,year:p.year,major:p.major,minor:p.minor});
     if(!this.connected()){
       this.lastReceive=this.mono();this.lastHeartbeat=0;this.update({connection:'connected',robot});this.emit('connected',robot);
       this.command('CMD_REQUEST_OP_MODE_LIST');this.command('CMD_REQUEST_ACTIVE_CONFIG');

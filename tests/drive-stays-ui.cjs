@@ -19,11 +19,11 @@ const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright'),{startUdpRo
     // Closed by someone, it stays closed.
     await page.evaluate(()=>window.deck.close());await off();await go('setup');await go('drive');await wait(1500);assert.equal(await page.evaluate(()=>!!state.url),false,'closed stays closed');
     assert.match(await page.locator('#drive-practice').textContent(),/Inspection and matches need the FTC Driver Station app/);
-    // ---- Sounds mute from the three-dot menu, and stay muted
-    await page.click('#more');assert.equal(await page.locator('#menu-sounds').getAttribute('aria-checked'),'true');await page.click('#menu-sounds');assert.equal(await page.evaluate(()=>window.DeckSounds.muted()),true);assert.equal(await page.locator('#menu-sounds').getAttribute('aria-checked'),'false');assert.equal(await page.evaluate(()=>localStorage.getItem('torque-sounds-off')),'1');await page.click('#menu-sounds');assert.equal(await page.evaluate(()=>window.DeckSounds.muted()),false);
+    // ---- No sounds: the three-dot menu has no Sounds item, and the app plays none
+    await page.click('#more');assert.equal(await page.locator('#menu-sounds').count(),0);assert.equal(await page.evaluate(()=>'DeckSounds' in window),false);
     // ---- Competition mode
     assert.equal(await page.locator('#competition-chip').isHidden(),true);assert.equal((await open()).opened,true);await on();
-    await page.click('#menu-competition');await off();assert.equal(await page.locator('#competition-chip').isVisible(),true);assert.match(await page.textContent('#toast'),/use your Driver Hub for inspection and matches/);assert.equal(await page.evaluate(()=>window.DeckSounds.muted()),true,'no sounds');
+    await page.click('#menu-competition');await off();assert.equal(await page.locator('#competition-chip').isVisible(),true);assert.match(await page.textContent('#toast'),/use your Driver Hub for inspection and matches/);
     const refused=await page.evaluate(h=>window.deck.open({url:h,kind:'ftc',name:'Bench robot'}).then(()=>'opened',e=>e.message),ROBOT);assert.match(refused,/Competition mode is on, and FTC rule R704/,'no driving over Wi-Fi');
     const stream=await page.evaluate(h=>window.deck.robotLink('debug-start',{host:h}).then(()=>'started',e=>e.message),ROBOT);assert.match(stream,/Competition mode is on/,'no streaming over Wi-Fi');
     await page.click('#menu-competition');assert.equal(await page.locator('#competition-chip').isHidden(),true);assert.equal((await open()).opened,true,'off again, it opens');await on();

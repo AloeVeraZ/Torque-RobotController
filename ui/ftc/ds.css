@@ -7,123 +7,151 @@ svg { fill: currentColor; }
 .ui-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 h2, h3 { font-family: var(--font); }
 
-/* Context bar: the only bar on this screen, the same height and line as the app's robot toolbar. */
-.bar { flex-shrink: 0; min-height: var(--bar-height); display: flex; align-items: center; gap: 12px; padding: 4px 16px 4px var(--page-gutter); background: var(--bg); border-bottom: 1px solid var(--line); position: relative; z-index: 6; }
-.brand { display: flex; align-items: center; flex-shrink: 0; }
-.brand span { font-weight: 650; font-size: 13px; white-space: nowrap; }
-.banner { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px; border-radius: var(--radius-detail); font-weight: 600; font-size: 12px; white-space: nowrap; }
+/* Context bar, laid out as a Driver Hub's: who this station is, the link, the two users, then the menu. */
+.bar { flex-shrink: 0; min-height: var(--bar-height); display: flex; align-items: center; gap: 16px; padding: 4px 12px 4px var(--page-gutter); background: var(--bg); border-bottom: 1px solid var(--line); position: relative; z-index: 6; }
+.brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-width: 0; }
+.brand span { font-weight: 650; font-size: 14px; letter-spacing: -.01em; white-space: nowrap; }
+.banner { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px; border-radius: 999px; font-weight: 600; font-size: 12px; white-space: nowrap; }
 .banner::before { content: ''; width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
 .banner.connected { background: var(--connected-bg); color: var(--connected); }
-.banner.searching { background: var(--warning-bg); color: var(--warning); }
+.banner.searching { background: var(--warning-bg); color: var(--warning); } .banner.searching::before { animation: ds-blink 1.2s ease-in-out infinite; }
 .banner.bad { background: var(--danger-bg); color: var(--danger); }
-.net { margin-left: auto; display: flex; gap: 12px; font-size: 12px; min-width: 0; }
-.net div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
-.net span { color: var(--quiet); } .net b { font-weight: 500; font-variant-numeric: tabular-nums; }
-.signal { display: flex; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+@keyframes ds-blink { 50% { opacity: .25; } }
+.net { margin-left: auto; display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--surface); }
+.net-item { display: flex; align-items: baseline; gap: 6px; padding-right: 10px; white-space: nowrap; min-width: 0; font-size: 12px; }
+.net-item span { color: var(--quiet); } .net-item b { font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.signal { display: flex; align-items: flex-end; gap: 2px; height: 14px; padding: 0 8px 0 2px; flex-shrink: 0; }
 .signal i { width: 3px; background: var(--line-strong); border-radius: 1px; }
 .signal i:nth-child(1) { height: 4px; } .signal i:nth-child(2) { height: 7px; } .signal i:nth-child(3) { height: 10px; } .signal i:nth-child(4) { height: 14px; }
 .signal.on i { background: var(--connected); }
-.pads { display: flex; gap: 2px; flex-shrink: 0; }
-.pad { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--quiet); flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0 8px; border-radius: var(--radius-control); white-space: nowrap; }
+.signal.on.fair i:nth-child(4), .signal.on.poor i:nth-child(n+3) { background: var(--line-strong); }
+.signal.on.poor i { background: var(--warning); }
+.pads { display: flex; gap: 4px; flex-shrink: 0; }
+.pad { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--quiet); flex-shrink: 0; min-width: 44px; min-height: 40px; padding: 0 12px; border-radius: 999px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, color .15s; }
 .pad:hover { background: var(--raised); color: var(--text); }
-.pad svg { width: 20px; height: 13px; color: var(--quiet); }
-.pad.assigned svg { color: var(--connected); } .pad.assigned { color: var(--text); }
+.pad svg { width: 22px; height: 14px; color: var(--quiet); }
+.pad.assigned { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--connected) 45%, transparent); } .pad.assigned svg { color: var(--connected); }
 .pad.active { background: var(--connected-bg); }
-.pad.standby { opacity: .6; }
-.bar-btn { min-height: 36px; padding: 0 12px; border-radius: var(--radius-control); background: var(--raised); font-weight: 600; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.pad.standby { opacity: .55; }
+.bar-end { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.bar-btn { min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); background: var(--raised); font-weight: 600; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .bar-btn:hover { background: var(--hover); }
 .bar-icon { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: var(--radius-control); color: var(--muted); flex-shrink: 0; }
-.bar-icon:hover { background: var(--raised); color: var(--text); }
-.more { font-size: 22px; line-height: 1; }
+.bar-icon:hover, .bar-icon[aria-expanded=true] { background: var(--raised); color: var(--text); }
+.more svg { width: 20px; height: 20px; }
 /* Robot fullscreen: the app's exit button sits over this corner. */
 body.fullscreen .bar { padding-right: 72px; } body.fullscreen #ds-fullscreen { display: none; }
-.menu { position: absolute; right: 12px; top: calc(var(--bar-height) - 4px); width: 230px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); padding: 6px; box-shadow: var(--shadow); }
+.menu { position: absolute; right: 12px; top: calc(var(--bar-height) - 4px); width: 240px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); padding: 6px; box-shadow: var(--shadow); }
 .menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; min-height: 44px; padding: 10px 12px; font-size: 13px; font-weight: 500; border-radius: var(--radius-detail); }
 .menu button:hover { background: var(--raised); }
 .menu .leaves { color: var(--quiet); }
+.menu #menu-restart { margin-bottom: 4px; } .menu #menu-about { margin-top: 4px; box-shadow: 0 -1px 0 var(--line); border-radius: 0 0 var(--radius-detail) var(--radius-detail); }
 
-/* Readouts across the top, the operator's controls on the left, what the robot says on the right. */
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; width: 100%; max-width: var(--page-max); margin-inline: auto; padding: 16px var(--page-gutter); }
+/* The operator's controls on the left, everything the robot says on the right: a Driver Hub's two halves. */
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 7fr); gap: 12px; width: 100%; max-width: var(--page-max); margin-inline: auto; padding: 12px var(--page-gutter) 16px; box-sizing: border-box; }
 .left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
-.stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.tile { background: var(--surface); border-radius: var(--radius-panel); display: flex; flex-direction: column; justify-content: center; padding: 10px 16px; min-width: 0; }
-.tile .label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.tile .label small { font-size: 11px; color: var(--quiet); overflow: hidden; text-overflow: ellipsis; }
-.value { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; min-width: 0; font-size: 20px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.tile .label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.value { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .value b { font-weight: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .value small { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--quiet); white-space: nowrap; }
-.practice.running .value b { color: var(--warning); }
-.round-play { width: 32px; height: 32px; flex-shrink: 0; border-radius: var(--radius-control); background: var(--raised); display: grid; place-items: center; }
-.round-play:hover { background: var(--hover); }
-.round-play i.play { width: 0; height: 0; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent var(--text); margin-left: 2px; }
-.round-play i.stop { width: 10px; height: 10px; background: var(--text); }
-.volts.caution .value b { color: var(--warning); }
-.volts.danger { background: var(--danger-bg); } .volts.danger .value b { color: var(--danger); }
-.volts.none .value b { color: var(--quiet); }
-.batt { position: relative; display: inline-flex; align-items: center; justify-content: space-between; border: 1.5px solid var(--quiet); border-radius: 3px; flex-shrink: 0; margin-right: 4px; }
-.batt::after { content: ''; position: absolute; right: -5px; top: 50%; width: 3px; height: 6px; margin-top: -3px; background: var(--quiet); border-radius: 0 1px 1px 0; }
-.batt.small { width: 28px; height: 14px; padding: 2px; } .batt.small i { display: block; height: 100%; width: 0; background: var(--muted); }
 
-/* One op mode control: pick from either list, the chosen name in the middle. */
-.opbar { flex-shrink: 0; min-height: 64px; display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: stretch; gap: 4px; padding: 4px; background: var(--surface); border-radius: var(--radius-panel); }
-.tri { display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--radius-control); background: var(--raised); font-size: 12px; font-weight: 600; }
-.tri i { width: 7px; height: 7px; margin-top: -3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); opacity: .7; }
-#auto-list::before { content: 'Auto'; } #teleop-list::before { content: 'TeleOp'; }
+/* One op mode control: Autonomous list on the left, TeleOp on the right, the chosen name between. */
+.opbar { flex-shrink: 0; min-height: 64px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: stretch; gap: 4px; padding: 4px; background: var(--surface); border-radius: var(--radius-panel); }
+.tri { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 96px; padding: 0 14px; border-radius: var(--radius-control); background: var(--raised); font-size: 12px; font-weight: 650; letter-spacing: .02em; }
+.tri svg { width: 14px; height: 14px; opacity: .8; }
 .tri:hover:not(:disabled) { background: var(--hover); }
 .opname { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; padding: 4px 8px; border-radius: var(--radius-control); }
 .opname:hover:not(:disabled) { background: var(--raised); }
-.opname span { font-size: 14px; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opname span { font-size: 14px; font-weight: 500; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .opname small { font-size: 12px; color: var(--quiet); }
-.opname.chosen span { font-size: 16px; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
+.opname.chosen span { font-size: 17px; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
 .opname:disabled, .tri:disabled { opacity: 1; } .tri:disabled { color: var(--quiet); }
 
-.stage { flex: 1; min-height: 176px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--surface); border-radius: var(--radius-panel); padding: 16px; }
-.actions { display: flex; align-items: stretch; justify-content: center; gap: 8px; width: min(400px, 100%); }
-.go { flex: 1; min-width: 0; height: clamp(88px, 24vh, 176px); border-radius: var(--radius-panel); display: flex; align-items: center; justify-content: center; gap: 14px; background: var(--accent); color: var(--on-accent); font-size: 22px; font-weight: 700; letter-spacing: .02em; }
-.go:hover:not(:disabled) { background: var(--accent-hover); }
+/* The one big button, round like a Driver Hub's: INIT, then START, then STOP. */
+.stage { flex: 1; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--surface); border-radius: var(--radius-panel); padding: 16px; position: relative; }
+.actions { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.go { --size: clamp(120px, 30vh, 208px); width: var(--size); height: var(--size); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: var(--on-accent); font-size: clamp(20px, 4vh, 28px); font-weight: 750; letter-spacing: .06em; box-shadow: 0 0 0 6px var(--bg), 0 0 0 7px var(--line-strong); transition: transform .12s, background .15s, box-shadow .2s; }
+.go:hover:not(:disabled) { background: var(--accent-hover); } .go:active:not(:disabled) { transform: scale(.97); }
 .go b { font-weight: inherit; }
-.go:disabled { background: var(--raised); color: var(--quiet); opacity: 1; }
-.go.start { background: var(--go); color: var(--on-go); } .go.start:hover:not(:disabled) { background: var(--go); filter: brightness(1.08); }
-.go.stop { background: var(--stop); color: var(--on-stop); } .go.stop:hover:not(:disabled) { background: var(--stop); filter: brightness(1.1); }
+.go:disabled { background: var(--raised); color: var(--quiet); opacity: 1; box-shadow: 0 0 0 6px var(--surface), 0 0 0 7px var(--line); }
+.go.start { background: var(--go); color: var(--on-go); box-shadow: 0 0 0 6px var(--surface), 0 0 0 8px color-mix(in srgb, var(--go) 55%, transparent); animation: ds-ready 1.6s ease-in-out infinite; }
+.go.start:hover:not(:disabled) { background: var(--go); filter: brightness(1.08); }
+.go.stop { background: var(--stop); color: var(--on-stop); box-shadow: 0 0 0 6px var(--surface), 0 0 0 8px color-mix(in srgb, var(--stop) 55%, transparent); }
+.go.stop:hover:not(:disabled) { background: var(--stop); filter: brightness(1.1); }
 .go.start b, .go.stop b { display: none; }
-.go.start::after { content: 'START'; } .go.stop::after { content: 'STOP'; }
-.go.start i { width: 0; height: 0; border-style: solid; border-width: 13px 0 13px 20px; border-color: transparent transparent transparent currentColor; }
-.go.stop i { width: 22px; height: 22px; background: currentColor; border-radius: 3px; }
+.go.start::after { content: 'START'; font-size: .6em; } .go.stop::after { content: 'STOP'; font-size: .6em; }
+.go.start i { width: 0; height: 0; border-style: solid; border-width: 18px 0 18px 28px; border-color: transparent transparent transparent currentColor; margin-left: 8px; }
+.go.stop i { width: 30px; height: 30px; background: currentColor; border-radius: 4px; }
 .go.waiting { opacity: .7; }
-.abort { width: 88px; flex-shrink: 0; border-radius: var(--radius-panel); background: var(--danger-bg); display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; color: var(--danger); font-size: 12px; font-weight: 700; }
+@keyframes ds-ready { 50% { box-shadow: 0 0 0 6px var(--surface), 0 0 0 12px color-mix(in srgb, var(--go) 25%, transparent); } }
+.abort { width: 64px; height: 64px; flex-shrink: 0; border-radius: 50%; background: var(--danger-bg); display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; color: var(--danger); font-size: 10px; font-weight: 750; letter-spacing: .04em; }
 .abort i { width: 14px; height: 14px; background: currentColor; border-radius: 2px; }
 .abort::after { content: 'STOP'; }
-.abort:hover { background: var(--hover); }
-.side { display: flex; align-items: center; gap: 8px; width: min(400px, 100%); min-height: 44px; }
+.abort:hover { filter: brightness(1.2); }
+.side { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); min-height: 44px; padding: 0 4px 0 0; border-radius: 999px; background: var(--raised); }
 .side-label { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.stopwatch { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; border-radius: var(--radius-control); color: var(--muted); }
-.stopwatch:hover { background: var(--raised); color: var(--text); }
+.stopwatch { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; border-radius: 999px; color: var(--muted); }
+.stopwatch:hover { color: var(--text); }
 .stopwatch svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .stopwatch span { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--warning); }
-.stopwatch.off { color: var(--quiet); }
+.stopwatch.off { color: var(--quiet); } .stopwatch.counting { color: var(--warning); }
 .switch { position: relative; display: block; width: 44px; height: 44px; flex-shrink: 0; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .switch i { position: absolute; left: 0; right: 0; top: 11px; height: 22px; border-radius: 11px; background: var(--line-strong); pointer-events: none; }
-.switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); }
+.switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); transition: left .15s; }
 .switch input:checked + i { background: var(--accent); } .switch input:checked + i::after { left: 25px; background: var(--on-accent); }
 .switch input:disabled + i { opacity: .5; }
 .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-.status { flex: 1; min-height: 0; background: var(--surface); border-radius: var(--radius-panel); display: flex; flex-direction: column; padding: 16px 20px; }
-.status-heading { font-size: 15px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; margin: 0 0 8px; }
-.status p { margin: 0 0 12px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-#status-line { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--muted); padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+/* The practice match clock: a strip under the button, apart from op modes. */
+.practice { flex-shrink: 0; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 8px 8px 16px; background: var(--surface); border-radius: var(--radius-panel); }
+.practice-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.practice-text small { font-size: 11px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#practice-time { font-size: 26px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.practice.running #practice-time, .practice.running .practice-text small { color: var(--warning); }
+.round-play { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--raised); display: grid; place-items: center; }
+.round-play:hover { background: var(--hover); }
+.round-play i.play { width: 0; height: 0; border-style: solid; border-width: 7px 0 7px 11px; border-color: transparent transparent transparent var(--text); margin-left: 3px; }
+.round-play i.stop { width: 12px; height: 12px; background: var(--text); border-radius: 2px; }
+
+/* What the robot says: its state, the readouts a Driver Hub keeps on screen, its message, then telemetry. */
+.status { flex: 1; min-height: 0; background: var(--surface); border-radius: var(--radius-panel); display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
+.status-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.status-heading { font-size: 15px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+#status-line { display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 12px; border-radius: 999px; background: var(--raised); font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 #status-line::before { content: ''; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--quiet); }
-body[data-robot-state=running] #status-line { color: var(--connected); } body[data-robot-state=running] #status-line::before { background: var(--connected); }
+body[data-robot-state=running] #status-line { color: var(--connected); background: var(--connected-bg); } body[data-robot-state=running] #status-line::before { background: var(--connected); }
 body[data-robot-state=init] #status-line { color: var(--text); } body[data-robot-state=init] #status-line::before { background: var(--text); }
-body[data-robot-state=disconnected] #status-line { color: var(--warning); } body[data-robot-state=disconnected] #status-line::before { background: var(--warning); }
-body[data-robot-state=emergency] #status-line { color: var(--danger); } body[data-robot-state=emergency] #status-line::before { background: var(--danger); }
+body[data-robot-state=disconnected] #status-line { color: var(--warning); background: var(--warning-bg); } body[data-robot-state=disconnected] #status-line::before { background: var(--warning); animation: ds-blink 1.2s ease-in-out infinite; }
+body[data-robot-state=emergency] #status-line { color: var(--danger); background: var(--danger-bg); } body[data-robot-state=emergency] #status-line::before { background: var(--danger); }
+.stats { flex-shrink: 0; display: grid; grid-template-columns: 1.25fr .8fr .9fr 1.25fr; border-radius: var(--radius-control); background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
+.stats .tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; min-width: 0; }
+.stats .tile + .tile { box-shadow: -1px 0 0 var(--line); }
+.stats .value { font-size: 20px; }
+.volts.caution .value b { color: var(--warning); }
+.volts.danger .value b { color: var(--danger); }
+.volts.none .value b, .rc-batt.none .value b { color: var(--quiet); }
+.batt { position: relative; display: inline-flex; align-items: center; justify-content: space-between; border: 1.5px solid var(--quiet); border-radius: 3px; flex-shrink: 0; margin-right: 4px; align-self: center; }
+.batt::after { content: ''; position: absolute; right: -5px; top: 50%; width: 3px; height: 6px; margin-top: -3px; background: var(--quiet); border-radius: 0 1px 1px 0; }
+.batt.small { width: 26px; height: 13px; padding: 2px; } .batt.small i { display: block; height: 100%; width: 0; background: var(--muted); border-radius: 1px; }
+.system { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.system[hidden] { display: none; }
+.system span { flex: 1; min-width: 200px; }
 .system.error, .system.warning { padding: 10px 12px; border-radius: var(--radius-control); border: 1px solid; }
 .system.error { color: var(--danger); background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .system.warning { color: var(--warning); background: var(--warning-bg); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
-.lines { flex: 1; overflow: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; scrollbar-color: var(--line-strong) transparent; }
+.system-action { flex-shrink: 0; min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); background: currentColor; font-weight: 650; font-size: 12px; white-space: nowrap; }
+.system-action > * , .system-action { color: inherit; } .system.warning .system-action { background: var(--warning); color: var(--warning-bg); } .system.error .system-action { background: var(--danger); color: var(--danger-bg); }
+.system-action:hover:not(:disabled) { filter: brightness(1.1); } .system-action:disabled { opacity: .6; }
+.lines { flex: 1; min-height: 0; overflow: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; scrollbar-color: var(--line-strong) transparent; }
 .lines > div { padding-block: 2px; }
 .lines.monospace { font-family: var(--mono); font-size: 12px; }
+.lines:empty { display: none; }
+/* Searching: the robot's last words stay on top, the game takes the rest. */
+body[data-robot-state=disconnected] .lines { flex: 0 1 auto; max-height: 35%; }
+/* While no robot answers, the telemetry area holds a game to pass the wait. */
+.waiting-game { flex: 1; min-height: 160px; position: relative; display: flex; flex-direction: column; justify-content: center; border-radius: var(--radius-control); overflow: hidden; }
+.waiting-game[hidden] { display: none; }
 .camera { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .camera img { width: 100%; height: calc(100% - 28px); object-fit: contain; cursor: pointer; background: #000; border-radius: var(--radius-control); }
 .camera figcaption { font-size: 11px; color: var(--muted); }
@@ -152,21 +180,22 @@ dialog { background: var(--surface); border: 1px solid var(--line-strong); borde
 dialog::backdrop { background: var(--backdrop); }
 dialog h2 { margin: 0 0 12px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
 dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 var(--font); color: var(--muted); user-select: text; -webkit-user-select: text; }
-.dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .ok { background: var(--accent); color: var(--on-accent); min-height: 44px; padding: 10px 18px; border-radius: var(--radius-control); font-weight: 600; }
 .ok:hover:not(:disabled) { background: var(--accent-hover); }
-@media (max-width: 1100px) { .net div:first-child { display: none; } .brand { display: none; } }
-@media (max-width: 880px) { .pad span { display: none; } .net { display: none; } .signal { margin-left: auto; } }
+@media (max-width: 1180px) { #ds-name { display: none; } .net-item b { max-width: 120px; } }
+@media (max-width: 980px) { .pad span { display: none; } .net-item:first-child { display: none; } .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stats .tile:nth-child(3) { box-shadow: 0 -1px 0 var(--line); } .stats .tile:nth-child(4) { box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line); } }
 @media (max-width: 720px) {
   :root { --page-gutter: 12px; }
-  body { overflow: auto; } .bar { flex-wrap: wrap; padding: 4px 8px 4px 12px; gap: 4px 8px; }
+  body { overflow: auto; } .bar { flex-wrap: wrap; padding: 4px 8px 4px 12px; gap: 4px 8px; } .net { display: none; } .pads { margin-left: auto; }
   .grid { display: flex; flex-direction: column; overflow: visible; padding: 12px; }
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stage { min-height: 240px; } .status { min-height: 280px; }
+  .left, .right { flex-shrink: 0; } .stage { min-height: 260px; } .status { min-height: 360px; } .tri { min-width: 72px; } .stats .value { flex-wrap: wrap; row-gap: 0; }
   .assign { flex-wrap: wrap; gap: 4px 12px; }
 }
 @media (max-height: 600px) and (min-width: 721px) {
-  .grid { padding-block: 8px; gap: 8px; } .left, .right, .stats { gap: 8px; } .tile { padding-block: 4px; }
-  .opbar { min-height: 52px; } .stage { min-height: 150px; gap: 8px; padding: 8px; } .go { height: clamp(64px, 20vh, 104px); }
+  .grid { padding-block: 8px; gap: 8px; } .left, .right { gap: 8px; } .status { gap: 8px; padding-block: 12px; }
+  .opbar { min-height: 52px; } .stage { min-height: 150px; gap: 8px; padding: 8px; } .go { --size: clamp(96px, 26vh, 150px); } .practice { min-height: 48px; padding-block: 4px; }
+  .stats .tile { padding-block: 6px; } .stats .value { font-size: 17px; }
 }
 /* Settings, Configure Robot and Self Inspect: full-screen pages over the station, as on a Driver Hub. */
 .ds-page { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: var(--bg); }

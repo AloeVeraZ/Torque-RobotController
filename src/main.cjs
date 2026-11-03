@@ -210,10 +210,10 @@ async function openRobot(input){
     if(interruption)await interruption;
     if(suspended)throw Error('Wait for this device to wake before reconnecting.');
     const saved=input.id?library.get(input.id):null,target={...saved,...input,url:normalizeUrl(input.url||saved?.url)},usb=isUsb(target.url);if(usb)target.kind='ftc';
-    const wifi=await refreshNetwork(),ssid=usb?'':cleanSsid(input.id&&!input.url?saved?.ssid||wifi.ssid:input.ssid||wifi.ssid);
+    const wifi=usb?currentNetwork||{}:await refreshNetwork(),ssid=usb?'':cleanSsid(input.id&&!input.url?saved?.ssid||wifi.ssid:input.ssid||wifi.ssid);
     if(ssid&&wifi.ssid!==ssid)return {needsWifi:{ssid},request:target};
     // The automatic FTC check holds UDP 20884 for up to 1.5 s; let it finish first.
-    for(let i=0;auto.busy&&i<40;i++)await delay(50);
+    for(let i=0;!usb&&auto.busy&&i<40;i++)await delay(50);
     if(navigation!==pageEpoch)return {opened:false};
     await closeRobot();
     if(navigation!==pageEpoch)return {opened:false};
@@ -264,7 +264,9 @@ function lockDown(contents,allowed){
 }
 async function openFtc(target,ssid,epoch){
   const host=new URL(target.url).hostname;if(competition&&host!==USB_HOST)throw Error(COMPETITION_WIFI);const socket=host===USB_HOST?new UsbFtcSocket(()=>robotLink.usbLink().then(f=>({port:f.link}))):new FtcSocket(host);
-  try{await socket.open();}catch(e){if(epoch===connectionEpoch)update({page:'drive',loading:false,url:target.url,title:target.name||host,error:e.message});return {opened:false};}
+  // Over the cable the Driver Station shows at once and the link comes up behind it (usbRelink), however long the hub takes.
+  const usb=socket instanceof UsbFtcSocket;if(usb)usbName='';
+  if(!usb)try{await socket.open();}catch(e){if(epoch===connectionEpoch)update({page:'drive',loading:false,url:target.url,title:target.name||host,error:e.message});return {opened:false};}
   if(epoch!==connectionEpoch||suspended){await socket.close();return {opened:false};}
   const robot=library.upsert({...target,ssid,kind:'ftc'},{opened:true});
   const view=new WebContentsView({webPreferences:{preload:path.join(__dirname,'ftc-preload.cjs'),partition:'ftc-driver-station',additionalArguments:robotArguments(),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false,webSecurity:true}});
@@ -273,10 +275,27 @@ async function openFtc(target,ssid,epoch){
   robotEscape(view.webContents);
   controllerSession(view.webContents.session);controllerHub.setCount(robot.controllerCount);
   socket.onPacket(bytes=>{if(robotView===view)view.webContents.send('ftc-packet',bytes);});
+  if(usb){socket.onClose(()=>void usbRelink(socket,view));void usbRelink(socket,view,0);}
   view.webContents.on('render-process-gone',()=>{if(robotView===view)void interruptRobot('The Driver Station closed unexpectedly. Your robot address is saved. Choose Try again to reconnect.');});
   update({page:'drive',loading:false,url:target.url,title:robot.name,robot,kind:'ftc',error:''});fitView();
   await view.webContents.loadFile(page);if(robotView===view){view.webContents.focus();fitView();}return {opened:true,kind:'ftc'};
 }
+// The cable's link dropped while its Driver Station is open: try again, sooner at first, until it is back or the robot is closed.
+// The page stays and keeps searching (with its game) meanwhile, so nothing has to be pressed when the hub comes back.
+let usbName='';
+const toDs=(view,channel,value)=>{try{if(robotView===view)view.webContents.send(channel,value);}catch{}};
+async function usbRelink(socket,view,first=250){
+  for(let wait=first;bridge===socket&&robotView===view&&!suspended;wait=Math.min(Math.max(wait*2,250),2000)){
+    if(wait)await delay(wait);if(bridge!==socket||robotView!==view||suspended)return;
+    try{await socket.open();if(bridge!==socket){await socket.close();return;}toDs(view,'ftc-link-note','');
+      if(!usbName)void robotLink.usbRobotName().then(n=>{if(n&&bridge===socket){usbName=n;toDs(view,'ftc-robot-name',n);}});return;}
+    catch(e){toDs(view,'ftc-link-note',e.message);}
+  }
+}
+// The Robot Controller app, updated over the cable (src/rc-update.cjs). The Driver Station link drops while the app is
+// replaced and comes back once it is running again (usbRelink).
+ipcMain.handle('ftc-rc-update',async(e,options)=>{fromDs(e);if(!(bridge instanceof UsbFtcSocket))throw Error('Plug the Control Hub into this computer with a USB-C data cable to update its Robot Controller app. Torque updates it over the cable.');
+  const contents=e.sender;return robotLink.usbUpdateController({replace:options?.replace===true,cache:path.join(app.getPath('userData'),'rc-apk'),progress:text=>{try{contents.send('ftc-rc-progress',String(text));}catch{}}});});
 // Program & Manage: the Robot Controller's own web interface (port 8080) over the existing website bridge.
 async function openManager(){
   if(!(bridge instanceof FtcSocket))throw Error('Program & Manage is available for FTC robots.');await closeManager();
@@ -293,9 +312,9 @@ async function openManager(){
 ipcMain.on('ftc-send',(e,bytes)=>{if(robotView&&e.sender===robotView.webContents&&bridge instanceof FtcSocket&&bytes instanceof Uint8Array)bridge.send(bytes);});
 ipcMain.handle('ftc-info',e=>{if(!robotView||e.sender!==robotView.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC robot is open.');
   const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;const open=dsOpenPage;dsOpenPage=null;
-  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?'USB cable':active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,fullscreen:!!state.robotFullscreen};});
+  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,fullscreen:!!state.robotFullscreen};});
 // The Driver Station's own bar closes the robot and goes fullscreen, and it follows the app's colour theme.
-ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;await closeRobot();return true;});
+ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;if(bridge instanceof UsbFtcSocket)auto.usbDismissed='pending';await closeRobot();return true;});
 ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(true);return true;});
 ipcMain.on('app-theme',(e,theme)=>{if(e.sender!==win?.webContents||!['system','light','dark'].includes(theme))return;appTheme=theme;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-theme',theme);}catch{}});
 // A configuration saved or picked in the Driver Station's Configure Robot goes to Setup, Simulate and Calibrate.
@@ -330,6 +349,15 @@ handle('manager-close',closeManager);
 // its Driver Station as soon as the Robot Controller answers. Retries every poll (the hub's Wi-Fi starts before
 // its software); closing the robot stops this until the network changes.
 const auto={ssid:null,dismissed:false,busy:false};
+async function autoOpenUsb(){
+  if(state.page!=='drive'||suspended||state.recovering||robotView||opening||finding||updater?.busy||!library||auto.usbBusy)return;
+  auto.usbBusy=true;
+  try{const known=HubUsb.hubToFollow({hub:usbWatch?.hub}),s=known?{found:true,serial:known}:await robotLink.usbStatus();
+    if(!s.found){auto.usbDismissed=null;return;}if(auto.usbDismissed==='pending')auto.usbDismissed=s.serial;if(auto.usbDismissed===s.serial)return;
+    if(state.page!=='drive'||robotView||opening)return;const saved=library.list().find(r=>isUsb(r.url));
+    auto.usbBusy=false;await openRobot(saved?{id:saved.id}:{url:USB_HOST,name:'Control Hub (USB)',kind:'ftc'});
+  }catch{}finally{auto.usbBusy=false;}
+}
 async function autoOpenFtc(){
   const ssid=currentNetwork?.ssid||'';if(auto.ssid!==ssid)Object.assign(auto,{ssid,dismissed:false});
   if(competition||offlinePage(state.page)||suspended||state.recovering||auto.busy||auto.dismissed||robotView||opening||finding||updater?.busy||network.busy||!library||!ssid)return;
@@ -604,6 +632,8 @@ app.whenReady().then(async()=>{
       return;}
     robotKeyboard?.close();});win.on('closed',()=>{robotExitView?.webContents.close();robotExitView=null;});
   pollTimer=setInterval(()=>{if(!network.busy)void refreshNetwork().then(()=>autoOpenFtc());},5000);pollTimer.unref();
+  // A hub plugged in is looked for every second and a half while Drive shows empty: one quick ADB question.
+  setInterval(()=>void autoOpenUsb(),1500).unref();
 });
 // Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
 let closing=false;app.on('before-quit',e=>{usbWatch?.quit();axon?.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);

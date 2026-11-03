@@ -53,7 +53,7 @@ async function findFtc(hosts=FTC_ADDRESSES,{timeout=1500}={}){
 class UsbFtcSocket extends FtcSocket {
   constructor(connect,{label='Control Hub on USB',grace}={}){super('usb');this.connect=connect;this.grace=grace;this.host='usb';this.address=label;this.listeners=new Set();this.socket=null;this.buffer=Buffer.alloc(0);}
   async open(){
-    const {port}=await this.connect(),net=require('node:net');
+    const {port}=await this.connect(),net=require('node:net');this.buffer=Buffer.alloc(0);
     const socket=await new Promise((ok,fail)=>{const s=net.connect({host:'127.0.0.1',port},()=>{s.off('error',fail);ok(s);});s.once('error',e=>fail(Error(`Could not reach the Control Hub over the USB cable (${e.code||e.message}). Unplug the cable, plug it back in and try again.`)));});
     socket.setNoDelay(true);socket.on('error',()=>{});
     // ADB takes the connection on this computer whatever the hub has, and hangs up at once when nothing listens there.

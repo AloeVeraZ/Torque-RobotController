@@ -28,7 +28,5 @@
     if(s.stage==='stop')return now-s.at>=HOLD_MS?{...s,stage:'done',value}:{...s,value};
     return s;}
   const analogPrompt=s=>{const v=Number.isFinite(s.value)?` Reading ${s.value.toFixed(2)} V.`:'';return s.stage==='read'?'Waiting for a reading…':s.stage==='turn'?`Rotate it until you are told to stop.${v}`:s.stage==='stop'?`Stop and let go.${v}`:`It works: it rests at ${s.value.toFixed(2)} V.`;};
-  // A short, quiet double tone, to get the attention of someone looking at the robot.
-  let audio=null;function chime(){if(globalThis.DeckSounds?.muted())return;try{audio||=new AudioContext();void audio.resume();const t=audio.currentTime;for(const [at,hz] of [[0,660],[.2,880]]){const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=hz;g.gain.setValueAtTime(0,t+at);g.gain.linearRampToValueAtTime(.05,t+at+.02);g.gain.exponentialRampToValueAtTime(.0005,t+at+.18);o.connect(g).connect(audio.destination);o.start(t+at);o.stop(t+at+.2);}}catch{}}
-  return {DEFAULTS,MIN_APART,SERVO_SPAN,SERVO_RANGES,SAFE_SPEED,speeds,servoChoices,deviceParams,problem,position,digitalStart,digitalStep,digitalPrompt,analogStart,analogStep,analogPrompt,chime};
+  return {DEFAULTS,MIN_APART,SERVO_SPAN,SERVO_RANGES,SAFE_SPEED,speeds,servoChoices,deviceParams,problem,position,digitalStart,digitalStep,digitalPrompt,analogStart,analogStep,analogPrompt};
 });

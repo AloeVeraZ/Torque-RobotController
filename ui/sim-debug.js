@@ -69,7 +69,7 @@
     function checkPaint(){const list=devices();q('[data-check]').hidden=!manifest;q('[data-check-all]').disabled=!running||!!checkRun;
       for(const d of list){const row=host.querySelector(`[data-check-row="${CSS.escape(d.name)}"]`);if(!row)continue;const c=checks.get(d.name)||{state:'idle',text:''},act=row.querySelector('[data-check-act]'),bad=d.kind==='servo'&&C().problem(settingsOf('servo',d.name));row.dataset.state=c.state;row.closest('.cal-port').dataset.checkState=c.state;row.querySelector('[data-check-text]').textContent=c.text;
         const html=c.state==='ask'?'<button type="button" class="primary" data-check-answer="yes">Yes</button><button type="button" class="secondary" data-check-answer="no">No</button>':`<button type="button" class="secondary" data-check-one="${esc(d.name)}"${!running||checkRun||bad?' disabled':''}>Check</button>`;if(act.dataset.drawn!==html){act.dataset.drawn=html;act.innerHTML=html;}}}
-    const checkSet=(name,state,text)=>{checks.set(name,{state,text});if(state==='pass')root.DeckSounds?.play('ok');else if(state==='fail')root.DeckSounds?.play('fail');checkPaint();};
+    const checkSet=(name,state,text)=>{checks.set(name,{state,text});checkPaint();};
     const stopped=()=>!checkRun||checkRun.stop;
     const pause=async ms=>{for(const end=performance.now()+ms;performance.now()<end&&!stopped();)await new Promise(r=>setTimeout(r,Math.min(50,ms)));};
     async function holdOut(cmd,name,power,ms){const line=`${cmd}\t${name}\t${power.toFixed(3)}`;void send(line);const keep=setInterval(()=>void send(line),100);try{await pause(ms);}finally{clearInterval(keep);void send(`${cmd}\t${name}\t0`);}}
@@ -88,7 +88,7 @@
         const a=await checkAsk(name,`Did it move between ${p.a}° and ${p.b}°?`);if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It works.':'It did not move. Check its cable, its power and the port in Configure.');}
       if(kind==='digital'||kind==='touch'){const key=`d:${name}`,now=v()[key];if(now===undefined)return checkSet(name,'fail','No reading: it is not connected, or not in the configuration.');const md=rows().find(r=>r.name===name),low=kind==='touch'||H().SENSOR_MODELS[md?.model]?.activeLow;
         const ok=await checkWatch(name,key,c.digitalStart(now,!!low&&!now),(s,x)=>c.digitalStep(s,x),c.digitalPrompt,s=>s.done);if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.digitalPrompt({done:true}):'It did not change. Check its cable and the port in Configure.');}
-      if(kind==='analog'){let last=null,told=false;const ok=await checkWatch(name,`a:${name}`,c.analogStart(),(s,x,t)=>{last=c.analogStep(s,x,t);if(last.stage==='stop'&&!told){told=true;c.chime();}return last;},c.analogPrompt,s=>s.stage==='done');if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.analogPrompt(last):'It did not change and settle. Check its cable and the port in Configure.');}
+      if(kind==='analog'){let last=null;const ok=await checkWatch(name,`a:${name}`,c.analogStart(),(s,x,t)=>{last=c.analogStep(s,x,t);return last;},c.analogPrompt,s=>s.stage==='done');if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.analogPrompt(last):'It did not change and settle. Check its cable and the port in Configure.');}
     }
     async function checkList(list){if(checkRun||!running)return;checkRun={stop:false};for(const d of list)if(!checks.has(d.name)||list.length===1||checks.get(d.name).state!=='pass')checks.delete(d.name);checkPaint();
       try{for(const d of list){if(stopped())break;await checkOne(d);}}finally{checkRun=null;checkPaint();}}
@@ -181,7 +181,7 @@
     // ---- events from the robot link
     function event(e){
       if(e.camera){for(const fn of cameraListeners)fn(e.camera);return;}
-      if(e.manifest){if(host.offsetParent)root.DeckSounds?.play('ready');manifest=e.manifest;frame=null;flowing=true;frames=[];edges={};seen={};checks.clear();status('Live: reading the robot','live');layout();checkPaint();onChange();return;}
+      if(e.manifest){manifest=e.manifest;frame=null;flowing=true;frames=[];edges={};seen={};checks.clear();status('Live: reading the robot','live');layout();checkPaint();onChange();return;}
       if(e.frame){const prev=values(frame);frame=e.frame;frames.push(frame);const cut=frame.t-(SPAN+2)*1000;while(frames.length&&frames[0].t<cut)frames.shift();
         const v=values(frame);for(const [k,x] of Object.entries(v)){if(k.startsWith('d:')&&prev[k]!==undefined&&prev[k]!==x)edges[k.slice(2)]=(edges[k.slice(2)]||0)+1;if(k.startsWith('a:')&&finite(x)){const n=k.slice(2),s=seen[n]||[x,x];seen[n]=[Math.min(s[0],x),Math.max(s[1],x)];}}
         if(pulse)pulse.frames.push(frame);for(const fn of listeners)fn(frame,v);paint(false);return;}
@@ -220,13 +220,13 @@
     q('[data-debug-start]').onclick=()=>{heldOff=running||starting;void start();};
     // STOP: everything off, whatever is going on. Space does the same anywhere on this tab, as it stops an op mode on a Driver Station.
     function zeroHolds(){releasedAt=performance.now();for(const s of host.querySelectorAll('[data-hold]')){s.value=0;spinFill(s);}held=null;}
-    function stopAll(){root.DeckSounds?.play('stop');const told=!!checkRun;checkStop();zeroHolds();for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;if(!told)void send('X');}
+    function stopAll(){const told=!!checkRun;checkStop();zeroHolds();for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;if(!told)void send('X');}
     q('[data-debug-stopall]').onclick=stopAll;
     document.addEventListener('keydown',e=>{if(e.code!=='Space'||e.repeat||!running||!host.offsetParent||e.target?.matches?.('textarea,[contenteditable],input:not([type]),input[type=text]'))return;e.preventDefault();e.stopPropagation();stopAll();},true);
     // lastBuild: what the last install answered, for run: {opMode} or {problem}. An error on the way, such as the crash guard's, is thrown again for run to say.
     let lastBuild=null;
     async function install(host,extra={}){const {host:picked,label}=link(),to=host||picked,b=q('[data-debug-install]'),was=unplugs;b.disabled=true;installing=true;lastBuild=null;status(`Putting Torque Debug on ${label} and building…`);
-      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};root.DeckSounds?.play(lastBuild.problem?'fail':'ready');status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
+      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
     q('[data-debug-install]').onclick=()=>void install();
     // Hold-to-run: the slider sends while held and springs back to 0 when let go (pointer up, key up, focus lost). Its bar grows from the middle, the way it turns.
     let held=null,sentAt=0;
@@ -257,7 +257,7 @@
     // Holding a slider keeps sending, so a held slider never times out on the robot.
     setInterval(()=>{if(held&&running)holdSend(held,true);},150);
     host.addEventListener('click',e=>{const r=e.target.closest('[data-reset]');if(r){void send(`R\t${r.dataset.reset}`);return;}
-      const l=e.target.closest('[data-light]');if(l){root.DeckSounds?.play('tap');void send(`G\t${l.dataset.light}\t${l.getAttribute('aria-checked')==='true'?0:1}`);return;}
+      const l=e.target.closest('[data-light]');if(l){void send(`G\t${l.dataset.light}\t${l.getAttribute('aria-checked')==='true'?0:1}`);return;}
       const p=e.target.closest('[data-plot-key]');if(p){const k=p.dataset.plotKey;if(plot.has(k))plot.delete(k);else if(plot.size<5)plot.add(k);p.classList.toggle('plotted',plot.has(k));chart();if(!plot.size)q('[data-debug-legend]').innerHTML='';}});
     // Half a second of quiet, the pulse (M, C: power; S: position), then 0.6 s after: every input that moved beyond three
     // times its noise, with when it first did and by how much. {changes:[{key, delta, at, text}], error}

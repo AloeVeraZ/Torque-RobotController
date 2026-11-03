@@ -20,5 +20,8 @@ contextBridge.exposeInMainWorld('ftcHost',{
   wiringNotes:request=>ipcRenderer.invoke('ftc-wiring-notes',request),
   rcHubs:()=>ipcRenderer.invoke('ftc-rc-hubs'),
   onOpen:fn=>listen('ftc-open',fn),
+  updateRobotController:(options,progress)=>{const off=progress?listen('ftc-rc-progress',progress):()=>{};return ipcRenderer.invoke('ftc-rc-update',options).finally(off);},
+  onRobotName:fn=>listen('ftc-robot-name',fn),
+  onLinkNote:fn=>listen('ftc-link-note',fn),
   useConfiguration:config=>ipcRenderer.send('ftc-use-configuration',config)
 });

@@ -385,8 +385,8 @@ async function usbForward({run}={}){
   const listed=await usbList(run),ready=listed.find(x=>x[1]==='device');
   if(!ready)throw Error(listed.length?(listed[0][1]==='unauthorized'?'The Control Hub is on USB but has not allowed this computer yet: look for the prompt in the REV Hardware Client.':`The Control Hub on USB is ${listed[0][1]}.`):'No Control Hub on USB. Plug its USB-C port into this computer with a data cable (some cables only charge).');
   const serial=ready[0];if(usbPorts?.serial===serial){try{if((await adb(['-s',serial,'forward','--list'],{run})).includes(`tcp:${usbPorts.port} tcp:8080`))return usbPorts;}catch{}}
-  const port=18000+3*Math.floor(Math.random()*600);await adb(['-s',serial,'forward',`tcp:${port}`,'tcp:8080'],{run});await adb(['-s',serial,'forward',`tcp:${port+1}`,'tcp:8081'],{run});
-  await adb(['-s',serial,'forward',`tcp:${port+2}`,'tcp:20885'],{run});await adb(['-s',serial,'forward',`tcp:${port+3}`,`tcp:${DEBUG_PORT}`],{run});usbPorts={serial,port,link:port+2,debug:port+3};return usbPorts;}
+  const port=18000+3*Math.floor(Math.random()*600);
+  await Promise.all([[port,8080],[port+1,8081],[port+2,20885],[port+3,DEBUG_PORT]].map(([from,to])=>adb(['-s',serial,'forward',`tcp:${from}`,`tcp:${to}`],{run})));usbPorts={serial,port,link:port+2,debug:port+3};return usbPorts;}
 // The Driver Station over the cable works on any Control Hub with nothing installed on it. ADB forwards TCP but not UDP,
 // so a small relay (src/usb-relay/DeckUsbRelay.java) runs on the hub as ADB's own unprivileged shell user, from a temporary
 // file that is deleted once it has started. It ends when the cable is pulled or Deck closes (its standard input closes).
@@ -437,5 +437,10 @@ async function usbDebugGuard({run,watch=40000,pause=2000,before,still=()=>true}=
     await sh(`rm -f /sdcard/FIRST/java/src/${DEBUG_FILE}; rm -rf /sdcard/FIRST/java/build/jars/* /sdcard/FIRST/java/build/classes/*`);await usbController(serial,{run});
     throw Object.assign(Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took that program off and restarted the app. Your OnBot Java files are all still there, but their last build had to be cleared too, so your OnBot Java op modes will not show until you open OnBot Java and press Build Everything.'),{crashed:true,serial});}}
 // Sets up the ports, the Robot Controller and the relay: what the Driver Station link needs.
-async function usbLink(options){const ports=await usbForward(options);await usbController(ports.serial,options);await usbRelay(ports.serial,options);return ports;}
-module.exports={adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};
+async function usbLink(options){const ports=await usbForward(options);await Promise.all([usbController(ports.serial,options),usbRelay(ports.serial,options)]);return ports;}
+// The hub's own name (FTC-zWL4, 9999-C-RC), as the Driver Station's Network shows it; the Robot Controller's web server says.
+async function usbRobotName(options){try{const {port}=await usbForward(options);const i=JSON.parse(await getLocal(port,'/js/rcInfo.json',3000));return typeof i.deviceName==='string'?i.deviceName:'';}catch{return '';}}
+// Updates the Robot Controller app on the hub plugged in (src/rc-update.cjs), then waits for it to answer again.
+async function usbUpdateController({run,...options}={}){const {serial}=await usbForward({run});
+  return require('./rc-update.cjs').update({serial,adb:(args,o)=>adb(args,{run,...o}),controller:s=>usbController(s,{run,wait:90000}),...options});}
+module.exports={usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};

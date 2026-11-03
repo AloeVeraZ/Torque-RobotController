@@ -2098,10 +2098,10 @@ public class MyAuto implements DeckAutonomous {
   function hubLeft(){hubOnUsb=false;hubPushedOn=false;hubMisses=0;setupGen++;setupFree();setupScanning=null;setupChecking=null;setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;setupRobot=null;setupRead=null;setupChecks([]);setupNote('');
     if(hubTest){hubTest=null;void liveDebug?.stop();}liveDebug?.unplugged();setupPlug(HUB_PLUG,false);hubLinkFollow({found:false,message:'Not plugged in.'});
     if(sendState?.host==='usb'){sendState=null;showCheck();showPlan();$('#sim-send-confirm').hidden=true;status('#sim-send-status',HUB_UNPLUGGED);}
-    hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();window.DeckSounds?.play('drop');}setupRender();hubUsbChanged();}
+    hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();}setupRender();hubUsbChanged();}
   // What the USB watch pushes (src/usb-watch.cjs): Windows's word on the cable first, then ADB's, and this comes at once whatever else is busy.
   function hubPushed(s){if(!s||!setupTimer)return;hubLive=s;const there=!!s.hub,seeing=s.usb||s.adb?.running;hubDarkAt=seeing?0:hubDarkAt||Date.now();
-    if(there&&!hubPushedOn){hubPushedOn=true;hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();window.DeckSounds?.play('connect');if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}
+    if(there&&!hubPushedOn){hubPushedOn=true;hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}
     // Only the watch's own word that the hub left. A list with no hub in it says nothing by itself: ADB's first after its server restarts is often empty. A Driver Hub found out never was a Control Hub,
     // and a hub leaving update mode is restarting: they just go.
     else if(!there&&hubPushedOn&&s.drop){hubPushedOn=false;hubOnUsb=false;if(s.drop==='unplugged')hubLeft();}
@@ -2130,7 +2130,7 @@ public class MyAuto implements DeckAutonomous {
   // A newer scan's hubs go into the draft whatever else is in it. A draft that only has those in it is not the team's to keep, so it still follows.
   let editorRead=null,editorPortals=null;function setupFollowActive(){const name=setupRead?.active?.name,xml=name&&setupRead.files?.[name],portals=setupRobot?.portals;configEditor?.usePortals(portals);if(!configEditor||!xml||configEditor.edited())return;
     if(configEditor.current()!==name)configEditor.open(name,xml,portals);else if(editorRead!==setupRead||editorPortals!==portals)configEditor.refresh(name,xml,portals);editorRead=setupRead;editorPortals=portals;}
-  const setupSave=async(name,xml)=>{await setupDo(()=>api.robotLink('configure',{host:setupConn.host,name,xml,replace:true}));window.DeckSounds?.play('saved');liveDebug?.warm(90000);};
+  const setupSave=async(name,xml)=>{await setupDo(()=>api.robotLink('configure',{host:setupConn.host,name,xml,replace:true}));liveDebug?.warm(90000);};
   function setupEditor(){if(configEditor||!setupRoot)return configEditor;const W=window.DeckWiring;configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:setupSave,photo:tag=>api.devicePhoto(tag),names:()=>setupRead?.configurations||[],pick:name=>void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:hubUsb,auto:()=>autoConfigure(),autoOff:()=>autoBusy||!setupConn,told:()=>autoTold,axon:axonTab,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(W.state(project),{ids:'rc-',only:['spm']})}</div>`:''}});return configEditor;}
   // A robot with no configuration yet gets one from what a scan found: every hub, and the Control Hub's own IMU.
   function configFromScan(portals){const imus=[];for(const p of portals){const parent=p.modules.find(m=>m.parent),tag=parent&&RobotConfig.IMU_TAGS[parent.imu];if(tag&&p.serial==='(embedded)')imus.push({name:'imu',tag,device:'imu',port:0,bus:0,module:{portal:p.serial,address:parent.address,name:'Control Hub'}});}return RobotConfig.newConfiguration(portals,imus);}
@@ -2142,7 +2142,7 @@ public class MyAuto implements DeckAutonomous {
   const calTold=text=>{const el=$('#cal-told');if(!el)return;el.textContent=text||'';el.hidden=!text;};
   // While it runs, every screen that can press it says what it is doing. autoEnd: the last word, for wherever the student is.
   function autoSay(text){autoTold=text;calTold(calibrating?text:'');setupRender();}
-  function autoEnd(text){window.DeckSounds?.play('fail');autoBusy=false;autoTold='';setupNote(text);configEditor?.say(text);calTold(calibrating?text:'');setupRender();return false;}
+  function autoEnd(text){autoBusy=false;autoTold='';setupNote(text);configEditor?.say(text);calTold(calibrating?text:'');setupRender();return false;}
   const namesOf=list=>list.length<2?list.join(''):`${list.slice(0,-1).join(', ')} and ${list.at(-1)}`;
   // What happened, in a sentence or two, with what stayed out and why.
   function autoWords({wrote,cameras,hubs,imus=[],ready,left}){const on=(list,word)=>list.length?`${namesOf(list)} ${list.length>1?'are':'is'} ${word}.`:'';
@@ -2173,7 +2173,7 @@ public class MyAuto implements DeckAutonomous {
       const words=autoWords({wrote:plan.writes||none,cameras,hubs,imus,ready:plan.ready,left}),serial=plan.webcams[0]?.add||plan.readyKey;autoBusy=false;autoTold='';await autoGo(serial,words);return true;}
     catch(e){return done(e.message);}finally{autoBusy=false;}}
   // To Calibrate → Camera, on the camera it was about, with what happened said above the tabs.
-  async function autoGo(serial,words){window.DeckSounds?.play('saved');liveDebug?.warm(90000);await api.page('calibrate');for(let i=0;i<40&&calRoot.hidden;i++)await new Promise(r=>setTimeout(r,25));calSelect('camera');if(serial)liveCamera?.select(serial);else liveCamera?.refresh();calTold(words);}
+  async function autoGo(serial,words){liveDebug?.warm(90000);await api.page('calibrate');for(let i=0;i<40&&calRoot.hidden;i++)await new Promise(r=>setTimeout(r,25));calSelect('camera');if(serial)liveCamera?.select(serial);else liveCamera?.refresh();calTold(words);}
   window.DeckAutoConfigure=()=>autoConfigure();
   function setupTestHtml(){const HS=window.DeckHubSetup,D=window.DeckHardware,w=D.wiringOf(project.robot),kinds=HS.needsTest(w),word=k=>D.HUBS[k].name;if(!kinds.length)return '';
     const many=kinds.map(k=>`${D.hubsOfKind(w.hubs,k).length} ${word(k)}s`).join(' and ');

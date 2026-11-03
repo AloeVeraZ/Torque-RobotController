@@ -4,10 +4,10 @@
 (()=>{
 const $=s=>document.querySelector(s),R=window.Robocol,STOP=R.STOP_OP_MODE,AUTO_SECONDS=30;
 const host=window.ftcHost;
-let session=null,info={name:'FTC Robot',host:'',ssid:''},selected=null,timerOn=false,timerEnd=0,countdown=null,inputsOn=true,cameraUrl=null,renderQueued=false,lastTelemetry=-1,lastState={},rumbleToken=0,minVolts=null,dsBattery=null;
+let session=null,info={name:'FTC Robot',host:'',ssid:''},robotNetwork='',linkNote='',aboutQuiet=false,game=null,shown=true,selected=null,timerOn=false,timerEnd=0,countdown=null,inputsOn=true,cameraUrl=null,renderQueued=false,lastTelemetry=-1,lastState={},rumbleToken=0,minVolts=null,dsBattery=null;
 const users={1:null,2:null},padKeys={1:'',2:''},padStamps={1:0,2:0};
 // Driver Station settings (the menu's Settings), kept on this computer.
-const prefs={gamepadType:'auto',showRcBattery:true,sounds:true,autoTimer:true};
+const prefs={gamepadType:'auto',showRcBattery:true,autoTimer:true};
 try{Object.assign(prefs,JSON.parse(localStorage.getItem('deck-ds-settings')||'{}'));}catch{}
 function savePrefs(){try{localStorage.setItem('deck-ds-settings',JSON.stringify(prefs));}catch{}queueRender();}
 
@@ -17,7 +17,8 @@ function showDialog(title,text){const d=$('#ds-dialog');$('#dialog-title').textC
 function opMode(name){return session?.state.opModes.find(m=>m.name===name)||null;}
 function flavorOf(m){return m?.flavor==='AUTONOMOUS'?'auto':m?.flavor==='TELEOP'?'teleop':'';}
 // The Driver Station takes its name from the robot's network: 9999-C-RC pairs with 9999-C-DS.
-function dsName(){const m=/^(.*?)[-_ ]?RC$/i.exec(info.ssid||'');return m&&m[1]?`${m[1]}-DS`:'Driver Station';}
+function dsName(){const m=/^(.*?)[-_ ]?RC$/i.exec(robotNetwork||info.ssid||'');return m&&m[1]?`${m[1]}-DS`:'Driver Station';}
+const overUsb=()=>info.host==='usb';
 
 // ---- Rendering ---------------------------------------------------------------------------
 function queueRender(){if(renderQueued)return;renderQueued=true;setTimeout(()=>{renderQueued=false;render();},0);}
@@ -30,13 +31,14 @@ function render(){
   document.body.dataset.robotState=s.robotState==='EMERGENCY_STOP'?'emergency':connected?s.opModeState:'disconnected';
   $('#link-banner').className='banner '+(connected?'connected':bad?'bad':'searching');
   $('#link-text').textContent=connected?'Robot Connected':s.connection==='rejected'?'Another DS Connected':s.connection==='incompatible'?'Robot Not Supported':'Searching for Robot';
-  $('#network').textContent=info.ssid||info.host||'—';
-  $('#ping').textContent=connected&&s.ping!==null?`${s.ping}ms`:'No Heartbeat';$('#signal').classList.toggle('on',connected);
+  $('#network').textContent=(overUsb()?robotNetwork||'USB':info.ssid||robotNetwork||info.host)||'—';$('#network').title=overUsb()?'Connected over the USB cable':'';
+  $('#ping').textContent=connected&&s.ping!==null?`${s.ping} ms`:'No Heartbeat';
+  const sig=$('#signal');sig.classList.toggle('on',connected);sig.classList.toggle('fair',connected&&s.ping>=40&&s.ping<100);sig.classList.toggle('poor',connected&&s.ping>=100);
   const v=s.battery?.volts,tile=$('#volts-tile'),known=Number.isFinite(v);
   if(known)minVolts=minVolts===null?v:Math.min(minVolts,v);
-  tile.className='tile volts'+(known?v>=12?'':v>=11?' caution':' danger':' none');
+  tile.className='tile volts'+(known?v>=12?'':v>=11?' caution':' danger':' none');tile.title=known&&v<11?'Charge or swap the robot battery':'';
   $('#volts').textContent=known?`${v.toFixed(2)} V`:connected&&s.battery?'No sensor':'—';$('#volts-min').textContent=minVolts!==null?`Low ${minVolts.toFixed(2)} V`:'';
-  const rc=s.rcBattery;$('#rc-battery').hidden=!(prefs.showRcBattery&&rc&&Number.isFinite(rc.percent));if(rc)$('#rc-battery').textContent=`Hub ${Math.round(rc.percent)}%`;
+  const rc=s.rcBattery,rcKnown=!!rc&&Number.isFinite(rc.percent);$('.rc-batt').hidden=!prefs.showRcBattery;$('.rc-batt').classList.toggle('none',!rcKnown);$('#rc-battery').textContent=rcKnown?`${Math.round(rc.percent)}%`:'—';
   const m=selected?opMode(selected.name)||selected:null;
   $('#opmode-label').textContent=m?m.name:'Select Op Mode';$('#opmode-hint').hidden=!!m;$('#opmode-name').classList.toggle('chosen',!!m);
   for(const id of ['#auto-list','#teleop-list','#opmode-name'])$(id).disabled=!connected||busy;
@@ -48,14 +50,41 @@ function render(){
   $('#timer-switch').checked=timerOn;$('#timer-switch').disabled=state==='running';
   $('#config').textContent=s.activeConfig?.name?`${s.activeConfig.name}${s.activeConfig.dirty?' *':''}`:'<No Config Set>';
   const name=s.activeOpMode===STOP?'':s.activeOpMode;
-  const statusText=!connected?(s.connection==='rejected'?'Another Driver Station is connected to this robot':`Looking for robot at ${info.host||'its address'}`)
+  const statusText=!connected?(s.connection==='rejected'?'Another Driver Station is connected to this robot':(overUsb()?linkNote||'Waiting for the Control Hub on the USB cable':`Looking for robot at ${info.host||'its address'}`))
     :s.robotState==='EMERGENCY_STOP'?'EMERGENCY STOP':state==='running'?`Running ${name}`:state==='init'?`Initialized ${name}`:'Robot is stopped';
   // Live regions announce changes, not every heartbeat/telemetry packet.
   if($('#status-line').textContent!==statusText)$('#status-line').textContent=statusText;
-  const sys=$('#system-message'),message=s.systemError||s.systemWarning||'';sys.hidden=!message;if(sys.textContent!==message)sys.textContent=message;sys.className='system '+(s.systemError?'error':'warning');
+  const sys=$('#system-message'),message=s.systemError||s.systemWarning||'';sys.hidden=!message;if($('#system-text').textContent!==message)$('#system-text').textContent=message;sys.className='system '+(s.systemError?'error':'warning');
+  // An out-of-date Robot Controller is fixed from here: one button installs the current app over the cable.
+  const act=$('#system-action'),rcOld=/Robot Controller (app )?is obsolete|apps are obsolete|update the Robot Controller/i.test(message)&&!!host.updateRobotController;act.hidden=!rcOld;if(rcOld&&!act.disabled)act.textContent='Update Robot Controller';
+  renderGame(connected);
   if(s.telemetry.updated!==lastTelemetry)renderTelemetry(s.telemetry);
   renderPractice();watchTransitions(s);
 }
+// "Wi-Fi Direct: 9999-C-RC", "Access point: FTC-zWL4" and the like: the name a team knows its robot by.
+function networkName(a){const t=String(a?.networkConnectionInfo||'');const m=/\b(\d{1,5}(?:-[A-Za-z])?-RC|FTC-[A-Za-z0-9]{2,})\b/.exec(t);return m?m[1]:'';}
+// While no robot answers, the telemetry area holds a game; it is gone the moment the robot is back, and it stops whenever
+// this screen is not the one in front, so it never costs Setup, Simulate or the robot link anything.
+function renderGame(connected){
+  const box=$('#waiting-game'),want=!connected&&shown&&!!window.DeckTripRun&&$('#camera').hidden&&!window.DeckDsPages?.open();
+  if(want){if(!game)game=window.DeckTripRun.create(box,{maxHeight:320});box.hidden=false;game.show();}
+  else if(game){if(connected){game.destroy();game=null;}else game.hide();box.hidden=true;}
+}
+// One button, as the REV Hardware Client's: FIRST's current Robot Controller, installed over the cable. A hub whose app cannot be
+// updated in place (built in Android Studio) is asked about first, since replacing it removes the code built into it.
+let updating=false;
+async function updateRobotController(){
+  if(!host.updateRobotController||updating)return;updating=true;const act=$('#system-action'),bar=$('#progress');act.disabled=true;act.textContent='Updating…';
+  const show=text=>{bar.hidden=false;$('#progress-text').textContent=text;const p=/(\d+)%/.exec(text);if(p){$('#progress-bar').max=100;$('#progress-bar').value=Number(p[1]);}else $('#progress-bar').removeAttribute('value');};
+  try{show('Checking the Robot Controller app…');let r=await host.updateRobotController({},show);
+    if(r?.needsReplace){bar.hidden=true;if(!await confirmDialog(`Update to Robot Controller ${r.to}?`,r.message,'Remove and update'))return;show('Starting the update…');r=await host.updateRobotController({replace:true},show);}
+    if(r?.upToDate)toast(`The Robot Controller app is up to date (${r.versionName}).`,4000);
+    else if(r?.installed)toast(`Robot Controller ${r.versionName} is installed. The robot reconnects by itself.`,6000);}
+  catch(e){showDialog('Update Robot Controller',e.message);}
+  finally{updating=false;bar.hidden=true;act.disabled=false;queueRender();}
+}
+function confirmDialog(title,text,ok){const d=$('#ds-dialog'),cancel=$('#dialog-cancel'),okb=$('#dialog-ok');$('#dialog-title').textContent=title;$('#dialog-text').textContent=text;okb.textContent=ok;cancel.hidden=false;
+  return new Promise(done=>{const end=v=>{cancel.hidden=true;okb.textContent='OK';okb.onclick=()=>d.close();cancel.onclick=null;d.onclose=null;if(d.open)d.close();done(v);};okb.onclick=()=>end(true);cancel.onclick=()=>end(false);d.onclose=()=>end(false);d.showModal();});}
 function renderBattery(){
   const text=$('#ds-battery-text'),fill=$('#ds-battery-fill');
   if(!dsBattery){text.textContent='—';fill.style.width='0';return;}
@@ -88,28 +117,25 @@ function startCountdown(){stopCountdown();timerEnd=Date.now()+AUTO_SECONDS*1000;
 function stopCountdown(){if(countdown!==null){clearInterval(countdown);countdown=null;}}
 
 // ---- Practice timer: a match clock independent of op modes (30 s Auto, 8 s transition, 2:00 TeleOp) ----
-let practice=null,audio=null;
+let practice=null;
 const fmt=sec=>{sec=Math.max(0,Math.ceil(sec));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;};
-function tone(freq,ms,gain=.22,type='square'){if(!prefs.sounds)return;try{audio||=new AudioContext();const o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.value=freq;g.gain.value=gain;o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+ms/1000);}catch{}}
-const cue={beep:()=>tone(880,150),start:()=>tone(1320,700,.25,'sawtooth'),end:()=>tone(196,1000,.3,'sawtooth'),endgame:()=>{tone(660,200);setTimeout(()=>tone(990,380),230);}};
 const PRACTICE_STARTS=[['auto','Autonomous','3 s lead-in, then the full match'],['transition','Auto → TeleOp Transition','8 s to pick up controllers, then TeleOp'],['teleop','TeleOp','2:00 driver-controlled period'],['endgame','Endgame','The last 30 seconds']];
 function startPractice(from){
   stopPractice(false);const [phase,seconds]={auto:['lead',3],transition:['transition',8],teleop:['teleop',120],endgame:['teleop',30]}[from];
-  practice={phase,end:Date.now()+seconds*1000,last:from==='endgame'?30:null};if(phase==='teleop')(from==='endgame'?cue.endgame:cue.start)();
+  practice={phase,end:Date.now()+seconds*1000};
   practice.ticker=setInterval(tickPractice,100);tickPractice();
 }
 function tickPractice(){
-  const p=practice;if(!p)return;const left=(p.end-Date.now())/1000,whole=Math.ceil(left);
-  if(whole!==p.last){p.last=whole;if((p.phase==='lead'||p.phase==='transition')&&whole>=1&&whole<=3)cue.beep();if(p.phase==='teleop'&&whole===30)cue.endgame();}
+  const p=practice;if(!p)return;const left=(p.end-Date.now())/1000;
   if(left<=0){
-    const next={lead:['auto',30,cue.start],auto:['transition',8,cue.end],transition:['teleop',120,cue.start]}[p.phase];
-    if(next){Object.assign(p,{phase:next[0],end:Date.now()+next[1]*1000,last:null});next[2]();}else{cue.end();stopPractice(false);toast('Practice match over');}
+    const next={lead:['auto',30],auto:['transition',8],transition:['teleop',120]}[p.phase];
+    if(next)Object.assign(p,{phase:next[0],end:Date.now()+next[1]*1000});else{stopPractice(false);toast('Practice match over');}
   }
   renderPractice();
 }
 function stopPractice(show=true){if(practice)clearInterval(practice.ticker);practice=null;if(show)renderPractice();}
 function renderPractice(){
-  const p=practice;let time=150,label='';
+  const p=practice;let time=150,label='30 s Auto · 8 s · 2:00 TeleOp';
   if(p){const left=Math.max(0,(p.end-Date.now())/1000);
     if(p.phase==='lead')label=`Starting in ${Math.ceil(left)}`;else if(p.phase==='auto'){time=left+120;label='Autonomous';}
     else if(p.phase==='transition'){time=120;label=`Pick up controllers · ${Math.ceil(left)}`;}else{time=left;label=left<=30?'Endgame':'TeleOp';}}
@@ -184,7 +210,9 @@ $('#menu-configure').onclick=()=>menu(()=>window.DeckDsPages.configure());
 $('#menu-inspect').onclick=()=>menu(()=>window.DeckDsPages.inspect());
 $('#menu-manage').onclick=()=>menu(()=>{Promise.resolve(host.programAndManage?.()).catch(e=>toast(e.message));});
 $('#menu-camera').onclick=()=>menu(openCamera);
-$('#menu-about').onclick=()=>menu(()=>{session.requestAbout();const r=session.state.robot;showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobocol: ${session.identity.version}${r?.sdk?`\nRobot Controller SDK: ${r.sdk}`:''}\n\nWaiting for the Robot Controller’s details…`);});
+$('#system-action').onclick=()=>void updateRobotController();
+$('#menu-update-rc').hidden=!host?.updateRobotController;$('#menu-update-rc').onclick=()=>menu(()=>void updateRobotController());
+$('#menu-about').onclick=()=>menu(()=>{aboutQuiet=false;session.requestAbout();const r=session.state.robot;showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobocol: ${session.identity.version}${r?.sdk?`\nRobot Controller SDK: ${r.sdk}`:''}\n\nWaiting for the Robot Controller’s details…`);});
 $('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 in the app header, then press any button on that controller.\n\nFor a two-controller robot, select Two controllers in Settings, then click Controller 2 to assign or swap it.\n\nBuilt-in controls are preferred for Controller 1; other devices use the first detected controller.'));
 $('#ds-close').hidden=!host?.closeRobot;$('#ds-fullscreen').hidden=!host?.fullscreen;
 $('#ds-close').onclick=()=>Promise.resolve(host.closeRobot()).catch(e=>toast(e.message));$('#ds-fullscreen').onclick=()=>Promise.resolve(host.fullscreen()).catch(e=>toast(e.message));
@@ -206,7 +234,7 @@ document.addEventListener('keydown',e=>{
 
 async function boot(){
   if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Open this robot from Torque Settings.';return;}
-  try{info={...info,...await host.info()};}catch{}
+  try{info={...info,...await host.info()};}catch{}if(overUsb()&&info.ssid)robotNetwork=info.ssid;
   const applyTheme=t=>{if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;};
   applyTheme(info.theme);host.onTheme?.(applyTheme);document.body.classList.toggle('fullscreen',!!info.fullscreen);host.onFullscreen?.(on=>document.body.classList.toggle('fullscreen',on));
   window.deckControllerAssignments=()=>Array.from(navigator.getGamepads?.()||[]).slice(0,2).map(p=>p?{id:p.id,index:p.index,mapping:p.mapping,connected:true}:null);
@@ -214,7 +242,8 @@ async function boot(){
   $('#ds-name').textContent=dsName();document.title=`${info.name||'FTC Robot'} · ${dsName()}`;
   try{const b=await navigator.getBattery?.();if(b){dsBattery=b;for(const e of ['levelchange','chargingchange'])b.addEventListener(e,renderBattery);}}catch{}renderBattery();
   session=new R.DriverStation({send:bytes=>host.send(bytes)});host.onPacket(bytes=>session.receive(bytes));
-  host.onActive?.(on=>{inputsOn=on;pollGamepads();});
+  host.onRobotName?.(n=>{robotNetwork=String(n||'');$('#ds-name').textContent=dsName();queueRender();});host.onLinkNote?.(n=>{linkNote=String(n||'');queueRender();});
+  host.onActive?.(on=>{inputsOn=on;shown=on;pollGamepads();if(!on)game?.pause();renderGame(session.state.connection==='connected');});
   session.on('state',queueRender);
   window.DeckDsPages.init({session,host,toast,prefs,savePrefs,dsName,restart:restartRobot});
   // Setup's Configure Robot button opens the same page as this Driver Hub's three-dot menu.
@@ -231,7 +260,8 @@ async function boot(){
   session.on('rumble',e=>void rumble(e));
   session.on('speech',s=>{try{const u=new SpeechSynthesisUtterance(s.text);if(s.languageCode)u.lang=s.languageCode+(s.countryCode?'-'+s.countryCode:'');speechSynthesis.speak(u);}catch{}});
   session.on('frame',showFrame);
-  session.on('about',a=>showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobot Controller app: ${a.appVersion||'—'}\nSDK library: ${a.libVersion||'—'}\nRobocol: ${a.networkProtocolVersion||session.identity.version}\nBuilt: ${a.buildTime||'—'}\nOperating system: ${a.osVersion||'—'}\nNetwork: ${a.networkConnectionInfo||'—'}`));
+  session.on('about',a=>{const n=networkName(a);if(n&&n!==robotNetwork){robotNetwork=n;$('#ds-name').textContent=dsName();queueRender();}if(aboutQuiet){aboutQuiet=false;return;}showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobot Controller app: ${a.appVersion||'—'}\nSDK library: ${a.libVersion||'—'}\nRobocol: ${a.networkProtocolVersion||session.identity.version}\nBuilt: ${a.buildTime||'—'}\nOperating system: ${a.osVersion||'—'}\nNetwork: ${a.networkConnectionInfo||'—'}`);});
+  session.on('connected',()=>{aboutQuiet=true;session.requestAbout();});
   session.on('disconnected',()=>{stopCountdown();toast('Robot connection lost. Searching…');});
   window.deckShutdown=()=>{session.shutdown();return true;};window.addEventListener('pagehide',()=>session.shutdown());
   window.addEventListener('blur',pollGamepads);window.addEventListener('focus',pollGamepads);

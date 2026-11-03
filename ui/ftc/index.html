@@ -1,31 +1,29 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>FTC Driver Station</title><link rel="stylesheet" href="../tokens.css"><link rel="stylesheet" href="ds.css"><link rel="stylesheet" href="../touch.css"></head>
 <body>
 <header class="bar">
-  <div class="brand"><span id="ds-name">Driver Station</span></div>
-  <div id="link-banner" class="banner searching"><span id="link-text">Searching for Robot</span></div>
-  <div class="net"><div><span>Network</span> <b id="network">—</b></div><div><span>Ping</span> <b id="ping">No Heartbeat</b></div></div>
-  <div id="signal" class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="brand"><span id="ds-name">Driver Station</span><div id="link-banner" class="banner searching"><span id="link-text">Searching for Robot</span></div></div>
+  <div class="net" aria-label="Link to the robot">
+    <div class="net-item"><span>Network</span><b id="network">—</b></div>
+    <div class="net-item"><span>Ping</span><b id="ping">No Heartbeat</b></div>
+    <div id="signal" class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  </div>
   <div class="pads"><button id="pad-1" class="pad" title="Click, then press a button to assign controller 1"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 1</span></button>
   <button id="pad-2" class="pad" title="Click, then press a button to assign controller 2"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 2</span></button></div>
-  <button id="ds-close" class="bar-btn">Close robot</button>
-  <button id="ds-fullscreen" class="bar-icon" title="Fullscreen robot view" aria-label="Fullscreen robot view"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg></button>
-  <button id="ds-more" class="bar-icon more" aria-label="Driver Station menu" aria-expanded="false">⋯</button>
+  <div class="bar-end">
+    <button id="ds-close" class="bar-btn">Close robot</button>
+    <button id="ds-fullscreen" class="bar-icon" title="Fullscreen robot view" aria-label="Fullscreen robot view"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg></button>
+    <button id="ds-more" class="bar-icon more" aria-label="Driver Station menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg></button>
+  </div>
   <div id="ds-menu" class="menu" hidden>
-    <button id="menu-settings">Settings</button><button id="menu-restart">Restart Robot</button><button id="menu-configure">Configure Robot</button><button id="menu-manage">Program &amp; Manage<span class="leaves" aria-hidden="true">↗</span></button><button id="menu-inspect">Self Inspect</button><button id="menu-camera">Camera Stream</button><button id="menu-gamepads">Gamepad assignment</button><button id="menu-about">About</button>
+    <button id="menu-settings">Settings</button><button id="menu-restart">Restart Robot</button><button id="menu-configure">Configure Robot</button><button id="menu-manage">Program &amp; Manage<span class="leaves" aria-hidden="true">↗</span></button><button id="menu-inspect">Self Inspect</button><button id="menu-camera">Camera Stream</button><button id="menu-gamepads">Gamepad assignment</button><button id="menu-update-rc">Update Robot Controller</button><button id="menu-about">About</button>
   </div>
 </header>
 <main class="grid">
-  <section class="stats" aria-label="Readouts">
-    <div class="tile practice"><span class="label">Practice timer<small id="practice-phase"></small></span><div class="value"><b id="practice-time">2:30</b><button id="practice-play" class="round-play" aria-label="Start practice timer"><i id="practice-icon" class="play"></i></button></div></div>
-    <div class="tile config"><span class="label">Configuration</span><div class="value"><b id="config">&lt;No Config Set&gt;</b></div></div>
-    <div class="tile ds-batt"><span class="label">This device</span><div class="value"><b id="ds-battery-text">—</b><span class="batt small"><i id="ds-battery-fill"></i></span></div></div>
-    <div id="volts-tile" class="tile volts"><span class="label">Robot battery<small id="rc-battery" hidden></small></span><div class="value"><b id="volts">—</b><small id="volts-min"></small></div></div>
-  </section>
-  <section class="left">
+  <section class="left" aria-label="Op mode controls">
     <div class="opbar">
-      <button id="auto-list" class="tri" aria-label="Autonomous op modes" title="Autonomous"><i></i></button>
+      <button id="auto-list" class="tri" aria-label="Autonomous op modes" title="Autonomous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg><span>Auto</span></button>
       <button id="opmode-name" class="opname"><span id="opmode-label">Select Op Mode</span><small id="opmode-hint">From Auto or TeleOp</small></button>
-      <button id="teleop-list" class="tri" aria-label="TeleOp op modes" title="TeleOp"><i></i></button>
+      <button id="teleop-list" class="tri" aria-label="TeleOp op modes" title="TeleOp"><span>TeleOp</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5L5 12l11 7z"/></svg></button>
     </div>
     <div class="stage">
       <div class="actions"><button id="main-action" class="go init" disabled><i id="main-icon"></i><b id="main-label">INIT</b></button><button id="abort" class="abort" aria-label="Stop op mode" hidden><i></i></button></div>
@@ -35,19 +33,27 @@
         <label class="switch" title="Stop the Autonomous op mode after 30 seconds"><input type="checkbox" id="timer-switch" aria-label="Autonomous timer"><i></i></label>
       </div>
     </div>
+    <div class="tile practice"><div class="practice-text"><span class="label">Practice match</span><small id="practice-phase">30 s Auto · 8 s · 2:00 TeleOp</small></div><b id="practice-time">2:30</b><button id="practice-play" class="round-play" aria-label="Start practice timer"><i id="practice-icon" class="play"></i></button></div>
   </section>
-  <section class="right">
-    <div class="status"><h2 class="status-heading">Robot status</h2>
-      <p id="status-line" role="status">Robot is stopped</p>
-      <p id="system-message" class="system" role="alert" hidden></p>
+  <section class="right" aria-label="Robot status">
+    <div class="status">
+      <div class="status-top"><h2 class="status-heading">Robot status</h2><p id="status-line" role="status">Robot is stopped</p></div>
+      <div class="stats" aria-label="Readouts">
+        <div id="volts-tile" class="tile volts"><span class="label">Robot battery</span><div class="value"><b id="volts">—</b><small id="volts-min"></small></div></div>
+        <div class="tile rc-batt"><span class="label">Hub</span><div class="value"><b id="rc-battery">—</b></div></div>
+        <div class="tile ds-batt"><span class="label">This device</span><div class="value"><b id="ds-battery-text">—</b><span class="batt small"><i id="ds-battery-fill"></i></span></div></div>
+        <div class="tile config"><span class="label">Configuration</span><div class="value"><b id="config">&lt;No Config Set&gt;</b></div></div>
+      </div>
+      <div id="system-message" class="system" role="alert" hidden><span id="system-text"></span><button id="system-action" class="system-action" hidden></button></div>
       <div id="telemetry" class="lines" aria-live="polite"></div>
+      <div id="waiting-game" class="waiting-game" hidden></div>
       <figure id="camera" class="camera" hidden><img id="camera-image" alt="Robot camera frame"><figcaption>Tap the image for a new frame · <button id="camera-close" class="link">Close camera</button></figcaption></figure>
     </div>
   </section>
 </main>
 <section id="assign-hint" class="assign" hidden><b>Controller 1</b><span>Click the Controller 1 icon in the app header, then press a button to assign it.</span></section>
 <div id="picker" class="picker" hidden><div class="picker-card" role="dialog" aria-labelledby="picker-title"><div class="picker-head"><h2 id="picker-title">Op Modes</h2><button id="picker-close" class="link">Close</button></div><div id="picker-list" class="picker-list" role="listbox"></div></div></div>
-<dialog id="ds-dialog"><h2 id="dialog-title"></h2><pre id="dialog-text"></pre><div class="dialog-actions"><button id="dialog-ok" class="ok">OK</button></div></dialog>
+<dialog id="ds-dialog"><h2 id="dialog-title"></h2><pre id="dialog-text"></pre><div class="dialog-actions"><button id="dialog-cancel" class="cfg-btn" hidden>Cancel</button><button id="dialog-ok" class="ok">OK</button></div></dialog>
 <div id="progress" class="progress" hidden><span id="progress-text"></span><progress id="progress-bar"></progress></div>
 <section id="ds-page" class="ds-page" hidden aria-labelledby="page-title">
   <div class="page-head"><button id="page-back" class="page-back" aria-label="Back">‹</button><h2 id="page-title"></h2><div id="page-actions" class="page-actions"></div></div>
@@ -56,4 +62,4 @@
 </section>
 <dialog id="page-ask"><h2 id="page-ask-title"></h2><p id="page-ask-text"></p><input id="page-ask-input" maxlength="40" spellcheck="false" aria-labelledby="page-ask-title"><p id="page-ask-error" class="page-ask-error" role="alert"></p><div class="dialog-actions"><button id="page-ask-cancel" class="cfg-btn">Cancel</button><button id="page-ask-ok" class="ok">OK</button></div></dialog>
 <div id="ds-toast" class="toast" role="status" hidden></div>
-<script src="../controllers.js"></script><script src="robocol.js"></script><script src="robot-config.js"></script><script src="device-art.js"></script><script src="pinout.js"></script><script src="pages.js"></script><script src="ds.js"></script></body></html>
+<script src="../controllers.js"></script><script src="robocol.js"></script><script src="robot-config.js"></script><script src="device-art.js"></script><script src="pinout.js"></script><script src="pages.js"></script><script src="trip-run.js"></script><script src="ds.js"></script></body></html>
