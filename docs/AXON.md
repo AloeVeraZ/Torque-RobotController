@@ -24,9 +24,10 @@ It is laid out like Axon Bridge, in Torque's look, and fits a 1280x800 screen wi
 | Top | That the V2 programmer is needed, and chips for the programmer, the servo and the voltage and current |
 | 1 Servo | V1 MAX, V1 MINI, V2 MINI, V2 MAX. Plug a servo into the top row of pins on the left of the programmer, grey signal wire on the right, and Torque powers the pins, reads it and marks it Plugged in. Reading changes nothing |
 | 2 Mode | Servo Mode moves to and holds a position. CR Mode is continuous rotation: the signal sets speed and direction. Now marks the mode it is in |
-| 3 Settings | Every setting, with a short note beside it. Point at one for the longer version on the line at the bottom of the panel. A dot marks a change not applied yet. With no servo, it previews that model's factory values, greyed out |
-| Plugged-in servo | What the servo and programmer report |
-| Read, Defaults, Open, Save | Read again, restore factory settings, and open or save a settings file |
+| 3 Settings | Simple shows the basics every student needs: how far the servo turns, its center, how hard it pushes and which way it goes. Advanced shows every setting. Point at one for the longer version on the line at the bottom of the panel. A dot marks a change not applied yet. With no servo, it previews that model's factory values, greyed out |
+| Response graph | Beside Settings in Servo Mode: a test tool for seeing overshoot and settling. See below |
+| Plugged-in servo | Its name, mode and power. Advanced adds all that the servo and programmer report |
+| Read, Defaults, Open, Save | Read again and restore factory settings. Advanced adds opening or saving a settings file |
 | What happened | What you asked for beside what the servo reports after each write, then the log |
 | Bottom | One line saying what is going on and what comes next, and the Apply button |
 
@@ -34,7 +35,9 @@ Nothing reaches the servo before Apply. Torque then reads it back, and the banne
 
 Switching mode writes Axon's official firmware for that mode, as Axon's own apps do. It takes about a minute. It also resets the servo's settings to Axon's factory values for that mode, because the firmware file carries them, so save a settings file first if you want them back.
 
-**Axon's keys.** Axon's firmware files are encrypted with Axon's own keys, and Torque includes neither the keys nor the firmware. Settings, reading, saving and defaults all work without them. Switching mode asks for a key file once (**Import key file**, a JSON file with `v1` and `v2`, each 32 hexadecimal digits), and it stays beside this computer's settings as `axon-keys.json`, never in a release or this repository. Without one, Axon's own app can switch modes. Firmware comes from Axon's own link, or a file you already have.
+**Axon's keys.** Axon's firmware files are encrypted with Axon's own keys, and Torque includes neither the keys nor the firmware. Settings, reading, saving and defaults all work without them. Switching mode asks for a key file once (**Import key file**, a JSON file with `v1` and `v2`, each 32 hexadecimal digits), and it stays beside this computer's settings as `axon-keys.json`, never in a release or this repository. A copy of your own file in your Documents folder named `Torque Axon keys.json` is found with no prompt, so it follows you to your other computers if Documents syncs. Without one, Axon's own app can switch modes. Firmware comes from Axon's own link, or a file you already have.
+
+**Response graph.** In Servo Mode, the switch above Settings opens a test tool: a graph of the servo moving to a target, where students can see it overshoot, undershoot on the way back and settle. Its sliders are the real settings in their real ranges (Damping, PWM Power, Sensitivity), starting at the plugged-in servo's values or the model's factory values, plus a move size, a load and a tolerance in degrees. It shows when the servo stays inside that tolerance, or that it never does because Sensitivity lets it rest outside. Nothing on it is written to the servo. It is a model and measures nothing, since Torque cannot see a servo move. Damping brakes against speed, PWM Power caps the motor and Sensitivity is a band where the error counts as none, which is how the firmware uses them. How big each effect is on a real servo is an assumption: the factory Damping is critically damped with no load, and the bands keep the firmware's ratios (V2 150, 100, 50, 25; V1 16, 32, 48, 64) at a guessed size in degrees. Axon advises changing Damping only if a servo overshoots or oscillates.
 
 ## Simple and Advanced
 

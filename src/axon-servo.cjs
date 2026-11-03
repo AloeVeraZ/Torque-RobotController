@@ -171,7 +171,8 @@ const v2Cr={title:'V2 continuous rotation',family:'v2',mode:'cr',fields:[
   sanity:()=>null};
 const schemaFor=(family,mode)=>family==='v1'?(mode==='cr'?v1Cr:v1Servo):(mode==='cr'?v2Cr:v2Servo);
 // The schema a page can draw: no functions.
-const schemaView=s=>({title:s.title,family:s.family,mode:s.mode,fields:s.fields});
+const BASICS=new Set(['angle','left','right','neutral','pwm','inversion']);
+const schemaView=s=>({title:s.title,family:s.family,mode:s.mode,fields:s.fields.map(f=>BASICS.has(f.key)?f:{...f,advanced:true})});
 
 // Raw bytes shown in Advanced that are read and left alone, with what is and is not known about them.
 const UNCONFIRMED='The servo\'s control code uses this, but Axon documents nothing about it and keeps it on a locked page. A wrong value could make the servo oscillate, so Torque never writes it.',v2Unconfirmed=[{at:0,name:'SysAmp',why:UNCONFIRMED},{at:7,name:'MinPower',why:UNCONFIRMED}];

@@ -393,7 +393,7 @@ app.on('will-quit',()=>{try{cursorHelper?.kill();}catch{}});
 handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open the Simulation view first.');return simulation.call(method,args);});
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
 // Setup & Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
-const axonService=()=>axon||=new axonProgrammer.AxonService({firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
+const axonService=()=>axon||=new axonProgrammer.AxonService({firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),sharedKeyFile:process.env.DECK_DATA_DIR?null:path.join(app.getPath('documents'),'Torque Axon keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
   fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
 handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
   if(action==='preview')return s.preview(data?.code,data?.mode);if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;

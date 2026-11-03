@@ -147,3 +147,55 @@
   .axon-row { grid-template-columns: 120px minmax(0, 1fr); min-height: 44px; }
   .driver-station .axon-nudge { width: 36px; min-width: 36px; height: 36px; }
 }
+/* Simple is a few settings, with room for a finger. */
+.axon-settings-body[data-level=simple] .axon-row { min-height: 44px; }
+#axon-view { flex: none; margin-left: auto; }
+.axon-settings-head { flex-wrap: wrap; }
+.axon-settings-head .axon-step-title { white-space: nowrap; }
+#axon-view:empty { display: none; }
+.driver-station .axon-view { flex: none; }
+.driver-station .axon-view > button { padding: 0 10px; font-size: 12px; min-height: 26px; }
+.driver-station .axon-actions > button[hidden] { display: none; }
+/* The response graph: a test tool, not a tuning page. */
+.axon-settings-body[data-testing] { display: block; overflow: auto; }
+.axon-try { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 16px; min-width: 0; }
+.axon-try-chart { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.axon-try-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.axon-try-head strong { font-size: 13px; font-weight: 600; }
+.axon-try-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--muted); }
+.axon-try-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.axon-try-legend i { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+.axon-try-legend i[data-key=curve] { background: var(--text); }
+.axon-try-legend i[data-key=target] { background: var(--connected); }
+.axon-try-legend i[data-key=band] { height: 9px; background: color-mix(in srgb, var(--connected) 22%, transparent); }
+.axon-try-svg { display: block; width: 100%; height: auto; }
+.axon-try-grid { stroke: var(--line); stroke-width: 1; }
+.axon-try-tick { fill: var(--muted); font-size: 12px; }
+.axon-try-band { fill: color-mix(in srgb, var(--connected) 18%, transparent); }
+.axon-try-target { stroke: var(--connected); stroke-width: 2; stroke-dasharray: 7 5; }
+.axon-try-curve { fill: none; stroke: var(--text); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.axon-try-past { fill: color-mix(in srgb, var(--warning) 34%, transparent); stroke: none; }
+.axon-try-short { fill: color-mix(in srgb, var(--danger) 22%, transparent); stroke: none; }
+.axon-try-over { fill: var(--warning); stroke: var(--surface); stroke-width: 1.5; }
+.axon-try-under { fill: var(--danger); stroke: var(--surface); stroke-width: 1.5; }
+.axon-try-settled { stroke: var(--connected); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.axon-try-note { fill: var(--text); font-size: 13px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.axon-try-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.axon-try-facts > div { min-width: 0; padding: 6px 8px; border-radius: var(--radius-detail); background: var(--raised); }
+.axon-try-facts dt { overflow: hidden; font-size: 10px; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
+.axon-try-facts dd { margin: 1px 0 0; font-size: 16px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.axon-try-facts small { display: block; font-size: 10px; line-height: 1.2; color: var(--muted); }
+.axon-try-controls { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.axon-try-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.driver-station .axon-try-label label, .driver-station .axon-try-pick label { margin: 0; font-size: 12px; font-weight: 600; }
+.axon-try-label output { font-size: 12px; font-variant-numeric: tabular-nums; }
+.driver-station .axon-try-row input.num-slider { margin: 0; min-height: 22px; height: 22px; }
+.axon-try-ends { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--muted); }
+.axon-try-pick { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 8px; }
+.driver-station .axon-try-pick select { min-height: 32px; height: 32px; padding-block: 0; font-size: 12px; }
+.axon-try-presets { display: grid; grid-template-columns: 78px repeat(3, minmax(0, 1fr)); align-items: center; gap: 6px; margin-top: 2px; }
+.axon-try-presets > span { font-size: 12px; font-weight: 600; }
+.axon-try-presets > [data-axon-try-set=servo] { grid-column: 1 / -1; }
+.driver-station .axon-try-presets > button { min-height: 32px; min-width: 0; padding: 0 4px; font-size: 12px; }
+@media (max-width: 1120px) { .axon-try { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .axon-try-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

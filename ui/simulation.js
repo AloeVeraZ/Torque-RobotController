@@ -409,7 +409,7 @@ public class MyAuto implements DeckAutonomous {
       if(!planner.safePose(start,info.fieldZones,info.footprint,info.bounds))status('#start-status','The robot overlaps a field part here. Place it somewhere clear.');
       // The robot starts at the clear default spot automatically; dragging it moves it from there.
       if(!L().start){L().start={...start};save();}
-      await api.sim('start',start);if(seq!==load.seq)return;fieldArtKey='';inputs();robotPanel();layoutPanel();draw();view3d?.setField(info,L());schedulePlan();
+      await api.sim('start',start);if(seq!==load.seq)return;fieldArtKey='';inputs(true);robotPanel();layoutPanel();draw();view3d?.setField(info,L());schedulePlan();
     }catch(e){if(seq===load.seq){loadError=e.message;status('#sim-run-status',e.message);}}})();loading=operation;return operation.finally(()=>{if(loading===operation)loading=null;});
   }
   let reloadTimer=null,reloadWaiters=[];
@@ -577,7 +577,7 @@ public class MyAuto implements DeckAutonomous {
       $('#sim-start').setAttribute('points',frame&&tool!=='start'?pts(planner.body(start,geometry().footprint)):'');}
     paint();
   }
-  function inputs(){const b=geometry().bounds;$('#start-x').dataset.sliderMax=b.x1;$('#start-y').dataset.sliderMax=b.y1;for(const key of ['x','y','heading'])inputValue('#start-'+key,String(Math.round(start[key]*100)/100));}
+  function inputs(keepTyped=false){const b=geometry().bounds;$('#start-x').dataset.sliderMax=b.x1;$('#start-y').dataset.sliderMax=b.y1;for(const key of ['x','y','heading']){if(keepTyped&&$('#start-'+key).dataset.typed)continue;inputValue('#start-'+key,String(Math.round(start[key]*100)/100));}}
   function telemetry(){
     // At most ~8 updates a second (2 while the picture stands still, when only the clock moves), but never drop the
     // last frame (a paused simulation sends no more).
@@ -773,7 +773,7 @@ public class MyAuto implements DeckAutonomous {
   function commit(pose){
     const g=geometry(),next=field.validate(pose,g);
     if(info&&!planner.safePose(next,[...info.fieldZones,...L().zones],info.footprint,info.bounds))throw Error('That spot overlaps an obstacle. Choose a clear position outside the red boundary.');
-    start=next;preview={...start};tool=planningStep==='start'?'start':'select';pointer=null;for(const key of ['x','y'])delete $('#start-'+key).dataset.typed;inputs();L().start=start;
+    start=next;preview={...start};tool=planningStep==='start'?'start':'select';pointer=null;for(const key of ['x','y','heading'])delete $('#start-'+key).dataset.typed;inputs();L().start=start;
     let saved=save();try{localStorage.setItem(field.KEY,field.serialize(start,g));}catch{saved=false;}
     status('#start-status',saved?'Starting pose saved.':'Starting pose set for this session. Device storage is unavailable.');
     changed('start');if(native&&info)void api.sim('start',start).catch(e=>status('#start-status',e.message));
@@ -3413,7 +3413,7 @@ public class MyAuto implements DeckAutonomous {
     commit(!typed&&finite(pose.heading)&&field.heading(pose.heading)!==start.heading&&(same(start)||same(preview))?turnStart(pose.heading):pose);}catch(error){status('#start-status',error.message);}});
   // Typing a heading previews the robot turned along the wall, unless X or Y were typed too: those win.
   for(const key of ['x','y'])$('#start-'+key).addEventListener('input',e=>{e.target.dataset.typed='1';});
-  $('#start-heading').addEventListener('input',event=>{const h=event.target.valueAsNumber;if(!finite(h))return;
+  $('#start-heading').addEventListener('input',event=>{event.target.dataset.typed='1';const h=event.target.valueAsNumber;if(!finite(h))return;
     if($('#start-x').dataset.typed||$('#start-y').dataset.typed){const x=$('#start-x').valueAsNumber,y=$('#start-y').valueAsNumber;if(finite(x)&&finite(y))preview={x,y,heading:field.heading(h)};draw();return;}
     preview=turnStart(h);inputValue('#start-x',String(preview.x));inputValue('#start-y',String(preview.y));draw();});
   // Start at edge places the robot at a clear spot by the left wall immediately; drag it from there.

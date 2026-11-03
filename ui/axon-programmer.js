@@ -14,6 +14,7 @@ window.DeckAxon=(()=>{
   const show=(f,v)=>v===undefined?'':f.kind==='switch'?(v?'On':'Off'):f.kind==='choice'?f.options[v]:f.kind==='text'?(v||'(empty)'):FORMAT[f.format](v);
   const axon=(action,data)=>api.axon(action,data);
   const $=id=>root.querySelector('#'+id);
+  const R=globalThis.DeckAxonResponse;let view='settings',trial=null,trialKey='';
   const busy=()=>!!snap?.busy,servo=()=>snap?.servo||{},settings=()=>snap?.settings||null,models=()=>snap?.models||[];
   const visible=f=>!f.advanced||level==='advanced';
   const modeNow=()=>servo().present&&servo().mode!=='unknown'?servo().mode:null;
@@ -99,20 +100,52 @@ window.DeckAxon=(()=>{
     const small=level==='advanced'&&p.factory&&f.key in p.factory?`Factory: ${show(f,p.factory[f.key])}`:f.short;
     return `<div class="axon-row" data-axon-field="${f.key}" data-kind="${f.kind}"><div class="axon-row-label"><label${f.kind==='choice'?'':` for="${id}"`}><i data-axon-mark${p.kind==='live'&&pending[f.key]!==undefined?'':' hidden'}></i>${esc(f.label)}</label><small>${esc(small)}</small></div><div class="axon-row-control">${control}</div></div>`;
   }
+  // ---- The response graph: a test tool in servo mode. It starts at the servo's own values, and nothing on it is ever written to the servo.
+  const graphOn=p=>p.schema?.mode==='servo'&&!!p.schema.fields.some(f=>f.key==='damping');
+  const trialField=(p,key)=>p.schema.fields.find(f=>f.key===key);
+  const trialFactory=p=>p.factory?.damping??p.values.damping;
+  function trialLoad(p,again){
+    const v=p.kind==='live'?{...p.values,...pending}:p.values,key=JSON.stringify([chosenModel(),p.kind,v.damping,v.pwm,v.sens]);if(trial&&key===trialKey&&!again)return;trialKey=key;
+    trial={load:R.DEFAULT_LOAD,move:R.DEFAULT_MOVE,tol:R.DEFAULT_TOLERANCE,...trial,damping:v.damping,pwm:v.pwm,sens:v.sens};
+  }
+  function trialHtml(p){
+    const slider=(f,label,ends='')=>`<div class="axon-try-row"${f.what?` data-axon-field="${f.key}"`:''}><div class="axon-try-label"><label for="axon-try-${f.key}">${esc(label)}</label><output id="axon-try-v-${f.key}"></output></div><input id="axon-try-${f.key}" class="num-slider axon-slider" type="range" min="${f.min}" max="${f.max}" step="1" value="${trial[f.key]}" data-axon-try="${f.key}">${ends}</div>`;
+    const pick=(key,label,options,field=false)=>`<div class="axon-try-row axon-try-pick"${field?` data-axon-field="${key}"`:''}><label for="axon-try-${key}">${esc(label)}</label><select id="axon-try-${key}" data-axon-try="${key}">${options.map(([value,text])=>`<option value="${value}"${value===trial[key]?' selected':''}>${esc(text)}</option>`).join('')}</select></div>`;
+    const live=p.kind==='live';
+    return `<div class="axon-try"><div class="axon-try-chart"><div class="axon-try-head"><strong id="axon-try-shape"></strong><span class="axon-try-legend"><span><i data-key="curve"></i>Servo position</span><span><i data-key="target"></i>Target</span><span><i data-key="band"></i>Tolerance</span></span></div><div id="axon-try-graph"></div><dl id="axon-try-facts" class="axon-try-facts"></dl></div>
+      <div class="axon-try-controls">${slider(trialField(p,'damping'),'Damping','<div class="axon-try-ends"><span>Low: more swing</span><span>High: slower, no swing</span></div>')}${slider(trialField(p,'pwm'),'PWM Power')}${slider(R.MOVE,'Move')}${pick('sens','Sensitivity',trialField(p,'sens').options.map((t,i)=>[i,t]),true)}${pick('load','Load',R.LOADS.map((l,i)=>[i,l.title]))}${pick('tol','Tolerance',R.TOLERANCES.map(t=>[t,`± ${t}°`]))}
+      <div class="axon-try-presets" role="group" aria-label="Damping"><span>Damping</span><button type="button" class="secondary" data-axon-try-set="low">Low</button><button type="button" class="secondary" data-axon-try-set="factory">Factory</button><button type="button" class="secondary" data-axon-try-set="high">High</button>${live?'<button type="button" class="secondary" data-axon-try-set="servo">This servo</button>':''}</div></div></div>`;
+  }
+  function paintTrial(){
+    if(!$('axon-try-graph'))return;const p=panel();if(!graphOn(p))return;
+    const r=R.simulate({damping:trial.damping,factory:trialFactory(p),pwm:trial.pwm,band:R.bandOf(p.schema.family,trial.sens),mass:R.LOADS[trial.load].mass,move:trial.move}),m=R.measure(r,trial.tol),deg=v=>`${v.toFixed(1)}°`;
+    $('axon-try-graph').innerHTML=R.plot(r,trial.tol);$('axon-try-shape').textContent=R.shape(r.zeta);
+    const card=(k,v,note)=>`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd><small>${esc(note)}</small></div>`;
+    $('axon-try-facts').innerHTML=card('Overshoot',m.overshoot?deg(m.overshoot):'None',m.overshoot?`${Math.round(m.percent)}% past the target`:'Never passes the target')+card('Undershoot',m.undershoot?deg(m.undershoot):'None',m.undershoot?'Short of it, coming back':'No swing back')+card(`Settling time (±${trial.tol}°)`,m.settle===null?'Never':`${m.settle.toFixed(2)} s`,m.settle===null?'Rests outside your tolerance':'Stays inside from here')+card('Rests',`${deg(m.rest)} off`,'Sensitivity sets how close');
+    for(const f of [trialField(p,'damping'),trialField(p,'pwm')])$(`axon-try-v-${f.key}`).textContent=show(f,trial[f.key]);$('axon-try-v-move').textContent=`${trial.move}°`;
+    for(const s of root.querySelectorAll('input[data-axon-try]'))setFill(s);
+  }
+  function trialSet(which){
+    const p=panel();if(!graphOn(p))return;const f=trialField(p,'damping'),factory=trialFactory(p);
+    if(which==='servo')trialLoad(p,true);else trial.damping={low:f.min,factory,high:Math.min(f.max,factory*3)}[which];
+    formSig='';renderSettings();
+  }
   function renderSettings(){
-    const p=panel(),box=$('axon-settings'),s=servo(),edit=p.kind==='live'&&!busy();
-    const title=p.schema?.title||(p.kind==='switch'?`Switch to ${MODE[wanted()]}`:'');$('axon-settings-title').textContent=title;
-    const tag=$('axon-tag');tag.textContent=p.kind==='live'?'Live values from the servo':p.kind==='switch'?'':s.present?'Factory values, preview only':p.kind==='preview'?'Factory values: plug in a servo to edit':'';tag.toggleAttribute('data-good',p.kind==='live');
-    const sig=JSON.stringify([p.kind,p.text,p.schema?.title,p.values,p.factory,level,formEpoch,busy(),wanted(),chosenModel()]);if(sig===formSig)return;formSig=sig;
+    const p=panel(),box=$('axon-settings'),s=servo(),edit=p.kind==='live'&&!busy(),graph=p.kind!=='switch'&&graphOn(p),testing=graph&&view==='graph';
+    setHtml('axon-view',graph?`<div class="segmented axon-seg axon-view" role="group" aria-label="Settings or response graph" data-count="2"><button type="button" data-axon="view" data-view="settings" aria-pressed="${!testing}">Settings</button><button type="button" data-axon="view" data-view="graph" aria-pressed="${testing}">Response graph</button></div>`:'');
+    const title=testing?'Response graph':p.schema?.title||(p.kind==='switch'?`Switch to ${MODE[wanted()]}`:'');$('axon-settings-title').textContent=title;
+    const tag=$('axon-tag');tag.textContent=testing?'Illustrative model. Nothing here is written to the servo.':p.kind==='live'?'Live values from the servo':p.kind==='switch'?'':s.present?'Factory values, preview only':p.kind==='preview'?'Factory values: plug in a servo to edit':'';tag.toggleAttribute('data-good',p.kind==='live'&&!testing);
+    const sig=JSON.stringify([p.kind,p.text,p.schema?.title,p.values,p.factory,level,formEpoch,busy(),wanted(),chosenModel(),testing]);if(sig===formSig)return;formSig=sig;box.dataset.level=level;box.toggleAttribute('data-testing',testing);
+    if(testing){trialLoad(p);box.innerHTML=trialHtml(p);paintTrial();return;}
     if(p.kind==='switch'){box.innerHTML=`<div class="axon-switch-note"><h4>Switch to ${esc(MODE[wanted()])}</h4><p>Press Switch mode and this ${esc(modelCode()?modelTitle(modelCode()):'servo')} gets Axon's official firmware for that mode. Its settings go back to Axon's factory values for that mode, and they load here once it restarts.</p></div>`;return;}
     if(p.kind==='none'){box.innerHTML=p.text?`<div class="axon-switch-note"><p>${esc(p.text)}</p></div>`:'';return;}
-    const fields=p.schema.fields.filter(visible),column=right=>{const list=fields.filter(f=>(f.group==='Overload protection'||f.key==='name')===right);let last=null,html='';
-      for(const f of list){if(f.group&&f.group!==last)html+=`<h4 class="axon-group"><span>${esc(f.group)}</span></h4>`;last=f.group;html+=fieldRow(f,p,edit);}return html;};
+    const fields=p.schema.fields.filter(visible),first=fields[0]?.group,two=fields.some(f=>f.group!==first),onRight=f=>level==='simple'?two&&f.group!==first:f.group==='Overload protection'||f.key==='name',column=right=>{const list=fields.filter(f=>onRight(f)===right);let last=null,html='';
+      for(const f of list){if(f.group&&f.group!==last)html+=`<h4 class="axon-group"><span>${esc(level==='simple'&&f.group==='Response'?'Power and direction':f.group)}</span></h4>`;last=f.group;html+=fieldRow(f,p,edit);}return html;};
     box.innerHTML=`<div class="axon-column">${column(false)}</div><div class="axon-column">${column(true)}</div>`;
     for(const r of box.querySelectorAll('input[type=range]'))setFill(r);
   }
   function renderHint(){
-    $('axon-hint').textContent=pointing||(level==='advanced'?'Advanced adds what Torque could confirm from Axon\'s firmware, and all that the servo and programmer report. Point at a setting to see what it does. A dot marks a change not applied yet.':'Simple shows exactly what Axon\'s own software edits. Point at a setting to see what it does. A dot marks a change not applied yet.');
+    $('axon-hint').textContent=pointing||(view==='graph'&&$('axon-try-graph')?'A simple model of how the firmware uses these settings, for seeing what overshoot, undershoot and settling look like. It is not a measurement of your servo, and a real one also depends on its load. To change the servo, go back to Settings.':level==='advanced'?'Advanced is every setting, and all that the servo and programmer report. Point at a setting to see what it does. A dot marks a change not applied yet.':'Simple is what every student needs: how far the servo turns, where its center is, how hard it pushes and which way it goes. Advanced has the rest. A dot marks a change not applied yet.');
   }
 
   // ---- what the servo and programmer report, and what happened
@@ -120,14 +153,14 @@ window.DeckAxon=(()=>{
     const p=snap?.programmer,t=snap?.telemetry,s=servo(),adv=level==='advanced',info=p?.info,hex=v=>`0x${Number(v).toString(16).toUpperCase().padStart(2,'0')}`,st=settings();
     const signal=t&&(t.inputValid&&t.inputPeriod?`${t.inputPulse} µs, ${Math.round(1e6/t.inputPeriod)} Hz`:'None');
     setHtml('axon-report',rows([
-      ['Name',s.present?(s.name||(st?'(not reported)':'(not read yet)')):'-'],['Firmware',s.present?s.firmware||'-':'-'],['Made',s.made||'-'],['Mode',s.present&&s.mode!=='unknown'?cap(MODE[s.mode]):'-'],
-      ['Link',s.family==='v1'?'V1 servo through V2 programmer':s.family==='v2'?'V2 servo through V2 programmer':'-']])+
+      ['Name',s.present?(s.name||(st?'(not reported)':'(not read yet)')):'-'],['Mode',s.present&&s.mode!=='unknown'?cap(MODE[s.mode]):'-'],adv&&['Firmware',s.present?s.firmware||'-':'-'],adv&&['Made',s.made||'-'],
+      adv&&['Link',s.family==='v1'?'V1 servo through V2 programmer':s.family==='v2'?'V2 servo through V2 programmer':'-']])+
       (s.family==='v1'?'<p class="axon-note">Axon says V1 servos do not work on the V2 programmer. Torque speaks to them anyway, but this is not proven on a real V1 servo yet.</p>':'')+
-      `<h4 class="axon-side-title">V2 programmer</h4>`+rows([['Device',p?.ready?info?.product||'HID device':'-'],['Power',t?`${t.volts.toFixed(2)} V, ${t.amps.toFixed(2)} A`:'-'],['Servo pins',t?(t.powerAlarm?'Alarm: off':t.powerOn?'On':'Off'):'-'],['Pulse out',t?`${t.outputPulse} µs`:'-'],['Signal in',signal||'-'],
+      `<h4 class="axon-side-title">V2 programmer</h4>`+rows([['Power',t?`${t.volts.toFixed(2)} V, ${t.amps.toFixed(2)} A`:'-'],adv&&['Device',p?.ready?info?.product||'HID device':'-'],adv&&['Servo pins',t?(t.powerAlarm?'Alarm: off':t.powerOn?'On':'Off'):'-'],adv&&['Pulse out',t?`${t.outputPulse} µs`:'-'],adv&&['Signal in',signal||'-'],
         ...(adv?[info&&['Maker',info.maker||'Not reported'],info&&['Serial number',info.serial||'Not reported'],info&&['USB IDs',`VID ${hex(info.vid)} PID ${hex(info.pid)}, version ${hex(info.version)}`],info&&['Report size',`${info.inLen} in, ${info.outLen} out`],t&&['Low return',t.lowReturn?'On':'Off'],t&&['Source byte',String(t.source)],t&&['Power byte',String(t.powerState)],p?.hello&&['Handshake reply',p.hello],t&&['Status report',t.raw]]:[])]));
     const idle=!busy()&&!!p?.ready,live=!!st&&!switching();
     const able={'axon-read':idle&&!!s.editable,'axon-defaults':idle&&live,'axon-open-file':!busy()&&live,'axon-save-file':!busy()&&live,'axon-recover-go':idle&&!s.present};
-    for(const [id,on] of Object.entries(able))$(id).disabled=!on;$('axon-recover-go').hidden=!adv;
+    for(const [id,on] of Object.entries(able))$(id).disabled=!on;$('axon-recover-go').hidden=!adv;$('axon-open-file').hidden=!adv;$('axon-save-file').hidden=!adv;
     setHtml('axon-result',result?.confirmed?.length?`<table class="axon-table"><thead><tr><th scope="col">Setting</th><th scope="col">You asked</th><th scope="col">Servo reports</th><th scope="col">Took</th></tr></thead><tbody>${result.confirmed.map(c=>`<tr><th scope="row">${esc(c.label)}</th><td>${esc(show(c.field,c.asked))}</td><td>${esc(show(c.field,c.now))}</td><td data-took="${c.took}">${c.took?'Yes':'No'}</td></tr>`).join('')}</tbody></table>`:result?`<p class="axon-result-line" data-ok="${!!result.ok}">${esc(result.message)}</p>`:'');
     setHtml('axon-log',(snap?.log||[]).length?`<ol class="axon-log">${snap.log.slice(-14).reverse().map(l=>`<li data-tone="${l.tone}">${esc(l.text)}</li>`).join('')}</ol>`:'<p class="hint">Nothing yet.</p>');
     $('axon-advanced').hidden=!adv;
@@ -181,6 +214,7 @@ window.DeckAxon=(()=>{
     level:()=>{level=level==='advanced'?'simple':'advanced';if(level==='simple'){const st=settings();for(const key of Object.keys(pending))if(st?.schema.fields.find(f=>f.key===key)?.advanced)delete pending[key];}formEpoch++;syncTrace();},
     'close-rivals':()=>axon('close-rivals'),read:()=>axon('read'),
     model:b=>{picked=b.dataset.code;},
+    view:b=>{view=b.dataset.view;},
     mode:b=>{target=b.dataset.mode;ask=null;result=null;},
     apply:async()=>{if(switching())return startSwitch();const changes={...pending};if(!Object.keys(changes).length)return;result=await axon('write',{changes});if(result.ok){pending={};formEpoch++;}},
     discard:()=>{pending={};target=null;ask=null;result=null;formEpoch++;},
@@ -196,6 +230,7 @@ window.DeckAxon=(()=>{
     recover:()=>startSwitch({recovery:true,code:chosenModel(),mode:wanted()}),
   };
   function onClick(e){
+    const preset=e.target.closest('[data-axon-try-set]');if(preset){trialSet(preset.dataset.axonTrySet);return;}
     const seg=e.target.closest('[data-axon-seg]');
     if(seg&&!seg.disabled){for(const b of seg.parentElement.children)b.setAttribute('aria-pressed',String(b===seg));setValue(seg.dataset.axonSeg,Number(seg.dataset.value));return;}
     const nudge=e.target.closest('[data-axon-nudge]');
@@ -203,7 +238,8 @@ window.DeckAxon=(()=>{
     const b=e.target.closest('[data-axon]');if(!b||b.disabled)return;const act=actions[b.dataset.axon];if(act)void run(()=>act(b));
   }
   function onInput(e){
-    const el=e.target;if(!el.matches('[data-axon-key]'))return;const key=el.dataset.axonKey;
+    const el=e.target;if(el.matches('[data-axon-try]')){trial[el.dataset.axonTry]=Number(el.value);paintTrial();return;}
+    if(!el.matches('[data-axon-key]'))return;const key=el.dataset.axonKey;
     if(el.type==='range'){setFill(el);setValue(key,Number(el.value));}
     else if(el.type==='checkbox'){el.nextElementSibling.textContent=el.checked?'On':'Off';setValue(key,el.checked?1:0);}
     else setValue(key,el.value);
@@ -218,7 +254,7 @@ window.DeckAxon=(()=>{
     <div class="axon-top"><h2>Axon Programmer</h2><p class="hint">Needs Axon's V2 programmer (Programmer MK2), sold by Axon, goBILDA and ServoCity. Torque works through it and does not replace it. Keep it off the robot.</p><div id="axon-chips" class="axon-chips"></div><button id="axon-level" class="secondary" type="button" data-axon="level" aria-pressed="false">Show Advanced</button></div>
     <div class="axon-picks"><section aria-labelledby="axon-models-title"><h3 id="axon-models-title" class="axon-step-title"><span>1</span>Servo</h3><div id="axon-models" class="axon-cards"></div></section><section aria-labelledby="axon-modes-title"><h3 id="axon-modes-title" class="axon-step-title"><span>2</span>Mode</h3><div id="axon-modes" class="axon-cards"></div></section></div>
     <div class="axon-main">
-      <section class="cal-card axon-settings" aria-labelledby="axon-settings-title"><div class="axon-settings-head"><h3 class="axon-step-title"><span>3</span>Settings<b aria-hidden="true">·</b><em id="axon-settings-title"></em></h3><span id="axon-tag"></span></div><div id="axon-settings" class="axon-settings-body"></div><p id="axon-hint" class="hint" aria-live="polite"></p></section>
+      <section class="cal-card axon-settings" aria-labelledby="axon-settings-title"><div class="axon-settings-head"><h3 class="axon-step-title"><span>3</span>Settings<b aria-hidden="true">·</b><em id="axon-settings-title"></em></h3><div id="axon-view"></div><span id="axon-tag"></span></div><div id="axon-settings" class="axon-settings-body"></div><p id="axon-hint" class="hint" aria-live="polite"></p></section>
       <div class="axon-side">
         <section class="cal-card" aria-labelledby="axon-report-title"><h3 id="axon-report-title" class="axon-side-title">Plugged-in servo</h3><div id="axon-report"></div></section>
         <div class="axon-actions"><button id="axon-read" class="secondary" type="button" data-axon="read">Read</button><button id="axon-defaults" class="secondary" type="button" data-axon="defaults">Defaults</button><button id="axon-open-file" class="secondary" type="button" data-axon="open-file">Open</button><button id="axon-save-file" class="secondary" type="button" data-axon="save-file">Save</button><button id="axon-recover-go" class="secondary" type="button" data-axon="recover" hidden>Recover</button></div>

@@ -10,7 +10,7 @@
   "bugReportUrl": "",
   "private": true,
   "license": "MIT",
-  "description": "Open existing robot websites with saved Wi-Fi networks and addresses",
+  "description": "A free driver station and robot toolkit for FIRST Tech Challenge teams: drive a robot, set up and check its hardware, simulate autonomous routes and program Axon servos",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
