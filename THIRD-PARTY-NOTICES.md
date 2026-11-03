@@ -77,7 +77,8 @@ import your own STEP robot model, which stays on your computer.
 
 Axon's servo firmware is not included either, and nor are the keys to its encrypted files. When a
 student switches a servo's mode, Torque asks, then downloads the file from Axon's own link or uses one
-the student picks, and opens it with a key file the student imports (docs/AXON.md).
+the student picks, and opens it with a key file the student imports (docs/AXON.md). Axon's own programs are
+not included either: a student downloads them from Axon's page, and Torque only checks the file is there.
 
 ## Trademarks
 

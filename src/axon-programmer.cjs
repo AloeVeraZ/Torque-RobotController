@@ -5,6 +5,7 @@
 // is Windows only: Node has no HID without a native module, and Torque's releases are Windows only for now.
 const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
 const S=require('./axon-servo.cjs');
+const SOFTWARE_MS=3000;
 const AUTO_POWER_BELOW=8.6,OVER_VOLTAGE=9.1,POLL_MS=400,RIVALS_MS=1000,LOG_LINES=60,TRACE_LINES=400,delay=ms=>new Promise(r=>setTimeout(r,ms));
 
 // ---- the helper. One request a line, one answer a line, in order.
@@ -36,12 +37,17 @@ function usbTransport(helper=new UsbHelper()){
 const blank=()=>({ready:false,v1Seen:false,bootSeen:false,rivals:[],handshakeFailed:false,error:null,info:null,hello:null});
 class AxonService{
   // transport as above; firmwareDir holds downloaded firmware; logFile keeps every USB frame; catalog lists Axon's firmware files.
-  constructor({transport=usbTransport(),firmwareDir,logFile,keyFile=null,sharedKeyFile=null,catalog=S.FIRMWARE,onState=()=>{},fetchFile=null}={}){
-    Object.assign(this,{transport,firmwareDir,logFile,keyFile,sharedKeyFile,catalog,onState,fetchFile});this.loadKeys();this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
+  constructor({transport=usbTransport(),firmwareDir,logFile,keyFile=null,sharedKeyFile=null,findSoftware=null,catalog=S.FIRMWARE,onState=()=>{},fetchFile=null}={}){
+    Object.assign(this,{transport,firmwareDir,logFile,keyFile,sharedKeyFile,findSoftware,catalog,onState,fetchFile});this.softwareNow=null;this.softwareAt=0;this.loadKeys();this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
   }
   resetView(){this.programmer=blank();this.telemetry=null;this.servo=S.parseStatus(Buffer.alloc(S.REPORT));this.block=null;this.blockKey=null;this.lastKey='';this.readPending=false;this.readAttempts=0;this.busy=null;this.warnedVoltage=false;this.warnedHandshake=false;}
   say(text,tone='info'){if(this.log.at(-1)?.text===text)return;this.log.push({text,tone,at:Date.now()});if(this.log.length>LOG_LINES)this.log.shift();this.trace(`[${tone}] ${text}`);this.publish();}
   trace(line){const text=`${new Date().toISOString().slice(11,23)} ${line}`;this.traceLines.push(text);if(this.traceLines.length>TRACE_LINES)this.traceLines.shift();if(this.logFile){try{fs.appendFileSync(this.logFile,text+'\n');}catch{}}}
+  // Axon's own program for each servo family, which is what unlocks that family here (src/axon-software.cjs). With nothing looking, nothing is asked for.
+  softwareFound(fresh=false){if(!this.findSoftware)return {v1:{found:true},v2:{found:true}};if(fresh||!this.softwareNow||Date.now()-this.softwareAt>=SOFTWARE_MS){this.softwareAt=Date.now();try{this.softwareNow=this.findSoftware();}catch{this.softwareNow||={v1:{found:false},v2:{found:false}};}}return this.softwareNow;}
+  softwareFile(family){return this.softwareFound(true)[family]?.path||null;}
+  needSoftware(family){if((family==='v1'||family==='v2')&&!this.softwareFound(true)[family]?.found)throw Error(`Axon's ${family.toUpperCase()} software is not on this computer. Download it from Axon's page first: the Axon Programmer tab takes you there.`);}
+  softwareView(){const s=this.softwareFound();return Object.fromEntries(['v1','v2'].map(f=>[f,{found:!!s[f]?.found,fileName:s[f]?.fileName||null}]));}
   // What the page draws. A value only the main process should hold (paths, the block's buffer) stays out.
   state(){
     const s=this.servo,block=this.block,present=S.servoPresent(s),name=block?S.blockName(block):null,model=name?S.modelByName(name):null,editable=S.servoEditable(s);
@@ -51,7 +57,7 @@ class AxonService{
     return {supported:this.transport.supported!==false,running:!!this.running,programmer:this.programmer,telemetry:this.telemetry,
       servo:{...s,present,editable,key:S.servoKey(s),model:model?S.modelView(model):null,name,made:block?S.blockMade(block):null,validLen:block?.validLen??0,raw:block?S.hex(block.data,block.data.length):null,
         unconfirmed:block&&s.family==='v2'&&s.mode==='servo'?S.v2Unconfirmed.map(u=>({...u,value:block.data[u.at]})):[]},
-      settings,models:S.MODELS.map(S.modelView),busy:this.busy,log:this.log};
+      settings,models:S.MODELS.map(S.modelView),software:this.softwareView(),busy:this.busy,log:this.log};
   }
   publish(){try{this.onState(this.state());}catch{}}
   start(){if(this.transport.supported===false)return this.state();if(this.running){this.stopping=false;return this.state();}this.stopping=false;this.rivalsAt=0;this.resetView();
@@ -77,6 +83,8 @@ class AxonService{
   }
   async drop(){this.prog=null;this.lastKey='';this.readPending=false;const link=this.link;this.link=null;if(link)await link.close?.();}
   async step(){
+    // A file that was just downloaded unlocks its servos by itself.
+    if(this.findSoftware&&Date.now()-this.softwareAt>=SOFTWARE_MS){const was=JSON.stringify(this.softwareView());this.softwareAt=0;if(JSON.stringify(this.softwareView())!==was)this.publish();}
     // Axon's own app and Axon Bridge poll the same programmer, and two apps on one device corrupt each other's traffic.
     if(this.transport.rivals&&Date.now()-this.rivalsAt>=RIVALS_MS){this.rivalsAt=Date.now();this.rivalsNow=await this.transport.rivals();}
     const rivals=this.rivalsNow||[];
@@ -131,7 +139,7 @@ class AxonService{
   read(){return this.job('read','Reading the servo...',async()=>{const s=await this.prog.status();this.servo=s;if(!S.servoEditable(s)){this.say('No servo that can be edited is responding.','warn');return {ok:false};}
     this.readAttempts=0;const ok=await this.readNow(s);if(!ok)this.say('Could not read the settings.','bad');return {ok};});}
   // Read, change, write, read back. Only bytes that belong to edited settings can change, and the answer says what the servo holds now.
-  write(changes){return this.job('write','Writing to the servo...',async p=>{
+  write(changes){this.needSoftware(this.servo.family);return this.job('write','Writing to the servo...',async p=>{
     const cur=await p.status();if(!S.servoEditable(cur)||S.servoKey(cur)!==S.servoKey(this.servo))return {ok:false,message:'The servo changed or was unplugged before the write started. Nothing was written.'};
     const schema=S.schemaFor(cur.family,cur.mode);let wanted;try{wanted=S.checkChanges(schema,changes);}catch(e){return {ok:false,message:`${e.message} Nothing was written.`};}
     const {block:fresh,error}=await p.readBlock(cur.family);if(!fresh)return {ok:false,message:`Could not read the servo first, so nothing was written. ${error}`};
@@ -146,7 +154,7 @@ class AxonService{
     const confirmed=Object.keys(wanted).map(key=>{const field=schema.fields.find(f=>f.key===key);return {key,label:field.label,field,asked:wanted[key],was:basis[key],now:holds[key],took:holds[key]===wanted[key]};});
     if(bad.length)return {ok:false,message:`The servo did not keep the new values (${bad.length} of ${diff.length} bytes differ, first at byte ${bad[0]}).`,confirmed};
     return {ok:true,message:'Written, read back and confirmed.',confirmed};});}
-  defaults(){return this.job('defaults','Restoring factory settings...',async p=>{const ok=await p.factoryDefault();this.say(ok?'Factory settings restored.':'The servo refused the factory reset.',ok?'good':'bad');
+  defaults(){this.needSoftware(this.servo.family);return this.job('defaults','Restoring factory settings...',async p=>{const ok=await p.factoryDefault();this.say(ok?'Factory settings restored.':'The servo refused the factory reset.',ok?'good':'bad');
     if(ok){await delay(200);const s=await p.status();this.servo=s;if(S.servoEditable(s)){this.readAttempts=0;await this.readNow(s);}}return {ok};});}
   closeRivals(){this.rivalsAt=0;return this.transport.closeRivals?.();}
   // A model's factory settings, drawn greyed out until a servo is plugged in. No USB.
@@ -182,7 +190,7 @@ class AxonService{
   }
   // Recovery is for a servo that stopped appearing after an interrupted update: the hardware ID is still checked, its name cannot be.
   flash({code,mode,recovery=false,allowUnknownName=false}){
-    const model=S.modelByCode(code),file=this.fileFor(code,mode);if(!model||!file)throw Error('Torque has no firmware for that servo.');
+    const model=S.modelByCode(code),file=this.fileFor(code,mode);if(!model||!file)throw Error('Torque has no firmware for that servo.');this.needSoftware(model.family);
     const source=this.chosen.get(`${code}/${mode}`)||(this.firmwareStatus(code,mode).have?this.firmwarePath(file):null);if(!source)throw Object.assign(Error(`${file.fileName} is needed first.`),{code:'FIRMWARE_NEEDED'});
     const image=S.readFirmware(source);if(image.family!==model.family)throw Error(`That firmware is for a ${image.family.toUpperCase()} servo, but this is a ${model.title}.`);
     if(image.badChecksums)this.say(`${image.badChecksums} records in this file fail the standard HEX checksum. The servo checks each one as it is written.`,'warn');

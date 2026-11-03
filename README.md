@@ -1,6 +1,6 @@
 # Torque
 
-**Drive, simulate and tune your robot, all in one app.** Made for FTC teams, and it works with any robot that has its own website.
+**Drive, set up, simulate and tune your robot, all in one app.** Made for FTC teams, and it works with any robot that has its own website.
 
 ![A robot driving an autonomous route, picking up game pieces and shooting them in Torque's simulator](docs/media/robot-run.gif)
 
@@ -29,6 +29,7 @@ Prefer a normal download? Get it from the [releases page](https://github.com/Alo
 | **[Drive](#drive)** | Control your robot with a gamepad |
 | **[Simulate](#simulate)** | Plan an autonomous and test it with no robot |
 | **[Calibrate](#calibrate)** | Check your hardware and tune your mechanisms |
+| **[Axon servos](docs/AXON.md)** | Program Axon servos, and see how damping changes the way they settle |
 
 ## Drive
 

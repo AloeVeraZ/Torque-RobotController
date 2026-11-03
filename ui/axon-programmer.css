@@ -199,3 +199,15 @@
 .driver-station .axon-try-presets > button { min-height: 32px; min-width: 0; padding: 0 4px; font-size: 12px; }
 @media (max-width: 1120px) { .axon-try { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .axon-try-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Axon's own program unlocks its servos. */
+.axon-gate { grid-column: 1 / -1; max-width: 620px; margin: 8px auto; min-width: 0; }
+.axon-gate h4 { margin: 0 0 6px; font-size: 18px; line-height: 1.25; }
+.axon-gate p { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.axon-gate ol { display: grid; gap: 8px; margin: 0 0 16px; padding-left: 20px; font-size: 13px; line-height: 1.4; }
+.axon-gate-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.driver-station .axon-gate-buttons > button { min-height: 44px; padding: 0 16px; }
+.axon-gate-found { display: grid; gap: 4px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.axon-gate-found > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; }
+.axon-gate-found dt { color: var(--muted); }
+.axon-gate-found dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.axon-gate-found > [data-found=true] dd { color: var(--connected); }

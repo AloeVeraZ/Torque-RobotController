@@ -25,6 +25,10 @@ window.DeckAxon=(()=>{
   const modelCode=()=>detected()||picked;
   const chosenModel=()=>modelCode()||models().find(m=>m.family===servo().family)?.code||'max1';
   const modelTitle=code=>models().find(m=>m.code===code)?.title||'servo';
+  const familyOf=code=>models().find(m=>m.code===code)?.family;
+  const hasSoftware=family=>snap?.software?.[family]?.found!==false;
+  // The servo family on show, when Axon's program for it is not on this computer yet.
+  const softwareMissing=()=>{if(!snap?.supported)return null;const family=familyOf(chosenModel());return family&&!hasSoftware(family)?family:null;};
   const unknownName=()=>{const s=servo();return s.present&&s.family!=='unknown'&&!s.model&&!s.name;};
   const changeList=()=>{const st=settings();return st&&!switching()?Object.entries(pending).map(([key,value])=>({field:st.schema.fields.find(f=>f.key===key),value})).filter(c=>c.field):[];};
   const rows=list=>`<dl class="axon-rows">${list.filter(Boolean).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
@@ -39,6 +43,7 @@ window.DeckAxon=(()=>{
     if(b)return {tone:'busy',main:b.text,sub:b.kind==='flash'?'Keep the servo and programmer plugged in.':'',percent:b.percent};
     if(error)return {tone:'bad',main:error,sub:''};
     if(!snap.supported)return {tone:'warn',main:'This computer cannot reach the programmer',sub:'Programming Axon servos works on Windows for now.'};
+    if(softwareMissing())return {tone:'warn',main:`Download Axon's ${softwareMissing().toUpperCase()} software first`,sub:'It is free, from Axon. Torque notices by itself once it is on this computer.'};
     if(p.error)return {tone:'bad',main:'Torque could not reach USB',sub:`${p.error} Antivirus can block the small helper Torque uses for this. Restart Torque, and if this stays, tell your mentor.`};
     if(p.rivals.length)return {tone:'warn',main:`${p.rivals.join(' and ')} is open`,sub:'It talks to the same programmer, and two apps at once corrupt each other. Torque waits until it closes.',closeRivals:true};
     if(!p.ready){
@@ -76,7 +81,7 @@ window.DeckAxon=(()=>{
   function renderCards(){
     const s=servo(),here=detected(),chosen=chosenModel();
     setHtml('axon-models',models().map(m=>{const off=busy()||(here&&m.code!==here)||(s.present&&m.family!==s.family);
-      return `<button id="axon-model-${m.code}" type="button" class="axon-card" data-axon="model" data-code="${m.code}" aria-pressed="${chosen===m.code}"${off?' disabled':''}><strong>${esc(m.title)}</strong><span${here===m.code?' data-good':''}>${here===m.code?'Plugged in':`sold as ${esc(m.sold)}`}</span></button>`;}).join(''));
+      return `<button id="axon-model-${m.code}" type="button" class="axon-card" data-axon="model" data-code="${m.code}" aria-pressed="${chosen===m.code}"${off?' disabled':''}><strong>${esc(m.title)}</strong><span${here===m.code?' data-good':''}>${here===m.code?'Plugged in':snap?.supported&&!hasSoftware(m.family)?`Needs Axon's ${m.family.toUpperCase()} software`:`sold as ${esc(m.sold)}`}</span></button>`;}).join(''));
     const now=modeNow(),locked=busy()||(s.present&&s.family==='unknown')||(s.present&&!s.model&&!!s.name);
     const mode=(key,title,text)=>`<button id="axon-mode-${key}" type="button" class="axon-card" data-axon="mode" data-mode="${key}" aria-pressed="${wanted()===key}"${locked?' disabled':''}><strong>${title}${now===key?' <em>Now</em>':''}</strong><span>${text}</span></button>`;
     setHtml('axon-modes',mode('servo','Servo Mode','Moves to and holds a position')+mode('cr','CR Mode','Continuous rotation'));
@@ -130,12 +135,21 @@ window.DeckAxon=(()=>{
     if(which==='servo')trialLoad(p,true);else trial.damping={low:f.min,factory,high:Math.min(f.max,factory*3)}[which];
     formSig='';renderSettings();
   }
+  // ---- Axon's own program, which unlocks its servos here. The student downloads it themselves, from Axon's page, with the link highlighted.
+  const SOFTWARE={v1:{title:'Axon Programming Software'},v2:{title:'Axon Software MK2'}};
+  function softwareHtml(family){
+    const name=family.toUpperCase(),line=f=>{const s=snap.software[f];return `<div data-found="${!!s.found}"><dt>${f.toUpperCase()} software</dt><dd>${s.found?`Found: ${esc(s.fileName||SOFTWARE[f].title)}`:'Not on this computer yet'}</dd></div>`;};
+    return `<div class="axon-gate"><h4>Download Axon's ${name} software to use ${name} servos</h4><p>Torque works alongside Axon's own program, so it needs to be on this computer. It is free, from Axon, and you only do this once.</p>
+      <ol><li>Press <strong>Open Axon's download page</strong>. It opens in your browser, on the link to click: <strong>${SOFTWARE[family].title}</strong>, under Software Download.</li><li>Click that link and save the file. Leave it in Downloads.</li><li>That's all. This page notices it by itself and unlocks.</li></ol>
+      <div class="axon-gate-buttons"><button type="button" class="primary" data-axon="software-page" data-family="${family}">Open Axon's download page</button><button type="button" class="secondary" data-axon="software-pick" data-family="${family}">I saved it somewhere else</button></div><dl class="axon-gate-found">${line('v1')}${line('v2')}</dl></div>`;
+  }
   function renderSettings(){
     const p=panel(),box=$('axon-settings'),s=servo(),edit=p.kind==='live'&&!busy(),graph=p.kind!=='switch'&&graphOn(p),testing=graph&&view==='graph';
     setHtml('axon-view',graph?`<div class="segmented axon-seg axon-view" role="group" aria-label="Settings or response graph" data-count="2"><button type="button" data-axon="view" data-view="settings" aria-pressed="${!testing}">Settings</button><button type="button" data-axon="view" data-view="graph" aria-pressed="${testing}">Response graph</button></div>`:'');
     const title=testing?'Response graph':p.schema?.title||(p.kind==='switch'?`Switch to ${MODE[wanted()]}`:'');$('axon-settings-title').textContent=title;
-    const tag=$('axon-tag');tag.textContent=testing?'Illustrative model. Nothing here is written to the servo.':p.kind==='live'?'Live values from the servo':p.kind==='switch'?'':s.present?'Factory values, preview only':p.kind==='preview'?'Factory values: plug in a servo to edit':'';tag.toggleAttribute('data-good',p.kind==='live'&&!testing);
-    const sig=JSON.stringify([p.kind,p.text,p.schema?.title,p.values,p.factory,level,formEpoch,busy(),wanted(),chosenModel(),testing]);if(sig===formSig)return;formSig=sig;box.dataset.level=level;box.toggleAttribute('data-testing',testing);
+    const tag=$('axon-tag');tag.textContent=testing?'Illustrative model. Nothing here is written to the servo.':softwareMissing()?'':p.kind==='live'?'Live values from the servo':p.kind==='switch'?'':s.present?'Factory values, preview only':p.kind==='preview'?'Factory values: plug in a servo to edit':'';tag.toggleAttribute('data-good',p.kind==='live'&&!testing);
+    const missing=softwareMissing(),sig=JSON.stringify([p.kind,p.text,p.schema?.title,p.values,p.factory,level,formEpoch,busy(),wanted(),chosenModel(),testing,missing,snap?.software]);if(sig===formSig)return;formSig=sig;box.dataset.level=level;box.toggleAttribute('data-testing',testing);
+    if(missing&&!testing){box.innerHTML=softwareHtml(missing);return;}
     if(testing){trialLoad(p);box.innerHTML=trialHtml(p);paintTrial();return;}
     if(p.kind==='switch'){box.innerHTML=`<div class="axon-switch-note"><h4>Switch to ${esc(MODE[wanted()])}</h4><p>Press Switch mode and this ${esc(modelCode()?modelTitle(modelCode()):'servo')} gets Axon's official firmware for that mode. Its settings go back to Axon's factory values for that mode, and they load here once it restarts.</p></div>`;return;}
     if(p.kind==='none'){box.innerHTML=p.text?`<div class="axon-switch-note"><p>${esc(p.text)}</p></div>`:'';return;}
@@ -197,7 +211,7 @@ window.DeckAxon=(()=>{
   }
   async function startSwitch(extra={}){
     const code=extra.code||modelCode(),mode=extra.mode||wanted(),status=await axon('firmware-status',{code,mode});
-    if(!status.keys){ask={title:'Import your key file',text:'Changing a servo\'s firmware needs Axon\'s keys, and Torque does not include them. If you have a key file, import it once and it stays on this computer. Everything else here works without it, and Axon\'s own app can switch modes too.',buttons:[['Import key file','import-keys'],['Cancel','cancel-ask']],code,mode,extra};return;}
+    if(!status.keys){const family=familyOf(code);ask={title:'Switch mode in Axon\'s software',text:'Firmware is Axon\'s, and Torque does not include the keys to it, so the switch happens in Axon\'s own program. Close it when you are done and Torque picks up again. If you have a key file, you can import it once and Torque will do this here.',more:family==='v1'?'Axon\'s V1 software needs Axon\'s older programmer, not the V2 one.':'',buttons:[['Open Axon\'s software','software-switch'],['Import key file','import-keys'],['Cancel','cancel-ask']],code,mode,extra};return;}
     if(!status.have&&!status.chosen){ask={title:'Firmware needed',text:`This needs ${status.fileName} (${(status.size/1024).toFixed(1)} KB), Axon's official firmware for this mode. Torque does not ship it. It can download it once from Axon's own link, or you can pick the file if you already have it.`,buttons:[['Download from Axon','download'],['Choose a file','choose-firmware'],['Cancel','cancel-ask']],code,mode,extra};return;}
     const v1=models().find(m=>m.code===code)?.family==='v1';
     ask={title:extra.recovery?'Recover a servo':`Switch to ${MODE[mode]}`,text:extra.recovery?`Use this if a mode switch was interrupted and the servo no longer shows up. It writes ${modelTitle(code)} ${MODE[mode]} firmware, so check that the servo and mode picked are right. Torque still checks the hardware ID, but it cannot check the servo's name.`:`This writes Axon's ${MODE[mode]} firmware to the servo and resets its settings to Axon's factory values for that mode. Save a settings file first if you want to keep them.`,
@@ -224,6 +238,9 @@ window.DeckAxon=(()=>{
     'save-file':()=>axon('save-settings',{changes:pending}),
     'cancel-ask':()=>closeAsk(),
     download:async()=>{const a=ask;closeAsk();render();await axon('download',{code:a.code,mode:a.mode});await startSwitch({...a.extra,code:a.code,mode:a.mode});},
+    'software-page':b=>axon('software-page',{family:b.dataset.family}),
+    'software-pick':async b=>{await axon('software-pick',{family:b.dataset.family});},
+    'software-switch':async()=>{const a=ask;await axon('software-open',{family:familyOf(a.code)});closeAsk();},
     'import-keys':async()=>{const a=ask,r=await axon('import-keys');if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     'choose-firmware':async()=>{const a=ask,r=await axon('choose-firmware',{code:a.code,mode:a.mode});if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     flash:()=>doFlash(ask),'flash-anyway':()=>doFlash(ask,true),
