@@ -273,7 +273,7 @@ namespace TorqueAxonUsb
     internal static class Program
     {
         // The two apps that poll the same programmer: two on one device corrupt each other's traffic.
-        static readonly string[] Rivals = { "Axon Software MK2", "Axon Bridge" };
+        static readonly string[] Rivals = { "Axon Software MK2", "Axon Bridge", "Program Software" };
         static HidPort port;
 
         static string Quote(string s)

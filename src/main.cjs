@@ -29,7 +29,7 @@ const LEGACY_NAME='Deck Driver Station';
 if(!process.env.DECK_DATA_DIR){const legacy=path.join(app.getPath('appData'),LEGACY_NAME);if(fs.existsSync(legacy)&&!fs.existsSync(path.join(app.getPath('appData'),'Torque')))app.setPath('userData',legacy);}
 // Offline simulator: a utility process started by the Simulation view, never connected to a robot.
 const {DevicePhotos}=require('./device-photos.cjs');let devicePhotos=null;const photos=()=>devicePhotos||=new DevicePhotos(path.join(app.getPath('userData'),'device-photos'));
-const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs'),axonSoftware=require('./axon-software.cjs'),{UsbWatch}=require('./usb-watch.cjs'),HubUsb=require('./hub-usb.cjs');let axon=null,usbWatch=null;
+const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs'),axonSoftware=require('./axon-software.cjs'),{UsbWatch}=require('./usb-watch.cjs'),HubUsb=require('./hub-usb.cjs');let axon=null,usbWatch=null;const axons={};
 if(process.env.DECK_DATA_DIR){fs.mkdirSync(process.env.DECK_DATA_DIR,{recursive:true});app.setPath('userData',process.env.DECK_DATA_DIR);}
 // UI checks on GPU-less CI displays: Chromium's software WebGL, which it no longer falls back to on its own.
 if(process.env.DECK_TEST_SOFTWARE_GL==='1')app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -422,11 +422,16 @@ handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open 
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
 // Setup & Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
 const axonSoftwareFolders=()=>{const home=app.getPath('home'),cloud=process.env.OneDrive;return [app.getPath('downloads'),app.getPath('desktop'),app.getPath('documents'),path.join(home,'Downloads'),path.join(home,'Desktop'),path.join(home,'Documents'),...(cloud?['Downloads','Desktop','Documents'].map(n=>path.join(cloud,n)):[])];};
-const axonService=()=>axon||=new axonProgrammer.AxonService({findSoftware:axonSoftware.finder({folders:axonSoftwareFolders()}),firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),sharedKeyFile:process.env.DECK_DATA_DIR?null:path.join(app.getPath('documents'),'Torque Axon keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',s),
+// One Axon service per programmer, so a V1 and a V2 programmer can both be plugged in and used side by side. A test that gives
+// its own transport gets the one service that takes either. Each state says which it is for.
+const axonWhich=()=>axonProgrammer.overrides.transport?['all']:['v1','v2'],axonAll=()=>axonWhich().map(w=>axonService(w));
+const axonService=(which=axonWhich()[0])=>axons[which]||=new axonProgrammer.AxonService({only:which==='all'?null:which,findSoftware:axonSoftware.finder({folders:axonSoftwareFolders()}),firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),sharedKeyFile:process.env.DECK_DATA_DIR?null:path.join(app.getPath('documents'),'Torque Axon keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',{...s,which}),
   fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
-handle('axon',async(action,data)=>{const s=axonService(),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
-  if(action==='preview')return s.preview(data?.code,data?.mode);if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
-  if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='defaults')return s.defaults();if(action==='close-rivals')return void await s.closeRivals();
+handle('axon',async(action,data)=>{
+  if(action==='start')return axonWhich().map(w=>({...axonService(w).start(),which:w}));if(action==='stop')return void await Promise.all(axonAll().map(a=>a.dispose()));
+  const which=axonWhich().includes(data?.which)?data.which:axonWhich()[0],s=axonService(which),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
+  if(action==='preview')return s.preview(data?.code,data?.mode);if(action==='state')return {...s.state(),which};if(action==='trace')return s.traceLines;
+  if(action==='test')return s.test(data?.steps);if(action==='test-stop')return s.testStop();if(action==='drive')return s.drive(data?.speed??null);if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='defaults')return s.defaults();if(action==='close-rivals')return void await s.closeRivals();
   if(action==='firmware-status')return s.firmwareStatus(data?.code,data?.mode);if(action==='download')return s.download(data?.code,data?.mode);if(action==='flash')return s.flash(data||{});
   if(action==='choose-firmware'){const r=await dialog.showOpenDialog(win,{title:'Choose Axon firmware',filters:[{name:'Axon firmware',extensions:['sfw','sfm']}],properties:['openFile']});return r.canceled?null:s.chooseFirmware(data?.code,data?.mode,r.filePaths[0]);}
   if(action==='software-open'){const file=s.softwareFile(data?.family);if(!file)throw Error("Axon's software is not on this computer.");const problem=await shell.openPath(file);if(problem)throw Error(problem);return true;}
@@ -624,7 +629,7 @@ app.whenReady().then(async()=>{
     if(!closeAsked&&process.env.DECK_HEADLESS!=='1'&&!win.webContents.isDestroyed()){e.preventDefault();closeAsked=true;
       const ask=Promise.race([win.webContents.executeJavaScript('window.deckUnfinishedSetup?.()??null',true),new Promise(r=>setTimeout(r,1500,null))]).catch(()=>null);
       void ask.then(async name=>{if(win.isDestroyed())return;
-        if(axon?.flashing){const r=await dialog.showMessageBox(win,{type:'warning',buttons:['Keep running','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Firmware update running',message:'An Axon servo is being updated.',detail:'Closing now can leave the servo needing Recover. It takes about a minute.'});if(r.response!==1){closeAsked=false;return;}}
+        if(Object.values(axons).some(a=>a.flashing)){const r=await dialog.showMessageBox(win,{type:'warning',buttons:['Keep running','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Firmware update running',message:'An Axon servo is being updated.',detail:'Closing now can leave the servo needing Recover. It takes about a minute.'});if(r.response!==1){closeAsked=false;return;}}
         if(typeof name==='string'){const r=await dialog.showMessageBox(win,{type:'question',buttons:['Keep setting up','Close anyway'],defaultId:0,cancelId:0,noLink:true,title:'Setup not finished',
           message:`You haven’t finished setting up “${name}”.`,detail:'Your changes are saved. Finish the Robot, Robot controller and Mechanisms steps, then go to Path planning to plan its route.'});
           if(r.response!==1){closeAsked=false;return;}}
@@ -636,5 +641,5 @@ app.whenReady().then(async()=>{
   setInterval(()=>void autoOpenUsb(),1500).unref();
 });
 // Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
-let closing=false;app.on('before-quit',e=>{usbWatch?.quit();axon?.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
+let closing=false;app.on('before-quit',e=>{usbWatch?.quit();for(const a of Object.values(axons))a.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
   void Promise.all([Promise.race([Promise.all([debugStop(),robotCheck?.ended.catch(()=>{})]),delay(2000)]),closeRobot().catch(()=>{})]).finally(()=>{robotLink.stopUsbRelay();app.quit();});});app.on('window-all-closed',()=>app.quit());

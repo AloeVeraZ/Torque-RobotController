@@ -18,13 +18,16 @@ class SimLink{
   async write(tx){const r=Buffer.alloc(64);r[0]=4;
     switch(tx[1]){
       case 0x91:r[1]=1;r[5]=0x22;break;
-      case 0xAF:r[4]=0xAF;r[5]=0x05;r[6]=0xDC;r[9]=this.volts>>8;r[10]=this.volts&255;r[14]=this.amps;r[15]=2;r[16]=this.powerOn?3:0;if(this.inputPulse){r[19]=1;r[20]=0x4E;r[21]=0x20;r[22]=this.inputPulse>>8;r[23]=this.inputPulse&255;}break;
+      case 0xAF:{const out=this.out||1500;r[4]=0xAF;r[5]=out>>8;r[6]=out&255;r[9]=this.volts>>8;r[10]=this.volts&255;r[14]=this.out?(this.mode==='cr'&&Math.abs(this.out-1500)>30?160:this.amps+20):this.amps;r[15]=this.out?1:0;}r[16]=this.powerOn?3:0;if(this.inputPulse){r[19]=1;r[20]=0x4E;r[21]=0x20;r[22]=this.inputPulse>>8;r[23]=this.inputPulse&255;}break;
+      case 0xAC:r[1]=1;this.out=(tx[5]<<8)|tx[6];this.pulses=(this.pulses||[]).concat(this.out);break;
       case 0xB0:this.powerOn=tx[3]===1;r[1]=1;break;
-      case 0x8A:r[4]=0x8A;if(this.attached&&this.powerOn&&!this.rebooting){r[1]=1;if(this.family==='v1'){r[5]=this.mode==='cr'?4:3;r[6]=1;r[7]=1;r[8]=0x0A;}else{r[5]=0x34;r[6]=this.mode==='cr'?0x31:0x11;r[7]=0x22;r[8]=5;}}break;
+      // bootOnly: a V1 servo on the V2 programmer, whose own program never answers it (its bootloader does).
+      case 0x8A:r[4]=0x8A;if(this.bootOnly){r[1]=0xFA;r[3]=0x22;break;}if(this.attached&&this.powerOn&&!this.rebooting){r[1]=1;if(this.family==='v1'){r[5]=this.mode==='cr'?4:3;r[6]=1;r[7]=1;r[8]=0x0A;}else{r[5]=0x34;r[6]=this.mode==='cr'?0x31:0x11;r[7]=0x22;r[8]=5;}}break;
       case 0xCD:{const addr=(tx[2]<<8)|tx[3],len=tx[4];r[4]=this.noLengthEcho?0:len;if(this.readsFail||!this.attached||(this.rejectSecondChunk&&addr>=59)){r[1]=0;r[2]=1;break;}r[1]=1;this.block.copy(r,5,addr,Math.min(addr+len,this.block.length));break;}
       case 0xCB:{const addr=(tx[2]<<8)|tx[3],len=tx[4];this.writeFrames++;r[1]=1;r[4]=len;this.lastWrites.push({addr,len});if(!this.writesIgnored)tx.copy(this.block,addr,5,5+Math.min(len,this.block.length-addr));break;}
       case 0x5A:r[1]=1;r[4]=0x5A;r[5]=0xAA;this.block=makeBlock(this.family,this.mode,this.name);break;
-      case 0x80:this.bootEntries++;r[1]=1;r[5]=0x56;r[6]=0x31;r[7]=0x30;r[8]=0x33;r[9]=this.modelA;r[10]=this.modelB;break;
+      // bootSilent: nothing on the pins at all, not even a bootloader.
+      case 0x80:if(this.bootSilent){r[1]=0;r[2]=0xFF;break;}this.bootEntries++;r[1]=1;r[5]=0x56;r[6]=0x31;r[7]=0x30;r[8]=0x33;r[9]=this.modelA;r[10]=this.modelB;break;
       case 0x81:{this.sessionRecords=0;r[1]=1;const s=crypto.randomBytes(22);for(let i=0;i<22;i++){r[5+i]=s[i];this.key[i]=tx[3+i]^s[i];}break;}
       case 0x82:{const d=Buffer.alloc(22);for(let i=0;i<22;i++)d[i]=tx[3+i]^this.key[i];r[1]=1;
         if(d[0]===0x0A){this.eraseRecords++;r[5]=0x55;}

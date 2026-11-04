@@ -3,6 +3,11 @@
 
 .rs-axon { min-width: 0; }
 .axon-tab { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.axon-tab[data-waiting] > :not(.axon-wait):not(dialog) { display: none !important; }
+.axon-wait { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 50vh; padding: 24px 16px; text-align: center; }
+.axon-wait[hidden] { display: none; }
+.axon-wait h2 { margin: 0; font-size: 22px; font-weight: 600; }
+.axon-wait p { max-width: 46ch; margin: 0; }
 .axon-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .axon-top h2 { flex: none; margin: 0; font-size: 15px; }
 .axon-chips { display: flex; flex: none; gap: 6px; margin-left: auto; }
@@ -160,7 +165,45 @@
 .driver-station .axon-view > button { padding: 0 10px; font-size: 12px; min-height: 26px; }
 .driver-station .axon-actions > button[hidden] { display: none; }
 /* The response graph: a test tool, not a tuning page. */
-.axon-settings-body[data-testing] { display: block; overflow: auto; }
+.axon-settings-body[data-testing] { display: flex; flex-direction: column; overflow: hidden; }
+/* Test: steps on the left, the graph filling what is left, so nothing scrolls. */
+.axon-test { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.axon-test-controls { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; overflow: hidden; }
+.axon-test-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.axon-test-pick { display: grid; gap: 2px; min-width: 0; }
+.driver-station .axon-test-pick label { margin: 0; font-size: 10px; font-weight: 400; color: var(--muted); }
+.driver-station .axon-test-pick select { min-height: 30px; height: 30px; padding: 0 4px; font-size: 12px; }
+.driver-station .axon-test-pair > button { min-height: 34px; min-width: 0; padding: 0 6px; font-size: 12px; }
+.axon-test-pair kbd, .axon-drive kbd { margin-left: 6px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 4px; font: inherit; font-size: 10px; opacity: .7; }
+.axon-test-steps { display: grid; gap: 4px; }
+.axon-test-step { display: grid; grid-template-columns: 50px minmax(0, 1fr) 64px 24px; align-items: center; gap: 4px; font-size: 12px; }
+.axon-test-step > span:first-child { font-weight: 600; }
+.axon-test-headrow { font-size: 10px; color: var(--muted); }
+.driver-station .axon-test-step select { min-height: 30px; height: 30px; padding: 0 4px; font-size: 12px; }
+.driver-station .axon-test-x { min-width: 24px; width: 24px; min-height: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-detail); background: var(--raised); color: var(--muted); font-size: 14px; }
+.driver-station .axon-test-controls > button { min-height: 34px; font-size: 12px; }
+.axon-test-status { margin: 0; font-size: 11px; line-height: 1.3; color: var(--muted); }
+.axon-test-status[data-tone=good] { color: var(--connected); }
+.axon-test-status[data-tone=warn] { color: var(--warning); }
+.axon-test-chart { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; }
+.axon-test-graph { flex: 1; min-height: 120px; }
+.axon-test-graph > svg { width: 100%; height: 100%; }
+.axon-try-legend i[data-key=current] { background: var(--accent); opacity: .7; }
+.axon-try-current { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: .6; }
+.axon-try-amp { fill: var(--accent); }
+.axon-test-chart .axon-try-target { fill: none; stroke-dasharray: none; }
+/* Continuous rotation: one slider, stop in the middle. */
+.axon-drive { display: flex; flex-direction: column; gap: 10px; max-width: 720px; width: 100%; margin: 0 auto; padding-top: 6px; }
+.axon-drive-read { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.axon-drive-read > div { padding: 8px 10px; border-radius: var(--radius-detail); background: var(--raised); }
+.axon-drive-read span { display: block; font-size: 11px; color: var(--muted); }
+.axon-drive-read strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.driver-station input.axon-drive-slider { width: 100%; min-height: 36px; height: 36px; }
+.axon-drive-ends { display: grid; grid-template-columns: 1fr auto 1fr; font-size: 11px; color: var(--muted); }
+.axon-drive-ends > :last-child { text-align: right; }
+.axon-drive-ends > i { align-self: start; width: 2px; height: 10px; margin-top: -6px; background: var(--muted); }
+.driver-station .axon-drive .button-row > button { min-height: 44px; min-width: 140px; }
+.axon-drive-graph { min-height: 0; }
 .axon-try { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 16px; min-width: 0; }
 .axon-try-chart { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .axon-try-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -200,5 +243,9 @@
 .axon-try-presets > span { font-size: 12px; font-weight: 600; }
 .axon-try-presets > [data-axon-try-set=servo] { grid-column: 1 / -1; }
 .driver-station .axon-try-presets > button { min-height: 32px; min-width: 0; padding: 0 4px; font-size: 12px; }
-@media (max-width: 1120px) { .axon-try { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1120px) { .axon-try, .axon-test { grid-template-columns: minmax(0, 1fr); } .axon-settings-body[data-testing] { overflow-y: auto; } }
 @media (max-width: 560px) { .axon-try-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Both programmers plugged in: which one this page is working on. */
+.axon-progs[hidden] { display: none; }
+.driver-station .axon-progs > button { min-height: 32px; padding: 0 12px; font-size: 12px; font-weight: 400; white-space: nowrap; }
+.axon-progs strong { font-weight: 650; }

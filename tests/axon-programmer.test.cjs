@@ -88,6 +88,15 @@ test('servo identification',()=>{
   s=S.parseStatus(statusReply(1,9,9,9,9));assert.deepEqual([s.family,S.servoEditable(s)],['unknown',false],'an unknown ID is never editable');
 });
 
+test('the real status replies recorded from both programmers',()=>{
+  const r=hex=>{const b=Buffer.alloc(64);Buffer.from(hex.replace(/ /g,''),'hex').copy(b);return b;};
+  assert.deepEqual(['family','mode','firmware'].map(k=>S.parseStatus(r('04 01 22 22 8A 34 31 22 08'))[k]),['v2','cr','AISV312208'],'MINI MK2 in CR on the V2 programmer');
+  assert.equal(S.parseStatus(r('04 01 22 22 8A 34 11 22 08')).mode,'servo');
+  assert.equal(S.parseStatus(r('04 FA 00 22 8A')).family,'none','no servo on the V2 programmer');
+  assert.deepEqual(['family','mode'].map(k=>S.parseStatus(r('04 01 00 01 01 04 02 01 08'))[k]),['v1','cr'],'V1 MAX in CR on the V1 programmer');
+  assert.equal(S.parseStatus(r('04 01 FA 00 01')).family,'none','no servo on the V1 programmer');
+});
+
 test('reading and writing through the programmer',async()=>{
   let link=new SimLink('v1','servo','AXONTEST'),p=new S.Programmer(link);
   assert.ok(await p.hello());let t=await p.telemetry();assert.ok(Math.abs(t.volts-5)<0.1&&!t.powerOn);assert.equal(t.outputPulse,1500);assert.ok(!S.servoPresent(await p.status()),'an unpowered servo does not answer');
@@ -175,11 +184,13 @@ test('the service switches mode by flashing, waits for the servo, and reads its 
 });
 
 test('the service refuses firmware it cannot match, and asks when the name cannot be read',async()=>{
-  const link=new SimLink('v1','servo','SA81BHMW',{rejectSecondChunk:true,modelB:1}),{s,dir,catalog}=service(link);s.start();
+  // A V1 servo is switched through the V1 programmer (a V2 programmer never answers one).
+  const link=new SimLink('v1','servo','SA81BHMW',{rejectSecondChunk:true,modelB:1}),{s,dir,catalog,transport}=service(link);transport.plugged=false;transport.v1Programmer=true;link.powerOn=true;s.start();
   try{await ready(s);assert.equal(s.state().servo.name,null);assert.throws(()=>s.flash({code:'max1',mode:'cr'}),e=>e.code==='NAME_UNKNOWN');assert.equal(link.bootEntries,0,'nothing happened yet');
     const r=await s.flash({code:'max1',mode:'cr',allowUnknownName:true});assert.ok(r.ok,r.message);
     fs.rmSync(path.join(dir,'firmware',catalog.find(f=>f.code==='max1'&&f.mode==='servo').fileName));assert.throws(()=>s.flash({code:'max1',mode:'servo',allowUnknownName:true}),e=>e.code==='FIRMWARE_NEEDED');
   }finally{await s.dispose();}
+  {const v1OnV2=new SimLink('v1','servo','SA81BHMW'),one=service(v1OnV2);one.s.start();try{await ready(one.s);const r=await one.s.flash({code:'max1',mode:'cr'});assert.deepEqual([r.ok,r.changed,v1OnV2.bootEntries],[false,false,0]);assert.match(r.message,/V1 servo is switched through the V1 programmer/);}finally{await one.s.dispose();}}
   const wrong=new SimLink('v2','servo','MINIMK2'),two=service(wrong);two.s.start();try{await ready(two.s);const r=await two.s.flash({code:'max2',mode:'cr'});assert.deepEqual([r.ok,r.changed,wrong.eraseRecords],[false,false,0]);assert.match(r.message,/Nothing was changed/);}finally{await two.s.dispose();}
 });
 
@@ -200,9 +211,71 @@ test('the service steps aside for Axon\'s app, and says what it found on USB',as
   const link=new SimLink('v2','servo','MAXMK2'),{s,transport}=service(link);transport.rivalTitles=['Axon Bridge'];s.start();
   try{await until(()=>s.state().programmer.rivals.length);assert.deepEqual(s.state().programmer.rivals,['Axon Bridge']);assert.equal(transport.opened,0,'it does not touch the programmer');
     await s.closeRivals();await ready(s);transport.rivalTitles=['Axon Software MK2'];await until(()=>s.state().programmer.rivals.length);assert.equal(s.state().settings,null);assert.ok(link.closed,'it let go of the device');
-    transport.rivalTitles=[];await ready(s);transport.plugged=false;transport.v1Programmer=true;link.flush=async()=>{throw new S.DeviceLost('unplugged');};await until(()=>s.state().programmer.v1Seen);assert.equal(s.state().programmer.ready,false);assert.equal(s.state().servo.present,false);
+    // The V2 gone and a V1 programmer there: Torque opens the V1 one (Axon's V1 app has no handshake to wait for).
+    transport.rivalTitles=[];await ready(s);const was=transport.opened;transport.plugged=false;transport.v1Programmer=true;link.flush=async()=>{throw new S.DeviceLost('unplugged');};await until(()=>transport.opened>was+1);assert.equal(s.state().servo.present,false);
   }finally{await s.dispose();}
   const silent=service(new SimLink('v2','servo','MAXMK2'),{},{silent:true});silent.s.start();try{await until(()=>silent.s.state().programmer.handshakeFailed);}finally{await silent.s.dispose();}
+});
+
+test('with both programmers plugged in it asks for one to be unplugged, and carries on once one is',async()=>{
+  const link=new SimLink('v2','servo','MAXMK2'),{s,transport}=service(link);transport.v1Programmer=true;s.start();
+  try{await until(()=>s.state().programmer.both,8000,'the two-programmer warning');assert.equal(transport.opened,0,'neither is opened');assert.ok(s.state().log.some(l=>/Unplug the one you are not using/.test(l.text)));
+    transport.v1Programmer=false;await ready(s);assert.equal(s.state().programmer.both,false);
+    transport.v1Programmer=true;await until(()=>s.state().programmer.both,8000,'the warning again when a second one is plugged in');assert.equal(s.state().settings,null);
+  }finally{await s.dispose();}
+});
+
+test('Test moves a MK2 servo through the pulse and writes nothing; continuous rotation eases up to speed and stops with the pulse off',async()=>{
+  const link=new SimLink('v2','servo','MAXMK2'),{s}=service(link);s.start();
+  try{await ready(s);const frames=link.writeFrames;
+    assert.throws(()=>s.test([{position:.5,hold:1}]),/1 to 5 moves/);assert.throws(()=>s.test([{position:.5,hold:1},{position:2,hold:1}]),/0 to 1/);assert.throws(()=>s.drive(.5),/continuous rotation/);
+    const r=await s.test([{position:.5,hold:.3},{position:.75,hold:.3}]);assert.ok(r.ok,r.message);assert.deepEqual(link.pulses.filter(Boolean),[1500,2000]);assert.equal(link.out,0,'pulse off after');assert.equal(link.writeFrames,frames);
+    const t=s.state().test;assert.ok(t.samples.length>10);assert.deepEqual(t.samples.map(x=>x[1]).filter((v,i,a)=>a.indexOf(v)===i),[1500,2000],'the programmer reports the pulse sent');
+  }finally{await s.dispose();}
+  const cr=new SimLink('v2','cr','MAXMK2'),b=service(cr);b.s.start();
+  try{await ready(b.s);cr.pulses=[];b.s.drive(1);await until(()=>b.s.state().test?.us>=1950,4000,'full speed');const sent=cr.pulses.filter(Boolean);
+    for(let i=1;i<sent.length;i++)assert.ok(Math.abs(sent[i]-sent[i-1])<=40,`no jump: ${sent[i-1]} to ${sent[i]}`);assert.equal(Math.max(...sent),1950,'MK2 full speed');
+    b.s.drive(null);await until(()=>!b.s.state().busy,3000,'it stops');assert.equal(cr.out,0,'the pulse is off');assert.equal(b.s.state().test.running,false);
+  }finally{await b.s.dispose();}
+  const v1=new SimLink('v1','cr','SA81BHMW',{modelB:1}),c=service(v1);c.transport.plugged=false;c.transport.v1Programmer=true;v1.powerOn=true;c.s.start();
+  try{await ready(c.s);assert.throws(()=>c.s.drive(.3),/V1 programmer has no pulse output/);}finally{await c.s.dispose();}
+});
+
+test('a V1 and a V2 programmer side by side: each service takes only its own, and both work at once',async()=>{
+  const l1=new SimLink('v1','servo','SA81BHMW',{modelB:1}),l2=new SimLink('v2','cr','MINIMK2'),a=service(l1,{only:'v1'}),b=service(l2,{only:'v2'});
+  // Each transport sees both programmers plugged in, as USB does; neither service asks for one to be unplugged.
+  a.transport.v1Programmer=true;b.transport.v1Programmer=true;l1.powerOn=true;a.transport.find=async vid=>vid===S.VID_V1?[{path:'v1',vid,pid:S.PID,version:1,inLen:64,outLen:64,product:'USBBootloader V1.3'}]:vid===S.VID_V2?[{path:'v2',vid,pid:S.PID}]:[];
+  a.s.start();b.s.start();
+  try{await ready(a.s,'the V1 servo');await ready(b.s,'the MK2 servo');
+    assert.deepEqual([a.s.state().programmer.kind,a.s.state().servo.family,a.s.state().programmer.both,a.s.state().only],['v1','v1',false,'v1']);assert.deepEqual([b.s.state().programmer.kind,b.s.state().servo.family,b.s.state().programmer.both],['v2','v2',false]);
+    const [w1,w2]=await Promise.all([a.s.write({angle:150}),b.s.write({pwm:200})]);assert.ok(w1.ok&&w2.ok,`${w1.message} / ${w2.message}`);assert.equal(l1.block[4],150);assert.equal(l2.block[6],200);
+    b.s.drive(.5);await until(()=>b.s.state().test?.us>1600,4000,'the MK2 servo spins');const r=await a.s.read();assert.ok(r.ok,'the V1 one reads meanwhile');b.s.drive(null);await until(()=>!b.s.state().busy,3000);
+  }finally{await a.s.dispose();await b.s.dispose();}
+});
+
+test('a V1 servo on the V2 programmer is found through its bootloader: no settings, but its mode can be switched and it can be tested',async()=>{
+  const link=new SimLink('v1','cr','SA81BHMW',{modelB:1,bootOnly:true}),{s}=service(link);s.start();
+  try{await until(()=>s.state().servo.viaBoot,8000,'the V1 servo through its bootloader');const st=s.state();
+    assert.deepEqual([st.servo.family,st.servo.mode,st.servo.modeHow,st.servo.editable,st.settings],['v1','cr','measured',false,null],'its mode measured from how it moves, no settings');assert.equal(link.out,0,'the pulse is off again');assert.ok(link.exitFrames>=1,'it was let go again');assert.ok(st.log.some(l=>/settings need the V1 programmer/.test(l.text)));
+    const same=await s.flash({code:'max1',mode:'cr',confirmed:'max1'});assert.deepEqual([same.ok,same.changed],[false,false]);assert.match(same.message,/already in continuous rotation/);assert.equal(link.dataRecords,0,'the same mode is not written again unless asked');
+    const re=await s.flash({code:'max1',mode:'cr',again:true,confirmed:'max1'});assert.ok(re.ok,re.message);assert.ok(link.dataRecords>0,'asked for, it is written again');
+    assert.throws(()=>s.flash({code:'max1',mode:'servo',confirmed:'mini1'}),/not the one confirmed/);assert.throws(()=>s.flash({code:'max1',mode:'servo'}),/not the one confirmed/);
+    const r=await s.flash({code:'max1',mode:'servo',confirmed:'max1'});assert.ok(r.ok,r.message);assert.equal(link.mode,'servo','the firmware went through the bootloader');assert.equal(s.state().servo.mode,'servo','shown as the mode Torque wrote');assert.match(r.message,/cannot read this servo's mode back/);
+    const t=await s.test([{position:.5,hold:.3},{position:.55,hold:.3}]);assert.ok(t.ok,t.message);assert.equal(link.out,0);
+  }finally{await s.dispose();}
+});
+
+test('a MK2 servo on the V1 programmer is found through its bootloader and switched, with no Test; every model gets only its own firmware',async()=>{
+  const link=new SimLink('v2','cr','MINIMK2',{bootOnly:true}),{s,transport,dir,catalog}=service(link);transport.plugged=false;transport.v1Programmer=true;link.powerOn=true;s.start();
+  try{await until(()=>s.state().servo.viaBoot,10000,'the MK2 servo through its bootloader');const st=s.state();
+    assert.deepEqual([st.programmer.kind,st.servo.family,st.servo.mode,st.servo.editable],['v1','v2','unknown',false],'no mode it could tell: the V1 programmer cannot move it');assert.ok(st.log.some(l=>/MK2 servo is on the V1 programmer/.test(l.text)));
+    assert.throws(()=>s.test([{position:.5,hold:.3},{position:.6,hold:.3}]),/needs the V2 programmer/);assert.throws(()=>s.drive(.3),/V2 programmer/);
+    // A MINI MK2's file chosen for a MAX MK2 is refused before anything is sent: the file names its model.
+    const mini=path.join(dir,'firmware',catalog.find(f=>f.code==='mini2'&&f.mode==='servo').fileName);s.chooseFirmware('max2','servo',mini);
+    const before=link.dataRecords;assert.throws(()=>s.flash({code:'max2',mode:'servo',confirmed:'max2'}),/firmware for "MINIMK2", not a V2 MAX/);assert.equal(link.dataRecords,before,'nothing written');
+    const r=await s.flash({code:'mini2',mode:'servo',confirmed:'mini2'});assert.ok(r.ok,r.message);assert.equal(link.mode,'servo');assert.equal(s.state().servo.mode,'servo');assert.match(r.message,/V1 programmer/);
+  }finally{await s.dispose();}
+  for(const m of S.MODELS)for(const mode of ['servo','cr'])assert.match(S.FIRMWARE.find(f=>f.code===m.code&&f.mode===mode).fileName,m.family==='v1'?(m.code==='max1'?/^Axon_Max_/:/^Axon_Mini_/):(m.code==='max2'?/^Axon_MAX_MK2_/:/^Axon_MINI_MK2_/),`${m.code} ${mode} has its own file`);
 });
 
 test('over 9 V it keeps servo power off; an unplugged servo clears its settings',async()=>{

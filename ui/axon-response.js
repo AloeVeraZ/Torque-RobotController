@@ -52,5 +52,41 @@
     parts.push(`<text class="axon-try-tick" x="${R}" y="${y(move+tol)-4}" text-anchor="end">Target ${num(move)}°</text><text class="axon-try-tick" x="${(L+R)/2}" y="${H-6}" text-anchor="middle">Time (seconds)</text><text class="axon-try-tick" x="${L}" y="10">Position</text>`);
     return `<svg class="axon-try-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${shape(r.zeta)}. Overshoot ${m.overshoot.toFixed(1)} degrees, undershoot ${m.undershoot.toFixed(1)} degrees, ${m.settle===null?`never inside plus or minus ${tol} degrees`:`inside plus or minus ${tol} degrees at ${m.settle.toFixed(2)} seconds`}.">${parts.join('')}</svg>`;
   }
-  return {LOADS,TOLERANCES,DEFAULT_LOAD,DEFAULT_MOVE,DEFAULT_TOLERANCE,MOVE,bandOf,zetaOf,shape,simulate,measure,plot};
+  // ---- A Test: a run of moves the servo really made. targets are [time s, degrees] from the pulses Torque sent; the position is the same
+  // model as above, following those targets. Degrees from centre are the pulse's distance from 1500 µs times degPerUs.
+  function track({damping,factory,pwm,band,mass,targets,until}){
+    const cap=pwm/255,tau=TAU*mass,kd=KD*damping/factory,samples=[];if(!targets.length)return samples;let p=targets[0][1],v=0,k=0;
+    for(let i=0,t=0;t<=until;i++,t=i*STEP){while(k+1<targets.length&&targets[k+1][0]<=t)k++;const goal=targets[k][1],e=goal-p,seen=Math.abs(e)<band?0:e,u=Math.max(-cap,Math.min(cap,KP*seen-kd*v));
+      v+=(u*SPEED-v)/tau*STEP;p+=v*STEP;if(i%8===0)samples.push([t,p]);}
+    return samples;
+  }
+  // Each move: how far it passed its target, how far short it came back, and when it stayed inside the tolerance.
+  function measureMoves(samples,targets,tol){
+    const out=[];for(let k=1;k<targets.length;k++){const [t0,goal]=targets[k],from=targets[k-1][1],end=k+1<targets.length?targets[k+1][0]:Infinity,dir=Math.sign(goal-from)||1,seg=samples.filter(([t])=>t>=t0&&t<end);if(!seg.length)continue;
+      let peak=-Infinity,peakAt=t0;for(const [t,p] of seg){const past=(p-goal)*dir;if(past>peak){peak=past;peakAt=t;}}const overshoot=peak>.05?peak:0;
+      let undershoot=0,underAt=null;if(overshoot)for(const [t,p] of seg)if(t>peakAt){const short=(goal-p)*dir;if(short>undershoot+1e-9){undershoot=short;underAt=t;}}
+      let settle=null;if(Math.abs(seg[seg.length-1][1]-goal)<=tol){settle=0;for(let i=seg.length-1;i>=0;i--)if(Math.abs(seg[i][1]-goal)>tol){settle=(seg[i+1]||seg[i])[0]-t0;break;}}
+      out.push({index:k,from,goal,move:Math.abs(goal-from),overshoot,overshootAt:overshoot?peakAt:null,peak:goal+dir*overshoot,undershoot:undershoot>=.1?undershoot:0,undershootAt:underAt,under:goal-dir*undershoot,settle,settleAt:settle===null?null:t0+settle});}
+    return out;
+  }
+  // The graph: the position sent (real), the modelled servo, and the current the programmer measured (real), on one time axis.
+  function plotRun({targets,until,model,current,tol,moves,done,span=[]}){
+    const W=660,H=300,L=46,R=606,T=12,B=258,num=v=>+v.toFixed(1),degs=[...span,...targets.map(t=>t[1]),...model.map(m=>m[1])];
+    let lo=Math.min(...degs),hi=Math.max(...degs);const pad=Math.max(5,(hi-lo)*.15);lo-=pad;hi+=pad;
+    const amp=Math.max(1,...current.map(c=>c[1])),x=t=>num(L+Math.min(t,until)/until*(R-L)),y=v=>num(B-(v-lo)/(hi-lo)*(B-T)),ya=a=>num(B-a/amp*(B-T)*.45),parts=[];
+    const stepDeg=[1,2,5,10,15,20,30,45,60,90].find(s=>(hi-lo)/s<=6)||90;for(let v=Math.ceil(lo/stepDeg)*stepDeg;v<=hi;v+=stepDeg)parts.push(`<line class="axon-try-grid" x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}"/><text class="axon-try-tick" x="${L-6}" y="${y(v)+4}" text-anchor="end">${num(v)}°</text>`);
+    const ts=until<=2?.5:until<=5?1:until<=12?2:5;for(let t=0;t<=until+1e-9;t+=ts)parts.push(`<line class="axon-try-grid" x1="${x(t)}" x2="${x(t)}" y1="${T}" y2="${B}"/><text class="axon-try-tick" x="${x(t)}" y="${B+16}" text-anchor="middle">${num(t)}</text>`);
+    for(let a=0;a<=amp+1e-9;a+=amp>2?1:.5)parts.push(`<text class="axon-try-tick axon-try-amp" x="${R+6}" y="${ya(a)+4}">${a.toFixed(1)} A</text>`);
+    const shown=t=>t<=(done?until:Math.max(...current.map(c=>c[0]),targets[targets.length-1][0]));
+    if(done)for(let k=0;k<targets.length;k++){const t0=targets[k][0],t1=k+1<targets.length?targets[k+1][0]:until,g=targets[k][1];parts.push(`<rect class="axon-try-band" x="${x(t0)}" y="${y(g+tol)}" width="${num(x(t1)-x(t0))}" height="${num(y(g-tol)-y(g+tol))}"/>`);}
+    if(current.length>1)parts.push(`<polyline class="axon-try-current" points="${current.map(([t,a])=>`${x(t)},${ya(a)}`).join(' ')}"/>`);
+    const stairs=[];targets.forEach(([t,g],k)=>{if(k)stairs.push(`${x(t)},${y(targets[k-1][1])}`);stairs.push(`${x(t)},${y(g)}`);});stairs.push(`${x(Math.min(until,done?until:Math.max(targets[targets.length-1][0],...current.map(c=>c[0]))))},${y(targets[targets.length-1][1])}`);
+    parts.push(`<polyline class="axon-try-target" points="${stairs.join(' ')}"/>`);
+    const curve=model.filter(([t])=>shown(t)),every=Math.max(1,Math.floor(curve.length/500));if(curve.length>1)parts.push(`<polyline class="axon-try-curve" points="${curve.filter((m,i)=>i%every===0||i===curve.length-1).map(([t,p])=>`${x(t)},${y(p)}`).join(' ')}"/>`);
+    if(done)for(const m of moves){const note=(cls,t,v,text,below)=>{const px=x(t),start=px<R-120;parts.push(`<circle class="axon-try-${cls}" cx="${px}" cy="${y(v)}" r="4"/><text class="axon-try-note" x="${start?px+7:px-7}" y="${num(Math.max(T+10,Math.min(B-4,y(v)+(below?14:-6))))}" text-anchor="${start?'start':'end'}">${text}</text>`);};
+      if(m.overshoot)note('over',m.overshootAt,m.peak,`+${m.overshoot.toFixed(1)}°`,m.goal<m.from);if(m.undershoot)note('under',m.undershootAt,m.under,`−${m.undershoot.toFixed(1)}°`,m.goal>m.from);}
+    parts.push(`<text class="axon-try-tick" x="${(L+R)/2}" y="${H-4}" text-anchor="middle">Time (seconds)</text>`);
+    return `<svg class="axon-try-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Test of ${targets.length-1} ${targets.length===2?'move':'moves'}${done?'':', running'}">${parts.join('')}</svg>`;
+  }
+  return {LOADS,TOLERANCES,DEFAULT_LOAD,DEFAULT_MOVE,DEFAULT_TOLERANCE,MOVE,bandOf,zetaOf,shape,simulate,measure,plot,track,measureMoves,plotRun};
 });

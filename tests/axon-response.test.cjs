@@ -54,7 +54,7 @@ test('the graph draws the target, the tolerance and what happened, with nothing 
 });
 test('Simple is the basics every student knows, and Advanced is everything',()=>{
   const simple=(f,m)=>S.schemaView(S.schemaFor(f,m)).fields.filter(x=>!x.advanced).map(x=>x.key);
-  assert.deepEqual(simple('v1','servo'),['angle','neutral','pwm','inversion']);assert.deepEqual(simple('v2','servo'),['left','right','neutral','pwm','inversion']);assert.deepEqual(simple('v1','cr'),['pwm','inversion']);assert.deepEqual(simple('v2','cr'),['pwm','inversion']);
+  assert.deepEqual(simple('v1','servo'),['angle','neutral','pwm','inversion']);assert.deepEqual(simple('v2','servo'),['left','right','neutral','pwm','inversion','name']);assert.deepEqual(simple('v1','cr'),['pwm','inversion']);assert.deepEqual(simple('v2','cr'),['pwm','inversion','name'],'a MK2 servo name can be changed in either mode');
   for(const [f,m] of [['v1','servo'],['v2','servo'],['v1','cr'],['v2','cr']])assert.equal(S.schemaView(S.schemaFor(f,m)).fields.length,S.schemaFor(f,m).fields.length,'none go missing');
-  const adv=S.schemaView(S.schemaFor('v2','servo')).fields.filter(x=>x.advanced).map(x=>x.key);for(const k of ['damping','sens','signal','softstart','lostppm','beep','name','ol1t','ol3p'])assert.ok(adv.includes(k),k);
+  const adv=S.schemaView(S.schemaFor('v2','servo')).fields.filter(x=>x.advanced).map(x=>x.key);for(const k of ['damping','sens','signal','softstart','lostppm','beep','ol1t','ol3p'])assert.ok(adv.includes(k),k);
 });

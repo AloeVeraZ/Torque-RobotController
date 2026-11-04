@@ -4,7 +4,7 @@
 // length, payload, 64 bytes in all, and both servo generations answer the same commands through the V2 programmer.
 // Field meanings and what is shown to a student are here too, so the page never decides what goes to a servo.
 const crypto=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
-const VID_V2=0x0473,VID_V1=0x0471,VID_BOOT=0x0472,PID=0x13AA,CHUNK=59,REPORT=64,delay=ms=>new Promise(r=>setTimeout(r,ms));
+const VID_V2=0x0473,VID_V1=0x0471,VID_BOOT=0x0472,PID=0x13AA,CHUNK=59,REPORT=64,V1_GAP=60,delay=ms=>new Promise(r=>setTimeout(r,ms));
 const hex=(data,max=REPORT)=>[...data].slice(0,max).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ');
 function frame(...bytes){const r=Buffer.alloc(REPORT);r[0]=4;bytes.forEach((b,i)=>{r[i+1]=b&255;});return r;}
 class DeviceLost extends Error{}
@@ -12,7 +12,9 @@ class DeviceLost extends Error{}
 // A status reply. Byte 7 tells the generation apart: 0x01 is V1 (MAX+, MINI+), 0x22 is V2 (MK2). Axon's V2 app drops
 // anything but 0x22, which is why it calls V1 servos incompatible.
 function parseStatus(r){
-  const s={family:'none',mode:'unknown',type:0,b6:0,b7:0,b8:0,firmware:''};if(r[1]!==1)return s;
+  // A V1 servo answers 04 01 00 …; a MK2 servo on the V2 programmer answers 04 01 22 22 8A … (seen on real hardware 2026-11-04),
+  // and no servo is 04 FA (V2) or 04 01 FA (V1).
+  const s={family:'none',mode:'unknown',type:0,b6:0,b7:0,b8:0,firmware:''};if(r[1]!==1||(r[2]!==0&&!(r[2]===0x22&&r[7]===0x22)))return s;
   const two=n=>n.toString(16).toUpperCase().padStart(2,'0');Object.assign(s,{type:r[5],b6:r[6],b7:r[7],b8:r[8]});
   if(r[7]===0x01){s.family='v1';if(r[5]===3||r[5]===2)s.mode='servo';else if(r[5]===4)s.mode='cr';else s.family='unknown';s.firmware=`V${two(r[6])}${two(r[7])}${two(r[8])}`;}
   else if(r[7]===0x22){s.family='v2';if(r[5]===0x34||r[5]===0x04)s.mode=r[6]===0x41||r[6]===0x31?'cr':'servo';else s.family='unknown';s.firmware=`AISV${two(r[6])}${two(r[7])}${two(r[8])}`;}
@@ -21,8 +23,8 @@ function parseStatus(r){
 }
 const servoPresent=s=>s.family!=='none';
 // False for a servo that answers but whose settings neither official app can decode.
-const servoEditable=s=>(s.family==='v1'||s.family==='v2')&&s.mode!=='unknown'&&s.type!==2;
-const servoKey=s=>`${s.family}/${s.mode}/${s.type}`;
+const servoEditable=s=>(s.family==='v1'||s.family==='v2')&&s.mode!=='unknown'&&s.type!==2&&!s.viaBoot;
+const servoKey=s=>`${s.family}/${s.mode}/${s.type}${s.viaBoot?'/boot':''}`;
 
 const ascii=(b,at,n)=>[...b.subarray(at,at+n)].filter(c=>c>=32&&c<127).map(c=>String.fromCharCode(c)).join('').replaceAll('*',' ').trim();
 // The servo's factory name, or null for a V1 servo whose second chunk the programmer refused.
@@ -32,13 +34,33 @@ const blockMade=block=>{const d=block.family==='v1'?0x30:44,b=block.data;return 
 // The programmer, over a link with write(report,timeoutMs), read(timeoutMs) (a report, or null on timeout) and flush().
 class Programmer{
   constructor(link,{trace}={}){this.link=link;this.trace=trace||null;this.quiet=new Map();}
-  log(dir,data,quiet){if(!this.trace)return;const line=hex(data,32);if(quiet){const key=(dir==='TX'?0:256)+data[1]+(data[4]<<9);if(this.quiet.get(key)===line)return;this.quiet.set(key,line);}this.trace(`${dir} ${line}`);}
+  log(dir,data,quiet){if(!this.trace)return;const line=hex(data,64);if(quiet){const key=(dir==='TX'?0:256)+data[1]+(data[4]<<9);if(this.quiet.get(key)===line)return;this.quiet.set(key,line);}this.trace(`${dir} ${line}`);}
+  // The V1 programmer refuses a request sent within ~30 ms of its last reply (Axon's V1 app leaves ~30 ms), and a refused read or
+  // write makes the V1 servo stop answering until it restarts, so every V1 request waits V1_GAP after the last reply, and a refusal
+  // is not retried here: restartV1 brings the servo back first (seen on real hardware, 2026-11-04).
   async exchange(tx,accept,timeoutMs,tries,quiet){
-    await this.link.flush();this.log('TX',tx,quiet);
-    if(!await this.link.write(tx,1000))throw new DeviceLost('The programmer stopped accepting USB data.');
-    for(let i=0;i<tries;i++){const rx=await this.link.read(timeoutMs);if(!rx)continue;this.log('RX',rx,quiet);if(accept(rx))return rx;}
-    return null;
+    for(let busy=0;;busy++){
+      if(this.kind==='v1'){const wait=(this.lastAt||0)+V1_GAP-Date.now();if(wait>0)await delay(wait);}
+      await this.link.flush();this.log('TX',tx,quiet);
+      if(!await this.link.write(tx,1000))throw new DeviceLost('The programmer stopped accepting USB data.');
+      let again=false;
+      try{for(let i=0;i<tries;i++){const rx=await this.link.read(timeoutMs);if(!rx)continue;this.log('RX',rx,quiet);if(tx[1]!==0x8A&&rx[2]===2&&(rx[1]===tx[1]||(rx[1]===1&&rx[3]===tx[3]&&rx[4]===tx[4]))){again=true;break;}if(accept(rx))return rx;}}
+      finally{this.lastAt=Date.now();}
+      if(!again||busy>=10)return null;
+      if(this.kind==='v1'){this.refused=true;return null;}
+      await delay(120);
+    }
   }
+  // Restarts a V1 servo with no unplugging: update mode, the bootloader's info, its exit (which restarts the servo's own program),
+  // update mode off. This is what a mode switch does around the firmware, with no firmware in between. Returns the servo's status.
+  async restartV1(){
+    this.refused=false;await this.v1UpdateMode(true);const info=await this.bootInfo();await this.bootExit('v1');await this.v1UpdateMode(false);
+    let s=parseStatus(Buffer.alloc(REPORT));if(!info)return s;
+    for(const end=Date.now()+2500;Date.now()<end&&!servoPresent(s);){await delay(150);s=await this.status();}
+    return s;
+  }
+  // A V1 read or write that was refused is tried once more after a restart.
+  async v1Retry(fn){const r=await fn();if(this.kind!=='v1'||!(r?.error||typeof r==='string'))return r;await this.restartV1();return fn();}
   // The V2 programmer's identity check: it answers 0x91 with 0x22 in byte 5.
   async hello(){const r=await this.exchange(frame(0x91),x=>x[5]===0x22,400,2,false);this.helloReply=r?hex(r,16):null;return !!r;}
   // Byte positions and scales are the ones Axon's V2 app reads off this report. Byte 15 is shown raw: only its changes matter to that app.
@@ -49,9 +71,18 @@ class Programmer{
   }
   // The programmer only powers its servo pins after this. Axon's app sends it by itself below 8.6 V.
   async setServoPower(on){await this.exchange(frame(0xB0,0,on?1:0),()=>true,400,1,false);}
-  async status(){const r=await this.exchange(frame(0x8A,0,0,4),x=>x[4]===0x8A||x[1]===0,400,2,true);return r?parseStatus(r):parseStatus(Buffer.alloc(REPORT));}
+  // The programmer's pulse to its servo (0xAC: period, reference, max, min, centre, period, big-endian). Off is all zero, as Axon's
+  // MK2 app sends before a firmware update ("PPM signal output is automatically suspended"); on is that app's 50 Hz preset.
+  // One steady pulse to the servo, in µs: what a Test sends. The programmer reports it back in its telemetry (outputPulse).
+  async output(us){const w=[20000,Math.round(us),2500,500,1500,20000],b=[];for(const v of w)b.push(v>>8,v&255);await this.exchange(frame(0xAC,0,...b),()=>true,400,1,false);}
+  async pulse(on){const w=on?[20000,1500,2500,500,1500,20000]:[0,0,0,0,0,0],b=[];for(const v of w)b.push(v>>8,v&255);await this.exchange(frame(0xAC,0,...b),()=>true,400,1,false);}
+  async status(){
+    // The V1 programmer answers each 0x8A once, about 33 ms later: 04 01 00 01 <type> … names the servo, 04 01 FA 00 01 says none.
+    if(this.kind==='v1'){const r=await this.exchange(frame(0x8A,0,0,4),x=>x[1]===1&&(x[2]===0||x[2]===0xFA),300,2,true);return parseStatus(r||Buffer.alloc(REPORT));}
+    const r=await this.exchange(frame(0x8A,0,0,4),x=>x[4]===0x8A||x[1]===0,400,2,true);return r?parseStatus(r):parseStatus(Buffer.alloc(REPORT));}
   async readChunk(addr,n){
-    await delay(25);const tx=frame(0xCD,addr>>8,addr&255,n);let rx=await this.exchange(tx,r=>r[4]===n,400,3,false);
+    if(this.kind!=='v1')await delay(25);const tx=frame(0xCD,addr>>8,addr&255,n);let rx=await this.exchange(tx,r=>r[4]===n&&r[1]===1&&r[2]===0,400,3,false);
+    if(!rx&&this.refused)return {error:`The servo refused the read (address ${addr}).`};
     if(!rx){// No length echo: only trust the data if two separate reads agree exactly.
       const good=r=>r[1]!==0&&r[2]===0,a=await this.exchange(tx,good,400,2,false);await delay(25);const b=a&&await this.exchange(tx,good,400,2,false);
       if(!a||!b||!a.subarray(0,REPORT).equals(b.subarray(0,REPORT)))return {error:`The servo did not return parameter data (address ${addr}).`};
@@ -60,17 +91,19 @@ class Programmer{
     return {data:Buffer.from(rx.subarray(5,5+n))};
   }
   // V1 servos have 95 bytes in two chunks, V2 servos 59 in one. validLen drops to 59 on a V1 servo if the programmer refuses the second chunk.
-  async readBlock(family){
+  readBlock(family){return this.v1Retry(()=>this.readBlockOnce(family));}
+  async readBlockOnce(family){
     const first=await this.readChunk(0,CHUNK);if(first.error)return {error:first.error};
     if(family!=='v1')return {block:{family,data:first.data,validLen:CHUNK}};
     const data=Buffer.alloc(95);first.data.copy(data);const second=await this.readChunk(CHUNK,95-CHUNK);let validLen=CHUNK;
     if(second.data){second.data.copy(data,CHUNK);validLen=95;}
     return {block:{family,data,validLen}};
   }
-  async writeBlock(block){
-    if(block.family==='v1'){// Same sequence as the V1 app: up to 59 bytes per frame, 25 ms apart, each acknowledged.
-      for(let addr=0;addr<block.validLen;){const n=Math.min(CHUNK,block.validLen-addr);await delay(25);const tx=frame(0xCB,addr>>8,addr&255,n);block.data.copy(tx,5,addr,addr+n);
-        const rx=await this.exchange(tx,()=>true,1200,1,false);if(!rx||rx[1]===0)return `The servo did not acknowledge the write (address ${addr}).`;addr+=n;}
+  writeBlock(block){return block.family==='v1'?this.v1Retry(()=>this.writeBlockOnce(block)):this.writeBlockOnce(block);}
+  async writeBlockOnce(block){
+    if(block.family==='v1'){// Same sequence as the V1 app: up to 59 bytes per frame, each acknowledged.
+      for(let addr=0;addr<block.validLen;){const n=Math.min(CHUNK,block.validLen-addr);const tx=frame(0xCB,addr>>8,addr&255,n);block.data.copy(tx,5,addr,addr+n);
+        const rx=await this.exchange(tx,r=>r[1]===1||r[1]===0,1200,2,false);if(!rx||rx[1]!==1||rx[2]!==0)return `The servo did not acknowledge the write (address ${addr}).`;addr+=n;}
       return null;}
     // V2 stores bytes 0-43 only: the date and factory name after them are read-only. The reply is not relied on; the read-back is.
     const tx=frame(0xCB,0,0,44);block.data.copy(tx,5,0,CHUNK);await this.exchange(tx,()=>true,800,1,false);return null;
@@ -78,8 +111,13 @@ class Programmer{
   async factoryDefault(){await delay(25);return !!await this.exchange(frame(0x5A,0,0,1),r=>r[5]===0xAA,1000,3,false);}
   // The bootloader: 0x80 info, 0x81 session key, 0x82 records, 0x83 exit.
   bootInfo(){return this.exchange(frame(0x80,4,1,2,3,4),r=>r[5]===0x56,1000,2,false);}
+  bootQuick(){return this.exchange(frame(0x80,4,1,2,3,4),r=>r[5]===0x56,120,1,false);}
   bootSeed(seed){const tx=frame(0x81,22);seed.copy(tx,3);return this.exchange(tx,()=>true,1500,1,false);}
-  async bootRecord(record,timeoutMs){const tx=frame(0x82,22);record.copy(tx,3);this.log('TX',tx,true);if(!await this.link.write(tx,1000))throw new DeviceLost('The programmer stopped accepting USB data.');const rx=await this.link.read(timeoutMs);if(!rx)return -1;this.log('RX',rx,true);return rx[5];}
+  async bootRecord(record,timeoutMs){const tx=frame(0x82,22);record.copy(tx,3);
+    for(let busy=0;;busy++){this.log('TX',tx,true);if(!await this.link.write(tx,1000))throw new DeviceLost('The programmer stopped accepting USB data.');const rx=await this.link.read(timeoutMs);if(!rx)return -1;this.log('RX',rx,true);
+      if(rx[2]===2&&busy<5){await delay(60);continue;}return rx[5];}}
+  // Axon's V1 app puts the V1 programmer in update mode (04 90 00) before it asks for the bootloader, and back (04 90 01) before 0x83.
+  async v1UpdateMode(on){await this.exchange(frame(0x90,on?0:1),r=>r[1]===1,400,2,false);}
   // Leaves the bootloader. The two official apps place the 0xFF 0x55 0xAA signature at different offsets.
   async bootExit(family){await this.exchange(family==='v1'?frame(0x83,22,0xFF,0x55,0xAA):frame(0x83,22,0,0,0xFF,0x55,0xAA),()=>true,600,1,false);}
 }
@@ -139,6 +177,7 @@ const v1Cr={title:'V1 continuous rotation',family:'v1',mode:'cr',fields:[
 // power, 15-17 overload time, 18 protocol, 20 flags, 22-23 Neutral (little-endian), 26 Beep, 32-43 user name, 44-46 date, 47-58 factory name.
 // Bytes 0 and 7 are shown but never written: see docs/AXON.md.
 const v2Name=b=>{const user=b.subarray(32,44).toString('latin1').replace(/[*\0]+$/,'');return user==='USER_DEF'?b.subarray(47,59).toString('latin1').replace(/[*\0]+$/,''):user;};
+const v2NameEncode=(b,now,was)=>{if(changed(now,was,'name')){const text=Buffer.from(now.name||'','latin1');for(let i=0;i<12;i++)b[32+i]=i<text.length?text[i]:0x2A;}};
 const v2Servo={title:'V2 servo mode',family:'v2',mode:'servo',fields:[
     {key:'left',label:'Left Range',group:'Travel',kind:'range',min:10,max:255,format:'plain',short:'Travel limit left of center',what:'How far the servo may travel to the left of center. The factory value is 250. Lower it if a mechanism would hit something.'},
     {key:'right',label:'Right Range',group:'Travel',kind:'range',min:10,max:255,format:'plain',short:'Travel limit right of center',what:'How far the servo may travel to the right of center. The factory value is 250. Lower it if a mechanism would hit something.'},
@@ -159,19 +198,19 @@ const v2Servo={title:'V2 servo mode',family:'v2',mode:'servo',fields:[
     b[20]=f;
     if(changed(now,was,'neutral')){b[22]=now.neutral&255;b[23]=now.neutral>>8&255;}
     if(changed(now,was,'beep'))b[26]=bit(b[26],1,now.beep);
-    if(changed(now,was,'name')){const text=Buffer.from(now.name||'','latin1');for(let i=0;i<12;i++)b[32+i]=i<text.length?text[i]:0x2A;}},
+    v2NameEncode(b,now,was);},
   sanity(block){const b=block.data;if(b[0]===0)return 'the first parameter byte is zero';for(let i=47;i<59;i++)if(b[i]!==0&&(b[i]<32||b[i]>126))return 'the factory name is not readable text';return null;}};
 const v2Cr={title:'V2 continuous rotation',family:'v2',mode:'cr',fields:[
-    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:25,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:1,max:250,format:'tenth',short:PROPTL_SHORT,what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'beep',label:'Power-on Sound',group:'Continuous rotation',kind:'switch',short:BEEP_SHORT,what:BEEP},
+    {key:'pwm',label:'PWM Power',group:'Continuous rotation',kind:'range',min:25,max:255,format:'pct',short:POWER_SHORT,what:POWER},{key:'proptl',label:'ProPTL',group:'Continuous rotation',kind:'range',min:1,max:250,format:'tenth',short:PROPTL_SHORT,what:PROPTL},{key:'inversion',label:'Inversion',group:'Continuous rotation',kind:'switch',short:INVERT_SHORT,what:INVERT},{key:'beep',label:'Power-on Sound',group:'Continuous rotation',kind:'switch',short:BEEP_SHORT,what:BEEP},{key:'name',label:'Model Name',group:'',kind:'text',short:'Stored on the servo',what:'A name stored on the servo, up to 12 characters. It helps you tell servos apart.'},
     // Advanced. Axon's app hides this on its continuous rotation page, but both V2 CR firmware files read byte 2 at start and
     // treat a smaller control error as no error, and the factory value for this firmware is Medium. Same byte, same four values as servo mode.
     {key:'sens',label:'Stop Band',group:'Advanced',kind:'choice',advanced:true,options:['Low','Medium','High','Ultra High'],short:'Low widest, factory Medium',what:'How wide the stop zone is around the center signal. If the servo creeps when it should be stopped, move to a wider band. If it ignores small commands, move to a narrower one. Axon\'s software does not show this in continuous rotation, but this firmware reads it.'}],
-  decode:b=>({pwm:b[6],proptl:b[15],inversion:b[20]&1,beep:b[26]&1,sens:b[2]>100?0:b[2]>50?1:b[2]>25?2:3}),
-  encode(b,now,was){if(changed(now,was,'pwm'))b[6]=now.pwm;if(changed(now,was,'proptl'))b[15]=now.proptl;if(changed(now,was,'inversion'))b[20]=bit(b[20],1,now.inversion);if(changed(now,was,'beep'))b[26]=bit(b[26],1,now.beep);if(changed(now,was,'sens'))b[2]=SENS_V2[now.sens];},
+  decode:b=>({pwm:b[6],proptl:b[15],inversion:b[20]&1,beep:b[26]&1,sens:b[2]>100?0:b[2]>50?1:b[2]>25?2:3,name:v2Name(b)}),
+  encode(b,now,was){if(changed(now,was,'pwm'))b[6]=now.pwm;if(changed(now,was,'proptl'))b[15]=now.proptl;if(changed(now,was,'inversion'))b[20]=bit(b[20],1,now.inversion);if(changed(now,was,'beep'))b[26]=bit(b[26],1,now.beep);if(changed(now,was,'sens'))b[2]=SENS_V2[now.sens];v2NameEncode(b,now,was);},
   sanity:()=>null};
 const schemaFor=(family,mode)=>family==='v1'?(mode==='cr'?v1Cr:v1Servo):(mode==='cr'?v2Cr:v2Servo);
 // The schema a page can draw: no functions.
-const BASICS=new Set(['angle','left','right','neutral','pwm','inversion']);
+const BASICS=new Set(['angle','left','right','neutral','pwm','inversion','name']);
 const schemaView=s=>({title:s.title,family:s.family,mode:s.mode,fields:s.fields.map(f=>BASICS.has(f.key)?f:{...f,advanced:true})});
 
 // Raw bytes shown in Advanced that are read and left alone, with what is and is not known about them.
@@ -251,11 +290,23 @@ function parseFirmware(text,family){
 function loadFirmware(data,fileName){const ext=path.extname(fileName).toLowerCase();if(ext==='.sfw')return parseFirmware(decryptV1(data),'v1');if(ext==='.sfm')return parseFirmware(decryptV2(data),'v2');throw Error('Firmware files must be .sfw (V1) or .sfm (V2).');}
 const readFirmware=file=>loadFirmware(fs.readFileSync(file),path.basename(file));
 
+// Axon's MK2 app: pulse off, 200 ms, then 0x80. A servo that still does not answer is restarted (servo power off, on) and asked again
+// at once, in case its bootloader only listens just after power-up. Pulse-capable programmers only: the V1 programmer has no 0xAC.
+async function enterBootloader(programmer){
+  if(programmer.kind!=='v1'){await programmer.pulse(false);await delay(200);}
+  let info=await programmer.bootInfo();if(info||programmer.kind==='v1')return info;
+  await programmer.setServoPower(false);await delay(600);await programmer.setServoPower(true);
+  for(const end=Date.now()+2000;!info&&Date.now()<end;)info=await programmer.bootQuick();
+  return info;}
 // The flash sequence shared by both official apps. Nothing is erased until the file has been matched to this servo.
 async function flash(programmer,image,servoName,{allowUnknownName=false,progress=()=>{}}={}){
-  const fail=async error=>{await programmer.bootExit(image.family);return {ok:false,error,changed:!/Nothing was changed\.$/.test(error)};};
+  const v1=programmer.kind==='v1',leave=async()=>{if(v1)await programmer.v1UpdateMode(false);await programmer.bootExit(image.family);};
+  const fail=async error=>{await leave();return {ok:false,error,changed:!/Nothing was changed\.$/.test(error)};};
+  // In update mode the V1 programmer reports the servo with FA in byte 2 (04 01 FA 01 00 04 02 01 08). Axon's V1 app asks once and goes
+  // on to the bootloader whatever it says: whether the bootloader answers is the check.
+  if(v1){await programmer.v1UpdateMode(true);await programmer.status();}
   progress(0,'Entering the servo\'s bootloader...');
-  const info=await programmer.bootInfo();if(!info)return fail('The servo\'s bootloader did not answer. Nothing was changed.');
+  const info=await enterBootloader(programmer);if(!info)return fail('The servo\'s bootloader did not answer, even with the pulse off and the servo restarted. Unplug the servo, plug it back in and try again. Nothing was changed.');
   const boot=String.fromCharCode(info[5],info[6],info[7],info[8]),two=n=>n.toString(16).toUpperCase().padStart(2,'0');progress(0,`Boot version ${boot}, hardware ${two(info[9])}${two(info[10])}.`);
   if(image.family==='v1'&&info[8]===0x32&&info[6]===0x30)return fail(`This servo's bootloader (${boot}) is too old to update. Nothing was changed.`);
   if(info[9]!==image.modelA||info[10]!==image.modelB)return fail(`This firmware is for different hardware (file ${two(image.modelA)}${two(image.modelB)}, servo ${two(info[9])}${two(info[10])}). Nothing was changed.`);
@@ -274,7 +325,7 @@ async function flash(programmer,image,servoName,{allowUnknownName=false,progress
     if(send){for(let k=0;k<22;k++)rec[k]^=key[k];const got=await programmer.bootRecord(rec,timeout);
       if(got!==expect)return fail(`The update failed on line ${i+1} of ${total} (servo answered ${got<0?'nothing':two(got)}, expected ${two(expect)}). Keep the servo plugged in and use Recover to try again.`);}
     if(i%8===0||i===total-1)progress(Math.floor(i*100/total),null);}
-  await programmer.bootExit(image.family);progress(100,'Firmware written.');return {ok:true};
+  await leave();progress(100,'Firmware written.');return {ok:true};
 }
 
 module.exports={NO_KEYS,parseKeys,useKeys,hasKey,VID_V2,VID_V1,VID_BOOT,PID,CHUNK,REPORT,DeviceLost,hex,frame,parseStatus,servoPresent,servoEditable,servoKey,blockName,blockMade,Programmer,schemaFor,schemaView,checkChanges,v2Unconfirmed,packConfig,configProblem,CONFIG_SIZE,MODELS,norm,modelByCode,modelByName,factoryBlock,modelView,FIRMWARE,sha256,decryptV1,decryptV2,parseFirmware,loadFirmware,readFirmware,flash};
