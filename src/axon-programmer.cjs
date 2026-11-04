@@ -262,7 +262,8 @@ class AxonService{
     void this.job('drive','Spinning the servo. Press Stop to end.',async p=>{
       const t0=Date.now(),live=this.testLive={kind:'cr',running:true,samples:[],speed:0,target:speed,us:CR_STOP,volts:null,amps:null,minVolts:99,held:false,message:''};let us=CR_STOP,last=Date.now(),shown=0,cap=1;
       try{while(this.driveTarget!==null&&this.driveTarget!==undefined&&!this.stopping){
-          const now=Date.now(),dt=(now-last)/1000;last=now;live.target=this.driveTarget;const want=CR_STOP+Math.max(-cap,Math.min(cap,this.driveTarget))*(this.servo.viaBoot?CR_SPAN_V1:CR_SPAN);
+          // A slow turn of the loop (a busy computer) never becomes a jump: at most 50 ms of easing per step.
+          const now=Date.now(),dt=Math.min(.05,(now-last)/1000);last=now;live.target=this.driveTarget;const want=CR_STOP+Math.max(-cap,Math.min(cap,this.driveTarget))*(this.servo.viaBoot?CR_SPAN_V1:CR_SPAN);
           us+=Math.max(-CR_RAMP*dt,Math.min(CR_RAMP*dt,want-us));await p.output(us);this.pulseOn=null;live.us=Math.round(us);live.speed=(us-CR_STOP)/(this.servo.viaBoot?CR_SPAN_V1:CR_SPAN);
           const row=await this.testSample(p,live,t0);if(live.samples.length>600)live.samples.splice(0,live.samples.length-600);
           // A dip: hold the speed a little lower from here on, so the port keeps up.
