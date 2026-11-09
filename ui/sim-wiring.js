@@ -41,7 +41,9 @@
     return `<div><label for="wire-model-${esc(row.key)}">Model</label><select id="wire-model-${esc(row.key)}" data-wire-model="${esc(row.key)}"><option value="">Not set</option>${opts}</select></div>`;}
   // Ports of a family on the hubs the robot has, with who is on each now.
   function portChoices(family,st,{skip}={}){
-    const D=H(),w=st.wiring,hubs=D.hubIds(w),out=[];
+    // The Control Hub and at least one Expansion Hub, always: Simulate is for planning the wiring, so every port can be picked
+    // (picking an Expansion Hub port gives the robot one).
+    const D=H(),w=st.wiring,hubs=D.hubIds(w),out=[];if(!hubs.some(h=>D.hubKind(h)==='expansion'))hubs.splice(1,0,'expansion');
     const n=(hub)=>D.hubSpec(hub)[family==='encoder'?'encoder':family]||0;
     for(const hub of hubs)for(let i=0;i<n(hub);i++){if(family==='i2c'&&hub==='control'&&i===0)continue;const p=family==='i2c'?{hub,bus:i}:{hub,port:i};
       const on=st.rows.filter(r=>r.key!==skip&&r.hub===hub&&(r.family===family||family==='motor'&&r.family==='encoder'||family==='encoder'&&r.family==='motor')&&(family==='i2c'?r.bus===i:r.port===i)).map(r=>r.name);
@@ -120,12 +122,48 @@
   const moduleEncoder=(row,st)=>row.role==='steer'||(/^diffSwerve/.test(st.project?.robot?.drivetrain||'')&&!/B$/.test(row.key)&&row.role==='drive');
   const encoderOf=(row,st)=>st.wiring.sensors.find(s=>s.for===row.key&&H().SENSOR_MODELS[s.model]?.family==='analog')||null;
   function chassisChoices(family,st,read,skip){const list=(read||[]).filter(d=>d.hub&&readFamily(d)===family);
-    return list.length?list.map(d=>({value:`${d.hub}:${d.port}|${d.name}`,at:`${d.hub}:${d.port}`,label:H().portLabel(d,family,st.wiring)})):portChoices(family,st,{skip}).map(o=>({...o,at:o.value}));}
+    // An I2C device sits on a bus, not a port. Each choice names the configured device too: picking one also gives this row that name.
+    return list.length?list.filter(d=>family!=='i2c'||d.kind!=='imu'||/imu/i.test(skip||'')).map(d=>{const at=`${d.hub}:${family==='i2c'?d.bus:d.port}`;return {value:`${at}|${d.name}`,at,label:`${H().portLabel(d,family,st.wiring)} · ${d.name}`};}):portChoices(family,st,{skip}).map(o=>({...o,at:o.value}));}
   function chassisSelect(id,attr,key,label,choices,now){return `<div class="sim-chassis-row"><label for="${esc(id)}">${esc(label)}</label><select id="${esc(id)}" ${attr}="${esc(key)}"><option value="">Not assigned</option>${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div>`;}
-  function chassisHtml(rows,st,read){return rows.map(row=>{const fromRead=(read||[]).some(d=>d.hub&&readFamily(d)===row.family),own=row.wired?`${row.hub}:${row.port}`:'',sensor=moduleEncoder(row,st)?encoderOf(row,st):null;
+  // Grouped by wheel or module: a drive motor, then what belongs to it (its steering, a differential module's second motor).
+  // opts: placing, the key (wheel, pod:<key>, pinpoint:x|y) the next click on the model places; pick, a model to click on.
+  const placeBtn=(key,label,{placing,pick})=>pick?`<button type="button" class="secondary sim-place" data-wheel-place="${esc(key)}" aria-pressed="${placing===key}" aria-label="${placing===key?'Stop placing':'Click it on the model'}: ${esc(label)}">${placing===key?'Click it on the model…':'Click it on the model'}</button>`:'';
+  function chassisHtml(rows,st,read,opts={}){const groups=[];for(const row of rows){if(row.role==='drive'&&!/B$/.test(row.key)||!groups.length)groups.push([]);groups[groups.length-1].push(row);}
+    return groups.map(g=>{const title=g[0].label.replace(/ drive motor$/,'').replace(/, motor 1$/,'').replace(/ drive$/,''),module=g.length>1;
+      // Where it is: inches forward and left of the robot's centre, found in the CAD or typed.
+      const k=g[0].key.replace(/^robot\./,''),p=st.project?.robot?.wheelPos?.[k],num=(axis,label)=>`<label>${label}<input type="number" step="0.25" min="-36" max="36" data-slider="off" data-wheel-pos="${esc(k)}" data-wheel-axis="${axis}" value="${p?esc(p[axis]):''}"></label>`;
+      const pos=`<div class="sim-chassis-pos">${num('x','Forward · in')}${num('y','Left · in')}<small>${p?`${Math.hypot(p.x,p.y).toFixed(2)} in from the centre${p.from==='cad'?' · from the CAD':''}${p.r?` · ${(2*p.r).toFixed(2)} in wheel`:''}`:'Not placed yet'}</small>${placeBtn(k,title,opts)}</div>`;
+      return `<div class="sim-chassis-module" data-module="${esc(k)}" data-module-title="${esc(title)} ${module?'module':'wheel'}"><div class="sim-chassis-module-head"><b>${esc(title)} ${module?'module':'wheel'}</b><small>${g.map(r=>`<code>${esc(r.name)}</code>`).join(' · ')}</small></div>${pos}${chassisRows(g,st,read)}</div>`;}).join('');}
+  // What tells the chassis where it is, each in a card of its own like a wheel's: an odometry pod (where it is and the
+  // motor port whose encoder input it uses), a goBILDA Pinpoint (its I2C port and where its two pods are) or an OTOS.
+  function senseHtml(rows,st,read,opts={}){const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(st.project?.robot||{});
+    const field=(attr,key,axis,label,v)=>`<label>${label}<input type="number" step="0.25" min="-36" max="36" data-slider="off" ${attr}="${esc(key)}" data-wheel-axis="${axis}" value="${Number.isFinite(v)?esc(v):''}"></label>`;
+    return rows.map(row=>{const k=row.key.replace(/^robot./,''),port=`<div class="start-xy">${mechPort(row,st,read)}</div>`;
+      if(row.role==='pod'){const p=odo.pods[k]||{},title=`Odometry pod · ${{par:'forward',perp:'strafe',par_left:'left forward',par_right:'right forward'}[k]||k}`;
+        return `<div class="sim-chassis-module" data-module="pod:${esc(k)}" data-module-title="${esc(title)}" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>${esc(title)}</b><small><code>${esc(row.name)}</code></small></div>
+          <div class="sim-chassis-pos">${field('data-pod-pos',k,'x','Forward · in',p.x)}${field('data-pod-pos',k,'y','Left · in',p.y)}<small></small>${placeBtn('pod:'+k,title,opts)}</div>${port}</div>`;}
+      if(row.role==='pinpoint'){const p=odo.pinpoint;
+        return `<div class="sim-chassis-module" data-module="pinpoint" data-module-title="Odometry · goBILDA Pinpoint" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>Odometry · goBILDA Pinpoint</b><small><code>${esc(row.name)}</code></small></div>
+          <div class="sim-chassis-pos">${field('data-pinpoint-pos','xOffset','y','X pod · left · in',p.xOffset)}<small></small>${placeBtn('pinpoint:x','the X (forward) pod',opts)}</div>
+          <div class="sim-chassis-pos">${field('data-pinpoint-pos','yOffset','x','Y pod · forward · in',p.yOffset)}<small></small>${placeBtn('pinpoint:y','the Y (strafe) pod',opts)}</div>${port}</div>`;}
+      const title=row.role==='otos'?'Odometry · SparkFun OTOS':row.label;
+      return `<div class="sim-chassis-module" data-module="${esc(k)}" data-module-title="${esc(title)}" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>${esc(title)}</b><small><code>${esc(row.name)}</code></small></div>${port}</div>`;}).join('');}
+  function chassisRows(rows,st,read){return rows.map(row=>{const fromRead=(read||[]).some(d=>d.hub&&readFamily(d)===row.family),own=row.wired?`${row.hub}:${row.port}`:'',sensor=moduleEncoder(row,st)?encoderOf(row,st):null;
     const port=chassisSelect(`wire-chassis-${row.key}`,fromRead?'data-wire-assign':'data-wire-port',row.key,row.label,chassisChoices(row.family,st,read,row.key),own);
     const encoder=moduleEncoder(row,st)?chassisSelect(`wire-chassis-encoder-${row.key}`,'data-wire-chassis-encoder',row.key,`${row.label.replace(/, motor 1$/,' module')} absolute encoder`,chassisChoices('analog',st,read,sensor?`sensor.${sensor.id}`:row.key),sensor?.hub?`${sensor.hub}:${sensor.port}`:''):'';
-    return `<div data-wire-row="${esc(row.key)}" title="Its name in the robot configuration: ${esc(row.name)}">${port}${encoder}${problemLines(problemsOf(st,row.key).filter(x=>x.port&&row.wired&&x.keys.length>1))}</div>`;}).join('');}
+    // A drive motor's own encoder: ticked when its encoder cable is plugged in. With position from the drive encoders every one has it.
+    const implied=row.role==='drive'&&st.project?.sensors?.localization==='encoders',hasEnc=implied||st.wiring.sensors.some(s=>s.for===row.key&&s.model==='motor-encoder');
+    const enc=row.role==='drive'?`<label class="check sim-chassis-enc" title="${implied?'Position comes from the drive encoders, so every drive motor has one':'Its encoder cable is plugged into the hub'}"><input type="checkbox" data-wire-encoder="${esc(row.key)}"${hasEnc?' checked':''}${implied?' disabled':''}> Encoder</label>`:'';
+    return `<div data-wire-row="${esc(row.key)}" title="Its name in the robot configuration: ${esc(row.name)}">${port}${enc}${encoder}${problemLines(problemsOf(st,row.key).filter(x=>x.port&&row.wired&&x.keys.length>1))}</div>`;}).join('');}
+  // The hub's IMU on Chassis → Control Hub: the I2C bus it is on in the robot's configuration. The built-in one is on bus 0
+  // unless the team moved it; with the robot's configuration read, the choices are the IMUs it has.
+  function imuHtml(st,read){const row=st.rows.find(r=>r.role==='imu');if(!row)return '';const id='wire-port-'+row.key,now=row.hub?`${row.hub}:${row.bus??0}`:'control:0';
+    const imus=(read||[]).filter(d=>d.hub&&d.kind==='imu'&&d.bus!==undefined),fromRead=imus.length>0;
+    const choices=fromRead?imus.map(d=>{const at=`${d.hub}:${d.bus}`;return {value:`${at}|${d.name}`,at,label:`${H().portLabel(d,'i2c',st.wiring)} · ${d.name}`};})
+      :[{value:'control:0',at:'control:0',label:`${H().portLabel({hub:'control',bus:0},'i2c',st.wiring)} · built in`},...portChoices('i2c',st,{skip:row.key}).map(o=>({...o,at:o.value}))];
+    if(!choices.some(o=>o.at===now))choices.unshift({value:fromRead?`${now}|${row.name}`:now,at:now,label:H().portLabel({hub:row.hub||'control',bus:row.bus??0},'i2c',st.wiring)});
+    const bus=now.split(':')[1];
+    return `<div class="sim-imu-port" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>IMU</b><small><code>${esc(row.name)}</code></small></div><div class="start-xy"><div><label for="${esc(id)}">Plugged into</label><select id="${esc(id)}" ${fromRead?'data-wire-assign':'data-wire-port'}="${esc(row.key)}">${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div></div><p class="hint">${fromRead?`The robot’s configuration has “${esc(row.name)}” on I2C bus ${esc(bus)}.`:bus==='0'?`The Control Hub’s IMU is built in: its configuration names it “${esc(row.name)}” on I2C bus 0.`:`“${esc(row.name)}” on I2C bus ${esc(bus)}: the configuration must have it there too.`}</p></div>`;}
   // A module's absolute encoder on an analog port. A model Setup & Calibrate already gave it stays.
   function setChassisEncoder(wiring,row,at,name){const D=H(),w=D.wiringOf({wiring}),own=w.sensors.find(s=>s.for===row.key&&D.SENSOR_MODELS[s.model]?.family==='analog');
     if(!at)return own?removeSensor(wiring,own.id):D.sanitizeWiring(w);
@@ -139,11 +177,46 @@
     const can=D.SENSORS.filter(m=>Object.hasOwn(allowed,m.kind)&&(m.kind!=='motorEncoder'||row.family==='motor'));
     const port=md&&md.kind!=='motorEncoder'?portSelect(st.rows.find(r=>r.key==='sensor.'+first.id)||{key:'sensor.'+first.id,family:md.family,role:'sensor'},st,{id:'wire-sensor-'+first.id,attr:'data-wire-sensor-port',key:first.id,family:md.family,set:first.hub?(md.family==='i2c'?`${first.hub}:${first.bus}`:`${first.hub}:${first.port}`):''}).replace('Plugged into','Sensor plugged into'):'';
     return `${can.length?`<div><label for="${esc(id)}">Sensor</label><select id="${esc(id)}" data-wire-sensor-pick="${esc(row.key)}"><option value="">No sensor</option>${can.map(m=>`<option value="${m.id}"${m.id===first?.model?' selected':''}>${esc(m.short)}</option>`).join('')}</select></div>`:''}${port}`;}
+  // Every sensor on a mechanism's motor or servo, each with where it is plugged in and a remove button, then + Add a sensor
+  // with the ones that part can use, grouped by the port they plug into (analog, digital, I2C, an encoder input).
+  const SENSOR_GROUPS=[['analog','Analog'],['digital','Digital'],['i2c','I2C'],['encoder','Encoder']];
+  function mechSensors(row,st,{ports=true}={}){const D=H(),allowed=D.ROLES[row.role]?.sensors||{},own=st.wiring.sensors.filter(s=>s.for===row.key);
+    const items=own.map(s=>{const md=D.SENSOR_MODELS[s.model];if(!md)return '';const port=md.kind==='motorEncoder'||!ports?'':portSelect(st.rows.find(r=>r.key==='sensor.'+s.id)||{key:'sensor.'+s.id,family:md.family,role:'sensor'},st,{id:'wire-sensor-'+s.id,attr:'data-wire-sensor-port',key:s.id,family:md.family,set:s.hub?(md.family==='i2c'?`${s.hub}:${s.bus}`:`${s.hub}:${s.port}`):''}).replace('Plugged into',`${esc(md.short)} plugged into`);
+      const uses=md.measures.filter(u=>Object.values(allowed).includes(u)||u===s.use),use=uses.length>1?`<div><label for="wire-use-${esc(s.id)}">Tells</label><select id="wire-use-${esc(s.id)}" data-wire-sensor-use="${esc(s.id)}">${uses.map(u=>`<option value="${u}"${u===s.use?' selected':''}>${esc(D.USES[u])}</option>`).join('')}</select></div>`:'';
+      return `<div class="sim-mech-sensor">${port||`<div><span class="sim-mech-label">${esc(md.short)}</span></div>`}${use}<button type="button" class="icon-button" data-wire-sensor-remove="${esc(s.id)}" aria-label="Remove ${esc(md.short)}" title="Remove">×</button></div>`;}).join('');
+    const can=D.SENSORS.filter(m=>Object.hasOwn(allowed,m.kind)&&!(m.kind==='motorEncoder'&&(row.family!=='motor'||own.some(s=>s.model===m.id)))),id=`wire-add-${row.key}`;
+    const add=can.length?`<div><label for="${esc(id)}">${own.length?'Another sensor':ports?'Sensor':'Feedback sensor'}</label><select id="${esc(id)}" data-wire-sensor-add="${esc(row.key)}"><option value="">${own.length?'+ Add another…':'No sensor · + Add one…'}</option>${SENSOR_GROUPS.map(([f,t])=>{const list=can.filter(m=>m.family===f);return list.length?`<optgroup label="${t}">${list.map(m=>`<option value="${m.id}">${esc(m.short)}</option>`).join('')}</optgroup>`:'';}).join('')}</select></div>`:'';
+    return items||add?`<div class="sim-mech-sensors">${items}<div class="start-xy">${add}</div></div>`:'';}
   // Its picture: the model's when it has one, else one of its kind. A product photo replaces the drawing when it is on this computer.
   function devicePicture(row){const tag=H().pictureTag(row.model)||{dcmotor:'model-none|goBILDA5202SeriesMotor',servo:'model-none|Servo',crservo:'model-none|ContinuousRotationServo',linear:'model-none|Servo'}[row.kind],art=globalThis.DeckDeviceArt;return tag&&art?`<span class="ce-fig small" data-fig="${esc(tag)}">${art.svg(tag,{title:false})}</span>`:'';}
-  function mechRowHtml(row,st,{read=null,model=true}={}){st_w=st.wiring;const list=problemsOf(st,row.key).filter(x=>x.port?row.wired&&x.keys.length>1:x.level==='red'),level=list.length?'red':'',typed=model&&TYPES[row.role]&&!/^kin\./.test(row.key);
+  // ports: false in Simulate, which lists what a mechanism runs on and what measures it; which port each is on is linked in Calibrate → Mechanisms (linkHtml).
+  function linkNote(row,st){const on=row.wired&&!mateOf(row,st);return `<div><span class="sim-mech-label">On the robot</span><p class="sim-wire-fixed${on?'':' sim-wire-unset'}" data-wire-linked="${on?'on':'off'}">${on?`${esc(row.name)} · ${esc(H().portLabel(row,row.family,st.wiring))}`:'Linked in Calibrate → Mechanisms'}</p></div>`;}
+  function mechRowHtml(row,st,{read=null,model=true,ports=true}={}){st_w=st.wiring;const list=problemsOf(st,row.key).filter(x=>x.port?row.wired&&x.keys.length>1:x.level==='red'),level=list.length?'red':'',typed=model&&TYPES[row.role]&&!/^kin\./.test(row.key);
     return `<div class="sim-wire-row${level?' '+level:''}" data-wire-row="${esc(row.key)}" title="Its name in the robot configuration: ${esc(row.name)}"><div class="sim-wire-head">${devicePicture(row)}<b>${esc(row.label)}</b></div>
-      <div class="start-xy">${typed?typeSelect(row,st):''}${model?modelSelect(row):''}${mechPort(row,st,read)}${shareSelect(row,st)}${rpmInput(row,st)}${mechSensor(row,st)}</div>${problemLines(list)}</div>`;}
+      <div class="start-xy">${typed?typeSelect(row,st):''}${model?modelSelect(row):''}${ports?mechPort(row,st,read):linkNote(row,st)}${shareSelect(row,st)}${rpmInput(row,st)}</div>${mechSensors(row,st,{ports})}${problemLines(list)}</div>`;}
+  // ---- Calibrate → Mechanisms, the link step ---------------------------------------------------------------------------
+  // Simulate says what a mechanism runs on and what measures it; here each of those is one device of the robot's configuration.
+  // read: the hub's read-out. A motor or servo takes the configured device's name and port; a sensor too; an encoder takes the
+  // motor port whose encoder input it is plugged into, and keeps its own name.
+  const linkFamily=f=>f==='encoder'?'motor':f,linkList=(read,family)=>(read||[]).filter(d=>d.hub&&readFamily(d)===linkFamily(family));
+  const samePort=(row,d)=>d.hub===row.hub&&(row.family==='i2c'?d.bus===row.bus:d.port===row.port);
+  function linkedTo(row,read){if(!row||!row.wired)return null;return linkList(read,row.family).find(d=>samePort(row,d)&&(row.family==='encoder'||d.name===row.name))||null;}
+  function linkSelect(id,attr,key,row,family,st,read,label){const list=linkList(read,family),on=linkedTo(row&&{...row,family},read),what={motor:'motor',servo:'servo',encoder:'motor port',analog:'analog sensor',digital:'digital sensor',i2c:'I2C sensor'}[family]||'device';
+    const also=d=>st.rows.filter(r=>r.key!==row?.key&&r.wired&&r.family===family&&samePort({...r,family},d)&&(family==='encoder'||r.name===d.name)).map(r=>r.label);
+    const opts=list.map(d=>{const u=also(d),text=family==='encoder'?`${H().portLabel(d,'encoder',st.wiring)} · beside ${d.name}`:`${d.name} · ${H().portLabel(d,readFamily(d),st.wiring)}`;return `<option value="${esc(d.hub)}:${d.bus??d.port}|${family==='encoder'?'':esc(d.name)}"${d===on?' selected':''}>${esc(text)}${u.length?` · also ${esc(u.join(', '))}`:''}</option>`;}).join('');
+    return `<div><label for="${esc(id)}">${esc(label)}</label><select id="${esc(id)}" ${attr}="${esc(key)}" data-link-state="${on?'on':'off'}"><option value="">Not linked</option>${opts}</select></div>${list.length?'':`<p class="cal-note" data-link-none>The robot’s configuration has no ${what} yet. Add it in Configure, then read the Control Hub again.</p>`}`;}
+  const KIND_WORDS={dcmotor:'DC motor',servo:'Servo',crservo:'Continuous servo',linear:'Linear servo'};
+  function linkHtml(row,st,read){st_w=st.wiring;const D=H(),own=st.wiring.sensors.filter(s=>s.for===row.key),servo=row.family==='servo';
+    const head=(title,sub,pic='')=>`<div class="sim-wire-head">${pic}<b>${esc(title)}</b><small>${esc(sub)}</small></div>`;
+    const lines=[`<div class="cal-link-row" data-link-row="${esc(row.key)}">${head(row.label,D.MODELS[row.model]?.short||KIND_WORDS[row.kind]||'',devicePicture(row))}${linkSelect('cal-link-'+row.key,'data-wire-assign',row.key,row,row.family,st,read,`Which ${servo?'servo':'motor'} on the robot`)}</div>`];
+    for(const s of own){const md=D.SENSOR_MODELS[s.model];if(!md)continue;const r=st.rows.find(x=>x.key==='sensor.'+s.id),sub=`Feedback: tells ${D.USES[s.use]||'what it does'}`;
+      lines.push(`<div class="cal-link-row" data-link-row="sensor.${esc(s.id)}">${head(md.short,sub)}${md.kind==='motorEncoder'?'<div><span class="sim-mech-label">On the robot</span><p class="sim-wire-fixed">The encoder cable of this motor’s own port</p></div>':linkSelect('cal-link-sensor-'+s.id,'data-wire-sensor-assign',s.id,r||null,md.family,st,read,md.family==='encoder'?'Which motor port’s encoder input':'Which sensor on the robot')}</div>`);}
+    if(!own.length)lines.push(`<p class="hint" data-link-nosensor>Simulate lists no feedback sensor on it, so nothing measures it: it gets set positions or power and time. Add its sensor in Simulate to tune it by feedback.</p>`);
+    return lines.join('');}
+  // Whether the mechanism's device and every sensor Simulate lists on it is one of the configuration's.
+  function linked(row,st,read){const D=H();if(!linkedTo(row,read))return false;return st.wiring.sensors.filter(s=>s.for===row.key).every(s=>{const md=D.SENSOR_MODELS[s.model];if(!md||md.kind==='motorEncoder')return true;const r=st.rows.find(x=>x.key==='sensor.'+s.id);return !!r&&!!linkedTo({...r,family:md.family},read);});}
+  // A sensor takes a configured device's port and, unless it is an encoder input, its name.
+  function assignSensor(wiring,id,value){const [at,name]=String(value||'').split('|'),placed=setSensorPort(wiring,id,at||'');return name?setSensor(placed,id,s=>{s.name=name;}):placed;}
   // Picks the device's one sensor, or none: a model chosen in Setup & Calibrate's list replaces the one it had.
   function setMechSensor(wiring,row,model){const D=H(),w=D.wiringOf({wiring}),rest=D.sanitizeWiring({...w,sensors:(()=>{const own=w.sensors.filter(s=>s.for===row.key);return w.sensors.filter(s=>s!==own[0]);})()});return model?addSensor(rest,row,model):rest;}
   // ---- hubs -----------------------------------------------------------------------------------------------------------
@@ -226,7 +299,9 @@
     let id=`${row.name||'sensor'}${md.kind[0].toUpperCase()}${md.kind.slice(1)}`.replace(/[^\w-]/g,'').slice(0,28),n=1;if(!/^[A-Za-z]/.test(id))id='s'+id;while(w.sensors.some(s=>s.id===id))id=`${id.slice(0,26)}${++n}`;
     return D.sanitizeWiring({...w,sensors:[...w.sensors,{id,model,for:row.key,...(allowed[md.kind]&&md.measures.includes(allowed[md.kind])?{use:allowed[md.kind]}:{})}]});}
   const setRatio=(wiring,key,ratio)=>setDevice(wiring,key,e=>{e.ratio=ratio>0&&ratio!==1?ratio:undefined;});
-  const setPort=(wiring,key,value,family)=>setDevice(wiring,key,e=>{delete e.hub;delete e.port;delete e.bus;Object.assign(e,parsePort(value,family)||{});});
+  // A port on an Expansion Hub the robot did not have yet gives it one first (a device, a sensor or a module's encoder).
+  const withHub=(wiring,p)=>{const D=H();return p&&D.hubKind(p.hub)==='expansion'&&!D.hubsOfKind(D.wiringOf({wiring}).hubs,'expansion').includes(p.hub)?setHub(wiring,p.hub,true):wiring;};
+  const setPort=(wiring,key,value,family)=>{const p=parsePort(value,family);return setDevice(withHub(wiring,p),key,e=>{delete e.hub;delete e.port;delete e.bus;Object.assign(e,p||{});});};
   function setHub(wiring,hub,on,address){const D=H(),w=D.wiringOf({wiring});return D.sanitizeWiring({...w,hubs:{...w.hubs,[hub]:on?{address:address??w.hubs[hub]?.address??D.hubSpec(hub).address}:hub==='expansion'?false:null}});}
   // How many hubs of a kind the robot has: new ones take the next free address from 1 up (a Servo Hub's default 3 first),
   // and the last ones go first, their devices back to Deck's choice. Choosing a number makes the robot a custom one.
@@ -251,7 +326,7 @@
     if(on&&on.key!==key&&on.wired)w=setPort(w,on.key,'',fam);if(key)w=setPort(w,key,`${hub}:${i}`,fam);return w;}
   function setSensor(wiring,id,change){const D=H(),w=D.wiringOf({wiring});return D.sanitizeWiring({...w,sensors:w.sensors.map(s=>{if(s.id!==id)return s;const e={...s};change(e,D.SENSOR_MODELS[s.model]);return e;}).filter(Boolean)});}
   const removeSensor=(wiring,id)=>{const D=H(),w=D.wiringOf({wiring});return D.sanitizeWiring({...w,sensors:w.sensors.filter(s=>s.id!==id)});};
-  const setSensorPort=(wiring,id,value)=>setSensor(wiring,id,(e,md)=>{delete e.hub;delete e.port;delete e.bus;Object.assign(e,parsePort(value,md.family)||{});});
+  const setSensorPort=(wiring,id,value)=>{const D=H(),s=D.wiringOf({wiring}).sensors.find(x=>x.id===id),md=s&&D.SENSOR_MODELS[s.model];return setSensor(md?withHub(wiring,parsePort(value,md.family)):wiring,id,(e,m)=>{delete e.hub;delete e.port;delete e.bus;Object.assign(e,parsePort(value,m.family)||{});});};
   // Binds a host's controls: every change calls apply(newWiring).
   function bind(host,{project,apply,focus,setKind,share,setRpm,assign}){
     host.addEventListener('change',e=>{const el=e.target,d=el.dataset,w=project().robot.wiring,st=state(project());let next;
@@ -272,6 +347,7 @@
       else if(d.wireSensorAdd){if(!el.value)return;next=addSensor(w,st.rows.find(r=>r.key===d.wireSensorAdd)||{key:d.wireSensorAdd},el.value);}
       else if(d.wireSensorUse)next=setSensor(w,d.wireSensorUse,s=>{s.use=el.value;});
       else if(d.wireSensorPort)next=setSensorPort(w,d.wireSensorPort,el.value);
+      else if(d.wireSensorAssign)next=assignSensor(w,d.wireSensorAssign,el.value);
       else if(d.wireSensorPick)next=setMechSensor(w,st.rows.find(r=>r.key===d.wireSensorPick)||{key:d.wireSensorPick},el.value);
       else if(d.wireChassisEncoder){const [at,name]=el.value.split('|');next=setChassisEncoder(w,st.rows.find(r=>r.key===d.wireChassisEncoder)||{key:d.wireChassisEncoder},at,name);}
       else return;apply(next);});
@@ -279,5 +355,5 @@
       if(s){const D=H(),hubs=D.wiringOf({wiring:w}).hubs,kind=s.dataset.wireHubStep,dir=+s.dataset.step;apply(kind==='spm'?setSpmCount(w,(hubs.spm||0)+dir):setHubCount(w,kind,D.hubsOfKind(hubs,kind).length+dir));return;}
       const b=e.target.closest('[data-wire-sensor-remove]');if(b)apply(removeSensor(w,b.dataset.wireSensorRemove));});
     if(focus)host.addEventListener('focusin',e=>{const r=e.target.closest('[data-wire-row]');if(r)focus(r.dataset.wireRow);});}
-  return {state,stepOf,focusRefs,sharedWith,shareable,TYPES,typeOf,setSlot,portGrid,red,problemsOf,modelChoices,portChoices,deviceHtml,chassisHtml,setChassisEncoder,mechRowHtml,setMechSensor,sensorsHtml,hubsHtml,scanHtml,summaryHtml,readoutHtml,setModel,setRatio,setFrom,addSensor,setPort,setHub,setHubCount,setHubAddress,setHubLabel,setSpmCount,setSpm,setSensor,setSensorPort,removeSensor,bind,esc};
+  return {state,stepOf,focusRefs,sharedWith,shareable,TYPES,typeOf,setSlot,portGrid,red,problemsOf,modelChoices,portChoices,deviceHtml,chassisHtml,senseHtml,imuHtml,setChassisEncoder,mechRowHtml,linkHtml,linked,assignSensor,setMechSensor,sensorsHtml,hubsHtml,scanHtml,summaryHtml,readoutHtml,setModel,setRatio,setFrom,addSensor,setPort,setHub,setHubCount,setHubAddress,setHubLabel,setSpmCount,setSpm,setSensor,setSensorPort,removeSensor,bind,esc};
 });

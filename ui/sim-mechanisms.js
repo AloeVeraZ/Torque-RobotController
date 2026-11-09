@@ -73,6 +73,19 @@
   const flag=(key,on)=>on===true?{[key]:true}:{};
   // An intake's roller (not a kicker's): a DC motor or a continuous servo, an optional second roller, and which way each turns.
   const roller=raw=>{const second=name(raw.motor2,'');return {...(raw.device==='crservo'?{device:'crservo'}:{}),...flag('reversed',raw.reversed),...(second?{motor2:second,...flag('reversed2',raw.reversed2)}:{})};};
+  // More motors and servos on one intake, beyond its own: each {name, device, reversed?}. A motor or a continuous servo is
+  // another roller run with the first; a servo moves with the kicker's or ramp's own (down and up together).
+  const MORE_MAX=6,MORE_DEVICES=['motor','crservo','servo'];
+  const more=(raw,kind)=>{const out=[],names=new Set();for(const x of Array.isArray(raw.more)?raw.more:[]){if(out.length>=MORE_MAX||!x||typeof x!=='object')continue;
+    const device=MORE_DEVICES.includes(x.device)?x.device:'motor';if(device==='servo'?!deploys(kind):kind==='kicker')continue;const nm=name(x.name,'');if(!nm||names.has(nm))continue;names.add(nm);
+    out.push({name:nm,device,...flag('reversed',x.reversed)});}return out.length?{more:out}:{};};
+  // An intake's rollers as a column (robot frame, inches from the chassis centre: x forward, y left, z up from the floor):
+  // from the first wheel to the last along their axle, as wide as the wheels. With pickup 'rollers' a piece is taken only
+  // where it touches them, not anywhere in the box. by 'hand': its ends were picked on the model, so a new CAD fit keeps them.
+  const column=raw=>{const c=raw?.column,v=p=>Array.isArray(p)&&p.length===3&&p.every(finite)?p.map(x=>+clamp(x,-60,60).toFixed(2)):null,a=v(c?.a),b=v(c?.b);
+    if(!a||!b||!finite(c.d))return {};return {column:{a,b,d:+clamp(c.d,.25,12).toFixed(2),...(c.by==='hand'?{by:'hand'}:{})},...(raw.pickup==='rollers'?{pickup:'rollers'}:{})};};
+  // How far past the frame on an edge the rollers' outer face is (the mouth's solid face when it picks up only on them).
+  const columnReach=(c,edge,{length,width})=>{const r=c.d/2,o={front:Math.max(c.a[0],c.b[0])+r-length/2,back:-Math.min(c.a[0],c.b[0])+r-length/2,left:Math.max(c.a[1],c.b[1])+r-width/2,right:-Math.min(c.a[1],c.b[1])+r-width/2}[edge];return +clamp(finite(o)?o:0,0,18).toFixed(2);};
   const point=p=>p&&finite(p.x)&&finite(p.y)?{x:+p.x.toFixed(2),y:+p.y.toFixed(2),...(finite(p.z)?{z:+p.z.toFixed(2)}:{})}:null;
   // The CAD assemblies a part was set up from (names, as the Robot section lists them).
   const cadParts=v=>{const list=Array.isArray(v.parts)?v.parts.filter(p=>typeof p==='string'&&p.trim()).slice(0,8).map(p=>p.trim().slice(0,80)):[];return list.length?{parts:list}:{};};
@@ -91,7 +104,7 @@
       // Its box: how far it sticks out past the frame (pieces are taken at its outer face), how wide its
       // mouth is (null: the whole edge) and how tall its opening is (a taller piece does not fit).
       const n=intakes.length,kind=pick(raw.kind,INTAKES,'sweeper');intakes.push({kind,sides,reach:num(raw.reach,DEFAULTS.intake.reach,0,18),width:finite(raw.width)?clamp(raw.width,1,48):null,height:num(raw.height,DEFAULTS.intake.height,1,24),
-        motor:name(raw.motor,n?`intake${n+1}`:'intake'),power:num(raw.power,1,.05,1),...(kind!=='kicker'?roller(raw):{}),...(point(raw.at)?{at:point(raw.at)}:{}),...cadParts(raw),
+        motor:name(raw.motor,n?`intake${n+1}`:'intake'),power:num(raw.power,1,.05,1),...(kind!=='kicker'?roller(raw):{}),...more(raw,kind),...(point(raw.at)?{at:point(raw.at)}:{}),...cadParts(raw),...(kind!=='kicker'?column(raw):{}),
         // A kicker or a ramp moves on a servo: seconds to go down and back up, the servo, and its positions (0-1) down and up.
         // A ramp keeps its rollers (motor and power) too; the game physics folds a ramp down in 0.3 s.
         ...(raw.withFeeder===true?{withFeeder:true}:{}),...(deploys(kind)?{...(kind==='ramp'&&['linear','crservo','dcmotor'].includes(raw.rampKind)?{rampKind:raw.rampKind}:{}),down:num(raw.down,kind==='ramp'?.3:.4,0,3),up:num(raw.up,kind==='ramp'?.3:.4,0,3),servo:name(raw.servo,`${kind}${n?n+1:''}`),downPos:num(raw.downPos,0,0,1),upPos:num(raw.upPos,1,0,1),...(Number.isFinite(raw.travel)?{travel:num(raw.travel,90,1,360)}:{})}:{})});}
@@ -123,7 +136,8 @@
     const cap=r.capacity&&typeof r.capacity==='object'?r.capacity:{pollen:r.storage,nectar:0},nectarOk=shooters.some(takesNectar);
     const pollen=Math.round(num(cap.pollen,DEFAULTS.capacity.pollen,0,STORAGE_MAX)),nectar=nectarOk?Math.round(num(cap.nectar,0,0,STORAGE_MAX)):0;
     // Like the game, storage holds 4 pieces at most in any mix: each kind has its own limit, and together they stop at 4.
-    const capacity=pollen+nectar?{pollen,nectar}:{pollen:1,nectar:0},storage=Math.min(STORAGE_MAX,capacity.pollen+capacity.nectar);
+    // Either may be 0, both too: a robot that holds nothing starts with nothing.
+    const capacity={pollen,nectar},storage=Math.min(STORAGE_MAX,capacity.pollen+capacity.nectar);
     const pre=r.preload&&typeof r.preload==='object'?r.preload.pollen:r.preload,preload={pollen:Math.round(num(pre,capacity.pollen,0,capacity.pollen))};
     const first=shooters[0],turret=shooters.find(v=>v.type==='turret'),sides=EDGES.filter(e=>used.has(e));
     // others: the CAD's motors and servos that power nothing modelled here (DeckHardware.cadOthers); they count against R503.
@@ -381,7 +395,7 @@
   // A STEP file's assemblies are named by the team ("Chassis", "Front intake", "Pollen shooter",
   // "Turret", "Indexer"...). The name says what each one is.
   const ROLE_WORDS=[['intake',/intake|roller|sweeper|ramp|collector|pick ?up|kicker|scoop|deploy|flap/i],['shooter',/shoot|launch|flywheel|turret|cannon|outtake/i],
-    ['indexer',/index|feed|transfer|hopper|storage|magazine|conveyor|elevator/i],['chassis',/chassis|drive ?train|drive ?base|frame|base ?plate|^base$|^drive$/i]];
+    ['indexer',/index|feed|transfer|hopper|funnel|chute|storage|magazine|conveyor|elevator/i],['chassis',/chassis|drive ?train|drive ?base|frame|base ?plate|^base$|^drive$/i]];
   // What an assembly carries, by the names inside it (the outermost of each, without instance numbers; a "Flywheel shaft"
   // or "Ramp plate" is hardware, not a mechanism): a turret its flywheel, hood and shooter; an intake its ramp or kicker
   // and its rollers. Rollers with a kicker or ramp inside one intake are a deployable ramp (a kicker alone has none).
@@ -394,16 +408,21 @@
   const SHOOTS_INSIDE=/\bhood\b|fly ?wheel|shoot|launch|cannon/i,FAST_MOTOR=/(5[5-9]\d\d|6000) ?rpm|bare (rex|motor)|\b1:1\b/i;
   const bigWheel=n=>/wheel|rhino|compliant/i.test(n)&&[...String(n).matchAll(/(\d{2,3})\s*mm\s*(?:diameter|dia\b|od\b|wheel)/gi)].some(m=>+m[1]>=60);
   const shooterInside=inner=>inner.some(n=>SHOOTS_INSIDE.test(n))||inner.some(n=>FAST_MOTOR.test(n))&&inner.some(bigWheel);
+  // Odometry pods: spring-loaded, so in CAD they hang below the wheels. They are neither the chassis nor an intake, and the
+  // robot does not stand on them. goBILDA names its pods by part number (3110-0001-0001 4-bar, 3110-0002-0001 swingarm).
+  const ODOMETRY=/odometry|(?:^|[^a-z])odo(?:[^a-z]|$)|dead ?wheel|tracking ?wheel|swing ?arm ?pod|\b3110-000[12]-/i;
+  const odometry=(name,inner=[])=>ODOMETRY.test(String(name||''))||/^[\d-]+\b/.test(String(name||'').trim())&&inner.length>0&&inner.some(n=>ODOMETRY.test(n));
   function partRole(name,inner=[]){
+    if(odometry(name,inner))return {role:'odometry',pieces:null,type:null,kind:null};
     const find=text=>ROLE_WORDS.find(([,re])=>re.test(text))?.[0]||null,text=String(name||''),all=[text,...inner].join(' ');
     const nectar=/nectar/i.test(all),pollen=/pollen/i.test(all),role=find(text)||(shooterInside(inner)?'shooter':null)||find(inner.join(' '))||(nectar||pollen?'shooter':'other');
     const carries=[...new Set((CARRIED[role]||[]).map(re=>inner.find(n=>re.test(n)&&!PART_WORDS.test(n))).filter(Boolean).map(bareName))];
     const rollers=role==='intake'&&(/roller|sweeper/i.test(text)||inner.some(n=>CARRIED.intake[1].test(n)));
-    return {role,pieces:nectar&&pollen?'both':nectar?'nectar':pollen?'pollen':null,type:role==='shooter'?(/turret/i.test(all)?'turret':'fixed'):null,
+    return {...(role==='indexer'&&!inner.some(n=>/motor|servo|cr ?servo/i.test(n))?{passive:true}:{}),role,pieces:nectar&&pollen?'both':nectar?'nectar':pollen?'pollen':null,type:role==='shooter'?(/turret/i.test(all)?'turret':'fixed'):null,
       kind:role==='intake'?(/kicker|scoop/i.test(text)?'kicker':/side ?roller/i.test(all)?'siderollers':/ramp|deploy|flap/i.test(all)?'ramp':/kicker|scoop/i.test(all)?(rollers?'ramp':'kicker'):'sweeper'):null,...(carries.length?{carries}:{})};
   }
   // The drivetrain from the part names anywhere in the assembly ("104mm Mecanum Wheel", "Swerve module"...).
-  const DRIVE_WORDS=[['swerve',/swerve/i],['mecanum',/mecanum/i],['kiwi',/kiwi/i],['xdrive',/\b[xh]-?drive|omni/i],['tank',/\btracks\b|tread|drop ?cent(er|re)|west ?coast|\bwcd\b|6 ?wd|traction|\btank\b/i]];
+  const DRIVE_WORDS=[['kiwiSwerve',/kiwi.{0,3}swerve|swerve.{0,3}kiwi|3.?(module|pod).{0,3}swerve/i],['swerve',/swerve/i],['mecanum',/mecanum/i],['kiwi',/kiwi/i],['xdrive',/\b[xh]-?drive|omni/i],['tank',/\btracks\b|tread|drop ?cent(er|re)|west ?coast|\bwcd\b|6 ?wd|traction|\btank\b/i]];
   function drivetrainFromNames(names=[]){const text=names.join('\n');return DRIVE_WORDS.find(([,re])=>re.test(text))?.[0]||null;}
   // Copies of one assembly: "Turret <1>" and "Turret <2>" (instances), "Turret L" and "Turret R", "Left shooter" and
   // "Right shooter", "Shooter 1" and "Shooter 2". Two such parts are two mechanisms, never one, however close they sit.
@@ -424,7 +443,8 @@
   // What a part of a mechanism is, from its name: a wheel or roller turns, a claw grips, and the rest is its body.
   function partKindOf(name){const n=String(name||'');if(/wheel|roller|gecko|mecanum|omni|compliant|tread|tire|tyre|sprocket/i.test(n))return 'wheel';if(/claw|gripper|grabber|pincer|\bjaw|finger/i.test(n))return 'claw';return 'body';}
   function fromCad(parts,{length,width,chassis:derived}={}){
-    const chassis=parts.find(p=>p.role==='chassis')||(derived?{name:derived.name,derived:true,box:{x0:-derived.length/2,x1:derived.length/2,y0:-derived.width/2,y1:derived.width/2}}:null),round=v=>Math.round(v*4)/4,found=[];
+    const footArea=p=>(p.box.x1-p.box.x0)*(p.box.y1-p.box.y0),big=p=>p.box.x1-p.box.x0>=4&&p.box.y1-p.box.y0>=4;
+    const chassis=parts.filter(p=>p.role==='chassis'&&big(p)).sort((a,b)=>footArea(b)-footArea(a))[0]||(derived?{name:derived.name,derived:true,box:{x0:-derived.length/2,x1:derived.length/2,y0:-derived.width/2,y1:derived.width/2}}:null),round=v=>Math.round(v*4)/4,found=[];
     const L=chassis?chassis.box.x1-chassis.box.x0:length,W=chassis?chassis.box.y1-chassis.box.y0:width,hl=L/2,hw=W/2;
     if(chassis)found.push(chassis.derived?`Chassis (all parts except the intakes): ${round(L)} × ${round(W)} in`:`Chassis “${chassis.name}”: ${round(L)} × ${round(W)} in`);
     const holds=p=>typeof p.key==='string'&&parts.some(q=>q!==p&&typeof q.key==='string'&&q.key.startsWith(p.key+'/')),holderOf=name=>{const p=parts.find(q=>q.name===name);return p&&typeof p.key==='string'?parts.find(q=>q!==p&&holds(q)&&p.key.startsWith(q.key+'/'))?.name:null;};
@@ -495,7 +515,8 @@
         `${quoted(g.turrets)} carrying its own shooter${g.carries.length?` (${g.carries.map(x=>`“${x}”`).join(', ')} inside it)`:' (no flywheel is named in it; the shooter is taken to ride on it)'}`;
       found.push(`${label} ${what}${holder?` in “${holder}”`:''}: at the ${MOUNTS[mount].toLowerCase()}, shoots ${PIECES[pieces].toLowerCase()}${twins?' · one of two copies of the same turret assembly, so each is its own turret and shooter':''}`);});
     for(const g of groups.slice(MAX_SHOOTERS))found.push(`Shooter “${g.parts.join('” + “')}”: not set up; the simulator runs ${MAX_SHOOTERS} shooters at most`);
-    for(const p of usable.filter(p=>p.role==='indexer'))found.push(`Indexer “${p.name}”: set its transfer and indexing times`);
+    // A funnel or hopper with no motor or servo named in it is passive: pieces roll through it, pushed by the intake.
+    for(const p of usable.filter(p=>p.role==='indexer'))found.push(`Indexer “${p.name}”: ${p.passive?'passive (no motor or servo in it), the intake pushes pieces through · ':''}set its transfer and indexing times`);
     const top=parts.length?Math.max(...parts.map(p=>p.box.z1)):null;
     // A shooter that takes nectar needs room to hold it (the robot keeps a capacity the team already set).
     return {robot:chassis?{length:round(L),width:round(W),...(top?{heightIn:round(top)}:{})}:null,intakes,shooters,found,...(shooters.some(takesNectar)?{capacity:{pollen:STORAGE_MAX,nectar:STORAGE_MAX}}:{})};
@@ -565,6 +586,6 @@
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
     return sanitize({...base,...p,enabled:true,capacity:p.capacity||{pollen:4,nectar:0},preload:{pollen:4},transfer:p.transfer||base.transfer,indexer:{...base.indexer,...p.indexer},shooter:{...base.shooter,...p.shooter},target:null});};
-  return {partKindOf,chained,onOneMotor,liftSeconds,PRESETS,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
+  return {MORE_MAX,columnReach,partKindOf,chained,onOneMotor,liftSeconds,PRESETS,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
     sanitize,hoodAt,readyAt,engineSpec,flowerKind,deploys,servoFeeder,pusherOnly,feedCycle,engineIntakeMount,target,action,actions,turretAction,hasRamp,prepare,summary,hasTurret,locate,mountOf,adjacent,PARTNER,travel,shootSeconds,FIRE_MARGIN,Model,Runner};
 });

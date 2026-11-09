@@ -4,6 +4,9 @@ import com.qualcomm.hardware.lynx.LynxNackException;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetADCCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadSingleByteCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadStatusQueryCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxSetServoConfigurationCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxSetServoEnableCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxSetServoPulseWidthCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
 import com.qualcomm.hardware.rev.RevBlinkinLedDriver;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
@@ -196,6 +199,7 @@ public class TorqueDebug extends LinearOpMode {
         }
         for (int i = 0; i < motors.size(); i++) { motorAmps[i] = Double.NaN; motors.get(i).setPower(0); }
         for (int i = 0; i < servos.size(); i++) { servoPos[i] = Double.NaN; if (servos.get(i) instanceof PwmControl) ((PwmControl) servos.get(i)).setPwmDisable(); }
+        keepServoPower();
         manifest = manifest();
 
         // The port first: a camera can take a while to open, and Torque is waiting on the port.
@@ -678,8 +682,60 @@ public class TorqueDebug extends LinearOpMode {
         return b.append("]}").toString();
     }
 
+    /** The hubs (module addresses) whose servo power Torque Debug keeps on with a port of their own. */
+    final List<Integer> railKept = new ArrayList<>();
+
+    /**
+     * A Control or Expansion Hub switches the 5 V of all six servo ports together, and turns it off once no servo port has PWM on.
+     * An Axon's analog position comes from the servo's own board, so with that power off its analog wire reads nothing. Every servo
+     * here is let go (no PWM) when nothing drives it, so each hub with a servo keeps PWM on one port no servo is configured on: a
+     * 1500 µs pulse to an empty port, which keeps the power on. An Axon whose Lose PPM is Release then turns by hand and still reads.
+     */
+    void keepServoPower() throws InterruptedException {
+        Map<LynxModule, boolean[]> used = new HashMap<>();
+        List<HardwareDevice> all = new ArrayList<>(servos); all.addAll(crservos);
+        for (HardwareDevice d : all) {
+            Object controller = d instanceof Servo ? ((Servo) d).getController() : ((CRServo) d).getController();
+            int port = d instanceof Servo ? ((Servo) d).getPortNumber() : ((CRServo) d).getPortNumber();
+            LynxModule hub = moduleOf(controller);
+            if (hub == null || port < 0 || port > 5) continue;
+            if (!used.containsKey(hub)) used.put(hub, new boolean[6]);
+            used.get(hub)[port] = true;
+        }
+        for (Map.Entry<LynxModule, boolean[]> e : used.entrySet()) {
+            for (int ch = 5; ch >= 0; ch--) {
+                if (e.getValue()[ch]) continue;
+                try {
+                    new LynxSetServoConfigurationCommand(e.getKey(), ch, 20000).send();
+                    new LynxSetServoPulseWidthCommand(e.getKey(), ch, 1500).send();
+                    new LynxSetServoEnableCommand(e.getKey(), ch, true).send();
+                    railKept.add(e.getKey().getModuleAddress());
+                } catch (LynxNackException | RuntimeException ignored) { }
+                break;
+            }
+        }
+    }
+
+    int servoHubs() {
+        List<LynxModule> seen = new ArrayList<>();
+        List<HardwareDevice> all = new ArrayList<>(servos); all.addAll(crservos);
+        for (HardwareDevice d : all) { LynxModule h = moduleOf(d instanceof Servo ? ((Servo) d).getController() : ((CRServo) d).getController()); if (h != null && !seen.contains(h)) seen.add(h); }
+        return seen.size();
+    }
+
+    /** The hub a servo controller talks to. The SDK keeps it in a field of the controller, so it is found by type, not by name. */
+    static LynxModule moduleOf(Object controller) {
+        for (Class<?> k = controller == null ? null : controller.getClass(); k != null; k = k.getSuperclass()) {
+            for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                try { f.setAccessible(true); Object v = f.get(controller); if (v instanceof LynxModule) return (LynxModule) v; } catch (Exception | LinkageError ignored) { }
+            }
+        }
+        return null;
+    }
+
     String manifest() {
         StringBuilder b = new StringBuilder("{\"deck\":\"debug\",\"version\":1");
+        b.append(",\"railKept\":").append(railKept.size()).append(",\"servoHubs\":").append(servoHubs());
         list(b, "motors", motorNames); list(b, "servos", servoNames); list(b, "crservos", crNames); list(b, "digital", digitalNames); list(b, "touch", touchNames); list(b, "cameras", webcamNames);
         b.append(",\"lights\":[");
         for (int i = 0; i < lights.size(); i++) { if (i > 0) b.append(','); b.append("{\"n\":").append(str(lightNames.get(i))).append(",\"k\":").append(str(lights.get(i) instanceof LED ? "led" : lights.get(i) instanceof RevBlinkinLedDriver ? "blinkin" : "stick")).append('}'); }

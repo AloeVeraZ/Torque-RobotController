@@ -5,7 +5,7 @@ const listen=(name,fn)=>{const cb=(_e,value)=>fn(value);ipcRenderer.on(name,cb);
 contextBridge.exposeInMainWorld('deck',{
   setTheme:theme=>ipcRenderer.send('app-theme',theme),
   robotFocus:()=>call('robot-focus'),
-  devicePhoto:tag=>call('device-photo',tag),savePinout:file=>call('save-pinout',file),
+  devicePhoto:tag=>call('device-photo',tag),openExternal:url=>call('open-reference',url),savePinout:file=>call('save-pinout',file),
   robotFullscreen:enabled=>call('robot-fullscreen',enabled),
   controllerInfo:()=>call('controller-info'),controllerCapture:slot=>call('controller-capture',slot),controllerCancel:()=>call('controller-cancel'),controllerAutomatic:()=>call('controller-automatic'),controllerSource:source=>call('controller-source',source),onControllerState:fn=>listen('controller-state',fn),onControllerCapture:fn=>listen('controller-capture',fn),
   controllerCalibration:(slot,zone)=>call('controller-calibration',{slot,zone}),

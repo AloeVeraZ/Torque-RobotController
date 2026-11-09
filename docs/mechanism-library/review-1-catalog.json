@@ -1,0 +1,389 @@
+[
+ {
+  "id": "REV-1",
+  "severity": "MAJOR",
+  "record": "winch",
+  "field": "legality.status",
+  "evidence": "The status is 'not-allowed' with rule G415. In the TU08 manual, G415 forbids grabbing, grasping, attaching to, entangling with or suspending from ARENA elements. It says nothing against a winch or spool. The record's own note admits 'A winch used inside a mechanism is judged by other rules'. A winch is also how slides get rigged (string-spool-drive shares the 'spool' alias), so the status wrongly marks a common legal component as banned.",
+  "fix": "Set legality.status to 'not-verified'. Use this note: 'Hanging from ARENA elements is prohibited in BIOBUZZ (G415); a winch used to rig slides or other mechanisms is judged by the other rules. Legality depends on the whole robot and the current manual.' Keep the hang-specific records (hook-and-winch-hang and the others) as not-allowed.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-2",
+  "severity": "MAJOR",
+  "record": "arm-counterbalance",
+  "field": "legality.rules / legality.note",
+  "evidence": "The note says 'R801 allows sealed factory-charged gas shocks only; tell inspectors about stored energy' and cites R103. In the manual, R103 covers holding the STARTING CONFIGURATION (self-supported, no pushing on the sizing tool). Its only inspector mention is about a live ROBOT. No BIOBUZZ rule requires telling inspectors about stored energy. R801 limits pneumatic and closed-air parts only, and the manual has no rule on mechanical springs. So 'gas shocks only' reads as if springs and counterweights were banned.",
+  "fix": "rules: ['R801']. Use this note: 'Pneumatic parts are limited to sealed, manufacturer-pre-charged COTS items such as gas shocks (R801); the manual sets no limit on mechanical springs. Legality depends on the whole robot and the current manual.' Remove 'tell inspectors about stored energy' here, and the same invented advice in elastic-retraction, lift-counterbalance and constant-force-spring-lift.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-3",
+  "severity": "MAJOR",
+  "record": "biobuzz-flower-placer",
+  "field": "short",
+  "evidence": "The short says a bucket that tips a ball in is 'the only legal way to score a FLOWER'. Section 10.5.2 says 'Placing SCORING ELEMENTS into the top of the FLOWER is the only allowable way to score', and G418 allows entry only through the top. The rule is about the entry point, not about using a bucket.",
+  "fix": "short: 'A bucket or chute raised above a FLOWER's ~21.5 in. top opening that tips a ball in from above; elements may only enter through the top of a FLOWER (G418).'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-4",
+  "severity": "MAJOR",
+  "record": "side-belt-conveyor",
+  "field": "image.kind",
+  "evidence": "I downloaded the image ('Side roller.jpg' on the REV GitBook). It is a hand-drawn marker sketch labelled 'Belt - Side Roller', with 'Belt/Pulley' and 'Floor' annotations. It is not a photo of a prototype, yet the record labels it 'mechanism-photo' with the credit '(side-belt GT2 prototype)'.",
+  "fix": "image.kind: 'illustration'. image.credit: 'REV Robotics FTC Kickoff Concepts, Ultimate Goal conveyor (hand sketch of a side-belt concept)'.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-5",
+  "severity": "MAJOR",
+  "record": "gobilda-pinpoint",
+  "field": "params.podTicksPerMm",
+  "evidence": "The key and label say ticks per mm, but the value is '2000 counts/rev'. 2000 is the goBILDA swingarm pod's counts per wheel revolution. With its 48 mm wheel that is 2000/(pi*48) = 13.26 ticks per mm.",
+  "fix": "Rename it to key 'podCountsPerRev' with unit 'counts/rev' and default 2000, or keep 'podTicksPerMm' with default 13.26, unit 'ticks/mm' and note '2000 counts/rev on a 48 mm wheel'.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-6",
+  "severity": "MAJOR",
+  "record": "tracked-drive",
+  "field": "(duplicate of tread-drive)",
+  "evidence": "tracked-drive (category robot) and tread-drive (category drive) describe the same skid-steer tread drivetrain. They share the aliases 'tank treads' and 'crawler', the same image (gm0 5975-tread.png) and the same gm0 tank.html ref.",
+  "fix": "Merge them into one canonical record in category 'drive' (keep tread-drive). Move the tracked-drive aliases into it and delete tracked-drive.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-7",
+  "severity": "MAJOR",
+  "record": "articulated-chassis",
+  "field": "(duplicate of rocker-bogie) / dof",
+  "evidence": "articulated-chassis (robot, dof 3) and rocker-bogie (drive, dof 2) are the same rocker-bogie suspension. They share the alias 'Mars rover suspension' and the same ref, en.wikipedia.org/wiki/Rocker-bogie, but give different DOF values.",
+  "fix": "Merge them into one canonical record with category 'drive', seasons ['non-ftc'] and one consistent passive DOF (3: two bogie pivots plus one differential rocker DOF). Delete the other.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-8",
+  "severity": "MAJOR",
+  "record": "spring-launcher",
+  "field": "(duplicate of drone-launcher)",
+  "evidence": "spring-launcher (score) and drone-launcher (endgame) are the same CENTERSTAGE servo-latched elastic plane launcher. They share the aliases PEM, plane ejection mechanism, plane launcher, paper airplane launcher and rubber band launcher, the type drone-launcher and the Licejus PEM ref.",
+  "fix": "Keep drone-launcher as the canonical record and fold spring-launcher's 'how' and aliases into it. Delete spring-launcher, or make it a generic elastic-launcher concept with no drone-specific aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-9",
+  "severity": "MAJOR",
+  "record": "geneva-drive",
+  "field": "(duplicate of indexing-table / star-wheel-indexer) / category",
+  "evidence": "Three records cover the Geneva and cam indexer: geneva-drive (category arm), indexing-table (robot) and star-wheel-indexer (inside). All use type geneva-indexer, and they share the aliases 'Geneva drive', 'Geneva mechanism', 'Maltese cross' and 'cam indexer'. A Geneva drive is not an arm.",
+  "fix": "Keep one canonical record, 'geneva-drive', in category 'inside' with the 360/n step. Make star-wheel-indexer its child (parent: 'geneva-drive') covering only the star-wheel singulator. Delete indexing-table or merge its aliases in.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-10",
+  "severity": "MAJOR",
+  "record": "slide-to-slide-transfer",
+  "field": "(duplicate of grate-transfer)",
+  "evidence": "slide-to-slide-transfer (lift) and grate-transfer (inside) both describe interleaved-fork transfer between two slide sets. They share the aliases 'grate transfer' and 'fork transfer' and the same image, gm0 6929-grate.png.",
+  "fix": "Merge into grate-transfer (category inside) and delete slide-to-slide-transfer, or set parent: 'grate-transfer' and remove the shared aliases and image.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-11",
+  "severity": "MAJOR",
+  "record": "belt-intake",
+  "field": "(duplicate of belt-conveyor)",
+  "evidence": "belt-intake describes a belt or O-ring conveyor carrying pieces. It shares the aliases 'continuous conveyor', 'o-ring belt conveyor' and 'band conveyor' and the same image (gm0 8644-conveyor.png, an Ultimate Goal conveyor) with belt-conveyor and band-conveyor.",
+  "fix": "Delete belt-intake and add 'belt intake' and 'tread intake' as aliases of belt-conveyor, or set parent: 'belt-conveyor' with a floor-pickup-specific 'how' and a different image.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-12",
+  "severity": "MAJOR",
+  "record": "multi-stage-roller-intake",
+  "field": "(duplicate of roller-conveyor)",
+  "evidence": "It shares the aliases 'roller conveyor' and 'omni wheel conveyor' and the same image (gm0 7244-roller.jpg) with roller-conveyor. Its own 'how' says it 'also works as a transfer'.",
+  "fix": "Set parent: 'roller-conveyor' and remove the aliases 'roller conveyor' and 'omni wheel conveyor', or merge the two records.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-13",
+  "severity": "MAJOR",
+  "record": "kicker-wheel",
+  "field": "(duplicate of feeder-wheels)",
+  "evidence": "Both are a wheel before the flywheel that holds pieces when stopped and feeds them when run. Both list the aliases 'pre-accelerator' and 'feeder wheel', and their types are identical (feeder).",
+  "fix": "Make kicker-wheel a child of feeder-wheels (parent: 'feeder-wheels') limited to the two-stage accelerator variant, and remove the duplicate aliases, or merge them.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-14",
+  "severity": "MAJOR",
+  "record": "index-and-release",
+  "field": "(duplicate of kicker)",
+  "evidence": "Both are a servo pusher or flicker that pushes one piece into the flywheel and returns. They share the aliases 'flicker', 'pusher' and 'ring pusher', and both use type kicker.",
+  "fix": "Merge into kicker, or set parent: 'kicker' and remove the shared aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-15",
+  "severity": "MAJOR",
+  "record": "scoring-gate",
+  "field": "(duplicate of servo-gate)",
+  "evidence": "Both are a servo flap that blocks or opens a piece path (type gate). They share the aliases 'door', 'flap', 'release gate' and 'stopper', and biobuzz-shot-gate also claims 'stopper'.",
+  "fix": "Merge scoring-gate into servo-gate, or set parent: 'servo-gate' and remove the duplicate aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-16",
+  "severity": "MAJOR",
+  "record": "passive-funnel-intake",
+  "field": "(duplicate of guide-channel / gravity-drop-chute)",
+  "evidence": "passive-funnel-intake, guide-channel and gravity-drop-chute are all passive walls or ramps that guide pieces, with dof 0. They share 'funnel', 'chute' and 'ramp'. gravity-drop-chute also carries type 'ramp', which is a servo revolute joint, while its dof is 0.",
+  "fix": "Keep guide-channel as the canonical passive guide (type null). Make passive-funnel-intake and gravity-drop-chute children of it or merge them, and set gravity-drop-chute.type to null.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-17",
+  "severity": "MAJOR",
+  "record": "differential-joint",
+  "field": "(duplicate of diffy-wrist)",
+  "evidence": "Both are two inputs on bevel gears giving pitch from the average and roll from the difference. They share the aliases 'diffy' and 'differential wrist' and the type diffy-wrist.",
+  "fix": "Merge into diffy-wrist, or make differential-joint a general concept with parent: 'mechanical-differential', type null and no wrist aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-18",
+  "severity": "MAJOR",
+  "record": "telescoping-intake",
+  "field": "aliases (duplicate of extendo)",
+  "evidence": "telescoping-intake lists 'extendo', 'horizontal extension intake' and 'horizontal slides intake', which is the same mechanism as the extendo record (lift, alias 'extendo', 'horizontal slides').",
+  "fix": "Remove 'extendo' from telescoping-intake.aliases and set parent: 'extendo', or merge the two.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-19",
+  "severity": "MAJOR",
+  "record": "flip-up-transfer",
+  "field": "(duplicate of deployable-intake)",
+  "evidence": "deployable-intake already has the aliases 'flip-up intake' and 'flip up transfer', and its 'how' says 'gm0 calls the flip-up hand-off a flip-up transfer'. rotating-deposit also lists 'flip-up transfer'.",
+  "fix": "Keep flip-up-transfer as the only owner of 'flip-up transfer' and 'flip-up intake'. Remove those aliases from deployable-intake and rotating-deposit.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-20",
+  "severity": "MINOR",
+  "record": "pan-tilt-platform",
+  "field": "(near-duplicate of camera-pan-tilt)",
+  "evidence": "Both are a pan servo carrying a tilt servo (type camera-mount, servo+servo, dof 2). They share the aliases 'pan tilt' and 'gimbal'.",
+  "fix": "Set camera-pan-tilt.parent to 'pan-tilt-platform', or merge them, and keep the aliases only on the canonical record.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-21",
+  "severity": "MINOR",
+  "record": "vision-assisted-aiming",
+  "field": "(overlaps vision-assisted-turret / biobuzz-auto-aim)",
+  "evidence": "Three software records describe AprilTag bearing-to-aim with a range-to-speed table, and 'target lock' is shared.",
+  "fix": "Make vision-assisted-aiming canonical, set parent: 'vision-assisted-aiming' on vision-assisted-turret and biobuzz-auto-aim, and remove the shared aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-22",
+  "severity": "MINOR",
+  "record": "arm-with-wrist",
+  "field": "(duplicate of articulated-scoring-arm)",
+  "evidence": "Both are a shoulder motor plus a wrist servo (dof 2, motor+servo), and both list the alias 'arm and wrist'.",
+  "fix": "Merge into arm-with-wrist (category arm) and delete articulated-scoring-arm, or set its parent and drop the shared alias.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-23",
+  "severity": "MINOR",
+  "record": "biobuzz-hooded-shooter",
+  "field": "parent",
+  "evidence": "The record is an adjustable hood (type hood, servo-moved hood, dof 2), but its parent is 'hooded-flywheel', which is the fixed-hood record. It shares 'variable hood' with adjustable-hood.",
+  "fix": "parent: 'adjustable-hood'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-24",
+  "severity": "MINOR",
+  "record": "biobuzz-ramp-intake",
+  "field": "how / legality.rules",
+  "evidence": "The record cites R105 for fitting the '18 x 18 x 18 in. start size'. In the manual the STARTING CONFIGURATION cube is R102; R105 is the 18 x 24 x 29 in. expansion limit. The writers' biobuzz-rules.json R105 paraphrase makes the same mix-up.",
+  "fix": "legality.rules: ['R102','R105','G416']. Cite R102 wherever the 18 in. starting cube is mentioned.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-25",
+  "severity": "MINOR",
+  "record": "biobuzz-rules.json",
+  "field": "rulesText.R105",
+  "evidence": "The R105 paraphrase puts the STARTING CONFIGURATION 18 x 18 x 18 in. cube under R105. The manual puts it in R102 ('fully self-contained within an 18 in. ... wide, by 18 in. ... long ... by 18 in. ... high volume'). R105 is only the post-start 18 x 24 x 29 in. limit.",
+  "fix": "Move the 18 in. cube to a new 'R102' entry, and leave only the expansion volume and the physical-constraint wording in R105.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-26",
+  "severity": "MINOR",
+  "record": "biobuzz-hive-camera",
+  "field": "legality.rules",
+  "evidence": "The only rule cited is R105. The rules that govern a USB camera are R707 and R708 (single image sensor, UVC, no stereoscopic).",
+  "fix": "legality.rules: ['R707','R708','R105']. Note: 'Use a single-sensor UVC webcam or an R702-listed coprocessor (R707/R708); the mount must stay within R105. Legality depends on the whole robot.'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-27",
+  "severity": "MINOR",
+  "record": "biobuzz-fixed-shooter",
+  "field": "legality.note",
+  "evidence": "The rules list includes T405, but the note never mentions it. T405 lists 'ROBOT may not LAUNCH SCORING ELEMENTS' during field measurement and calibration time.",
+  "fix": "Append to the note: 'Do not launch during field measurement or calibration time (T405).'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-28",
+  "severity": "MINOR",
+  "record": "biobuzz-sweeper-intake",
+  "field": "cons / legality",
+  "evidence": "No record in the catalog mentions G409 (grep finds zero matches). G409 says a ROBOT may not catch or deflect an element released by a TIPPED HIVE until it touches something else. Waiting under the HIVE, or catching with a top-mounted mechanism while driving under it, are listed as likely STRATEGIC. No record recommends catching, but the floor-intake and hopper records are where the warning belongs.",
+  "fix": "Add to cons: 'do not catch or deflect elements falling from a tipped HIVE before they touch the floor (G409)'. Add G409 to legality.rules for biobuzz-sweeper-intake, biobuzz-size-adaptive-intake and biobuzz-four-ball-hopper.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-29",
+  "severity": "MINOR",
+  "record": "four-bar",
+  "field": "image.kind",
+  "evidence": "I downloaded gm0 goBILDA-four-bar.png. It is a flat CAD render of goBILDA channel and two pattern plates on a black background, not a photo.",
+  "fix": "image.kind: 'cad'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-30",
+  "severity": "MINOR",
+  "record": "arm",
+  "field": "image.kind / image.credit",
+  "evidence": "gm0 gb-single-arm.jpg is a photorealistic goBILDA product render ('REV Hub Not Included' overlay, a can for scale), not a team photo. It is goBILDA marketing material hosted on gm0.",
+  "fix": "image.kind: 'cad'. image.credit: 'goBILDA product render, as shown on Game Manual 0'.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-31",
+  "severity": "MINOR",
+  "record": "cycloidal-gearbox",
+  "field": "image.src",
+  "evidence": "Cycloidal_drive.gif downloaded at 4,832,445 bytes, which is over the brief's 4 MB image limit.",
+  "fix": "Use a smaller Commons thumbnail (for example the /thumb/.../330px-Cycloidal_drive.gif rendition), or set image to null.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-32",
+  "severity": "MINOR",
+  "record": "articulated-chassis",
+  "field": "image",
+  "evidence": "The src is upload.wikimedia.org/wikipedia/en/9/99/Rocker-bogie.jpg. That is an English-Wikipedia local file, not a Commons file, and such files are often non-free. Every Wikimedia request from here returned HTTP 429, so I could not check the licence or that it loads. The same 429 blocked the hexapod, delta-robot, self-balancing-two-wheel, walking-linkage, slip-ring-turret, indexing-table and strain-wave-reducer images.",
+  "fix": "Check the licence on en.wikipedia.org/wiki/File:Rocker-bogie.jpg. If it is not freely licensed, set image to null. Re-check the other 7 Wikimedia srcs from another network.",
+  "confirmed": false
+ },
+ {
+  "id": "REV-33",
+  "severity": "MINOR",
+  "record": "mecanum-drive-odometry",
+  "field": "how",
+  "evidence": "The record gives strafe = (-fl + fr + bl - br)/4. Under the mecanum-drive record's convention (fl = y+x+rx, bl = y-x+rx, fr = y-x-rx, br = y+x-rx, x = strafe right), the inverse is x = (fl - fr - bl + br)/4. The given formula returns -x, which is left-positive (Road Runner convention), and the record never says so.",
+  "fix": "Use 'strafe (right-positive, same convention as mecanum-drive) = (fl - fr - bl + br)/4', or state that it uses Road Runner's left-positive y.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-34",
+  "severity": "SUGGESTION",
+  "record": "drive-encoder-odometry",
+  "field": "how",
+  "evidence": "This record and two-wheel-differential-drive use heading = (dR - dL)/track, but three-dead-wheel-odometry uses (dxL - dxR)/L. That matches gm0's odometry page, but gm0 gives no rotation-sign convention. Students comparing the records will see opposite signs.",
+  "fix": "Add to three-dead-wheel-odometry: '(gm0 sign convention; with CCW-positive heading and forward-positive encoders this is (dxR - dxL)/L)', or make the convention the same across the catalog.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-35",
+  "severity": "MINOR",
+  "record": "quadruped-walker",
+  "field": "legality.note",
+  "evidence": "The note says '12 actuators would exceed the R503 motor/servo limits'. R503 allows 8 motors AND 8 servos, 16 actuators in total, so 12 (for example 8 servos plus 4 motors) does not necessarily exceed it. The hexapod's 18 does.",
+  "fix": "note: 'Outside FTC; not marked FTC-legal. Twelve joints would use most of the 8-motor plus 8-servo budget in R503.'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-36",
+  "severity": "MINOR",
+  "record": "crank-rocker",
+  "field": "how",
+  "evidence": "The record says 'the shortest is the grounded crank ... while the opposite grounded link only swings'. In a crank-rocker the shortest link is the crank, pivoted on the ground and next to the ground link, and the rocker is the other link pivoted on the ground. The 'opposite' link to the crank is the coupler, not the rocker.",
+  "fix": "how: 'When s + l <= p + q (Grashof) and the shortest link is the crank (adjacent to the fixed link), the crank turns fully while the rocker, the other ground-pivoted link, only swings through a limited angle (1 DOF).'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-37",
+  "severity": "MINOR",
+  "record": "pantograph",
+  "field": "type",
+  "evidence": "type 'linkage-slide' is a single prismatic servo joint, but the record describes a 2-DOF planar scaling linkage with no slide.",
+  "fix": "type: 'custom-pivot', or null for a concept.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-38",
+  "severity": "MINOR",
+  "record": "modular-drivetrain-chassis",
+  "field": "category / dof",
+  "evidence": "This is a drive chassis architecture, yet its category is 'robot'. dof is 3 although its own 'how' says 'Tank layouts give two'. tracked-drive and articulated-chassis have the same category problem.",
+  "fix": "category: 'drive'. dof: null (it depends on the layout), or put the variants in params.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-39",
+  "severity": "MINOR",
+  "record": "lift-counterbalance",
+  "field": "type",
+  "evidence": "dof 0 and act spring, but type 'lift' (a motor-driven prismatic joint). arm-counterbalance has the same problem with type 'arm'. A passive add-on has no joint of its own to animate.",
+  "fix": "type: null for lift-counterbalance, constant-force-spring-lift and arm-counterbalance.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-40",
+  "severity": "MINOR",
+  "record": "swerve-module-odometry",
+  "field": "refs",
+  "evidence": "The only ref is the Chief Delphi thread 'FTC swerve is useless'. When I read it, it does not mention a least-squares fit of module vectors or module-state odometry; it only remarks in passing that swerve tracks pose well.",
+  "fix": "Replace it with a source on swerve forward kinematics (for example WPILib SwerveDriveKinematics docs), or mark confidence 'low'.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-41",
+  "severity": "SUGGESTION",
+  "record": "cycloidal-gearbox",
+  "field": "how",
+  "evidence": "'The ratio is (pins - lobes) / lobes' is the output-to-input speed ratio. Students usually read 'ratio' as the reduction, which is lobes/(pins - lobes), for example 10:1 for 11 pins and 10 lobes.",
+  "fix": "how: '... The reduction is lobes : (pins - lobes) (e.g. 10:1 with 11 pins and 10 lobes), and the output turns opposite to the input.'",
+  "confirmed": true
+ },
+ {
+  "id": "REV-42",
+  "severity": "SUGGESTION",
+  "record": "rotating-platform",
+  "field": "(near-duplicate of turret)",
+  "evidence": "It shares 'lazy susan', 'bearing stack' and 'turntable' with turret and has the same 'how' (bearing options, ring-gear reduction, slip ring). The only difference is the joint type (base-yaw instead of turret).",
+  "fix": "Set parent: 'turret', or limit rotating-platform to non-FTC robot-arm bases and remove the turret aliases.",
+  "confirmed": true
+ },
+ {
+  "id": "REV-43",
+  "severity": "SUGGESTION",
+  "record": "magnetic-rotary-encoder",
+  "field": "refs",
+  "evidence": "https://www.thethriftybot.com/products/thrifty-absolute-magnetic-encoder returned HTTP 429 (rate-limited), so I could not check it. I checked all 110 non-Wikipedia ref URLs; only this one and two robotshop pages failed (the robotshop pages returned 403 to curl but loaded through WebFetch and support their records: Stingray-4 is an unmodified goBILDA 5-Turn servo, 4:1, 450 deg, 1400 oz-in; L16-R has a 48 mm electrical stroke at 20 mm/s).",
+  "fix": "Re-check the Thrifty Bot URL later.",
+  "confirmed": false
+ }
+]

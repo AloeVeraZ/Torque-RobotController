@@ -73,6 +73,30 @@ test('the Driver Station over the USB cable: Robocol packets framed over TCP rea
   assert.ok(socket instanceof require('../src/ftc.cjs').FtcSocket,'Drive treats it as a Driver Station link');
 });
 
+test('USB comes first: the cable takes the robot from another Driver Station, and keeps it between uses',async t=>{
+  const dgram=require('node:dgram'),net=require('node:net'),{startUdpRobot}=require('../tools/ftc-sim.cjs'),{UsbFtcSocket,usbHold}=require('../src/ftc.cjs'),wait=ms=>new Promise(r=>setTimeout(r,ms));
+  let robot;try{robot=await startUdpRobot({address:'127.0.0.8',reject:true});}catch(e){t.skip('loopback unavailable: '+e.message);return;}t.after(()=>robot.close());
+  let stations=0;const link=net.createServer(s=>{stations++;const udp=dgram.createSocket('udp4');udp.bind(20884,'127.0.0.9');let buf=Buffer.alloc(0);s.on('error',()=>{});
+    udp.on('message',m=>{const h=Buffer.alloc(2);h.writeUInt16BE(m.length);s.write(Buffer.concat([h,m]));});
+    s.on('data',c=>{buf=Buffer.concat([buf,c]);while(buf.length>=2){const n=buf.readUInt16BE(0);if(buf.length<2+n)break;udp.send(buf.subarray(2,2+n),20884,'127.0.0.8');buf=buf.subarray(2+n);}});
+    s.on('close',()=>udp.close());});
+  await new Promise(r=>link.listen(0,'127.0.0.1',r));t.after(()=>link.close());
+  const connect=async()=>({port:link.address().port}),P=L.usbPriority,was={...P};t.after(()=>{Object.assign(P,was);usbHold.enable(null);});
+  const use=async()=>{const socket=await new UsbFtcSocket(connect,{grace:100}).open();try{return await L.session('usb',async({tookOver})=>tookOver,{socket,timeout:2000});}finally{await socket.close();}};
+  // Off (tests, tools): the robot is not touched, and it says who has it.
+  let took=0;Object.assign(P,{on:false,at:0,take:async()=>{took++;robot.sim.reject=false;}});
+  await assert.rejects(use(),/Another Driver Station is connected/);assert.equal(took,0);
+  // On: the robot is taken once, and the session goes on as if it had answered at first.
+  P.on=true;assert.equal(await use(),true);assert.equal(took,1);
+  // Refused again straight after: it is not taken twice in a row, so two stations cannot fight over the robot.
+  robot.sim.reject=true;await assert.rejects(use(),/Another Driver Station is connected/);assert.equal(took,1);robot.sim.reject=false;
+  // Between uses a station stays connected through the relay, and lets go for the next use.
+  usbHold.enable(connect);assert.equal(await use(),false);const before=stations;
+  for(let n=0;n<40&&!usbHold.holding();n++)await wait(100);assert.equal(usbHold.holding(),true,'held while idle');assert.equal(stations,before+1);
+  assert.equal(await use(),false);for(let n=0;n<40&&!usbHold.holding();n++)await wait(100);assert.equal(usbHold.holding(),true,'and again after the next use');
+  await usbHold.enable(null);assert.equal(usbHold.holding(),false);
+});
+
 test('a Control Hub that hangs up on the cable says to plug it back in, and asks for nothing to be installed on the robot',async t=>{
   const net=require('node:net'),{UsbFtcSocket}=require('../src/ftc.cjs');
   const hangUp=net.createServer(s=>s.destroy());await new Promise(r=>hangUp.listen(0,'127.0.0.1',r));t.after(()=>hangUp.close());

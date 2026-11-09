@@ -44,3 +44,9 @@ test('odometry pods with no motor port left go on a drive motor\'s encoder input
     const pods=st.rows.filter(r=>r.role==='pod');assert.ok(pods.length>=2&&pods.every(r=>r.hub),localization+': every pod has a port');
     for(const pod of pods.filter(r=>r.via))assert.ok(st.problems.some(x=>x.level==='amber'&&x.keys.includes(pod.key)&&x.text.includes(`name it "${pod.via}"`)));}
 });
+
+test('an Expansion Hub port picked for a device or a sensor gives a robot without one an Expansion Hub, and keeps the port',()=>{
+  const H=require('../ui/sim-hardware.js'),W=require('../ui/sim-wiring.js');let w=H.sanitizeWiring({hubs:{expansion:false},devices:{},sensors:[]});
+  const m=W.setPort(w,'robot.frontLeft','expansion:2','motor');assert.ok(H.hubsOfKind(m.hubs,'expansion').length);assert.deepEqual({hub:m.devices['robot.frontLeft'].hub,port:m.devices['robot.frontLeft'].port},{hub:'expansion',port:2});
+  w=W.addSensor(w,{key:'intakes.0.motor'},Object.keys(H.SENSOR_MODELS).find(k=>H.SENSOR_MODELS[k].family==='i2c'));const s=W.setSensorPort(w,w.sensors[0].id,'expansion:1');
+  assert.ok(H.hubsOfKind(s.hubs,'expansion').length);assert.equal(s.sensors[0].hub,'expansion');assert.equal(s.sensors[0].bus,1);});

@@ -127,11 +127,15 @@
       // A hood's launch angle as the CAD has it (degrees above level); it tilts by the difference to the game's.
       ...(finite(raw.launch)?{launch:+clamp(raw.launch,0,90).toFixed(2)}:{}),
       ...(finite(raw.radius)&&raw.radius>0?{radius:+raw.radius.toFixed(4)}:{}),
+      // A roller on a floating arm: the gap under the roller (inches, floor to its underside) at rest and at the top of its slot.
+      ...(raw.gaps&&finite(raw.gaps.rest)&&finite(raw.gaps.up)?{gaps:{rest:+clamp(raw.gaps.rest,0,48).toFixed(2),up:+clamp(raw.gaps.up,0,48).toFixed(2)}}:{}),
       // How a drive wheel rolls: a plain wheel only forward and back; a mecanum wheel's rollers also take sideways motion.
       ...(['mecanum','omni'].includes(raw.roll)?{roll:raw.roll}:{}),
       source:Object.hasOwn(PROVENANCE,raw.source)?raw.source:'user',...(finite(raw.confidence)?{confidence:clamp(+raw.confidence.toFixed(2),0,1)}:{}),...(text(raw.note,300)?{note:text(raw.note,300)}:{}),
       // A mechanism the team added and Configure from CAD found: the CAD assembly it was matched to.
       ...(text(raw.matched,120)?{matched:text(raw.matched,120)}:{}),
+      // The vendor's product it was picked as (+ Add mechanism → a vendor): who sells it, its name, part number and page.
+      ...(raw.product&&typeof raw.product==='object'&&text(raw.product.vendor,40)&&text(raw.product.name,120)?{product:{vendor:text(raw.product.vendor,40),name:text(raw.product.name,120),...(text(raw.product.sku,40)?{sku:text(raw.product.sku,40)}:{}),...(/^https:\/\/[\w.-]+\//.test(String(raw.product.url||''))?{url:String(raw.product.url).slice(0,300)}:{})}}:{}),
       ...(Array.isArray(raw.alternatives)?{alternatives:raw.alternatives.slice(0,3).filter(a=>a&&vec(a.origin)&&vec(a.axis)).map(a=>({origin:vec(a.origin),axis:unit(vec(a.axis)),note:text(a.note,200)}))}:{})};
   }
   function sanitize(raw){
@@ -234,7 +238,9 @@
     const out={};if(typeof a.model==='string'&&/^[a-z0-9][a-z0-9-]{0,47}$/.test(a.model))out.model=a.model;
     if(typeof a.device==='string'&&DEVICE.test(a.device.trim()))out.device=a.device.trim();if(a.reversed===true)out.reversed=true;
     // A second motor or servo on the same part (a lift's other side, a mirrored wrist servo), driven with the first.
-    if(typeof a.device2==='string'&&DEVICE.test(a.device2.trim())){out.device2=a.device2.trim();if(a.reversed2===true)out.reversed2=true;}
+    if(typeof a.device2==='string'&&DEVICE.test(a.device2.trim())){out.device2=a.device2.trim();if(a.reversed2===true)out.reversed2=true;
+      // A third one on, each driven with the first: {device, reversed?}.
+      const more=(Array.isArray(a.more)?a.more:[]).filter(x=>x&&typeof x.device==='string'&&DEVICE.test(x.device.trim())).slice(0,MORE_DEVICES).map(x=>({device:x.device.trim(),...(x.reversed===true?{reversed:true}:{})}));if(more.length)out.more=more;}
     const s=a.servo;if(s&&typeof s==='object'){const pulses=v=>Array.isArray(v)&&v.length===2&&v.every(finite)&&v[0]>=100&&v[1]<=3000&&v[1]-v[0]>=50?[+v[0],+v[1]]:null;
       let lo=unitNum(s.min)??0,hi=unitNum(s.max)??1;if(lo>hi)[lo,hi]=[hi,lo];
       out.servo={min:lo,max:hi,center:clamp(unitNum(s.center)??.5,lo,hi),range:num(s.range,300,1,7200),...(pulses(s.pwm)?{pwm:pulses(s.pwm)}:{}),...(pulses(s.pulse)?{pulse:pulses(s.pulse)}:{})};}
@@ -448,7 +454,7 @@
     return null;}
   // The engine runs one Driver per simulation. Each tick it reads the game's signals and steps the actuators, and
   // values() gives every driven joint's value (what the 3D view draws and recordings keep).
-  //   signals: {turrets:[deg], flywheel:0..1, kick:[0..1|null per intake], lift:[0..1 per intake], intake, spin, aim, feed, rpm}
+  //   signals: {turrets:[deg], flywheel:0..1, kick:[0..1|null per intake], lift:[0..1 per intake], intake, spin, aim, feed, rpm, piece (the last piece taken in: its size across, in)}
   class Driver{
     constructor(model){
       this.model=model;this.q={};this.axes=new Map();this.time=0;this.running=[];
@@ -492,7 +498,8 @@
         if(d.signal==='turret')this.q[j.id]=(s.turrets?.[n]??0)-(j.zero||0);
         else if(d.signal==='deploy'){const f=clamp(s.kick?.[n]??0,0,1),up=j.states?.raised??0,down=j.states?.lowered??0;this.q[j.id]=up+(down-up)*f;}
         // A roller on a swing arm rests where it sits and rides up over a piece as the intake takes it in.
-        else if(d.signal==='float'){const f=clamp(s.lift?.[n]??0,0,1),rest=j.states?.rest??0,top=j.states?.up??rest;this.q[j.id]=rest+(top-rest)*f;}
+        else if(d.signal==='float'){const f=clamp(s.lift?.[n]??0,0,1),rest=j.states?.rest??0,top=j.states?.up??rest,g=j.gaps,size=s.piece,
+          need=g&&finite(size)&&g.up>g.rest+1e-6?clamp((size-g.rest)/(g.up-g.rest),0,1):1;this.q[j.id]=rest+(top-rest)*f*need;}
         else if(d.signal==='hood')this.q[j.id]=this.axes.get('hood:'+j.id).q;
         else if(d.signal==='flywheel')this.q[j.id]=turn(this.q[j.id]+rate((s.flywheel||0)*Math.min(s.rpm||3000,j.rpm||Infinity))*dt);
         else if(d.signal==='roller')this.q[j.id]=turn(this.q[j.id]+rate(rolling?(j.rpm||300):0)*dt);
@@ -678,11 +685,18 @@
   }
   // ---------------------------------------------------------------- when the mechanism list changes
   // A game part was removed: joints driven by it lose that drive, and those of later parts move down one.
+  // Every motor or servo on one actuator past its own: the second (device2) and the rest (more), each with its key's
+  // suffix (kin.<id>-2, -3 ...). deviceAt finds which actuator and which of its devices a kin key names (0: its own).
+  const MORE_DEVICES=5;
+  const extraDevices=a=>a?.device2?[{device:a.device2,reversed:!!a.reversed2,n:2},...(a.more||[]).map((x,i)=>({device:x.device,reversed:!!x.reversed,n:i+3}))]:[];
+  function deviceAt(actuators,kin){const own=(actuators||[]).find(a=>a.id===kin);if(own)return {actuator:own,n:1};const m=/^(.+)-([2-7])$/.exec(kin||'');if(!m)return null;const a=(actuators||[]).find(x=>x.id===m[1]);return a&&extraDevices(a).some(x=>x.n===+m[2])?{actuator:a,n:+m[2]}:null;}
+  // Names the n-th device (1 its own, 2 device2, 3 on the list) of an actuator, in place.
+  function nameDevice(a,n,name){if(n===1)a.device=name;else if(n===2)a.device2=name;else if(a.more?.[n-3])a.more[n-3].device=name;}
   function reindex(model,kind,removed){const out=structuredClone(model);for(const j of out.joints){const d=j.drive;if(!d?.of?.startsWith(kind+':'))continue;const n=+d.of.split(':')[1];
     if(n===removed){delete j.drive;j.note=(j.note?j.note+' ':'')+'Its mechanism was removed.';}else if(n>removed)d.of=kind+':'+(n-1);}return sanitize(out);}
   // What the engine needs: the joints with a drive, actuators and actions, without part lists.
   function forEngine(model){const m=sanitize(model);return {...m,joints:m.joints.map(({parts,alternatives,note,...j})=>j)};}
-  return {TYPES,ACTUATORS,MODES,COUPLINGS,SIGNALS,PROVENANCE,RESPONSES,STAGES,SENSORS,SHOW_SPIN,shownRate,sanitize,EMPTY,mover,partIndex,order,resolve,worlds,motion,frame,dofOf,valuesOf,limitsOf,couple,applyCouplings,solveLoops,pose,reach,Axis,moveSeconds,Driver,resolveAction,reading,volts,VOLTS,timeline,sampleTimeline,reindex,forEngine,
+  return {TYPES,ACTUATORS,MODES,COUPLINGS,SIGNALS,PROVENANCE,RESPONSES,STAGES,SENSORS,SHOW_SPIN,shownRate,sanitize,EMPTY,mover,partIndex,order,resolve,worlds,motion,frame,dofOf,valuesOf,limitsOf,couple,applyCouplings,solveLoops,pose,reach,Axis,moveSeconds,Driver,resolveAction,reading,volts,VOLTS,timeline,sampleTimeline,reindex,forEngine,MORE_DEVICES,extraDevices,deviceAt,nameDevice,
     stagesRatio,actuatorUnit,motorAtJoint,rigging,planetary,
     math:{sub,add,scale,dot,cross,len,unit,perpendicular,I4,mul,apply,applyDir,trans,rot,about,invert}};
 });

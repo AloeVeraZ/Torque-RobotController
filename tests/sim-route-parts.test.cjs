@@ -76,3 +76,14 @@ test('an old RobotActions.java: Deck\'s untouched empty methods for actions it n
   const r=F.retireStubs(old.replace(/\n/g,'\r\n'),['liftUp','clawOpen']);assert.deepEqual(r.removed,['liftUp']);assert.ok(!r.text.includes('liftUp'));assert.ok(r.text.includes('claw.setPosition(1);'));
   assert.deepEqual(F.retireStubs(old,['armDown']),{text:old,removed:[]});
 });
+
+test('a part on more than two motors: each one named, in the configuration and run to the same target',()=>{
+  const more=structuredClone(kin),lift=more.actuators.find(a=>a.id==='liftMotor');lift.more=[{device:'liftMotor3',reversed:true},{device:'liftMotor4'},{device:'bad name!'}];
+  const k2=K.sanitize(more);assert.deepEqual(k2.actuators.find(a=>a.id==='liftMotor').more,[{device:'liftMotor3',reversed:true},{device:'liftMotor4'}],'kept when saved; a bad name is dropped');
+  const ex=F.exportParts({robot,localization:'fused',mechanisms:null,kinematics:k2}),src=F.partsSource({packageName:'p',layoutName:'Parts route'},ex.parts.list,ex.sensorSpecs);
+  for(const n of [2,3,4])assert.ok(src.includes(`liftMotor${n}.setTargetPosition((int) Math.round(value * PART_LIFT_MOTOR_COUNTS_PER_UNIT));`),"motor "+n);
+  assert.match(src,/PART_LIFT_MOTOR_3 = "liftMotor3";/);assert.match(src,/liftMotor3\.setDirection\(PART_LIFT_MOTOR_REVERSED != true/);
+  const H=require('../ui/sim-hardware.js'),rows=H.rows({robot,kinematics:k2,sensors:{localization:'fused'}});
+  assert.deepEqual(rows.filter(r=>/^kin\.liftMotor/.test(r.key)).map(r=>[r.key,r.name,r.label]),[['kin.liftMotor','liftMotor','Lift motor'],['kin.liftMotor-2','liftMotor2','Lift motor (second)'],['kin.liftMotor-3','liftMotor3','Lift motor (third)'],['kin.liftMotor-4','liftMotor4','Lift motor (fourth)']]);
+  assert.equal(K.deviceAt(k2.actuators,'kin.liftMotor-4'.slice(4)).n,4);
+});

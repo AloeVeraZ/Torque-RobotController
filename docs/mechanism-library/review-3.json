@@ -1,0 +1,136 @@
+{
+ "fixVerification": [
+  {
+   "id": "REV-9",
+   "fixed": true,
+   "evidence": "star-wheel-indexer is now named 'Star-wheel singulator', with aliases ['star-wheel indexer','rotary singulator'] and parent 'geneva-drive'. 'Geneva drive' and 'cam indexer' are only on geneva-drive. geneva-drive no longer has 'rotary indexer' or 'indexing table'. 'rotary indexer' is only on biobuzz-spindexer, and the 'every search alias belongs to one record' test passes."
+  },
+  {
+   "id": "REV-21",
+   "fixed": true,
+   "evidence": "vision-assisted-turret aliases are ['turret tracking','AprilTag aim','Limelight aim','tx aim'], with no 'auto-aim'. biobuzz-auto-aim no longer has 'closed-loop turret aiming', which is only on biobuzz-turret-shooter. 'auto aim' and 'target lock' are only on vision-assisted-aiming."
+  },
+  {
+   "id": "R2-1",
+   "fixed": true,
+   "evidence": "The flywheel-shooter, dual-flywheel-shooter and hooded-flywheel presets are {stop:0,run:3600} at speed 18000. kicker-wheel is {stop:0,run:3600} at speed 3600. roller-ejector is {stop:0,run:-2160} at speed 2400. A new test checks that continuous-joint presets are within 10x of the type default, and it passes."
+  },
+  {
+   "id": "R2-2",
+   "fixed": true,
+   "evidence": "linkage-slide.how now says speed is highest mid-stroke and force is highest near the toggle positions at the ends of the stroke."
+  },
+  {
+   "id": "R2-3",
+   "fixed": true,
+   "evidence": "deployable-intake is {up:0,down:90}. camera-pan, camera-pan-tilt and pan-tilt-platform are {level:0,down:30}, and wrist-mounted-camera is {up:0,down:90}. All 8 claw records use open:0 and closed:35 or 40, the same order as the type's {open:0,closed:25}. A similar sign problem remains on biobuzz-hive-camera (R3-4)."
+  },
+  {
+   "id": "R2-4",
+   "fixed": true,
+   "evidence": "telescoping-intake extension is min 4, max 6, default 5 in., with the R105 note; preset {in:0,out:5}, upper 6. extendo extension default is 150 mm, with a note saying longer reach is for past games such as INTO THE DEEP; preset out:5, upper 6."
+  },
+  {
+   "id": "R2-5",
+   "fixed": true,
+   "evidence": "No normalized alias is on two records, and a test now checks this. In about 10 cases, though, the generic alias was kept on the BIOBUZZ child and removed from the generic parent, the opposite of what the fix asked for (R3-3)."
+  },
+  {
+   "id": "R2-6",
+   "fixed": true,
+   "evidence": "linear-slide and lift now use 'historical:power-play'. The season set contains no 'historical:powerplay'."
+  },
+  {
+   "id": "R2-7",
+   "fixed": true,
+   "evidence": "Every listed hang use now ends with '(past games; BIOBUZZ has no hang, G415)': lift, lead-screw, dual-screw-lift, rack-pinion, chain-driven-lift, string-spool-drive, linear-slide, worm-gearbox and toggle-linkage."
+  },
+  {
+   "id": "R2-8",
+   "fixed": true,
+   "evidence": "lead-screw stroke default is 201, with the note 'ServoCity Linear Actuator Kit (1120 series) lists 201 mm stroke'. Leftover: the vendor ref title still reads '(1120 Series, 203mm Stroke)' (R3-5)."
+  },
+  {
+   "id": "R2-9",
+   "fixed": true,
+   "evidence": "winch.short is now 'A motor winds string or cable onto a spool to pull a mechanism or, in past games, the robot itself.' 'winch-based hanging' and 'pull-up winch' moved to hook-and-winch-hang. winch seasons are now historical only (centerstage, into-the-deep), so its hang uses and the name 'Winch (spool) for hanging or lifting' fit."
+  },
+  {
+   "id": "R2-10",
+   "fixed": true,
+   "evidence": "biobuzz-size-adaptive-intake now uses gm0 9971-intake.png, credited 'FTC 9971 LanBros, Relic Recovery spring-loaded intake (not a BIOBUZZ robot)'."
+  },
+  {
+   "id": "R2-11",
+   "fixed": false,
+   "evidence": "Partly fixed. Architecture records (quadruped, hexapod, stewart-platform, mecanum and the other drives) now get an 'Add one <type>' button with a hint. A record whose actuation is a single FTC kind now gets that kind: motor-wrist becomes dcmotor, feeder-wheels becomes crservo. But elbow ('Two-link arm (shoulder and elbow)', dof 2, motor+motor) is still type 'elbow', and partial() returns false for it, so 'Add to robot' still adds a lone elbow with no shoulder and no hint. The fix named this case. The cause is that partial() excludes 2-DoF records whose actuation is 'motor+servo', 'servo+servo' or 'motor+motor'. 27 records fall through that way, including arm-with-wrist (adds only the arm), pivot-extension, diffy-wrist and two-axis-wrist (whose types expect a second joint inside), coaxial-swerve-module and relic-extension-arm."
+  },
+  {
+   "id": "R2-12",
+   "fixed": true,
+   "evidence": "shortName() strips anything in brackets and cuts at a word boundary within 40 characters. Every typed record now gives a name of 40 characters or less. Five read badly (R3-1)."
+  },
+  {
+   "id": "R2-13",
+   "fixed": true,
+   "evidence": "This was unconfirmed, and the change is a reasonable resolution. dead-wheel-pod, two-dead-wheel-odometry, three-dead-wheel-odometry, rotating-platform, turret and biobuzz-turret-shooter are now 'not-verified' with the neutral note 'A single-DoF COTS part under R303 (not one of its listed exceptions); legality depends on the whole robot and the current manual.' That matches the project's own R303 paraphrase. Similar unsourced 'R303 lists/names X' wording remains on other records (R3-6)."
+  },
+  {
+   "id": "R2-14",
+   "fixed": true,
+   "evidence": "'west coast drive (FRC term)' is now only on six-wheel-drop-center-drive. color-sensor aliases no longer include 'MR Color Sensor'."
+  }
+ ],
+ "newIssues": [
+  {
+   "id": "R3-1",
+   "severity": "MINOR",
+   "where": "ui/sim-mechanism-list.js shortName()",
+   "evidence": "Cutting to 40 characters leaves names ending on a dangling word: 'BIOBUZZ deployable ramp intake with', 'BIOBUZZ adjustable-gap intake for', 'BIOBUZZ hooded flywheel with adjustable', 'BIOBUZZ up-tilted camera for HIVE' and 'Continuous-rotation turret with slip'. Also, for partial records the added single joint takes the whole-design name: one drive wheel is named 'Four-wheel mecanum drive', and one hip is named 'Quadruped walking robot' or 'Hexapod walking robot'.",
+   "fix": "After cutting, drop a trailing stop word (with, for, and, or, of, to) and trailing words in a list. Or add an optional record.partName field for these five. For partial(r) records, name the joint TY().short(type), e.g. 'Drive wheel' or 'Hip', instead of the record name.",
+   "confirmed": true
+  },
+  {
+   "id": "R3-2",
+   "severity": "MINOR",
+   "where": "ui/sim-mechanism-list.js add(): KIND_OF swap (four-bar, motor-wrist, servo-linear-actuator, gantry-stage)",
+   "evidence": "A().create({spec:{kind:'dcmotor'}}) is valid: model falls back to DEFAULT.dcmotor = gobilda-5203-312, and withModel sets cpr, response and motor. But the swap passes no transmission. four-bar (type servo) and motor-wrist (type servo axon-mini) get a direct 312 rpm motor at 1872 deg/s on the part, and neither preset sets a speed. gantry-stage's stepper belt+spool transmission is dropped, and a ratio of 180/12 is used instead. servo-linear-actuator ('Servo linear actuator (linear servo)') gets kind 'servo' through a pseudo-linkage ratio, not kind 'linear' (actuonix-l16-50). positional-servo-steering puts a positional servo on the continuous swerve-steer joint, which fitLimits skips. None of this crashes, but the resulting speeds are not realistic.",
+   "fix": "Give dcmotor swaps on revolute joints a reduction, e.g. spec {kind:'dcmotor',model:'gobilda-5203-117',transmission:[{kind:'belt',driver:20,driven:60}]} or a preset.speed. Map servo-linear-actuator to kind 'linear' (for example actuation 'linear', or a KIND_OF override when the type is prismatic and the record name says linear servo).",
+   "confirmed": true
+  },
+  {
+   "id": "R3-3",
+   "severity": "MINOR",
+   "where": "aliases: biobuzz-fixed-shooter, biobuzz-hooded-shooter, biobuzz-side-roller-intake, biobuzz-sweeper-intake, biobuzz-size-adaptive-intake, biobuzz-shot-gate",
+   "evidence": "R2-5 asked to keep generic aliases on the generic parent. Instead these went to the BIOBUZZ-only child and were removed from the generic record: 'dual-flywheel' and 'two-wheel shooter' (now on a fixed-angle BIOBUZZ shooter, removed from dual-flywheel-shooter, so the meaning is wrong too), 'fixed shooter' (from fixed-angle-shooter), 'variable hood' and 'hood shooter' (from adjustable-hood and hooded-flywheel), 'Gecko wheel intake' (from compliant-wheel-intake), 'flap intake' (from flexible-flap-intake), 'surgical tubing intake' (from surgical-tubing-intake), 'floating roller' (from spring-loaded-roller-intake) and 'separator gate' (from escapement). biobuzz-hooded-shooter also lists 'adjustable hood', the other record's name. Searching these terms with the season filter set to Any season or Past games will not reach the generic record.",
+   "fix": "Move each of these aliases back to the generic record named in the fix log, and keep only game-specific words on the biobuzz-* records. Remove 'dual-flywheel' and 'two-wheel shooter' from biobuzz-fixed-shooter.",
+   "confirmed": true
+  },
+  {
+   "id": "R3-4",
+   "severity": "MINOR",
+   "where": "biobuzz-hive-camera.preset",
+   "evidence": "The camera-mount type uses positive for down (default {level:0,down:20}), and R2-3 moved every camera preset to that convention. biobuzz-hive-camera has {level:0,up:35} with lower 0 and upper 60, so its 'up' action tilts the camera down by 35 degrees.",
+   "fix": "preset {states:{level:0,up:-35},lower:-60,upper:0}.",
+   "confirmed": true
+  },
+  {
+   "id": "R3-5",
+   "severity": "SUGGESTION",
+   "where": "lead-screw.refs[1].title",
+   "evidence": "The title says 'Linear Actuator Kit (1120 Series, 203mm Stroke)', but the URL and the corrected param say 201 mm.",
+   "fix": "Change the title to '...201mm Stroke...'.",
+   "confirmed": true
+  },
+  {
+   "id": "R3-6",
+   "severity": "MINOR",
+   "where": "legality notes on linear-slide, drawer-slide, extrusion-slide, belt-driven-slide, lead-screw, planetary-gearbox (all rule-checked)",
+   "evidence": "These notes say R303 lists or names linear slide kits, slide kits, linear actuator kits and single-speed gearboxes as allowed single-DoF COTS parts. The project's biobuzz-rules.json R303 entry gives only the 1-DoF limit and the exceptions (ratchets, holonomic wheels, universal joints). The R2-13 records were softened for the same kind of unsourced claim, but these were not. I could not open the manual to check.",
+   "fix": "Check the TU08 R303 examples. If they are not listed there, reword to 'A single-DoF COTS part under R303; legality depends on the whole robot and the current manual.' If they are listed, add them to the R303 entry in biobuzz-rules.json.",
+   "confirmed": false
+  }
+ ],
+ "testsRun": "ELECTRON_RUN_AS_NODE=1 .cache/runtime-win32-x64-44.8.0/electron.exe --test tests/mech-library.test.cjs tests/pinout.test.cjs tests/preview-assets.test.cjs tests/mech-catalog.test.cjs: 23 tests, 23 pass, 0 fail. I did not run the Playwright UI tests. I ran partial(), shortName() and KIND_OF as copies outside the app, against all 247 records with sim-mechanism-types.js; the real add() was not exercised. partial() gives quadruped-walker, mecanum-drive and stewart-platform true. It gives elbow, claw, diffy-wrist and pivot-extension false; claw is correct, and elbow, diffy-wrist and pivot-extension are the R2-11 gap. Read A().create: spec {kind:'dcmotor'} with no model falls back to DEFAULT.dcmotor and is valid. Changing if(rec?.preset) to if(rec) does not give wrong states or limits to records without a preset. For those, the refit calls create() with the same spec, travel and states as sim-joints actuatorFor(), so the actuator is unchanged. The only addition is fitLimits() on servo revolute types (multi-lane-magazine, quadruped-walker, hexapod, shoulder-elbow-wrist), which sets limits to the servo's full range; their default states are already inside it. Legality pass: 88 rule-checked, 151 not-verified and 8 not-allowed (all hang, citing G415). No 'tell inspectors' text, no 'FTC legal' claims and no misleading BIOBUZZ images were found; every game-record photo is credited as 'not a BIOBUZZ robot'.",
+ "verdict": "APPROVE"
+}

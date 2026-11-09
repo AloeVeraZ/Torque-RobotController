@@ -529,7 +529,7 @@ def stop(module):
     let motor=0,servo=0,crservo=6;const next=()=>MM_MOTORS[motor++]??null,out={},mount=on=>on?-1:1;
     // An intake roller on a motor takes the next free motor channel; on a continuous servo, a servo channel from 6.
     const roller=(device,reversed,part)=>device==='crservo'?{channel:crservo++,servo:true,mount:mount(reversed),part}:{channel:next(),servo:false,mount:mount(reversed),part};
-    const rollers=m.intakes.flatMap((i,k)=>i.kind==='kicker'?[]:[roller(i.device,i.reversed,k),...(i.motor2?[roller(i.device,i.reversed2,k)]:[])]);if(rollers.length)out.intakes=rollers;
+    const rollers=m.intakes.flatMap((i,k)=>i.kind==='kicker'?[]:[roller(i.device,i.reversed,k),...(i.motor2?[roller(i.device,i.reversed2,k)]:[]),...(i.more||[]).filter(x=>x.device!=='servo').map(x=>roller(x.device,x.reversed,k))]);if(rollers.length)out.intakes=rollers;
     const kickers=m.intakes.filter(i=>i.kind==='kicker');if(kickers.length)out.kickers=kickers.map(i=>({servo:servo++,down:i.downPos*180,up:i.upPos*180}));
     const ramps=m.intakes.filter(i=>i.kind==='ramp');if(ramps.length)out.ramps=ramps.map(i=>({servo:servo++,down:i.downPos*180,up:i.upPos*180}));
     // MotionModule turrets are servos; with a servo turret set in Deck its center and range come from there.

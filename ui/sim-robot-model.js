@@ -34,7 +34,7 @@
     return ((Math.round(Math.atan2(dot(Lb,Fa),dot(Fb,Fa))/(Math.PI/2))%4)+4)%4;}
   function meta(raw){
     if(!raw||typeof raw.id!=='string'||!/^[0-9a-f]{32}\.glb$/.test(raw.id))return null;
-    const parts=Array.isArray(raw.parts)?raw.parts.slice(0,64).filter(p=>p&&Array.isArray(p.box)&&p.box.length===6&&p.box.every(Number.isFinite)).map(p=>({name:String(p.name||'').slice(0,80),role:['chassis','intake','shooter','indexer'].includes(p.role)?p.role:'other',
+    const parts=Array.isArray(raw.parts)?raw.parts.slice(0,64).filter(p=>p&&Array.isArray(p.box)&&p.box.length===6&&p.box.every(Number.isFinite)).map(p=>({name:String(p.name||'').slice(0,80),role:['chassis','intake','shooter','indexer','odometry'].includes(p.role)?p.role:'other',
       ...(['pollen','nectar','both'].includes(p.pieces)?{pieces:p.pieces}:{}),...(['turret','fixed'].includes(p.type)?{type:p.type}:{}),...(['sweeper','siderollers','ramp','kicker'].includes(p.kind)?{kind:p.kind}:{}),...(Array.isArray(p.carries)&&p.carries.length?{carries:p.carries.filter(c=>typeof c==='string').slice(0,4).map(c=>c.slice(0,80))}:{}),...(typeof p.key==='string'?{key:p.key.slice(0,400)}:{}),...(p.chosen===true?{chosen:true}:{}),box:p.box.slice()})):[];
     return {id:raw.id,name:String(raw.name||'Robot model').slice(0,120),units:Object.hasOwn(UNITS,raw.units)?raw.units:'in',...orientation(raw),source:['step','urdf','sdf','mjcf','usd'].includes(raw.source)?raw.source:'mesh',...(parts.length?{parts}:{}),...(raw.autoSize===true?{autoSize:true}:{}),...(raw.bodyChassis===true?{bodyChassis:true}:{}),...(typeof raw.drivetrain==='string'&&/^\w{1,20}$/.test(raw.drivetrain)?{drivetrain:raw.drivetrain}:{}),...(Array.isArray(raw.entered)?{entered:raw.entered.filter(k=>['mass','wheel','rpm'].includes(k))}:{})};
   }
@@ -165,12 +165,15 @@
     const [F,L,T]=rows(m),s=UNITS[m.units]||1,to=p=>[dot(F,p)*s,dot(L,p)*s,dot(T,p)*s];
     const boxes=m.parts.map(p=>{const c=[];for(const x of [p.box[0],p.box[3]])for(const y of [p.box[1],p.box[4]])for(const z of [p.box[2],p.box[5]])c.push(to([x,y,z]));
       return {...p,lo:[0,1,2].map(i=>Math.min(...c.map(v=>v[i]))),hi:[0,1,2].map(i=>Math.max(...c.map(v=>v[i])))};});
-    const union=list=>({lo:[0,1,2].map(i=>Math.min(...list.map(b=>b.lo[i]))),hi:[0,1,2].map(i=>Math.max(...list.map(b=>b.hi[i])))}),{lo,hi}=union(boxes),body=boxes.filter(b=>b.role!=='intake');
+    const union=list=>({lo:[0,1,2].map(i=>Math.min(...list.map(b=>b.lo[i]))),hi:[0,1,2].map(i=>Math.max(...list.map(b=>b.hi[i])))}),{lo,hi}=union(boxes),body=boxes.filter(b=>b.role!=='intake'&&b.role!=='odometry');
+    // Odometry pods hang below the wheels on their springs: the robot stands on the rest. A chassis part is the biggest one
+    // named as one that is at least 4 in each way (a part named "frame" inside a pod is not the robot).
+    const standing=boxes.filter(b=>b.role!=='odometry'),ground=(standing.length?union(standing):{lo}).lo[2],area=b=>(b.hi[0]-b.lo[0])*(b.hi[1]-b.lo[1]);
     // No assembly named Chassis: in CAD imported since setups gained chassis hitboxes (bodyChassis), the chassis is
     // every part except the intakes, so an intake that sticks out stays outside the robot's size and hitbox.
-    const chassis=boxes.find(b=>b.role==='chassis')||(m.bodyChassis&&body.length&&body.length<boxes.length?{name:'All parts except the intakes',derived:true,...union(body)}:null),ref=chassis||{lo,hi};
-    const cx=(ref.lo[0]+ref.hi[0])/2,cy=(ref.lo[1]+ref.hi[1])/2,floor=lo[2];
-    return {chassis:chassis?{x:cx,y:cy,length:chassis.hi[0]-chassis.lo[0],width:chassis.hi[1]-chassis.lo[1],...(chassis.derived?{name:chassis.name,derived:true}:{})}:null,extent:{length:hi[0]-lo[0],width:hi[1]-lo[1]},
+    const chassis=boxes.filter(b=>b.role==='chassis'&&b.hi[0]-b.lo[0]>=4&&b.hi[1]-b.lo[1]>=4).sort((a,b)=>area(b)-area(a))[0]||(m.bodyChassis&&body.length&&body.length<boxes.length?{name:'All parts except the intakes and odometry pods',derived:true,...union(body)}:null),ref=chassis||{lo,hi};
+    const cx=(ref.lo[0]+ref.hi[0])/2,cy=(ref.lo[1]+ref.hi[1])/2,floor=ground;
+    return {floor,lift:floor-lo[2],chassis:chassis?{x:cx,y:cy,length:chassis.hi[0]-chassis.lo[0],width:chassis.hi[1]-chassis.lo[1],...(chassis.derived?{name:chassis.name,derived:true}:{})}:null,extent:{length:hi[0]-lo[0],width:hi[1]-lo[1]},
       parts:boxes.map(({lo:a,hi:b,box:_,...p})=>({...p,box:{x0:a[0]-cx,x1:b[0]-cx,y0:a[1]-cy,y1:b[1]-cy,z0:a[2]-floor,z1:b[2]-floor}}))};
   }
   // The body in the robot frame: scaled to inches, oriented, bottom on the floor, centred on the footprint
@@ -182,11 +185,11 @@
     // Measure after the scale and rotation reach the world matrices.
     holder.updateMatrixWorld(true);
     const box=new T.Box3().setFromObject(holder),c=box.getCenter(new T.Vector3()),f=footprint||{front:9,rear:9,half:9};
-    const size=box.getSize(new T.Vector3()),chassis=partBoxes(m)?.chassis,fit=chassis||{x:c.x,y:c.y,length:size.x,width:size.y};
+    const size=box.getSize(new T.Vector3()),pb=partBoxes(m),chassis=pb?.chassis,fit=chassis||{x:c.x,y:c.y,length:size.x,width:size.y};
     // A robot file with joints (URDF, SDFormat, MuJoCo, USD) is drawn at its true size: stretching it to the footprint
     // would shear every link that turns.
-    const exact=['urdf','sdf','mjcf','usd'].includes(m.source),sx=exact?1:2*f.rear/Math.max(fit.length,.001),sy=exact?1:2*f.half/Math.max(fit.width,.001);
-    inner.scale.set(sx,sy,1);inner.position.set(-fit.x*sx,-fit.y*sy,-box.min.z);holder.updateMatrixWorld(true);
+    const exact=!!m.source,sx=exact?1:2*f.rear/Math.max(fit.length,.001),sy=exact?1:2*f.half/Math.max(fit.width,.001);
+    inner.scale.set(sx,sy,1);inner.position.set(-fit.x*sx,-fit.y*sy,-(box.min.z+(Number.isFinite(pb?.lift)?pb.lift:0)));holder.updateMatrixWorld(true);
     holder.userData.modelScale={x:sx,y:sy,F,L,c:{x:fit.x,y:fit.y}};holder.userData.nativeSize={length:size.x,width:size.y,height:size.z};holder.userData.size={length:2*f.rear,width:2*f.half,height:size.z};return holder;
   }
   async function builtin(bytes,meta){
@@ -472,23 +475,42 @@
     }
     // Picking a point on the model (a click that did not orbit), in the robot frame (inches; x forward,
     // y left, z up), and coloured markers for placed parts.
-    let picker=null,down=null;const ray=new T.Raycaster(),markerGroup=new T.Group();scene.add(markerGroup);
+    // hover: told what is under the pointer while picking (or null), so the page can light up what a click would take.
+    let picker=null,hover=null,down=null,moved=null,moveRaf=0;const ray=new T.Raycaster(),markerGroup=new T.Group();scene.add(markerGroup);
+    function hitAt(e){const r=renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);const hit=ray.intersectObject(body,true).find(h=>!h.object.userData.glow),ids=hit?.object.geometry?.attributes._part;
+      // local: the point in the CAD's own frame (the hit mesh's), for measuring the part there; face: its triangle's vertices.
+      const local=hit?hit.object.worldToLocal(hit.point.clone()):null;return hit?{x:hit.point.x,y:hit.point.y,z:hit.point.z,part:ids&&hit.face?ids.getX(hit.face.a):null,local:[local.x,local.y,local.z],face:hit.face?[hit.face.a,hit.face.b,hit.face.c]:null,shift:e.shiftKey}:null;}
     renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
     renderer.domElement.addEventListener('pointerup',e=>{
-      if(!picker||!down||!body||Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)return;const r=renderer.domElement.getBoundingClientRect();
-      ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);const hit=ray.intersectObject(body,true)[0],ids=hit?.object.geometry?.attributes._part;
-      // local: the point in the CAD's own frame (the hit mesh's), for measuring the part there; face: its triangle's vertices.
-      const local=hit?hit.object.worldToLocal(hit.point.clone()):null;picker(hit?{x:hit.point.x,y:hit.point.y,z:hit.point.z,part:ids&&hit.face?ids.getX(hit.face.a):null,local:[local.x,local.y,local.z],face:hit.face?[hit.face.a,hit.face.b,hit.face.c]:null,shift:e.shiftKey}:null);});
-    function pick(fn){picker=fn||null;box.classList.toggle('picking',!!picker);}
+      if(!picker||!down||!body||Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)return;hoverMark(null);picker(hitAt(e));});
+    // Once a frame at most, and not while dragging to turn the view.
+    // While picking, what a click would take lights up: the page's hover says which parts (it calls hoverMark), or with
+    // none the one part under the pointer does.
+    const hoverLeaf=hit=>hoverMark(hit&&Number.isFinite(hit.part)?new Set([Math.round(hit.part)]):null);
+    renderer.domElement.addEventListener('pointermove',e=>{if(!picker||!body||e.buttons)return;moved=e;if(moveRaf)return;moveRaf=requestAnimationFrame(()=>{moveRaf=0;if(picker&&body&&moved)(hover||hoverLeaf)(hitAt(moved));});});
+    renderer.domElement.addEventListener('pointerleave',()=>{moved=null;if(picker)(hover||hoverLeaf)(null);});
+    function pick(fn,opts={}){picker=fn||null;hover=fn&&opts.hover||null;if(!picker)hoverMark(null);box.classList.toggle('picking',!!picker);}
     // The chosen parts glow; a body split into links glows in each link's mesh, so the glow moves with it.
     let glow=[],glowKey=null;
     function highlight(meshes,color=0xffb224){
-      const list=[];body?.traverse(o=>{if(o.isMesh&&o.geometry.attributes._part&&o.geometry.index)list.push(o);});const key=list.length&&meshes?.size?list.map(o=>o.uuid).join()+':'+color+':'+[...meshes].join(','):null;
+      const list=[];body?.traverse(o=>{if(o.isMesh&&o.geometry.attributes._part&&o.geometry.index&&!o.userData.glow)list.push(o);});const key=list.length&&meshes?.size?list.map(o=>o.uuid).join()+':'+color+':'+[...meshes].join(','):null;
       if(key===glowKey)return;glowKey=key;for(const g of glow){g.parent?.remove(g);g.geometry.dispose();g.material.dispose();}glow=[];
       if(!key){draw();return;}
       for(const target of list){const g=target.geometry,ids=g.attributes._part,src=g.index,out=[];for(let t=0;t<src.count;t+=3)if(meshes.has(Math.round(ids.getX(src.getX(t)))))out.push(src.getX(t),src.getX(t+1),src.getX(t+2));if(!out.length)continue;
         const geometry=new T.BufferGeometry();geometry.setAttribute('position',g.attributes.position);geometry.setIndex(out);
-        const mark=new T.Mesh(geometry,new T.MeshBasicMaterial({color,transparent:true,opacity:.55,depthTest:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));mark.renderOrder=5;target.add(mark);glow.push(mark);}draw();
+        const mark=new T.Mesh(geometry,new T.MeshBasicMaterial({color,transparent:true,opacity:.55,depthTest:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));mark.userData.glow=true;mark.renderOrder=5;target.add(mark);glow.push(mark);}draw();
+    }
+    // The parts under the pointer while picking: bright and drawn over the rest of the model, so a wheel or pod under the
+    // chassis shows too. A layer of its own, so the orange glow of what is being edited never wipes it.
+    let hoverGlow=[],hoverKey=null;
+    function hoverMark(meshes,color=0x2ef2ff){
+      const list=[];body?.traverse(o=>{if(o.isMesh&&o.geometry.attributes._part&&o.geometry.index&&!o.userData.glow)list.push(o);});const key=list.length&&meshes?.size?list.map(o=>o.uuid).join()+':'+color+':'+[...meshes].join(','):null;
+      if(key===hoverKey)return;hoverKey=key;for(const g of hoverGlow){g.parent?.remove(g);g.geometry.dispose();g.material.dispose();}hoverGlow=[];
+      if(!key){draw();return;}
+      for(const target of list){const g=target.geometry,ids=g.attributes._part,src=g.index,out=[];for(let t=0;t<src.count;t+=3)if(meshes.has(Math.round(ids.getX(src.getX(t)))))out.push(src.getX(t),src.getX(t+1),src.getX(t+2));if(!out.length)continue;
+        const geometry=new T.BufferGeometry();geometry.setAttribute('position',g.attributes.position);geometry.setIndex(out);
+        const mark=new T.Mesh(geometry,new T.MeshBasicMaterial({color,transparent:true,opacity:.85,depthTest:false,side:T.DoubleSide}));mark.userData.glow=true;mark.renderOrder=30;target.add(mark);hoverGlow.push(mark);}draw();
     }
     // Pivot marks: an axis through each origin, a ring of the pivot's radius and, for a turret, an arrow the way it
     // fires (robot frame). Drawn over the model so they show through it.
@@ -509,13 +531,19 @@
     function posed(values){const p=pose(body,values||{});draw();return p;}
     function markers(list=[]){
       for(const child of [...markerGroup.children]){markerGroup.remove(child);child.geometry.dispose();child.material.dispose();}
-      // A marker is a dot, or a see-through box when it has a size (an intake's hitbox).
-      for(const m of list){const shape=m.size?new T.BoxGeometry(...m.size):new T.SphereGeometry(m.radius||1.1,20,14),mark=new T.Mesh(shape,new T.MeshBasicMaterial({color:m.color||0xffffff,depthTest:!m.size?false:true,transparent:true,opacity:m.size?.35:.9}));
+      // A marker is a dot, a see-through box when it has a size (an intake's hitbox), or a see-through cylinder from one point
+      // to another (an intake's rollers, from one end wheel to the other).
+      for(const m of list){
+        if(m.from&&m.to){const a=new T.Vector3(...m.from),b=new T.Vector3(...m.to),d=b.clone().sub(a),len=Math.max(d.length(),.05),shape=new T.CylinderGeometry(m.radius||1,m.radius||1,len,28,1);
+          const mark=new T.Mesh(shape,new T.MeshBasicMaterial({color:m.color||0xffffff,transparent:true,opacity:.35}));mark.position.copy(a.clone().add(b).multiplyScalar(.5));
+          if(d.length()>1e-6)mark.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),d.normalize());mark.renderOrder=10;markerGroup.add(mark);
+          const edges=new T.LineSegments(new T.EdgesGeometry(shape,30),new T.LineBasicMaterial({color:m.color||0xffffff}));edges.position.copy(mark.position);edges.quaternion.copy(mark.quaternion);edges.renderOrder=11;markerGroup.add(edges);continue;}
+        const shape=m.size?new T.BoxGeometry(...m.size):new T.SphereGeometry(m.radius||1.1,20,14),mark=new T.Mesh(shape,new T.MeshBasicMaterial({color:m.color||0xffffff,depthTest:!m.size?false:true,transparent:true,opacity:m.size?.35:.9}));
         mark.position.set(m.x,m.y,m.z);mark.renderOrder=10;markerGroup.add(mark);
         if(m.size){const edges=new T.LineSegments(new T.EdgesGeometry(shape),new T.LineBasicMaterial({color:m.color||0xffffff}));edges.position.copy(mark.position);edges.renderOrder=11;markerGroup.add(edges);}}
       draw();
     }
-    return {update(...a){glowKey=null;glow=[];return update(...a);},look,pick,highlight,markers,gizmos,posed,body:()=>body,resize:draw,select(side){for(const f of cubeHost.querySelectorAll('.face'))f.classList.toggle('selected',f.dataset.side===side);},dispose(){sized.disconnect();cancelAnimationFrame(raf);navigator.dispose();controls.dispose();renderer.dispose();renderer.forceContextLoss();host.replaceChildren();}};
+    return {update(...a){glowKey=null;glow=[];hoverKey=null;hoverGlow=[];return update(...a);},look,pick,highlight,hoverMark,markers,gizmos,posed,body:()=>body,resize:draw,select(side){for(const f of cubeHost.querySelectorAll('.face'))f.classList.toggle('selected',f.dataset.side===side);},dispose(){sized.disconnect();cancelAnimationFrame(raf);navigator.dispose();controls.dispose();renderer.dispose();renderer.forceContextLoss();host.replaceChildren();}};
   }
   return {partTree,meshesBox,partBoxes,AXES,UNITS,SIDES,orientation,rows,modelAxisAt,setFront,setTop,assignSide,turnBetween,meta,bodyFromImport,toGlb,fromGlb,lighten,place,silhouette,preview,viewCube,cubeGeometry,orbitCamera,builtin,animate,rig,retune,pose,gameValues,linksOf,hitboxes};
 });

@@ -7,7 +7,7 @@
   function install({photo}){let menu=null,tip=null;const photos=new Map();
     const picture=tag=>{const key=A().photoKey(tag);if(!photo||!A().photoOf(key))return Promise.resolve(null);if(!photos.has(key))photos.set(key,Promise.resolve(photo(key)).catch(()=>null).then(u=>{if(!u)photos.delete(key);return u;}));return photos.get(key);};
     const figure=(tag,cls)=>tag?`<span class="ce-fig ${cls}" data-fig="${esc(tag)}">${A().svg(tag,{title:false})}</span>`:`<span class="ce-fig empty ${cls}"></span>`;
-    const dress=root=>{for(const f of root.querySelectorAll('[data-fig]'))void picture(f.dataset.fig).then(url=>{if(!url||!f.isConnected)return;const img=document.createElement('img');img.alt='';img.src=url;f.replaceChildren(img);f.classList.add('photo');});};
+    const dress=root=>{for(const f of root.querySelectorAll('[data-fig]'))void picture(f.dataset.fig).then(url=>{if(!url||!f.isConnected)return;const img=document.createElement('img'),o=A().photoOf(f.dataset.fig);img.alt='';img.src=url;if(o?.caption)img.title=`${o.caption} · ${o.site}`;if(o?.kind==='component-photo'){const tag=document.createElement('span');tag.className='sim-photo-kind';tag.textContent=o.shows?`Part it uses: ${o.shows}`:'Part it uses';tag.title=img.title;f.append(tag);}f.replaceChildren(img);f.classList.add('photo');});};
     window.DeckPartPicker.dress=dress;
     const hideTip=()=>{tip?.remove();tip=null;};
     // Beside what it describes, on the side with room, and level with the row under the pointer.

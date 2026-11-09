@@ -1,0 +1,128 @@
+[
+ {
+  "id": "AUD-1",
+  "severity": "MAJOR",
+  "area": "ui/sim-wiring.js:43-51 (portChoices) with :294 (setSensorPort) and :168-171 (setChassisEncoder)",
+  "evidence": "portChoices now always lists Expansion Hub ports, and portSelect uses them for sensor selects (data-wire-sensor-port, lines 113 and 178). Only setPort turns the Expansion Hub on. setSensorPort and setChassisEncoder do not, and sanitizeWiring's placement() drops any port on a hub the robot lacks. A scratch run on hubs {expansion:false}: setSensorPort(w,'dist1','expansion:1') kept the sensor with no hub or port, and hubs stayed {expansion:false}. setPort on 'expansion:2' for a motor did turn the hub on.",
+  "reproduce": "Use a robot with no Expansion Hub. In Mechanisms, add an I2C or analog sensor (or a swerve absolute encoder) and pick an 'Expansion Hub ...' port. The choice goes back to 'Not assigned' with no message.",
+  "fix": "Turn the hub on through setSensorPort and setChassisEncoder the same way setPort does (call setHub(wiring,p.hub,true) when hubKind is expansion and the hub is missing). Or move that logic into one shared helper.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-2",
+  "severity": "MAJOR",
+  "area": "ui/sim-robot-model.js:191 (place)",
+  "evidence": "The old line was exact=['urdf','sdf','mjcf','usd'].includes(m.source). The new one is exact=!!m.source. meta() always sets source (it defaults to 'mesh'), and simulation.js:2318 passes project.model (already run through meta) to place(). So every imported STEP or mesh is now drawn at its native size and never stretched to the footprint. The comment just above still says only jointed robot files are drawn at true size.",
+  "reproduce": "Import a STEP or mesh CAD, then type a robot length or width different from the CAD's. The model no longer fills the footprint (sx=sy=1).",
+  "fix": "If the change was not meant, restore the format list. If it was, update the comment and check that the footprint, hitbox and silhouette still match a typed size.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-3",
+  "severity": "MAJOR",
+  "area": "ui/sim-mechanism-list.js:96 (libFig) vs ui/sim-mech-library.js:71 (exports)",
+  "evidence": "libFig calls L()?.photos?.([r]), but DeckMechLibrary exports only CATEGORIES, ENTRIES, IMAGES, REFS, ACTUATION, DIFFICULTY, STATUS, LEGALITY, CONFIDENCE, problems, validate and words. There is no photos function, so own is always {}. A library record's image shows only if mech-photos.js already has an entry with the same page and src. Separately, the main process (src/device-photos.cjs) fetches only keys in its own require'd Art.PHOTOS, so a mech:lib:<id> key added in the renderer could never be fetched by api.devicePhoto. (sim-mechanism-list.js was being edited by another agent; this is as read.)",
+  "reproduce": "Add a library record whose image.page is not in ui/ftc/mech-photos.js. Its card shows no photo.",
+  "fix": "Export photos(records) from sim-mech-library.js, mapping 'mech:lib:'+id to [image.page, caption, {image:image.src}]. Have device-art.js merge these at load, the same way it merges mech-photos.js, so the main process knows the keys too.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-4",
+  "severity": "MAJOR",
+  "area": "ui/sim-mech-library.js:30-61 (problems) vs the spec",
+  "evidence": "A scratch run on a copy of the claw record returned no problems for each of these: aliases and tags deleted; uses, pros, cons and failures deleted or set to []; motion deleted; params deleted; a param without a unit; image deleted; legality {status:'not-allowed'} with no rules; rule-checked with rules:[1]; a legality.note saying 'This is fully FTC legal.'; verified '2099-13-45'; dof null on a mechanism; seasons ['whatever']; preset {states:'x'}. String min/max only produced a misleading 'default is outside its range'.",
+  "reproduce": "Run problems() on copies of data[0] with each change above.",
+  "fix": "Make aliases, tags, uses, pros, cons, failures, params and image required. Require at least one item in uses, pros, cons and failures. Require motion.input and motion.output as strings. Require numeric min, max and default and a non-empty unit on each param. Require non-empty rules strings matching /^R\\d+/ for both rule-checked and not-allowed, and reject legality text that claims a robot is legal. Check that verified parses to a real date that is not in the future. Enforce the seasons pattern general|biobuzz|historical:<slug>. Require dof as an integer for mechanism and subassembly entries.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-5",
+  "severity": "MAJOR",
+  "area": "ui/ftc/mech-photos.js (header comment and entries)",
+  "evidence": "The header says each entry is a store listing 'for a product that is that mechanism', and the library schema says a component photo never stands for a whole mechanism. Yet these mechanism cards use part photos: mech:conveyor is a timing belt, mech:feeder a Gecko wheel, mech:winch a winch pulley, mech:custom-slide one Viper-Slide, mech:game:intake:sweeper an intake wheel pack. mech:hip and mech:ankle use a whole biped humanoid, and mech:knee a quadruped. Entries have no image kind or 'shows' field, so nothing can tell these apart. mech:game:shooter:turret is an AndyMark FRC turret.",
+  "reproduce": "Open + Add mechanism and look at the Conveyor, Feeder, Winch and Hip cards.",
+  "fix": "Add a kind (mechanism-photo or component-photo) and a 'shows' text to each entry, label component photos as such in the UI, or remove photos that are not of the mechanism. Fix the header comment.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-6",
+  "severity": "MINOR",
+  "area": "ui/simulation.js:3190 (groupItems)",
+  "evidence": "inIntake leaves out a kin child whose parent is another kin, but the parent itself moves into the Intake group. The group is spliced in at the first member's position, while the child stays in the kin section with parent 'kin:<x>'. The child is drawn as an indented sub-tile under unrelated tiles, and the parent's fold button hides a tile somewhere else in the rail. Dragging a child onto Intake also overwrites its kin parent with 'group:intake'.",
+  "reproduce": "Add a claw (intake group type), then '+ Add to Claw' a wrist. The claw sits under Intake and the wrist sits alone further down.",
+  "fix": "When a kin item joins the group, move its descendants with it. Or skip grouping kin items that have children.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-7",
+  "severity": "MINOR",
+  "area": "src/main.cjs:333 / src/device-photos.cjs:53 (prefetch) with ui/ftc/device-art.js:199-200",
+  "evidence": "device-art.js now merges every mech-photos.js entry (about 110 mech:* keys) into PHOTOS. prefetch() downloads every PHOTOS key, and the FTC Driver Station calls it each time Configure Robot opens (ui/ftc/pages.js:40). So the Driver Station now pulls about 110 vendor photos it never shows.",
+  "reproduce": "Clear userData/device-photos, open Configure Robot in the FTC station, and watch the network.",
+  "fix": "Have prefetch skip keys starting with 'mech:', or keep the mech photos in a separate table.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-8",
+  "severity": "MINOR",
+  "area": "ui/sim-wiring.js:160-166 (imuHtml)",
+  "evidence": "1) The fromRead hint says 'The robot's configuration has X on I2C bus N' using the row's current bus, which may not be where the read configuration puts it. 2) When the current position is not among the IMUs that were read, a fallback option with value now (no '|name') is added on a data-wire-assign select, and deviceAssign then calls deviceName(key,undefined). 3) The tile line in simulation.js:3196 says 'IMU on I2C bus N' and drops the hub, even though portChoices now offers Expansion Hub buses.",
+  "reproduce": "Put the IMU on Expansion Hub I2C bus 1, then look at the Robot controller tile and the hint.",
+  "fix": "Build the hint from the matching read device. Skip deviceName when there is no name. Include the hub label in the tile line.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-9",
+  "severity": "MINOR",
+  "area": "ui/simulation.js:112 (sanitize controllerSet)",
+  "evidence": "controllerSet is raw.controllerSet===true or controller==='motionmodule', so every saved FTC setup loads as unset. The Control Hub card loses aria-pressed, the Robot controller tile is yellow ('Pick Control Hub or MotionModule'), and the Chassis tile turns yellow for setups that were already finished, including ones filled from a real hub config.",
+  "reproduce": "Load an existing FTC setup saved before this change.",
+  "fix": "Treat FTC setups with calibration.hub or setupDone as set, or migrate once.",
+  "confirmed": false
+ },
+ {
+  "id": "AUD-10",
+  "severity": "MINOR",
+  "area": "ui/simulation.js:3263-3266 (rail drag and drop)",
+  "evidence": "Intake membership can only be changed by HTML5 drag. There is no keyboard or menu way to do it, while the rail already handles arrow-key navigation. This also leaves no way on touch, which matters for the Steam Deck.",
+  "reproduce": "Try to add a mechanism to Intake with only the keyboard or the Deck touchscreen.",
+  "fix": "Add an 'Add to Intake' / 'Take out of Intake' button on the tile or the hero panel.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-11",
+  "severity": "MINOR",
+  "area": "ui/simulation.js:3235 (garage: garageTile persistence)",
+  "evidence": "garage() sets project.garageTile=garagePick but does not call save(), and it does so before the fallback garagePick=items[0]. The remembered tile is saved only when something else saves, and it can be a key that no longer exists.",
+  "reproduce": "Click a rail tile, then switch setups without changing anything else, and come back.",
+  "fix": "Set garageTile after the fallback and save it, debounced.",
+  "confirmed": false
+ },
+ {
+  "id": "AUD-12",
+  "severity": "MINOR",
+  "area": "ui/sim-mech-library-data.js:2-3",
+  "evidence": "The header says records are 'Written from the researched batches in docs/mechanism-library/', but that directory does not exist.",
+  "reproduce": "ls docs/mechanism-library",
+  "fix": "Point the comment at research_notes, or add the directory.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-13",
+  "severity": "SUGGESTION",
+  "area": "tests/mech-library.test.cjs",
+  "evidence": "The negative test covers only category, component photo, refs, type and rule-checked. All 28 tests in the requested run pass (mech-library, sim-wiring, sim-hardware, pinout, preview-assets). None of the gaps in AUD-4 are tested, and nothing tests sim-wiring's setPort or setSensorPort turning on an Expansion Hub, which is how AUD-1 went unnoticed.",
+  "reproduce": "Run the unit tests.",
+  "fix": "Add negative cases for each required field, plus a sim-wiring test that picks an Expansion Hub port for a sensor on a robot without one.",
+  "confirmed": true
+ },
+ {
+  "id": "AUD-14",
+  "severity": "SUGGESTION",
+  "area": "ui/ftc/mech-photos.js 'mech:cat:tx-rack-slide' and 'mech:cat:tx-gripper'",
+  "evidence": "The captions read 'Pitsco TETRIX TETRIX MAX ...', with TETRIX written twice.",
+  "reproduce": "Hover the photo (the caption is now the img title, set in sim-part-picker.js dress).",
+  "fix": "Remove the duplicate word.",
+  "confirmed": true
+ }
+]

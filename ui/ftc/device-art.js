@@ -196,11 +196,16 @@
       return Object.fromEntries(Object.entries(table).map(([id,p])=>['model-'+id,p]));})(),
     // The hubs themselves, for the pinout's panel headings.
     '#ControlHub':[REV('31-1595'),'REV-31-1595 Control Hub'],'#ExpansionHub':[REV('31-1153'),'REV-31-1153 Expansion Hub'],'#ServoHub':[REV('11-1855'),'REV-11-1855 Servo Hub']};
+  // + Add mechanism's cards (mech:<type id>, mech:cat:<vendor part id>): real photos from product listings (ftc/mech-photos.js).
+  {const more=typeof module==='object'&&module.exports?(()=>{try{return require('./mech-photos.js');}catch{return null;}})():globalThis.DeckMechPhotos;if(more)for(const [k,v] of Object.entries(more))if(!PHOTOS[k])PHOTOS[k]=v;}
+  // The reference library's pictures (mech:lib:<record id>), so they are read and kept like the cards' photos above.
+  {const node=typeof module==='object'&&module.exports,need=f=>{try{return require(f);}catch{return null;}},L=node?need('../sim-mech-library.js'):globalThis.DeckMechLibrary,D=node?need('../sim-mech-library-data.js'):globalThis.DeckMechLibraryData;
+    if(L?.photos&&Array.isArray(D))for(const [k,v] of Object.entries(L.photos(D)))if(!PHOTOS[k])PHOTOS[k]=v;}
   // An archived listing names the maker's own site.
   const siteOf=page=>{try{const u=new URL(page),old=u.hostname==='web.archive.org'&&/\/web\/[^/]+\/(https?:\/\/[^/]+)/.exec(u.pathname)?.[1];
     return old?new URL(old).hostname.replace(/^www\./,'')+' (archived)':u.hostname.replace(/^www\./,'');}catch{return '';}};
   const photoKey=tag=>String(tag??'').split('|')[0];
-  const photoOf=tag=>{const p=PHOTOS[photoKey(tag)];if(!p)return null;return {page:p[0],caption:p[1],site:siteOf(p[0]),image:p[2]?.image||null,mask:p[2]?.mask||[]};};
+  const photoOf=tag=>{const p=PHOTOS[photoKey(tag)];if(!p)return null;return {page:p[0],caption:p[1],site:siteOf(p[0]),image:p[2]?.image||null,mask:p[2]?.mask||[],kind:p[2]?.kind||null,shows:p[2]?.shows||null};};
   const OTHER={name:'Other device',maker:'',family:'other',what:'A device type Deck has no picture for.',art:unknown};
   const info=tag=>{const drawn=String(tag??'').split('|')[1]??tag;return DEVICES[drawn]||{...OTHER,name:drawn||OTHER.name};};
   // The drawing as a standalone SVG, or (nested) placed in a pinout at x, y, w, h: the product photo when photos has

@@ -50,7 +50,7 @@ class DevicePhotos {
   }
   // Fetches every photo not in the folder yet (or saved from an older choice), a few at a time. Resolves with how many
   // the folder has.
-  async prefetch(){const tags=Object.keys(Art.PHOTOS).filter(t=>!this.file(t)||this.stale(t)),queue=[...tags];
+  async prefetch(){const tags=Object.keys(Art.PHOTOS).filter(t=>!t.startsWith('mech:')&&(!this.file(t)||this.stale(t))),queue=[...tags];
     await Promise.all(Array.from({length:4},async()=>{while(queue.length)await this.photo(queue.shift());}));return Object.keys(Art.PHOTOS).filter(t=>this.file(t)).length;}
 }
 const readJson=f=>{try{return JSON.parse(fs.readFileSync(f,'utf8'));}catch{return {};}};

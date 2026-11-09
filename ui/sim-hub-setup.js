@@ -108,11 +108,12 @@
     for(const a of result.assign){const k=H.parseKey(a.key);if(!k)continue;
       if(a.sensor){w=H.sanitizeWiring({...H.wiringOf({wiring:w}),sensors:H.wiringOf({wiring:w}).sensors.map(s=>s.id===a.sensor?{...s,name:a.name,...(a.hub?{hub:a.hub,...(a.bus!==undefined?{bus:a.bus}:{port:a.port})}:{})}:s)});continue;}
       if(k.robot)devices[k.robot]={...(devices[k.robot]||{}),name:a.name};
+      else if(k.list&&/^more[0-9]$/.test(k.field)){const x=p.mechanisms[k.list]?.[k.index]?.more?.[+k.field.slice(4)];if(x){x.name=a.name;if(a.kind&&x.device!=='servo')x.device=a.kind==='crservo'?'crservo':'motor';}}
       else if(k.list){const part=p.mechanisms[k.list]?.[k.index];if(part){part[k.field]=a.name;
         if(a.kind&&k.list==='intakes'&&/^motor2?$/.test(k.field))part.device=a.kind==='crservo'?'crservo':'motor';
         if(a.kind&&k.field==='indexer')part.indexerKind={motor:'motor',crservo:'crservo',servo:'pusher'}[a.kind];
         if(a.kind&&k.field==='turretMotor')p.mechanisms.turret.kind=a.kind==='servo'?'servo':a.kind==='crservo'?'crservo':'motor';}}
-      else if(k.kin){const second=/-2$/.test(k.kin),act=p.kinematics.actuators.find(x=>x.id===k.kin||second&&x.id+'-2'===k.kin);if(act){if(second&&act.id!==k.kin)act.device2=a.name;else act.device=a.name;if(a.kind){const was=act.kind;act.kind={motor:'dcmotor',servo:'servo',crservo:'crservo'}[a.kind]||act.kind;if(act.kind!==was)delete act.model;}}}
+      else if(k.kin){const at=(globalThis.DeckKinematics||require('./sim-kinematics.js')).deviceAt(p.kinematics.actuators,k.kin),act=at?.actuator;if(act){(globalThis.DeckKinematics||require('./sim-kinematics.js')).nameDevice(act,at.n,a.name);if(a.kind&&at.n===1){const was=act.kind;act.kind={motor:'dcmotor',servo:'servo',crservo:'crservo'}[a.kind]||act.kind;if(act.kind!==was)delete act.model;}}}
       if(a.hub&&a.family)w=W.setPort(w,a.key,a.family==='i2c'?`${a.hub}:${a.bus}`:`${a.hub}:${a.port}`,a.family);
       if(a.model)w=W.setModel(w,a.key,a.model);}
     if(result.sensors.length){const cur=H.wiringOf({wiring:w}),ids=new Set(cur.sensors.map(s=>s.id)),add=[];

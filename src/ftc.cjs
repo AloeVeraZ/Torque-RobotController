@@ -51,8 +51,11 @@ async function findFtc(hosts=FTC_ADDRESSES,{timeout=1500}={}){
 // Controller there. Each packet is a 2-byte length and the packet. connect: () => Promise<{port}> starts the relay and
 // sets up the ADB forward to the hub's port 20885.
 class UsbFtcSocket extends FtcSocket {
-  constructor(connect,{label='Control Hub on USB',grace}={}){super('usb');this.connect=connect;this.grace=grace;this.host='usb';this.address=label;this.listeners=new Set();this.socket=null;this.buffer=Buffer.alloc(0);}
-  async open(){
+  constructor(connect,{label='Control Hub on USB',grace,held=false}={}){super('usb');this.connect=connect;this.grace=grace;this.held=held;this.using=false;this.host='usb';this.address=label;this.listeners=new Set();this.socket=null;this.buffer=Buffer.alloc(0);}
+  // The relay passes one station's packets at a time, so the holder (usbHold) lets go while this one is open.
+  async open(){if(!this.held&&!this.using){this.using=true;await usbHold.acquire();}try{return await this.openLink();}catch(e){this.free();throw e;}}
+  free(){if(this.using){this.using=false;usbHold.release();}}
+  async openLink(){
     const {port}=await this.connect(),net=require('node:net');this.buffer=Buffer.alloc(0);
     const socket=await new Promise((ok,fail)=>{const s=net.connect({host:'127.0.0.1',port},()=>{s.off('error',fail);ok(s);});s.once('error',e=>fail(Error(`Could not reach the Control Hub over the USB cable (${e.code||e.message}). Unplug the cable, plug it back in and try again.`)));});
     socket.setNoDelay(true);socket.on('error',()=>{});
@@ -62,12 +65,36 @@ class UsbFtcSocket extends FtcSocket {
     socket.on('data',chunk=>{this.buffer=Buffer.concat([this.buffer,chunk]);
       while(this.buffer.length>=2){const n=this.buffer.readUInt16BE(0);if(this.buffer.length<2+n)break;const msg=this.buffer.subarray(2,2+n);this.buffer=this.buffer.subarray(2+n);
         for(const fn of this.listeners)fn(new Uint8Array(msg.buffer,msg.byteOffset,msg.length));}});
-    socket.on('close',()=>{if(this.socket===socket){this.socket=null;for(const fn of this.closers||[])fn();}});
+    socket.on('close',()=>{if(this.socket===socket){this.socket=null;this.free();for(const fn of this.closers||[])fn();}});
     this.socket=socket;return this;
   }
   onPacket(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
   onClose(fn){(this.closers??=new Set()).add(fn);return()=>this.closers.delete(fn);}
   send(bytes){if(!this.socket||!(bytes instanceof Uint8Array)||bytes.length<5||bytes.length>65507)return;const head=Buffer.alloc(2);head.writeUInt16BE(bytes.length);this.socket.write(Buffer.concat([head,Buffer.from(bytes.buffer,bytes.byteOffset,bytes.length)]));}
-  async close(){const s=this.socket;this.socket=null;this.listeners.clear();if(s)await new Promise(r=>{s.once('close',r);s.end();setTimeout(r,500);});}
+  async close(){const s=this.socket;this.socket=null;this.listeners.clear();if(s)await new Promise(r=>{s.once('close',r);s.end();setTimeout(r,500);});this.free();}
 }
-module.exports={FtcSocket,UsbFtcSocket,probeFtc,findFtc,FTC_ADDRESSES};
+// USB comes first. A Robot Controller keeps the Driver Station it has until that one has been silent for about two seconds, then
+// takes whichever asks next (measured on a Control Hub, SDK 11.2: still ours after 1 s of silence, a Driver Hub's after 2.5 s). Torque
+// talks to the robot in short sessions, so between them a Driver Station on the robot's Wi-Fi would get it back and the next
+// session would be refused. While nothing else is using the cable, this keeps a station connected through the relay, which is all
+// it does: it starts nothing and sends no commands of its own beyond what any station sends on connecting.
+// enable(connect): connect as UsbFtcSocket takes it, and must not start the Robot Controller app. It holds from the first time
+// something used the cable, tries a few times when the link drops (the cable was pulled), and waits for the next use after that.
+class UsbHold {
+  constructor(){this.connect=null;this.users=0;this.link=null;this.chain=Promise.resolve();this.timer=null;this.tries=0;this.armed=false;}
+  enable(connect){this.connect=connect||null;if(!connect)return this.queue(()=>this.down());}
+  holding(){return !!this.link&&this.link.ds.connected();}
+  queue(fn){const p=this.chain.then(fn,fn);this.chain=p.catch(()=>{});return p;}
+  acquire(){this.users++;this.armed=true;return this.queue(()=>this.down());}
+  release(){this.users=Math.max(0,this.users-1);if(!this.users){this.tries=0;void this.queue(()=>this.up());}}
+  retry(){clearTimeout(this.timer);if(++this.tries>5)return;this.timer=setTimeout(()=>void this.queue(()=>this.up()),3000);this.timer.unref?.();}
+  async up(){
+    if(!this.connect||!this.armed||this.users||this.link)return;const socket=new UsbFtcSocket(this.connect,{held:true});
+    try{await socket.open();}catch{this.retry();return;}
+    if(this.users||!this.connect){await socket.close();return;}
+    const ds=new Robocol.DriverStation({send:bytes=>socket.send(bytes)});socket.onPacket(bytes=>ds.receive(bytes));
+    socket.onClose(()=>{if(this.link?.socket===socket){ds.stop();this.link=null;this.retry();}});ds.start();this.link={socket,ds};this.tries=0;}
+  async down(){clearTimeout(this.timer);const l=this.link;this.link=null;if(l){l.ds.stop();await l.socket.close();}}
+}
+const usbHold=new UsbHold();
+module.exports={usbHold,UsbHold,FtcSocket,UsbFtcSocket,probeFtc,findFtc,FTC_ADDRESSES};

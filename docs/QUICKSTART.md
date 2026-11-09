@@ -105,8 +105,10 @@ One tab, three steps, and the Axon Programmer apart at the far right. **1 Setup*
 **Electronics** reads the Control Hub (Set up from the Control Hub over USB-C), shows every motor, servo and
 sensor with its port, explains each USB device with what the rules say about it, and runs the guided check. In **Live debug**, over USB it starts by itself. Every
 port reads live. Anything that spins runs only while you hold its slider, a servo has a dial, a light has a switch, each box checks its own device with settings you can change, and STOP or Space stops everything. **Mechanisms** unlocks
-once the hub is read and walks each mechanism through the steps its sensors allow (confirm it, its direction,
-units, zero, range, feedforward, feedback, sensor thresholds, commit). Put the robot on blocks first.
+once the hub is read. It lists only the mechanisms Simulate has (Simulate → Setup → Mechanisms, each with the motor or
+servo it runs on and its feedback sensor), and walks each one through the steps its sensors allow: link each of those
+parts to the configured device and port it really is, then its direction, units, zero, range, feedforward, feedback,
+sensor thresholds, commit. Put the robot on blocks first.
 See [CALIBRATION.md](CALIBRATION.md).
 
 ## Drive view and controllers

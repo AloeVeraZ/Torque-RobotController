@@ -35,11 +35,24 @@ async function session(host,task,{timeout=8000,socket=null}={}){
   try{
     ds.start();
     const s=await until(s=>['connected','rejected','incompatible'].includes(s.connection),host==='usb'?Math.max(timeout,30000):timeout,host==='usb'?'The Robot Controller app on the Control Hub did not answer over the USB cable. Restart the robot, then try again.':`No FTC robot answered at ${host}. Join the robot's Wi-Fi and check the Robot Controller app is running.`);
-    if(s.connection==='rejected')throw Error('Another Driver Station is connected to this robot. Disconnect it, then try again.');
-    if(s.connection==='incompatible')throw Error(`This robot runs an FTC SDK older than this app supports (Robocol ${s.robot?.robocol}).`);
-    return await task({ds,ask,answer,until,sent,host});
+    const refused='Another Driver Station is connected to this robot. Disconnect it, then try again.';let s2=s,tookOver=false;
+    // USB comes first: the robot is taken from the station on its Wi-Fi (usbTakeOver), with this one asking all the way through the restart.
+    if(s.connection==='rejected'&&host==='usb'&&usbPriority.on&&Date.now()-usbPriority.at>usbPriority.every){usbPriority.at=Date.now();const fast=setInterval(()=>ds.discover(),50);
+      try{await usbPriority.take();s2=await until(x=>['connected','incompatible'].includes(x.connection),usbPriority.wait,refused);tookOver=true;}finally{clearInterval(fast);}}
+    if(s2.connection==='rejected')throw Error(refused);
+    if(s2.connection==='incompatible')throw Error(`This robot runs an FTC SDK older than this app supports (Robocol ${s2.robot?.robocol}).`);
+    return await task({ds,ask,answer,until,sent,host,tookOver});
   }finally{ds.stop();off();if(!socket)await link.close();}
 }
+// The cable is the priority way to use the robot. A Robot Controller holds one Driver Station and refuses the rest, and nothing a
+// second station sends makes it let go; but it takes the first one that asks after it starts. So when a station on the robot's
+// Wi-Fi (a Driver Hub left on) has it, the Robot Controller app is restarted over ADB, as Restart Robot does plus a few seconds,
+// and the cable's station, already asking twenty times a second, is the first it hears (seen on a Control Hub, SDK 11.2: taken
+// 18 s after the stop). An op mode that station was running stops with the app. Off unless the app turns it on (usbPriority.on):
+// tests and tools never restart a real robot. every: not twice within this long, so two stations cannot fight over the robot.
+const RC_PACKAGE='com.qualcomm.ftcrobotcontroller',RC_START=RC_PACKAGE+'/org.firstinspires.ftc.robotcontroller.internal.PermissionValidatorWrapper';
+const usbPriority={on:false,at:0,every:60000,wait:75000,take:()=>usbTakeOver()};
+async function usbTakeOver({run}={}){const {serial}=await usbForward({run}),sh=cmd=>adb(['-s',serial,'shell',cmd],{run});await sh('am force-stop '+RC_PACKAGE);await sh('am start -n '+RC_START).catch(()=>{});}
 const configFile=name=>({name,resourceId:0,location:'LOCAL_STORAGE',isDirty:false});
 // The saved configurations (RobotConfigFile entries) and the active one's name.
 async function configurations({ask,until},timeout){
@@ -128,8 +141,8 @@ async function deleteConfiguration(host,name,{timeout=8000,socket=null}={}){
     await sent(ds.command('CMD_DELETE_CONFIGURATION',JSON.stringify(configFile(name))));const left=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS'));if(Array.isArray(left)&&left.some(c=>c?.name===name))throw Error(`The robot did not delete “${name}”.`);return {name};},{timeout,socket});}
 // That data really goes both ways with this robot, whichever hub and FTC SDK it has. Each step: {name, ok, detail}.
 async function connectionCheck(host,{timeout=8000,socket=null}={}){
-  return session(host,async({ds,ask})=>{const robot=ds.state.robot||{},began=Date.now(),list=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS')),ms=Date.now()-began,live=await rcHubs(host);
-    return [{name:'Robot Controller app',ok:true,detail:`FTC SDK ${robot.sdk||'unknown'}, Robocol ${robot.robocol??'unknown'}${ds.state.adaptedVersion?' (matched to this robot)':''}`},
+  return session(host,async({ds,ask,tookOver})=>{const robot=ds.state.robot||{},began=Date.now(),list=JSON.parse(await ask('CMD_REQUEST_CONFIGURATIONS')),ms=Date.now()-began,live=await rcHubs(host);
+    return [...(tookOver?[{name:'USB comes first',ok:true,detail:'A Driver Station on the robot’s Wi-Fi had the robot. Torque restarted the Robot Controller app and took it for the cable; that station now waits its turn.'}]:[]),{name:'Robot Controller app',ok:true,detail:`FTC SDK ${robot.sdk||'unknown'}, Robocol ${robot.robocol??'unknown'}${ds.state.adaptedVersion?' (matched to this robot)':''}`},
       {name:'Data to and from the robot',ok:true,detail:`${Array.isArray(list)?list.length:0} configuration${Array.isArray(list)&&list.length===1?'':'s'} read in ${ms} ms`},
       {name:'Robot web server',ok:live.length>0,detail:live.length?`${live.length} hub${live.length===1?'':'s'} open`:'Did not answer. Hubs, sending code and logs may not work until the robot restarts.'}];},{timeout,socket});}
 
@@ -185,7 +198,8 @@ const two=n=>String(n).padStart(2,'0'),debugName=(at=new Date())=>`TorqueDebug-$
 const debugSource=(name=debugName())=>fs.readFileSync(path.join(__dirname,'onbot','TorqueDebug.java'),'utf8').replace('@TeleOp(name = "TorqueDebug"',`@TeleOp(name = "${name}"`);
 // Whether the robot's copy is this one: its name only says when it went on, so everything else in the source has to match. opMode: the name it has there, which the robot has built only if it lists it.
 const debugBody=text=>String(text).replace(/\r\n/g,'\n').replace(/@TeleOp\(name = "[^"]*"/,'@TeleOp(name = "TorqueDebug"').trim(),debugNameIn=text=>/@TeleOp\(name = "([^"]*)"/.exec(String(text))?.[1]||null;
-async function debugCurrent(host,{client}={}){if(!client)client=await onBotClient(host);await webReady(client);const theirs=await client.read(DEBUG_FILE),current=theirs!==null&&debugBody(theirs)===debugBody(debugSource());return {current,opMode:current?debugNameIn(theirs):null};}
+// The file being there is not enough: OnBot Java builds every file together, so a team file that did not compile leaves this one unbuilt and its op mode off the robot's list. A last build that failed counts as not having it, and putting it on again builds (and fixes what it can).
+async function debugCurrent(host,{client}={}){if(!client)client=await onBotClient(host);const build=await webReady(client),theirs=await client.read(DEBUG_FILE),current=theirs!==null&&debugBody(theirs)===debugBody(debugSource())&&!(build?.completed&&build.successful===false);return {current,opMode:current?debugNameIn(theirs):null};}
 // Whether the robot is free for what nobody pressed for, seen as a Driver Station sees it. session itself refuses when another Driver Station has the robot. A Torque Debug left running is nobody's work and holds the camera, so it goes.
 const debugIdle=(host,{timeout=8000,socket=null,settle=400}={})=>session(host,async({ds,until})=>{await until(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
   // The robot says what is running on its next loop after the connection, which can be just after the list.
@@ -301,13 +315,53 @@ function buildProblem(errors){const list=errors||[],theirs=list.find(e=>e.file!=
   if(theirs)return `Your file ${theirs.file} has an error on line ${theirs.line}: ${theirs.message}. OnBot Java builds every file together, so nothing new can go on the robot until that file is fixed. Torque did not change it.`;
   if(own)return `Torque’s own program did not build on this robot (${own.file} line ${own.line}: ${own.message}). This is not your code. Check for a Torque update.`;
   return 'The robot could not build. Open its OnBot Java page to see why.';}
+// ---- a team file that stops the build, fixed ------------------------------------------------------------------------------
+// OnBot Java builds every file together, so one broken file of the team's keeps Torque Debug (and everything else) off the robot.
+// What can be fixed without guessing what the team meant is fixed: Java allows a public class only in a file of its own name, so
+// "class Marcus is public, should be declared in a file named Marcus.java" has one right answer. Each such class moves to a file
+// named after it, with the file's package and imports; what is left stays, and a file left with nothing is removed. The file as
+// it was is kept on this computer first, and a file the robot already has is never written over. Anything else is left alone.
+// The source with comments, strings and characters blanked (newlines kept), so braces and words in them do not count.
+function javaMask(text){let out='',i=0;const n=text.length,blank=(a,b)=>text.slice(a,b).replace(/[^\n]/g,' ');
+  while(i<n){const c=text[i],d=text[i+1];
+    if(c==='/'&&d==='/'){const e=text.indexOf('\n',i),end=e<0?n:e;out+=blank(i,end);i=end;}
+    else if(c==='/'&&d==='*'){const e=text.indexOf('*/',i+2),end=e<0?n:e+2;out+=blank(i,end);i=end;}
+    else if(c==='"'||c==="'"){let j=i+1;while(j<n&&text[j]!==c&&text[j]!=='\n'){if(text[j]==='\\')j++;j++;}j=Math.min(n,j+1);out+=blank(i,j);i=j;}
+    else{out+=c;i++;}}
+  return out;}
+// A file's top-level types ({name, public, start, end}) and where its package and imports end. Null when its braces do not pair up.
+function javaTypes(text){const mask=javaMask(text),depths=new Int32Array(mask.length+1);let depth=0;for(let i=0;i<mask.length;i++){depths[i]=depth;if(mask[i]==='{')depth++;else if(mask[i]==='}')depth--;if(depth<0)return null;}if(depth!==0)return null;
+  const types=[];for(const m of mask.matchAll(/\b((?:(?:public|final|abstract|strictfp|static)\s+)*)(?:class|interface|enum)\s+([A-Za-z_]\w*)/g)){if(depths[m.index]!==0)continue;const from=mask.indexOf('{',m.index);if(from<0)return null;
+    let d=0,end=-1;for(let i=from;i<mask.length;i++){if(mask[i]==='{')d++;else if(mask[i]==='}'&&--d===0){end=i+1;break;}}if(end<0)return null;types.push({name:m[2],public:/\bpublic\b/.test(m[1]),start:m.index,end});}
+  let header=0;const first=types[0]?.start??mask.length;for(const m of mask.matchAll(/\b(?:package|import)\b[^;{}]*;/g))if(m.index<first&&depths[m.index]===0)header=m.index+m[0].length;
+  return {types,header};}
+// {save: {file: text}, remove: [file], moved: [class names]}, or null when the file needs nothing or cannot be read for sure.
+function splitPublicTypes(file,text){const info=javaTypes(String(text));if(!info||!info.types.length)return null;const {types,header}=info,dir=file.includes('/')?file.slice(0,file.lastIndexOf('/')+1):'',base=path.basename(file,'.java');
+  const moving=types.filter(t=>t.public&&t.name!==base);if(!moving.length||new Set(moving.map(t=>t.name)).size!==moving.length)return null;
+  const head=text.slice(0,header),save={};let rest=head;
+  types.forEach((t,i)=>{const part=text.slice(i?types[i-1].end:header,i===types.length-1?text.length:t.end);if(moving.includes(t))save[`${dir}${t.name}.java`]=head+part.replace(/\s*$/,'\n');else rest+=part;});
+  const stays=types.length>moving.length;if(stays)save[file]=rest.replace(/\s*$/,'\n');
+  return {save,remove:stays?[]:[file],moved:moving.map(t=>t.name)};}
+// Fixes what a failed build's log names, on the robot. own: files that are Torque's, never touched here. Answers what it did: [{file, moved, removed, backup}].
+async function fixBuild(client,log,{backupDir,own=[]}={}){const fixed=[],seen=new Set();
+  for(const m of String(log).matchAll(/([\w./\\-]+\.java)(?::\d+(?::\d+)?:|\(\d+:\d+\):)\s*error:\s*class \w+ is public, should be declared in a file named \w+\.java/gi)){
+    let rel=m[1].replace(/\\/g,'/');if(rel.includes('/src/'))rel=rel.slice(rel.lastIndexOf('/src/')+5);rel=rel.replace(/^\.?\/+/,'');if(seen.has(rel)||own.includes(rel))continue;seen.add(rel);
+    try{const text=await client.read(rel);if(text===null)continue;const plan=splitPublicTypes(rel,text);if(!plan)continue;
+      let taken=false;for(const file of Object.keys(plan.save))if(file!==rel&&await client.read(file)!==null){taken=true;break;}if(taken)continue;
+      let backup=null;if(backupDir){const dir=path.join(backupDir,String(client.host).replace(/[^\w.-]/g,'_'));fs.mkdirSync(dir,{recursive:true});backup=path.join(dir,`${new Date().toISOString().replace(/[:.]/g,'-')}-${path.basename(rel)}`);fs.writeFileSync(backup,text);}
+      for(const [file,body] of Object.entries(plan.save))await client.save(file,body);for(const file of plan.remove)await client.remove(file);
+      fixed.push({file:path.basename(rel),moved:plan.moved,removed:plan.remove.length>0,backup});}catch{}}
+  return fixed;}
+// What was fixed, in a sentence a file.
+const fixNote=fixed=>(fixed||[]).map(x=>{const names=x.moved.map(n=>`${n}.java`),list=names.length>1?`${names.slice(0,-1).join(', ')} and ${names.at(-1)}`:names[0],many=x.moved.length>1;
+  return `Torque fixed ${x.file} so the robot could build: Java wants each public class in a file with its own name, so ${many?'its classes '+x.moved.join(', ').replace(/, ([^,]*)$/,' and $1')+' are':'its class '+x.moved[0]+' is'} now in ${list}${x.removed?`, and ${x.file} is gone`:''}. The code itself is unchanged${x.backup?', and the file as it was is kept in Torque’s robot backups on this computer':''}.`;}).join(' ');
 // Uploads the export's files and builds them. A file the robot already has with other contents is kept on this computer
 // first (backupDir); files listed in keep are written only when the robot does not have them yet. remove: files of Deck's own
 // that this replaces, deleted first.
 const onBotClient=async host=>host==='usb'?new OnBotJava('127.0.0.1',{port:(await usbForward()).port}):new OnBotJava(host);
 // Just after a new configuration the robot restarts, and its web server may refuse a connection for a moment.
 async function webReady(client){for(let attempt=0;;attempt++){try{return await client.available();}catch(e){if(!['ECONNREFUSED','ECONNRESET'].includes(e.code)||attempt>=8)throw e;await delay(1000);}}}
-async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},client}={}){
+async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},client,fix=true}={}){
   if(!client)client=await onBotClient(host);
   const entries=Object.entries(files||{});if(!entries.length)throw Error('Nothing to send.');
   const backups=[],written=[],kept=[];
@@ -323,8 +377,10 @@ async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},cl
       const copy=path.join(dir,`${stamp}-${path.basename(file)}`);fs.writeFileSync(copy,theirs);backups.push(copy);}
     await client.save(file,text);written.push(path.basename(file));
   }
-  const result=await client.build({onProgress});
-  return {...result,written,kept,backups};
+  let result=await client.build({onProgress});const fixed=[];
+  // A file of the team's that stops the build for a reason with one right answer is fixed, and it builds again (fixBuild).
+  for(let round=0;round<3&&fix&&!result.built;round++){const did=await fixBuild(client,result.log,{backupDir,own:entries.map(([file])=>file)}).catch(()=>[]);if(!did.length)break;fixed.push(...did);onProgress('fixing',did.map(x=>x.file).join(', '));result=await client.build({onProgress});}
+  return {...result,written,kept,backups,fixed};
 }
 // ---- a Control Hub on this computer's USB cable (ADB) -------------------------------------------------------------
 // The Robot Controller keeps each configuration as /sdcard/FIRST/<name>.xml. Over USB Deck lists and reads them with ADB
@@ -436,6 +492,10 @@ async function usbDebugGuard({run,watch=40000,pause=2000,before,still=()=>true}=
     const now=await usbCrashes({run,serial});if(!old||!now||!now.some(l=>!old.includes(l)))continue;
     await sh(`rm -f /sdcard/FIRST/java/src/${DEBUG_FILE}; rm -rf /sdcard/FIRST/java/build/jars/* /sdcard/FIRST/java/build/classes/*`);await usbController(serial,{run});
     throw Object.assign(Error('The Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque took that program off and restarted the app. Your OnBot Java files are all still there, but their last build had to be cleared too, so your OnBot Java op modes will not show until you open OnBot Java and press Build Everything.'),{crashed:true,serial});}}
+// Who is on the hub's own Wi-Fi and talking to it now, from its neighbour table: [{address, mac}]. When the robot says another
+// Driver Station has it, that station is one of these (the cable's own link is the hub talking to itself, and is not listed).
+async function usbWifiClients({run}={}){try{const {serial}=await usbForward({run});
+  return (await adb(['-s',serial,'shell','ip neigh show dev wlan0'],{run,timeout:5000})).split(/\r?\n/).map(l=>/^(\d+\.\d+\.\d+\.\d+)\s+lladdr\s+(\S+)\s+(REACHABLE|DELAY|PROBE)\b/.exec(l.trim())).filter(Boolean).map(m=>({address:m[1],mac:m[2]}));}catch{return [];}}
 // Sets up the ports, the Robot Controller and the relay: what the Driver Station link needs.
 async function usbLink(options){const ports=await usbForward(options);await Promise.all([usbController(ports.serial,options),usbRelay(ports.serial,options)]);return ports;}
 // The hub's own name (FTC-zWL4, 9999-C-RC), as the Driver Station's Network shows it; the Robot Controller's web server says.
@@ -443,4 +503,4 @@ async function usbRobotName(options){try{const {port}=await usbForward(options);
 // Updates the Robot Controller app on the hub plugged in (src/rc-update.cjs), then waits for it to answer again.
 async function usbUpdateController({run,...options}={}){const {serial}=await usbForward({run});
   return require('./rc-update.cjs').update({serial,adb:(args,o)=>adb(args,{run,...o}),controller:s=>usbController(s,{run,wait:90000}),...options});}
-module.exports={usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};
+module.exports={javaTypes,splitPublicTypes,fixBuild,fixNote,usbPriority,usbTakeOver,usbWifiClients,usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};

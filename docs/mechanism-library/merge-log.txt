@@ -1,0 +1,8 @@
+passive-funnel-intake: entry subassembly -> component (nothing moves on the model)
+lift-counterbalance: dof null -> 0 (adds force, moves nothing itself)
+constant-force-spring-lift: dof null -> 0 (adds force, moves nothing itself)
+arm-counterbalance: dof null -> 0 (adds force, moves nothing itself)
+duplicate id tilting-bucket: kept batch4, dropped batch3
+contact-bumper: dof null -> 0 (adds force, moves nothing itself)
+contact-bumper: entry subassembly -> component (nothing moves on the model)
+fixed-camera-mount: entry subassembly -> component (nothing moves on the model)

@@ -18,7 +18,7 @@ test('Configure draws the configuration on screen: unsaved names, gears and webc
 test('every device type Configure Robot offers has a picture, a maker and a description',()=>{
   const tags=[...Object.keys(C.MOTOR_TYPES),...Object.values(C.EDIT_TYPES).flat().map(([t])=>t)];
   for(const tag of tags){const i=A.info(tag);assert.ok(A.DEVICES[tag],`${tag} has an entry`);assert.ok(i.name&&i.what&&i.maker,`${tag} has facts`);assert.match(A.svg(tag),/^<svg[^>]+viewBox="0 0 160 120"/);}
-  for(const tag of Object.keys(A.PHOTOS))assert.ok(tag.startsWith('#')||tag.startsWith('model-')||A.DEVICES[tag],`${tag} photo is for a known device`);
+  for(const tag of Object.keys(A.PHOTOS))assert.ok(tag.startsWith('#')||tag.startsWith('model-')||tag.startsWith('mech:')||A.DEVICES[tag],`${tag} photo is for a known device`);
   for(const [tag,[page]] of Object.entries(A.PHOTOS))assert.match(page,/^https:\/\//,`${tag} listing is https`);
   assert.equal(A.photoOf('goBILDA5202SeriesMotor').site,'gobilda.com');assert.equal(A.photoOf('Motor'),null);
   // Every type a port takes shows a product photo; only the generic Unspecified Motor keeps its drawing.

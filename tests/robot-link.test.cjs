@@ -330,3 +330,24 @@ test('Setup checks the connection, replaces a configuration when editing it, and
   assert.ok(!(await withSocket(socket=>readConfigurations(ROBOT,{socket}))).configurations.includes('spare'));
   await assert.rejects(withSocket(socket=>deleteConfiguration(ROBOT,'nope',{socket})),/no configuration named/);
 });
+
+test('a public class in a file of another name is moved to its own file on the robot, and nothing else is touched',async()=>{
+  const L=require('../src/robot-link.cjs'),os=require('node:os'),fsx=require('node:fs'),pathx=require('node:path');
+  const two='/* Copyright { */\npackage org.firstinspires.ftc.teamcode;\n\nimport com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;\nimport com.qualcomm.robotcore.eventloop.opmode.TeleOp;\n\n@TeleOp(name="Marcus", group="Linear { OpMode")\n\npublic class Marcus extends LinearOpMode {\n    @Override\n    public void runOpMode() { String s = "}"; char c = \'{\'; }\n}\n\n    @TeleOp(name="Yoav", group="Linear OpMode")\n\npublic class Yoav extends LinearOpMode {\n    @Override\n    public void runOpMode() { }\n}\n';
+  const plan=L.splitPublicTypes('org/firstinspires/ftc/teamcode/Test.java',two);
+  assert.deepEqual(Object.keys(plan.save),['org/firstinspires/ftc/teamcode/Marcus.java','org/firstinspires/ftc/teamcode/Yoav.java']);assert.deepEqual(plan.remove,['org/firstinspires/ftc/teamcode/Test.java']);assert.deepEqual(plan.moved,['Marcus','Yoav']);
+  const [marcus,yoav]=Object.values(plan.save);for(const t of [marcus,yoav]){assert.match(t,/^\/\* Copyright \{ \*\/\npackage org\.firstinspires\.ftc\.teamcode;/);assert.match(t,/import com\.qualcomm\.robotcore\.eventloop\.opmode\.TeleOp;/);assert.equal(L.splitPublicTypes('x/'+/class (\w+)/.exec(t)[1]+'.java',t),null,'and that file needs nothing more');}
+  assert.match(marcus,/@TeleOp\(name="Marcus"[^]*public class Marcus[^]*char c = '\{'; \}\n\}\n$/);assert.doesNotMatch(marcus,/Yoav/);assert.match(yoav,/@TeleOp\(name="Yoav"[^]*public class Yoav/);assert.doesNotMatch(yoav,/Marcus/);
+  // A class that belongs to the file stays in it, with the classes that are not public.
+  const mixed=L.splitPublicTypes('a/Main.java','package a;\npublic class Main {}\nclass Helper {}\npublic class Other {}\n');assert.deepEqual(Object.keys(mixed.save).sort(),['a/Main.java','a/Other.java']);assert.deepEqual(mixed.remove,[]);assert.match(mixed.save['a/Main.java'],/class Main \{\}\nclass Helper \{\}\n$/);assert.doesNotMatch(mixed.save['a/Main.java'],/Other/);
+  assert.equal(L.splitPublicTypes('a/Main.java','package a;\npublic class Main {}\n'),null);assert.equal(L.splitPublicTypes('a/Main.java','package a;\npublic class Other {\n'),null,'braces that do not pair up are left alone');
+  // On the robot: read, kept on this computer, written, removed. A name the robot already has is not written over.
+  const log='org/firstinspires/ftc/teamcode/Test.java(40:8): ERROR: class Marcus is public, should be declared in a file named Marcus.java\norg/firstinspires/ftc/teamcode/Test.java(57:8): ERROR: class Yoav is public, should be declared in a file named Yoav.java\nOther.java(3:1): ERROR: cannot find symbol\n';
+  const robot=files=>({host:'127.0.0.1',files,read:async f=>files[f]??null,save:async(f,t)=>{files[f]=t;},remove:async f=>{delete files[f];}}),dir=fsx.mkdtempSync(pathx.join(os.tmpdir(),'deck-fix-'));
+  const a=robot({'org/firstinspires/ftc/teamcode/Test.java':two,'Other.java':'class Other { x }'}),fixed=await L.fixBuild(a,log,{backupDir:dir});
+  assert.deepEqual(Object.keys(a.files).sort(),['Other.java','org/firstinspires/ftc/teamcode/Marcus.java','org/firstinspires/ftc/teamcode/Yoav.java']);assert.equal(a.files['Other.java'],'class Other { x }','what cannot be fixed for sure is not touched');
+  assert.equal(fixed.length,1);assert.deepEqual(fixed[0].moved,['Marcus','Yoav']);assert.equal(fsx.readFileSync(fixed[0].backup,'utf8'),two,'the file as it was is kept');
+  assert.match(L.fixNote(fixed),/^Torque fixed Test\.java so the robot could build: .*its classes Marcus and Yoav are now in Marcus\.java and Yoav\.java, and Test\.java is gone\. The code itself is unchanged/);
+  const b=robot({'org/firstinspires/ftc/teamcode/Test.java':two,'org/firstinspires/ftc/teamcode/Yoav.java':'theirs'});assert.deepEqual(await L.fixBuild(b,log,{backupDir:dir}),[]);assert.equal(b.files['org/firstinspires/ftc/teamcode/Yoav.java'],'theirs');assert.equal(b.files['org/firstinspires/ftc/teamcode/Test.java'],two);
+  assert.deepEqual(await L.fixBuild(robot({'TorqueDebug.java':two}),'TorqueDebug.java(9:8): ERROR: class Marcus is public, should be declared in a file named Marcus.java',{own:['TorqueDebug.java']}),[],'never Torque’s own file');
+});

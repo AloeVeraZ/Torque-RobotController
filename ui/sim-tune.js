@@ -34,7 +34,7 @@
   // ---- templates and gates -------------------------------------------------------------------------------------------
   const GATES={
     G0:{name:'Control Hub',short:'Hub',what:'Every device in the configuration read from the Control Hub (Set up from the Control Hub, or Live debug).',pass:'The devices are read, and the configuration has not changed since.'},
-    G1:{name:'Identify',short:'Identify',what:'This is the mechanism, on these devices.',pass:'You confirmed its type and its motors, servos and sensors.'},
+    G1:{name:'Link to the robot',short:'Link',what:'Simulate lists what this mechanism runs on and what measures it. Say which motor, servo and sensor of the robot’s configuration each one is.',pass:'Its motor or servo and every sensor Simulate lists on it is on a port the configuration has.'},
     G2:{name:'Bind and direction',short:'Direction',what:'Run it briefly and watch every input: only its own sensor should move, and + should mean the way you call positive.',pass:'Its sensor answered and you confirmed which way is positive.'},
     G3:{name:'Units',short:'Units',what:'Turn sensor counts or volts into the mechanism’s own units: the gear or belt ratio between sensor and output, the spool or the angle a turn makes.',pass:'A known move reads within 2 % (or two readings agree).'},
     G4:{name:'Zero',short:'Zero',what:'Where 0 is: a switch, a gentle stall against a stop, an absolute sensor, or where it starts.',pass:'Three zeroings agree within 0.5° or 2 counts.'},
@@ -157,7 +157,9 @@
     if(typeof v==='string')return v.length<=200?v:v.slice(0,200);if(depth>5||v===null||typeof v!=='object')return undefined;
     if(Array.isArray(v))return v.slice(0,64).map(x=>clean(x,depth+1)).filter(x=>x!==undefined);
     const out={};for(const [k,x] of Object.entries(v).slice(0,200)){if(!/^[\w.:-]{1,80}$/.test(k))continue;const c=clean(x,depth+1);if(c!==undefined)out[k]=c;}return out;}
-  const sanitize=raw=>{const c=clean(raw&&typeof raw==='object'?raw:{});return {...(c.hub&&typeof c.hub==='object'?{hub:c.hub}:{}),...(c.lens&&typeof c.lens==='object'&&!Array.isArray(c.lens)?{lens:c.lens}:{}),mechs:c.mechs&&typeof c.mechs==='object'&&!Array.isArray(c.mechs)?c.mechs:{}};};
+  const sanitize=raw=>{const c=clean(raw&&typeof raw==='object'?raw:{});return {...(c.hub&&typeof c.hub==='object'?{hub:c.hub}:{}),...(c.lens&&typeof c.lens==='object'&&!Array.isArray(c.lens)?{lens:c.lens}:{}),mechs:c.mechs&&typeof c.mechs==='object'&&!Array.isArray(c.mechs)?c.mechs:{},...(Array.isArray(c.links)?{links:c.links.filter(linkOk)}:{}),...(c.chassis&&typeof c.chassis==='object'&&!Array.isArray(c.chassis)?{chassis:c.chassis}:{}),...(c.electronics&&typeof c.electronics==='object'&&!Array.isArray(c.electronics)?{electronics:c.electronics}:{})};};
+  // Calibrate → Electronics' "if this, then this" links (ui/sim-links.js): only whole ones are kept.
+  const linkOk=l=>!!l&&typeof l==='object'&&typeof l.id==='string'&&Array.isArray(l.causes)&&l.causes.every(c=>c&&typeof c.name==='string'&&['motor','crservo','servo','piece'].includes(c.kind)&&(c.dir===1||c.dir===-1))&&!!l.effect&&typeof l.effect.key==='string'&&[1,-1,0].includes(l.effect.dir);
   // The constants file for the team's code: each calibrated mechanism's units, zero, limits and gains, as Java.
   // lens: project.calibration.lens, {camera: {size: {fx, fy, cx, cy}}}, one-tag estimates from Calibrate → Camera. The simulated webcam's are left out.
   function constants(list,{packageName='org.firstinspires.ftc.teamcode',className='DeckCalibration',when='',lens}={}){

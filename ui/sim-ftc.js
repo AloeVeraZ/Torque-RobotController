@@ -31,8 +31,8 @@
     // Odometry as mounted (Setup → Robot controller → Odometry): pod positions and directions, the Pinpoint's pod
     // offsets, directions and pod type, and the OTOS's position, rotation and scalars.
     const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(robot);
-    return {localization,imu:named('imu','imu'),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},drive:{kind:tank?'tank':'mecanum',ticksPerInch:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
-      pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH,...(m.reversed?{reversed:true}:{})};}),
+    return {localization,imu:named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},drive:{kind:tank?'tank':'mecanum',ticksPerInch:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
+      pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
       ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
   // Deck's own name for each drive and sensor device a robot of this kind uses, keyed as robot.devices keys them, with
@@ -152,7 +152,7 @@ ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.nam
     }
     public void update(){
         double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;Pose p=state.pose(),next;
-        double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=DeckFollower.angle(yaw-oldImu);oldImu=yaw;
+        double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=${h.imuScale&&h.imuScale!==1?`${n(h.imuScale)}*`:''}DeckFollower.angle(yaw-oldImu);oldImu=yaw;
         // The Pinpoint turns with its own IMU; while it does not answer (a loose cable), the Control Hub's IMU carries the heading.
         if(pinpoint!=null){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new Pose(p.x(),p.y(),p.heading()+dh);}
         else if(otos!=null){SparkFunOTOS.Pose2D q=otos.getPosition();next=new Pose(q.x,q.y,q.h);}
@@ -577,6 +577,11 @@ ${list.map(a=>`
         out.push({...base,role:'roller',field:`intake${no}`,constant:`INTAKE_${no}`,name:i.motor,device,reversed:!!i.reversed,power:i.power,label:`Intake ${no} roller`,setting:{list:'intakes',index:k,field:'motor'}});
         if(i.motor2)out.push({...base,role:'roller',field:`intake${no}b`,constant:`INTAKE_${no}B`,name:i.motor2,device,reversed:!!i.reversed2,power:i.power,label:`Intake ${no} second roller`,setting:{list:'intakes',index:k,field:'motor2'}});}
       if(Mech.deploys(i.kind))out.push({...base,role:i.kind,field:`${i.kind}${no}`,constant:`${i.kind.toUpperCase()}_${no}`,name:i.servo,device:i.rampKind==='dcmotor'?'motor':i.rampKind==='crservo'?'crservo':'servo',down:i.downPos,up:i.upPos,label:`Intake ${no} ${i.kind}`,setting:{list:'intakes',index:k,field:'servo'}});
+      // More motors and servos added to this intake: a motor or continuous servo runs with its rollers, a servo with its kicker or ramp.
+      const main=i.kind==='kicker'?null:i.device==='crservo'?'crservo':'motor',had={motor:0,crservo:0,servo:Mech.deploys(i.kind)?1:0};if(main)had[main]+=i.motor2?2:1;
+      (i.more||[]).forEach((x,e)=>{const n=++had[x.device],tag=`${no}x${e+1}`,word=x.device==='motor'?'motor':'servo',setting={list:'intakes',index:k,field:'more'+e};
+        if(x.device==='servo')out.push({...base,role:i.kind,field:`${i.kind}${tag}`,constant:`${i.kind.toUpperCase()}_${no}_X${e+1}`,name:x.name,device:'servo',down:i.downPos,up:i.upPos,label:`Intake ${no} ${i.kind} servo ${n}`,setting});
+        else out.push({...base,role:'roller',field:`intake${tag}`,constant:`INTAKE_${no}_X${e+1}`,name:x.name,device:x.device,reversed:!!x.reversed,power:i.power,label:`Intake ${no} roller ${word} ${n}`,setting});});
     });
     m.shooters.forEach((s,k)=>{const no=k+1,base={part:'shooter',index:k};
       out.push({...base,role:'flywheel',field:`flywheel${no}`,constant:`FLYWHEEL_${no}`,name:s.motor,device:'motor',reversed:!!s.reversed,label:`Shooter ${no} flywheel`,setting:{list:'shooters',index:k,field:'motor'}});
@@ -642,7 +647,7 @@ ${list.map(a=>`
       const [lo,hi]=K.limitsOf(j)[a.index||0]||[-Infinity,Infinity],home=Number.isFinite(a.home)?a.home:Number.isFinite(j.home)?j.home:0;
       const p={id:a.id,joint:j.id,role:'part',label:a.name,method,Name,constant:'PART_'+method.replace(/([a-z0-9])([A-Z])/g,'$1_$2').toUpperCase(),name:a.device||A.camel(a.name),device:PART_KINDS[a.kind],kind:a.kind,
         model:a.model||null,reversed:!!a.reversed,unit:K.dofOf(j)[a.index||0]==='in'?'in':'degrees',states:a.states||j.states||{},home,min:Number.isFinite(lo)?lo:null,max:Number.isFinite(hi)?hi:null,
-        speed:a.speed||90,accel:a.accel||0,power:Number.isFinite(a.power)?Math.min(1,a.power):1,setting:{kin:a.id},...(a.device2?{name2:a.device2,reversed2:!!a.reversed2}:{})};
+        speed:a.speed||90,accel:a.accel||0,power:Number.isFinite(a.power)?Math.min(1,a.power):1,setting:{kin:a.id},extra:K.extraDevices(a).map(x=>({name:x.device,reversed:x.reversed,s:String(x.n)}))};
       if(a.kind==='servo'||a.kind==='linear'){const v=A.servo(a);Object.assign(p,{center:v.center,servoMin:v.min,servoMax:v.max,perUnit:1/A.valueAt(a,v.center+1),pwm:v.pwm});}
       if(a.kind==='dcmotor')p.countsPerUnit=A.countsPer(a);
       out.push(p);}
@@ -672,18 +677,18 @@ ${list.map(a=>`
       if(p.device==='servo')C.push(`    /** The servo position that holds it where the CAD has it, and the change in position per ${p.unit==='in'?'inch':'degree'}${p.reversed?' (it turns the other way)':''}. */`,`    public static final double ${c}_CENTER = ${n(p.center)}, ${c}_POSITION_PER_UNIT = ${p.perUnit.toPrecision(6)}, ${c}_SERVO_MIN = ${n(p.servoMin)}, ${c}_SERVO_MAX = ${n(p.servoMax)};`);
       else if(p.device==='motor')C.push(bore?`    /** ${comment(bore.name)}'s encoder port reads a ${bore.cpr}-count encoder on the part itself: counts per ${p.unit==='in'?'inch':'degree'} of the part, and its power for RUN_TO_POSITION. */`:`    /** Encoder counts per ${p.unit==='in'?'inch':'degree'} of the part, and its power for RUN_TO_POSITION. */`,`    public static final double ${c}_COUNTS_PER_UNIT = ${(bore?bore.countsPerUnit:p.countsPerUnit).toPrecision(6)}, ${c}_POWER = ${n(p.power)};`,`    public static final boolean ${c}_REVERSED = ${p.reversed};`);
       else C.push(`    /** Its power while it moves, and which way positive power turns it. */`,`    public static final double ${c}_POWER = ${n(p.power)};`,`    public static final boolean ${c}_REVERSED = ${p.reversed};`);
-      if(p.name2)C.push(`    /** A second ${p.device==='motor'?'motor':'servo'} on the same part, driven with the first${p.reversed2?' (mounted mirrored)':''}. */`,`    public static final String ${c}_2 = ${javaString(p.name2)};`);
+      for(const x of p.extra)C.push(`    /** Another ${p.device==='motor'?'motor':'servo'} on the same part (number ${x.s}), driven with the first${x.reversed?' (mounted mirrored)':''}. */`,`    public static final String ${c}_${x.s} = ${javaString(x.name)};`);
       if(home)C.push(`    /** ${comment(home.name)} closes where the CAD has the part: sent there, it re-zeroes the encoder on the switch. */`,`    public static final String ${c}_HOME_SWITCH = ${javaString(home.name)};`);
       if(sensor)C.push(`    /** ${comment(sensor.name)} tells where it is: volts where the CAD has it, and volts per ${p.unit==='in'?'inch':'degree'} (the guided check measures both). */`,`    public static final String ${c}_SENSOR = ${javaString(sensor.name)};`,`    public static final double ${c}_ZERO_VOLTS = ${n(sensor.zeroVolts)}, ${c}_VOLTS_PER_UNIT = ${sensor.voltsPerUnit.toPrecision(6)};`);
       C.push('');
-      const type=p.device==='servo'?'Servo':p.device==='crservo'?'CRServo':'DcMotorEx';fields.push(`    private ${type} ${f};${p.name2?`\n    private ${type} ${f}2;`:''}${sensor?`\n    private AnalogInput ${f}Sensor;`:''}${home?`\n    private ${home.type==='touch'?'TouchSensor':'DigitalChannel'} ${f}Home;`:''}`,`    private double ${f}Target = ${c}_HOME, ${f}From = ${c}_HOME, ${f}Start = -1;`);
+      const type=p.device==='servo'?'Servo':p.device==='crservo'?'CRServo':'DcMotorEx';fields.push(`    private ${type} ${f};${p.extra.map(x=>`\n    private ${type} ${f}${x.s};`).join('')}${sensor?`\n    private AnalogInput ${f}Sensor;`:''}${home?`\n    private ${home.type==='touch'?'TouchSensor':'DigitalChannel'} ${f}Home;`:''}`,`    private double ${f}Target = ${c}_HOME, ${f}From = ${c}_HOME, ${f}Start = -1;`);
       if(p.device==='servo')init.push(`        ${f} = map.get(Servo.class, ${c});`,...(p.pwm&&(p.pwm[0]!==600||p.pwm[1]!==2400)?[`        if (${f} instanceof ServoImplEx) ((ServoImplEx) ${f}).setPwmRange(new PwmControl.PwmRange(${p.pwm[0]}, ${p.pwm[1]}));`]:[]),`        ${f}.setPosition(${f}Position(${c}_HOME));`);
       else if(p.device==='motor')init.push(`        ${f} = map.get(DcMotorEx.class, ${c});`,`        ${f}.setDirection(${c}_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`,`        ${f}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`,`        // Zero is where the robot starts, posed as in the CAD.`,`        ${f}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`        ${f}.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`        ${f}.setMode(DcMotor.RunMode.RUN_TO_POSITION);`);
       else init.push(`        ${f} = map.get(CRServo.class, ${c});`,`        ${f}.setDirection(${c}_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`);
       if(sensor)init.push(`        ${f}Sensor = map.get(AnalogInput.class, ${c}_SENSOR);`);
       if(home)init.push(home.type==='touch'?`        ${f}Home = map.get(TouchSensor.class, ${c}_HOME_SWITCH);`:`        ${f}Home = map.get(DigitalChannel.class, ${c}_HOME_SWITCH);\n        ${f}Home.setMode(DigitalChannel.Mode.INPUT);`);
-      // The second one is looked up by tryGet: a robot without it still runs.
-      if(p.name2)init.push(`        ${f}2 = map.tryGet(${type}.class, ${c}_2);`,...(p.device==='motor'?[`        if (${f}2 != null) {`,`            ${f}2.setDirection(${c}_REVERSED != ${p.reversed2} ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`,`            ${f}2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`,`            ${f}2.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`            ${f}2.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`            ${f}2.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,`        }`]:p.device==='crservo'?[`        if (${f}2 != null) ${f}2.setDirection(${c}_REVERSED != ${p.reversed2} ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`]:[`        if (${f}2 != null) ${f}2.setPosition(${f}Position2(${c}_HOME));`]));
+      // The others are looked up by tryGet: a robot without them still runs.
+      for(const {s:k,reversed:rv} of p.extra)init.push(`        ${f}${k} = map.tryGet(${type}.class, ${c}_${k});`,...(p.device==='motor'?[`        if (${f}${k} != null) {`,`            ${f}${k}.setDirection(${c}_REVERSED != ${rv} ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`,`            ${f}${k}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`,`            ${f}${k}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`            ${f}${k}.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`            ${f}${k}.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,`        }`]:p.device==='crservo'?[`        if (${f}${k} != null) ${f}${k}.setDirection(${c}_REVERSED != ${rv} ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);`]:[`        if (${f}${k} != null) ${f}${k}.setPosition(${f}Position${k}(${c}_HOME));`]));
       const clampValue=p.min!==null||p.max!==null?`        value = Math.max(${p.min!==null?`${c}_MIN`:'-Double.MAX_VALUE'}, Math.min(${p.max!==null?`${c}_MAX`:'Double.MAX_VALUE'}, value));\n`:'';
       const at=sensor?`Math.abs(${f}Measured() - ${f}Target) <= TOLERANCE_${p.unit==='in'?'INCHES':'DEGREES'}`:null,time=`moveSeconds(Math.abs(${f}Target - ${f}From), ${c}_SPEED${p.device==='crservo'?` * ${c}_POWER`:''}, ${c}_ACCEL)`;
       const done=p.device==='motor'?`!${f}.isBusy() || t >= ${time} * 2 + SENSOR_TIMEOUT_SECONDS`:at?`${at} || t >= ${time} + SENSOR_TIMEOUT_SECONDS`:`t >= ${time}`;
@@ -693,7 +698,7 @@ ${list.map(a=>`
 ${clampValue}        ${f}From = ${f}Target;
         ${f}Target = value;
         ${f}Start = clock.seconds();
-${p.device==='servo'?`        ${f}.setPosition(${f}Position(value));${p.name2?`\n        if (${f}2 != null) ${f}2.setPosition(${f}Position2(value));`:''}`:p.device==='motor'?`        ${f}.setTargetPosition((int) Math.round(value * ${c}_COUNTS_PER_UNIT));\n        ${f}.setMode(DcMotor.RunMode.RUN_TO_POSITION);\n        ${f}.setPower(${c}_POWER);${p.name2?`\n        if (${f}2 != null) {\n            ${f}2.setTargetPosition((int) Math.round(value * ${c}_COUNTS_PER_UNIT));\n            ${f}2.setMode(DcMotor.RunMode.RUN_TO_POSITION);\n            ${f}2.setPower(${c}_POWER);\n        }`:''}`:`        ${f}.setPower(Math.signum(value - ${f}From) * ${c}_POWER);${p.name2?`\n        if (${f}2 != null) ${f}2.setPower(Math.signum(value - ${f}From) * ${c}_POWER);`:''}`}
+${p.device==='servo'?`        ${f}.setPosition(${f}Position(value));${p.extra.map(({s:k})=>`\n        if (${f}${k} != null) ${f}${k}.setPosition(${f}Position${k}(value));`).join('')}`:p.device==='motor'?`        ${f}.setTargetPosition((int) Math.round(value * ${c}_COUNTS_PER_UNIT));\n        ${f}.setMode(DcMotor.RunMode.RUN_TO_POSITION);\n        ${f}.setPower(${c}_POWER);${p.extra.map(({s:k})=>`\n        if (${f}${k} != null) {\n            ${f}${k}.setTargetPosition((int) Math.round(value * ${c}_COUNTS_PER_UNIT));\n            ${f}${k}.setMode(DcMotor.RunMode.RUN_TO_POSITION);\n            ${f}${k}.setPower(${c}_POWER);\n        }`).join('')}`:`        ${f}.setPower(Math.signum(value - ${f}From) * ${c}_POWER);${p.extra.map(({s:k})=>`\n        if (${f}${k} != null) ${f}${k}.setPower(Math.signum(value - ${f}From) * ${c}_POWER);`).join('')}`}
     }
 
     /** True once ${comment(p.label)} has got there${at?' (its sensor says so)':p.device==='motor'?' (RUN_TO_POSITION is done)':''}. */
@@ -701,19 +706,19 @@ ${p.device==='servo'?`        ${f}.setPosition(${f}Position(value));${p.name2?`\
         if (${f}Start < 0) return true;
         double t = clock.seconds() - ${f}Start;
         boolean done = ${done};${p.device==='crservo'?`
-        if (done) { ${f}.setPower(0);${p.name2?` if (${f}2 != null) ${f}2.setPower(0);`:''} }`:''}
+        if (done) { ${f}.setPower(0);${p.extra.map(({s:k})=>` if (${f}${k} != null) ${f}${k}.setPower(0);`).join('')} }`:''}
         return done;
     }
 ${p.device==='servo'?`
     private static double ${f}Position(double value) {
         return Math.max(${c}_SERVO_MIN, Math.min(${c}_SERVO_MAX, ${c}_CENTER + value * ${c}_POSITION_PER_UNIT));
     }
-${p.name2?`
-    /** The second servo's position: the same, or mirrored about the center when it is mounted mirrored. */
-    private static double ${f}Position2(double value) {
-        return ${p.reversed2?`Math.max(0, Math.min(1, 2 * ${c}_CENTER - ${f}Position(value)))`:`${f}Position(value)`};
+${p.extra.map(({s:k,reversed:rv})=>`
+    /** Servo ${k}'s position: the same, or mirrored about the center when it is mounted mirrored. */
+    private static double ${f}Position${k}(double value) {
+        return ${rv?`Math.max(0, Math.min(1, 2 * ${c}_CENTER - ${f}Position(value)))`:`${f}Position(value)`};
     }
-`:''}`:''}${home?`
+`).join('')}`:''}${home?`
     /** True while ${comment(home.name)} is closed (REV switches pull the line low). */
     public boolean ${f}AtHome() {
         return ${home.type==='touch'?`${f}Home.isPressed()`:`${home.inverted?'':'!'}${f}Home.getState()`};
@@ -726,8 +731,8 @@ ${p.name2?`
 `:''}`);
       if(p.device==='crservo')updates.push(`        ${f}Done();`);
       // Sent home with its switch closed: the encoder counts from here again (relative encoders drift between runs).
-      if(p.device==='motor'&&home)updates.push(`        if (${f}AtHome() && Math.abs(${f}Target - ${c}_HOME) < 1e-6 && ${f}.getCurrentPosition() != (int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT)) {`,`            ${f}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`            ${f}.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`            ${f}.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,...(p.name2?[`            if (${f}2 != null) {`,`                ${f}2.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`                ${f}2.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`                ${f}2.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,`            }`]:[]),`        }`);
-      stops.push(p.device==='servo'?null:`        ${f}.setPower(0);${p.name2?`\n        if (${f}2 != null) ${f}2.setPower(0);`:''}`);}
+      if(p.device==='motor'&&home)updates.push(`        if (${f}AtHome() && Math.abs(${f}Target - ${c}_HOME) < 1e-6 && ${f}.getCurrentPosition() != (int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT)) {`,`            ${f}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`            ${f}.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`            ${f}.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,...p.extra.flatMap(({s:k})=>[`            if (${f}${k} != null) {`,`                ${f}${k}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);`,`                ${f}${k}.setTargetPosition((int) Math.round(${c}_HOME * ${c}_COUNTS_PER_UNIT));`,`                ${f}${k}.setMode(DcMotor.RunMode.RUN_TO_POSITION);`,`            }`]),`        }`);
+      stops.push(p.device==='servo'?null:`        ${f}.setPower(0);${p.extra.map(({s:k})=>`\n        if (${f}${k} != null) ${f}${k}.setPower(0);`).join('')}`);}
     const sensed=parts.some(p=>positionSensor(specs,'kin.'+p.id));
     return `package ${options.packageName};
 
@@ -1139,7 +1144,7 @@ ${[...motorTurrets,...crTurrets.map(({x})=>x)].map(x=>`        ${x.field}.setPow
   const REVERSED_FIELD={motor:'reversed',motor2:'reversed2',indexer:'indexerReversed',turretMotor:'turretReversed'};
   function checkOpMode(options,h,m,mechType='Mechanisms'){
     // h is null for a drivetrain Deck exports no drive code for (a Pedro swerve robot): the check then has no drive or IMU steps.
-    const name=options.checkName,motors=h?.drive?Object.entries(h.drive.motors):[],velocity=!!m&&m.shooter.control!=='power',d=m?mechanismDevices(m):[],M=mechType;
+    const name=options.checkName,motors=h?.drive?Object.entries(h.drive.motors):[],velocity=!!m&&m.shooter.control!=='power',d=m?mechanismDevices(m).filter(x=>!/^more/.test(x.setting.field)):[],M=mechType;
     const of=role=>d.filter(x=>x.role===role),say=javaString,steps=[],gets=[];
     const key=x=>`${x.setting.list}.${x.setting.index}.${REVERSED_FIELD[x.setting.field]}`,named=x=>`${x.label.toLowerCase()} ("${x.name}")`;
     const step=(title,body)=>steps.push(`        next(${say(title)});\n${body}`);

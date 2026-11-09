@@ -29,14 +29,15 @@ test('a roller on a swing arm: it turns on the drive axle, the side plates’ sl
   assert.deepEqual(arm.drive,{signal:'float',of:'intake:0'});assert.ok(parallel(arm.axis,[0,1,0]));near(lineDistance([8,0,3],arm.origin,arm.axis),0,.01,'on the drive axle');
   // The slot runs 30° up from the roller's axle; the bearing in it stops a little past where its centre line ends.
   near(arm.upper,30,1.5,'lifts as far as the slot lets it');assert.ok(arm.lower>-2&&arm.lower<=0,'it already sits at the bottom of the slot');
-  assert.deepEqual(arm.states,{rest:0,up:arm.upper});assert.match(arm.note,/slot in “Side plate”/);assert.match(arm.note,/Drive shaft/);assert.match(arm.note,/Pulley 30T/);
+  // It rests at the bottom of its slot, whatever the CAD shows, and starts there; the gap under its roller grows as it lifts.
+  assert.deepEqual(arm.states,{rest:arm.lower,up:arm.upper});assert.deepEqual(arm.home,[arm.lower]);assert.ok(arm.gaps&&arm.gaps.up>arm.gaps.rest,JSON.stringify(arm.gaps));assert.match(arm.note,/slot in “Side plate”/);assert.match(arm.note,/Drive shaft/);assert.match(arm.note,/Pulley 30T/);
   const moving=ctx.parts.expand(arm.parts);
   assert.ok(L.arms.every(k=>moving.has(k))&&moving.has(L.bar)&&moving.has(L.roller)&&moving.has(L.rollerAxle),'the arm plates, the crossbar on them and the roller swing');
   assert.ok(!L.sides.some(k=>moving.has(k))&&!moving.has(L.axle)&&!moving.has(L.pulley)&&!L.axleBearings.some(k=>moving.has(k)),'the side plates and the drive axle stay');
   const roller=joints.find(j=>j.id==='roller1');assert.equal(roller.parent,arm.id,'the roller turns on the arm');
   // Positive turns raise the roller.
   const W=K.worlds(K.sanitize({joints}),{[arm.id]:15}).get(arm.id);assert.ok(K.math.apply(W,[10,0,3])[2]>3.5,'up is up');
-  assert.ok(report.some(x=>/swing arm that lifts/.test(x)));
+  assert.ok(report.some(x=>/rides on a swing arm in the slot in .* under it at rest, .* at the top of the slot/.test(x)),report.join(" | "));
 });
 test('a floating arm rides up over each piece the intake takes in, then settles back down',()=>{
   const model=K.sanitize({joints:[{id:'arm1',type:'revolute',origin:[8,0,3],axis:[0,-1,0],lower:0,upper:30,states:{rest:0,up:30},drive:{signal:'float',of:'intake:0'}}]});

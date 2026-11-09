@@ -185,7 +185,7 @@
         ${a===b?'<p class="hint sim-joint-needs">Set how far it tilts to shoot; until then it stays still.</p>':'<p class="hint">It tilts to its shooting angle while the shooter spins up or aims. Shots leave at the launch angle the game physics uses either way.</p>'}`;}
       else if(d==='float'){const top=j.states?.up??0;
         roleBits=`<div class="start-xy">${num('state:rest',j.states?.rest??0,{label:'Rests at',unit:'°'})}${num('state:up',top,{label:'Rides up to',unit:'°'})}</div><div class="sim-joint-buttons"><button type="button" class="secondary" data-j="show" data-v="rest">Show resting</button><button type="button" class="secondary" data-j="show" data-v="up">Show up</button></div>
-          <p class="hint">It rests where your CAD has it and rides up over each piece the intake takes in, then settles back${finite(j.upper)?`. Its frame lets it go ${fix(j.upper,1)}° up`:''}. Nothing drives it: it floats.</p>`;}
+          <p class="hint">Nothing drives it: it floats. It starts each run at the bottom of its slot${j.gaps?` (${fix(j.gaps.rest,2)} in under the roller)`:''}, whatever pose your CAD shows, and a piece taller than that lifts it only as far as it needs${j.gaps?`, up to ${fix(j.gaps.up,2)} in at the top of the slot`:''}, then it settles back.</p>`;}
       else if(d==='flywheel')roleBits=`<p class="hint">Spins at the flywheel speed (${m.shooter?.rpm??3000} rpm, set under Shooter timing), drawn slower so it can be seen.</p>`;
       else if(d==='roller'||d==='feeder')roleBits=`<div class="start-xy">${num('rpm',j.rpm??(d==='roller'?300:200),{label:'Spins at',unit:'rpm',min:1,max:60000})}</div>`;
       else if(d==='wheel')roleBits='<p class="hint">Turns as the robot drives, rolling on the floor.</p>';
@@ -391,6 +391,25 @@
       take(c.parts.expand(named),Pm);for(const j of mine){take(leavesOf(j),Pm);if(j.drive.signal==='deploy')take(leavesOf(j),math().mul(Pm,K().motion(j,j.states?.lowered??0,unit())));}
       if(!finite(out))return null;const up=v=>Math.ceil(v*4-1e-6)/4;api.setIntake(n,{reach:Math.min(18,up(Math.max(0,out-edge))),width:Math.min(48,Math.max(1,up(2*side))),height:Math.min(24,Math.max(1,up(top)))});
       const name=c.parts.nodes?.find(x=>x.leaves?.includes(far))?.name||'',spins=mine.some(j=>['roller','feeder'].includes(j.drive.signal)&&leavesOf(j).has(far));return {name:name.replace(/\s*<\d+>$/,''),kind:spins?'wheel':Mech?.partKindOf?Mech.partKindOf(name):'body'};}
+    // An intake's rollers as a column: the axle of its roller joint, from the first wheel to the last, as wide as the wheels
+    // (the biggest round parts on it; pulleys, spacers and the shaft past the wheels are left out). Rollers on a ramp are
+    // measured with the ramp down; on a floating arm, with the arm at the bottom of its slot. In the robot frame from the chassis centre: x forward, y
+    // left, z up from the floor. Returns {a, b, d, wheels} or null.
+    function rollerColumn(n){const c=ctx(),Pm=P(),f=api.footprint?.(),M=math();if(!c||!Pm||!f)return null;
+      const all=joints(),rollers=all.filter(j=>j.drive?.signal==='roller'&&j.drive.of==='intake:'+n);let best=null;
+      for(const j of rollers){const swing=all.find(x=>x.id===j.parent&&['deploy','float'].includes(x.drive?.signal)),pose=swing?.drive.signal==='deploy'?swing.states?.lowered??0:swing?.states?.rest??0,W=swing?M.mul(Pm,K().motion(swing,pose,unit())):Pm;
+        const o=M.apply(W,j.origin),dir=M.unit(M.applyDir(W,j.axis)),leaves=[];
+        for(const k of leavesOf(j)){const v=c.vertsOf(k),step=Math.max(1,Math.floor(v.length/600));let r=0,t0=Infinity,t1=-Infinity;
+          for(let i=0;i<v.length;i+=step){const p=M.apply(W,c.P(v[i])),d=[p[0]-o[0],p[1]-o[1],p[2]-o[2]],t=d[0]*dir[0]+d[1]*dir[1]+d[2]*dir[2];r=Math.max(r,Math.hypot(d[0]-t*dir[0],d[1]-t*dir[1],d[2]-t*dir[2]));t0=Math.min(t0,t);t1=Math.max(t1,t);}
+          if(finite(t0))leaves.push({r,t0,t1});}
+        const R=Math.max(0,...leaves.map(l=>l.r));if(!(R>.1))continue;const wheels=leaves.filter(l=>l.r>=.75*R),t0=Math.min(...wheels.map(l=>l.t0)),t1=Math.max(...wheels.map(l=>l.t1));
+        const cx=(f.front-f.rear)/2,at=t=>[o[0]+t*dir[0]-cx,o[1]+t*dir[1],o[2]+t*dir[2]].map(x=>+x.toFixed(2)),col={a:at(t0),b:at(t1),d:+(2*R).toFixed(2),wheels:wheels.length};
+        if(!best||t1-t0>Math.hypot(...best.b.map((x,i)=>x-best.a[i])))best=col;}
+      return best;}
+    // The column from the CAD, onto the intake; one whose ends were picked on the model by hand stays. Picking up only on
+    // the rollers starts on with it: a piece has to touch them, as on the real robot.
+    function fitColumn(n,{force=false}={}){const intake=api.mechanisms().intakes?.[n];if(!intake||intake.kind==='kicker'||intake.column?.by==='hand'&&!force)return null;
+      const col=rollerColumn(n);if(!col)return null;const {wheels,...column}=col;api.setIntake(n,{column,...(intake.column&&!force?{}:{pickup:'rollers'})});return col;}
     function centroid(j){const c=ctx();if(!c)return null;let A=0;const s=[0,0,0];for(const k of leavesOf(j)){const f=D().feature(c,k);if(!f)continue;A+=f.area;for(let i=0;i<3;i++)s[i]+=f.area*f.center[i];}return A?s.map(v=>v/A):null;}
     // Plays a saved action on the preview, along its timeline.
     function playAction(i){
@@ -535,7 +554,25 @@
       api.commit(next);lastKey='';render();return id2;}
     host.addEventListener('input',e=>{const el=e.target;if(!el.matches('[data-try]'))return;const id=el.closest('[data-id]')?.dataset.id;if(!id)return;if(demo){cancelAnimationFrame(demo);demo=0;}values={...values,[id]:el.valueAsNumber};showPose();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&mode){mode=null;status('');api.refreshPicker();render();}});
-    return {render,picker,discover,add,isMechanism,fitIntake,found:()=>lastFound,opened:()=>open,pose(id,value){values={...values,[id]:value};showPose();},
+    // A wheel clicked on the model (Mechanisms → Chassis): its centre in robot inches. Of the wheels the click may mean
+    // (DeckDiscovery.wheelsNear), the one that holds the clicked part, is biggest and is nearest the click wins, and when
+    // other wheels are placed (bottoms: the heights in inches where they meet the floor) the one standing as low as they do.
+    // Returns {x, y, z, bottom, radius, name, box} (box: no round part there, so the part's middle), or null.
+    function wheelAt(hit,{bottoms=[]}={}){
+      const c=ctx();if(!c||!hit||!finite(hit.part)||!hit.local)return null;const inch=1/unit(),list=D().wheelsNear(c,{leaf:Math.round(hit.part),point:hit.local,up:up(),inch});if(!list.length)return null;
+      const ref=bottoms.length?bottoms.reduce((a,b)=>a+b,0)/bottoms.length:null;
+      const scored=list.map(g=>{const at=toRobot(g.center),r=g.radius/inch,bottom=at[2]-r;return {g,at,r,bottom,score:r+(g.has?1:0)-.3*g.dist/inch-(ref===null?0:3*Math.abs(bottom-ref))};}).sort((a,b)=>b.score-a.score),best=scored[0];
+      return {x:+best.at[0].toFixed(3),y:+best.at[1].toFixed(3),z:+best.at[2].toFixed(3),bottom:+best.bottom.toFixed(3),radius:+best.r.toFixed(3),name:best.g.name,box:!!best.g.box,leaves:best.g.leaves};}
+    // The CAD's drive wheels (DeckDiscovery.driveWheels) as wheel joints in the CAD's frame, for when Moving parts has not
+    // been found yet: Find the wheels needs only the CAD.
+    // Measures every part's shape a little at a time (12 ms a turn), so hovering over the model while placing a wheel
+    // answers at once instead of measuring the parts there on the first pass.
+    let warming=null;function warmWheels(){const c=ctx();if(!c||warming===c)return;warming=c;let k=0;const step=()=>{if(warming!==c)return;const end=performance.now()+12;while(k<c.leaves&&performance.now()<end)D().feature(c,k++);if(k<c.leaves)setTimeout(step,0);};setTimeout(step,0);}
+    // The CAD's odometry pods (DeckDiscovery.odometryPods) in robot inches: forward when it rolls forward (its axle across
+    // the robot), else it rolls sideways (a strafe pod).
+    function podsFromCad(){const c=ctx();if(!c)return [];return D().odometryPods(c,{up:up(),inch:1/unit()}).map(p=>{const at=toRobot(p.center),ax=dirToRobot(p.axis);return {x:+at[0].toFixed(3),y:+at[1].toFixed(3),forward:Math.abs(ax[1])>Math.abs(ax[0]),name:p.name,leaves:p.leaves};});}
+    function cadWheels(){const c=ctx();if(!c)return [];return D().driveWheels(c,{up:up(),inch:1/unit()}).wheels.map((g,i)=>({id:`cadwheel${i+1}`,name:g.name,origin:g.r.center,radius:g.r.radius,drive:{signal:'wheel'},parts:g.leaves.map(k=>`#${k}`)}));}
+    return {render,picker,discover,add,isMechanism,fitIntake,rollerColumn,fitColumn,found:()=>lastFound,toRobot,wheelAt,cadWheels,warmWheels,podsFromCad,opened:()=>open,pose(id,value){values={...values,[id]:value};showPose();},
       // For the range of motion test (sim-motion-test.js): a piece of it in the worker, and showing a pose on the model.
       motion:{ask:options=>ask('motion',options),canShow:()=>!!preview(),show(v){if(demo){cancelAnimationFrame(demo);demo=0;}values=v;showPose();},mark(a,b){const p=preview();if(!p)return;if(a===undefined)return highlight();p.highlight(new Set([a,b]),0xe5484d);}},
       // Shows a part at a value on the preview (a named position, from the Mechanisms list).

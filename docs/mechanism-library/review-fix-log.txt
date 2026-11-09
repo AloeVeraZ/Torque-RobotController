@@ -1,0 +1,163 @@
+REV-1: winch
+REV-2: arm-counterbalance
+REV-2 stored-energy note: elastic-retraction
+REV-2 stored-energy note: lift-counterbalance
+REV-2 stored-energy note: constant-force-spring-lift
+REV-3: biobuzz-flower-placer
+REV-4: side-belt-conveyor
+REV-5: gobilda-pinpoint
+aliases added: tread-drive
+deleted tracked-drive into tread-drive: REV-6 same tread drivetrain
+aliases added: rocker-bogie
+deleted articulated-chassis into rocker-bogie: REV-7 same rocker-bogie
+REV-7 dof 3: rocker-bogie
+aliases added: drone-launcher
+deleted spring-launcher into drone-launcher: REV-8 same CENTERSTAGE launcher
+aliases added: geneva-drive
+deleted indexing-table into geneva-drive: REV-9 same Geneva indexer
+REV-9 category inside: geneva-drive
+REV-9 parent: star-wheel-indexer
+aliases added: grate-transfer
+deleted slide-to-slide-transfer into grate-transfer: REV-10 same grate transfer
+aliases added: belt-conveyor
+deleted belt-intake into belt-conveyor: REV-11 same belt conveyor
+aliases added: arm-with-wrist
+deleted articulated-scoring-arm into arm-with-wrist: REV-22 same shoulder-wrist arm
+REV-12: multi-stage-roller-intake
+aliases trimmed: multi-stage-roller-intake
+REV-13: kicker-wheel
+aliases trimmed: kicker-wheel
+REV-14: index-and-release
+aliases trimmed: index-and-release
+REV-15: scoring-gate
+aliases trimmed: scoring-gate
+aliases trimmed: biobuzz-shot-gate
+REV-16: passive-funnel-intake
+REV-16: gravity-drop-chute
+aliases trimmed: passive-funnel-intake
+aliases trimmed: gravity-drop-chute
+REV-17: differential-joint
+aliases trimmed: differential-joint
+REV-18: telescoping-intake
+aliases trimmed: telescoping-intake
+aliases trimmed: deployable-intake
+aliases trimmed: rotating-deposit
+REV-20: camera-pan-tilt
+aliases trimmed: camera-pan-tilt
+REV-21: vision-assisted-turret
+REV-21: biobuzz-auto-aim
+aliases trimmed: vision-assisted-turret
+aliases trimmed: biobuzz-auto-aim
+REV-23: biobuzz-hooded-shooter
+REV-24: biobuzz-ramp-intake
+REV-26: biobuzz-hive-camera
+REV-27: biobuzz-fixed-shooter
+REV-28 G409: biobuzz-sweeper-intake
+REV-28 G409: biobuzz-size-adaptive-intake
+REV-28 G409: biobuzz-four-ball-hopper
+REV-29: four-bar
+REV-30: arm
+REV-31 image over 4 MB: cycloidal-gearbox
+REV-33: mecanum-drive-odometry
+REV-34: three-dead-wheel-odometry
+REV-35: quadruped-walker
+REV-36: crank-rocker
+REV-37: pantograph
+REV-38: modular-drivetrain-chassis
+REV-39 no joint of its own: lift-counterbalance
+REV-39 no joint of its own: constant-force-spring-lift
+REV-39 no joint of its own: arm-counterbalance
+REV-40: swerve-module-odometry
+REV-41: cycloidal-gearbox
+REV-42: rotating-platform
+aliases trimmed: rotating-platform
+--- round 2 ---
+R2-1 preset in the type units: flywheel-shooter
+R2-1 preset in the type units: dual-flywheel-shooter
+R2-1 preset in the type units: hooded-flywheel
+R2-1 preset in the type units: kicker-wheel
+R2-1 preset in the type units: roller-ejector
+R2-2: linkage-slide
+R2-3: deployable-intake
+R2-3 camera down is positive: camera-pan
+R2-3 camera down is positive: camera-pan-tilt
+R2-3 camera down is positive: pan-tilt-platform
+R2-3: wrist-mounted-camera
+R2-3 claw open 0, closed N: claw
+R2-3 claw open 0, closed N: gear-synchronized-claw
+R2-3 claw open 0, closed N: dual-servo-claw
+R2-3 claw open 0, closed N: asymmetric-claw
+R2-3 claw open 0, closed N: dual-object-claw
+R2-3 claw open 0, closed N: adaptive-claw
+R2-3 claw open 0, closed N: three-finger-gripper
+R2-3 claw open 0, closed N: toggle-linkage-claw
+R2-4: telescoping-intake
+R2-4: extendo
+aliases trimmed: pantograph
+aliases trimmed: winch
+aliases added: hook-and-winch-hang
+aliases trimmed: relic-extension-arm
+aliases trimmed: drawer-slide
+aliases trimmed: lift
+aliases trimmed: rotating-deposit
+aliases trimmed: encoder-imu-fusion
+aliases trimmed: six-bar
+aliases trimmed: controlled-release-funnel
+aliases trimmed: geneva-drive
+REV-9 star wheel only: star-wheel-indexer
+aliases trimmed: vision-assisted-turret
+aliases trimmed: biobuzz-auto-aim
+R2-5 alias "drop-down intake" kept on deployable-intake, removed from biobuzz-ramp-intake
+R2-5 alias "flip-out intake" kept on deployable-intake, removed from biobuzz-ramp-intake
+R2-5 alias "vertical conveyor" kept on belt-conveyor, removed from biobuzz-shooter-conveyor
+R2-5 alias "inclined conveyor" kept on belt-conveyor, removed from biobuzz-shooter-conveyor
+R2-5 alias "servo release gate" kept on servo-gate, removed from biobuzz-shot-gate
+R2-5 alias "spindexer" kept on rotary-indexer, removed from biobuzz-spindexer
+R2-5 alias "carousel indexer" kept on rotary-indexer, removed from biobuzz-spindexer
+R2-5 alias "encoder-indexed storage" kept on rotary-indexer, removed from biobuzz-spindexer
+R2-5 alias "revolver" kept on rotary-indexer, removed from biobuzz-spindexer
+R2-5 alias "sensor-controlled diverter" kept on diverter, removed from biobuzz-nectar-sorter
+R2-5 alias "pivoting selection gate" kept on diverter, removed from biobuzz-nectar-sorter
+R2-5 alias "launcher" kept on flywheel-shooter, removed from biobuzz-fixed-shooter
+R2-5 alias "tilting shooter" kept on pivoting-shooter, removed from biobuzz-pivot-shooter
+R2-5 alias "belt-driven turret" kept on turret, removed from biobuzz-turret-shooter
+R2-5 alias "gear-driven turret" kept on turret, removed from biobuzz-turret-shooter
+R2-5 alias "ball singulator" kept on biobuzz-shot-gate, removed from star-wheel-indexer
+R2-5 alias "separator gate" kept on biobuzz-shot-gate, removed from escapement
+R2-5 alias "dual flywheel" kept on biobuzz-fixed-shooter, removed from dual-flywheel-shooter
+R2-5 alias "two-wheel shooter" kept on biobuzz-fixed-shooter, removed from dual-flywheel-shooter
+R2-5 alias "hood shooter" kept on biobuzz-hooded-shooter, removed from hooded-flywheel
+R2-5 alias "variable hood" kept on biobuzz-hooded-shooter, removed from adjustable-hood
+R2-5 alias "fixed shooter" kept on biobuzz-fixed-shooter, removed from fixed-angle-shooter
+R2-5 alias "Gecko wheel intake" kept on biobuzz-side-roller-intake, removed from compliant-wheel-intake
+R2-5 alias "surgical tubing intake" kept on biobuzz-sweeper-intake, removed from surgical-tubing-intake
+R2-5 alias "flap intake" kept on biobuzz-sweeper-intake, removed from flexible-flap-intake
+R2-5 alias "floating roller" kept on biobuzz-size-adaptive-intake, removed from spring-loaded-roller-intake
+R2-8: lead-screw
+R2-9: winch
+R2-10: biobuzz-size-adaptive-intake
+R2-13: dead-wheel-pod
+R2-13: two-dead-wheel-odometry
+R2-13: three-dead-wheel-odometry
+R2-13: rotating-platform
+R2-13: turret
+R2-13: biobuzz-turret-shooter
+aliases trimmed: four-wheel-tank-drive
+aliases added: six-wheel-drop-center-drive
+aliases trimmed: color-sensor
+--- round 3 ---
+R3-3 dual-flywheel, two-wheel shooter: biobuzz-fixed-shooter -> dual-flywheel-shooter
+R3-3 fixed shooter: biobuzz-fixed-shooter -> fixed-angle-shooter
+R3-3 variable hood, adjustable hood: biobuzz-hooded-shooter -> adjustable-hood
+R3-3 hood shooter: biobuzz-hooded-shooter -> hooded-flywheel
+R3-3 Gecko wheel intake: biobuzz-side-roller-intake -> compliant-wheel-intake
+R3-3 flap intake: biobuzz-sweeper-intake -> flexible-flap-intake
+R3-3 surgical tubing intake: biobuzz-sweeper-intake -> surgical-tubing-intake
+R3-3 floating roller: biobuzz-size-adaptive-intake -> spring-loaded-roller-intake
+R3-3 separator gate: biobuzz-shot-gate -> escapement
+R3-4 hive camera up is negative
+R3-5
+R3-6 linear-slide
+R3-6 belt-driven-slide
+R3-6 lead-screw
+R3-6 planetary-gearbox

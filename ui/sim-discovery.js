@@ -429,9 +429,9 @@
         // A roller on a swing arm (not on the ramp): the arm is its own moving part and the roller turns on it.
         const onRamp=deploy&&[...g].some(k=>deploy.moving.has(k)),arm=onRamp?null:rollerArm(g,own),aid=arm&&uniqueId(`arm${n+1}`);
         if(arm){const sl=arm.slot?`the ${arm.slot.kind} in “${nameOf(ctx,arm.slot.k)}”`:'the frame';
-          add_({id:aid,name:`Roller arm${groups.length>1?' '+(i+1):''} · ${label.toLowerCase()}`,type:'revolute',parts:refs(arm.moving),origin:arm.origin,axis:arm.axis,lower:arm.lower,upper:arm.upper,states:{rest:0,up:arm.upper},speed:360,drive:{signal:'float',of:'intake:'+n},source:'inferred',confidence:arm.confidence,
-            note:`Its plates (${arm.plates.map(k=>`“${nameOf(ctx,k)}”`).filter((x,j,a)=>a.indexOf(x)===j).join(', ')}) hold the roller and turn on ${arm.why}; ${sl} lets the roller’s axle travel ${arm.lower<-.5?`${fix1(-arm.lower)}° down and `:''}${fix1(arm.upper)}° up. It rests where your CAD has it and lifts as pieces go under it.`});
-          for(const k of arm.moving)if(!g.has(k))claimed.add(k);report.push(`${label}: its roller rides on a swing arm that lifts ${fix1(arm.upper)}° (${sl}).`);}
+          add_({id:aid,name:`Roller arm${groups.length>1?' '+(i+1):''} · ${label.toLowerCase()}`,type:'revolute',parts:refs(arm.moving),origin:arm.origin,axis:arm.axis,lower:arm.lower,upper:arm.upper,home:[arm.lower],states:{rest:arm.lower,up:arm.upper},gaps:arm.gaps,speed:360,drive:{signal:'float',of:'intake:'+n},source:'inferred',confidence:arm.confidence,
+            note:`Its plates (${arm.plates.map(k=>`“${nameOf(ctx,k)}”`).filter((x,j,a)=>a.indexOf(x)===j).join(', ')}) hold the roller and turn on ${arm.why}; ${sl} lets the roller’s axle travel ${arm.lower<-.5?`${fix1(-arm.lower)}° down and `:''}${fix1(arm.upper)}° up from where your CAD has it. Nothing drives it: it rests at the bottom (${arm.gaps.rest} in under the roller) and a bigger piece lifts it, up to ${arm.gaps.up} in.`});
+          for(const k of arm.moving)if(!g.has(k))claimed.add(k);report.push(`${label}: its roller rides on a swing arm in ${sl}: ${arm.gaps.rest} in under it at rest, ${arm.gaps.up} in at the top of the slot.`);}
         // Star or flex wheels on its axle turn with it.
         const wheels=wheelsOn(g,own.filter(k=>!claimed.has(k)||arm?.moving.has(k))),turning=g.size;for(const k of wheels)g.add(k);
         // Rollers turn so their underside sweeps pieces in, toward the robot.
@@ -478,7 +478,9 @@
         if(lines.some(o=>o!==l&&!coaxial(o.r,l.r,.12*inch)&&arms.some(p=>pierces(o,p))&&frames.some(p=>pierces(o,p))))continue;
         let lo=-90,hi=90,stop=null;
         for(const p of frames){if(p.pu<hi){hi=p.pu;stop={k:p.k,kind:p.o.slot(q,l.q,p.pr)?'slot':'cutout'};}if(-p.pd>lo)lo=-p.pd;}
-        if(hi-lo<5||hi<2)continue;
+        // The CAD may show it anywhere along its slot (a team draws it lifted for the bigger piece): it may have little or no
+        // room left upward, as long as the slot gives it room to move.
+        if(hi-lo<5)continue;
         // What swings: the arm plates, the roller, a belt round both axles, and the parts fixed to the plates (a
         // crossbar) that do not reach the frame.
         const moving=new Set([...arms.map(p=>p.k),...g]),frame=new Set(frames.map(p=>p.k)),pivot=new Set(l.members),q2=to2(l.r.center);
@@ -487,7 +489,10 @@
         for(const k of own){if(moving.has(k)||claimed.has(k)||!/belt|chain/i.test(nameOf(ctx,k)))continue;const o=flat(k,a,u,w);if(inBox(o,q,.05*inch)&&inBox(o,q2,.05*inch))moving.add(k);}
         // A pulley, sprocket or gear on the pivot: the arm turns on the axle that drives its roller, as is usual.
         const plateNames=arms.map(p=>nameOf(ctx,p.k)).join(' '),drives=l.members.find(k=>/pulley|sprocket|gear/i.test(nameOf(ctx,k)));
-        return {moving,plates:arms.map(p=>p.k),origin:l.r.center,axis,lower:+Math.min(0,lo).toFixed(1),upper:+hi.toFixed(1),slot:stop,
+        // The gap under the roller (in inches, floor to the roller's underside) at the bottom of its travel and at the top:
+        // a piece smaller than the bottom gap passes under it at rest; a bigger one lifts it, as far as the top allows.
+        const R=Math.max(r.radius,...[...g].map(k=>rev(k)?.radius||0)),gapAt=deg=>+((dot(K.math.apply(K.math.about(l.r.center,axis,deg),r.center),up)-floor-R)/inch).toFixed(2);
+        return {moving,plates:arms.map(p=>p.k),origin:l.r.center,axis,lower:+Math.min(0,lo).toFixed(1),upper:+hi.toFixed(1),slot:stop,gaps:{rest:gapAt(Math.min(0,lo)),up:gapAt(hi)},
           why:`“${nameOf(ctx,l.members.find(k=>/shaft|axle/i.test(nameOf(ctx,k)))??l.members[0])}”${drives!==undefined?`, the axle that drives the roller (“${nameOf(ctx,drives)}” is on it)`:''}`,confidence:/arm|bar|link|pivot|swing|float|rocker/i.test(plateNames)?.75:.6};}
       return null;
     }
@@ -702,10 +707,14 @@
     for(const j of joints){if(!C||j.drive?.signal!=='hood'||!finite(j.launch))continue;
       try{const s=C.sweep(ctx,K.sanitize({joints}),j.id,{from:0,lower:-45,upper:45,step:1.5,points:true});j.lower=s.free[0];j.upper=s.free[1];
         j.note+=` It tilts ${s.free[0]}° to ${s.free[1]}° before it meets other parts, so its shots leave between ${(j.launch+s.free[0]).toFixed(0)}° and ${(j.launch+s.free[1]).toFixed(0)}°.`;}catch{}}
-    // ---- drive wheels: round parts named like wheels touching the floor
-    let w=0;for(let k=0;k<ctx.leaves;k++){if(claimed.has(k)||!WORDS.wheel.test(nameOf(ctx,k)))continue;const r=rev(k);if(!r||r.radius*inch<.8||Math.abs(dot(r.axis,up))>.3)continue;
-      if(Math.abs(dot(r.center,up)-r.radius-floor)>.25*inch)continue;w++;
-      add_({id:`wheel${w}`,name:`Drive wheel ${w}`,type:'continuous',parts:[`#${k}`],origin:r.center,axis:dot(r.axis,unit3(L))>=0?r.axis:scale(r.axis,-1),radius:r.radius,drive:{signal:'wheel'},...(/mecanum/i.test(nameOf(ctx,k))?{roll:'mecanum'}:/omni/i.test(nameOf(ctx,k))?{roll:'omni'}:{}),source:'inferred',confidence:.8,note:`“${nameOf(ctx,k)}” touches the floor; it turns as the robot drives.`});claimed.add(k);}
+    // ---- drive wheels: round parts named like wheels (or treads and tires) whose axis lies flat. A wheel's tread, tire and
+    // hub turn about one axis: they are one wheel, the biggest of them its size. The drive wheels are the lowest of these,
+    // all at one height: a spring-loaded odometry pod drawn fully out hangs below them, so the CAD's lowest point is not
+    // where the wheels stand. Their bottoms must agree with each other and be near the floor (within 1.5 in).
+    let w=0;{const {wheels,lift}=driveWheels(ctx,{up,inch,floor,skip:claimed});
+      for(const g of wheels){w++;const name=g.name,r=g.r;
+        add_({id:`wheel${w}`,name:`Drive wheel ${w}`,type:'continuous',parts:g.leaves.map(k=>`#${k}`),origin:r.center,axis:dot(r.axis,unit3(L))>=0?r.axis:scale(r.axis,-1),radius:r.radius,drive:{signal:'wheel'},...(/mecanum/i.test(name)?{roll:'mecanum'}:/omni/i.test(name)?{roll:'omni'}:{}),source:'inferred',confidence:.8,note:`“${name}” is round, lies flat and stands with the other wheels; it turns as the robot drives.`});for(const k of g.leaves)claimed.add(k);}
+      if(wheels.length&&lift>.25*inch)report.push(`The wheels stand ${(lift/inch).toFixed(2)} in above the CAD's lowest part (an odometry pod drawn fully out, perhaps).`);}
     if(w)report.push(`${w} drive wheel${w>1?'s':''} found; they turn as the robot drives.`);
     // What each part the game's finder found is (DeckMechanismTypes), for the panel's labels and defaults; a claw's other
     // fingers follow its first.
@@ -731,5 +740,55 @@
   const unit3=v=>unit(Array.isArray(v)?v:[0,0,1]);
   function boxOf(fs){const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const f of fs)for(let i=0;i<3;i++){lo[i]=Math.min(lo[i],f.lo[i]);hi[i]=Math.max(hi[i],f.hi[i]);}return {lo,hi};}
   function centroidOf(fs){let A=0;const c=[0,0,0];for(const f of fs){A+=f.area;for(let i=0;i<3;i++)c[i]+=f.area*f.center[i];}return A?scale(c,1/A):c;}
-  return {prepare,feature,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,WORDS};
+  // ---------------------------------------------------------------- the drive wheels
+  // Round parts named like wheels (or treads and tires) whose axis lies flat (across up). A wheel's tread, tire and hub
+  // turn about one axis: they are one wheel, the biggest of them its size. The drive wheels are the lowest of these, all at
+  // one height: a spring-loaded odometry pod drawn fully out hangs below them, so the CAD's lowest point is not where the
+  // wheels stand. Their bottoms must agree with each other and be near the floor (within 1.5 in). inch: CAD units per
+  // inch; floor: the CAD's lowest point along up (found when not given); skip: parts already taken.
+  // Returns {wheels:[{k, r (its revolve), leaves, name}], lift (how far above the floor they stand)}.
+  function driveWheels(ctx,{up,inch=1,floor,skip=new Set()}){const u=unit(up);
+    if(!finite(floor)){floor=Infinity;for(let v=0;v<ctx.positions.length/3;v+=Math.max(1,Math.floor(ctx.positions.length/3/200000)))floor=Math.min(floor,dot(ctx.P(v),u));}
+    const groups=[];for(let k=0;k<ctx.leaves;k++){const n=nameOf(ctx,k);if(skip.has(k)||!(WORDS.wheel.test(n)||/tread|tire|tyre/i.test(n)))continue;const r=feature(ctx,k)?.revolve;if(!r||r.radius/inch<.8||Math.abs(dot(r.axis,u))>.3)continue;
+      const g=groups.find(o=>coaxial(o.r,r,Math.max(.1*inch,.15*Math.max(o.r.radius,r.radius)))&&len(sub(o.r.center,r.center))<Math.max(o.r.radius,r.radius));if(g){g.leaves.push(k);if(r.radius>g.r.radius){g.r=r;g.k=k;}}else groups.push({k,r,leaves:[k]});}
+    if(!groups.length)return {wheels:[],lift:0};
+    const bottom=g=>dot(g.r.center,u)-g.r.radius,low=Math.min(...groups.map(bottom));
+    return {wheels:groups.filter(g=>bottom(g)-low<=.25*inch&&low-floor<=1.5*inch).map(g=>({...g,name:nameOf(ctx,g.k)})),lift:low-floor};}
+  // ---------------------------------------------------------------- odometry pods
+  // Dead-wheel pods: round parts 0.8–2.4 in across whose axle lies flat, in a part or assembly named like a pod (goBILDA's
+  // 3110-0001/3110-0002 swingarm pods, "odometry", "dead wheel", "tracking wheel"). A CAD often draws one pod several times
+  // (resting, retracted, fully out): copies within 1.5 in are one pod, and the one drawn at rest ("0°") is kept.
+  // Returns [{center, axis, radius, name, path, leaves}] in the CAD's frame.
+  const POD_WORDS=/odometry|\bodo\b|dead ?wheel|tracking wheel|3110-000[12]|swing ?arm pod|\bpod\b/i;
+  // The top assembly's own name is left out (a robot called "Kiwi Swerve Odometry" is not all pods), and so are the drive wheels.
+  function odometryPods(ctx,{up,inch=1}){const u=unit(up),found=[],drive=new Set(driveWheels(ctx,{up,inch}).wheels.flatMap(g=>g.leaves));
+    for(let k=0;k<ctx.leaves;k++){if(drive.has(k))continue;const path=String(ctx.parts.key(k)||'').split('/').slice(1).join('/'),name=nameOf(ctx,k);if(!POD_WORDS.test(path)&&!POD_WORDS.test(name))continue;const r=feature(ctx,k)?.revolve;
+      if(!r||r.radius/inch<.4||r.radius/inch>1.2||Math.abs(dot(r.axis,u))>.3)continue;
+      const g=found.find(o=>coaxial(o,r,Math.max(.1*inch,.15*Math.max(o.radius,r.radius)))&&len(sub(o.center,r.center))<Math.max(o.radius,r.radius));
+      if(g){g.leaves.push(k);if(r.radius>g.radius)Object.assign(g,{center:r.center,axis:r.axis,radius:r.radius});}else found.push({center:r.center,axis:r.axis,radius:r.radius,name,path,leaves:[k]});}
+    const pods=[];for(const p of found){const near=pods.find(o=>len(sub(o.center,p.center))<1.5*inch);if(!near){pods.push(p);continue;}if(/\(0°\)|\b0 ?deg|rest/i.test(p.path)&&!/\(0°\)|\b0 ?deg|rest/i.test(near.path))Object.assign(near,p);}
+    return pods;}
+  // ---------------------------------------------------------------- a wheel clicked on the model
+  // The wheels that a click at point (CAD frame, on part leaf) may mean: round parts whose axis lies flat (across up), at
+  // least 0.8 in across, that the click is on or right beside (the tread, the hub, a side plate or the holder round it).
+  // A wheel's tread, tire and hub turn about one axis, so coaxial ones are one wheel and the biggest is its size. Each:
+  // {center, axis, radius (CAD units), leaves, name, has (the clicked part is in it), dist (click to centre)}.
+  // inch: CAD units per inch. With none round enough, the clicked part's box centre ({center, box: true}).
+  function wheelsNear(ctx,{leaf,point,up,inch=1}){
+    const reach=4*inch,u=unit(up),out=[];
+    // A quick box test before the shape: only parts within 4 in of the click. Each part's box is found once per CAD.
+    let boxes=ctx.cache.get('leafBoxes');if(!boxes){boxes=new Float64Array(ctx.leaves*6).fill(NaN);for(let k=0;k<ctx.leaves;k++){const v=ctx.vertsOf(k);if(!v.length)continue;const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+      for(let i=0;i<v.length;i+=Math.max(1,Math.floor(v.length/400))){const p=ctx.P(v[i]);for(let q=0;q<3;q++){if(p[q]<lo[q])lo[q]=p[q];if(p[q]>hi[q])hi[q]=p[q];}}boxes.set([...lo,...hi],k*6);}ctx.cache.set('leafBoxes',boxes);}
+    for(let k=0;k<ctx.leaves;k++){if(Number.isNaN(boxes[k*6]))continue;let far=false;
+      for(let q=0;q<3;q++)if(point[q]<boxes[k*6+q]-reach||point[q]>boxes[k*6+3+q]+reach)far=true;if(far)continue;
+      const r=feature(ctx,k)?.revolve;if(!r||r.radius<.4*inch||Math.abs(dot(r.axis,u))>.3)continue;
+      const d=sub(point,r.center),along=Math.abs(dot(d,r.axis));if(lineDistance(point,r.center,r.axis)>r.radius+inch||along>r.length/2+1.5*inch)continue;
+      const g=out.find(o=>coaxial(o,r,Math.max(.1*inch,.15*Math.max(o.radius,r.radius)))&&len(sub(o.center,r.center))<Math.max(o.radius,r.radius));
+      if(g){g.leaves.push(k);if(r.radius>g.radius)Object.assign(g,{center:r.center,axis:r.axis,radius:r.radius,name:nameOf(ctx,k)});g.has||=k===leaf;}
+      else out.push({center:r.center,axis:r.axis,radius:r.radius,length:r.length,leaves:[k],name:nameOf(ctx,k),has:k===leaf});}
+    for(const g of out)g.dist=len(sub(point,g.center));
+    if(out.length)return out;
+    const f=feature(ctx,leaf);return f?[{center:scale(add(f.lo,f.hi),.5),radius:0,leaves:[leaf],name:nameOf(ctx,leaf),has:true,dist:0,box:true}]:[];
+  }
+  return {prepare,feature,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,wheelsNear,driveWheels,odometryPods,WORDS};
 });

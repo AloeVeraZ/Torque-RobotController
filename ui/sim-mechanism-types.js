@@ -236,9 +236,9 @@
       words:'stewart(?: ?-?gough)?(?: ?(?:platform|legs?|struts?|actuators?))?|\\bgough\\b|six ?-?dof ?platform',
       blurb:'One of six legs that change length to move and tilt the top plate.'}),
     // ---- your own
-    T('custom-pivot','custom','Something that pivots','revolute',{states:{up:0,down:45},speed:90,piece:true,family:'custom-pivot',blurb:'Any other part that turns on a hinge.'}),
-    T('custom-slide','custom','Something that slides','prismatic',{axis:'forward',states:{in:0,out:6},lower:0,upper:12,speed:10,family:'custom-slide',blurb:'Any other part that slides along rails.'}),
-    T('custom-spin','custom','Something that spins','continuous',{states:{stop:0,run:1800},speed:600,family:'custom-spin',blurb:'Any other part that spins on an axle.'})];
+    T('custom-pivot','custom','Your own pivot','revolute',{states:{up:0,down:45},speed:90,piece:true,family:'custom-pivot',blurb:'Anything that swings between two positions on a servo or motor: a flap, a latch, a lever. You pick its parts on the model.'}),
+    T('custom-slide','custom','Your own slide','prismatic',{axis:'forward',states:{in:0,out:6},lower:0,upper:12,speed:10,family:'custom-slide',blurb:'Anything that moves in and out along a rail or slide. You pick its parts on the model and how far it travels.'}),
+    T('custom-spin','custom','Your own spinner','continuous',{states:{stop:0,run:1800},speed:600,family:'custom-spin',blurb:'Anything that keeps spinning on an axle: a wheel, a roller, a fan. You pick its parts on the model and its speed.'})];
   const TYPES=Object.fromEntries(LIST.map(t=>[t.id,t]));
   for(const t of LIST)if(t.words)t.re=new RegExp(t.words,'gi');
   // ---------------------------------------------------------------- reading a CAD name

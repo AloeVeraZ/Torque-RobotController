@@ -2,7 +2,7 @@
 const BugReport=require('./bug-report.cjs');
 const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog,net}=require('electron');
 const fs=require('node:fs'),path=require('node:path');const {execFile}=require('node:child_process');const {promisify}=require('node:util');const {createHash,randomUUID}=require('node:crypto');
-const {Library,normalizeUrl,cleanSsid}=require('./library.cjs');const {Network}=require('./network.cjs');const {RobotProxy}=require('./robot-proxy.cjs');const {FtcSocket,UsbFtcSocket,probeFtc,findFtc}=require('./ftc.cjs');
+const {Library,normalizeUrl,cleanSsid}=require('./library.cjs');const {Network}=require('./network.cjs');const {RobotProxy}=require('./robot-proxy.cjs');const {FtcSocket,UsbFtcSocket,probeFtc,findFtc,usbHold}=require('./ftc.cjs');
 const {Updater,prepareInstall,launchInstall}=require('./updater.cjs');const {shortcut}=require('./shortcuts.cjs');let build={};try{build=JSON.parse(fs.readFileSync(path.join(__dirname,'../build.json'),'utf8'));}catch{}const meta=require('../package.json');let updater;
 const {identifyHardware,detectHardware}=require('./hardware.cjs');let device=identifyHardware();
 const {ControllerHub}=require('./controller-hub.cjs');let controllerHub,lastControllerState='',lastInputConfig='';
@@ -326,6 +326,10 @@ ipcMain.handle('ftc-settings',async e=>{if(!robotView||e.sender!==robotView.webC
 // Configure Robot's product photos (read from the makers' listings while online and kept here) and saving a pinout.
 const fromDs=e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');};
 handle('device-photo',tag=>photos().photo(String(tag||'')));
+// A mechanism library reference opens in the browser: only a page the library itself cites, never a URL the page made up.
+let libraryPages=null;
+handle('open-reference',url=>{if(!libraryPages){libraryPages=new Set();try{for(const r of require('../ui/sim-mech-library-data.js'))for(const u of [...(r.refs||[]).map(f=>f.url),r.image?.page])if(u)libraryPages.add(u);}catch{}}
+  const u=String(url||'');if(!u.startsWith('https://')||!libraryPages.has(u))throw Error('Only a page the mechanism library cites can be opened.');return shell.openExternal(u).then(()=>true);});
 // The computer stays awake while a Control Hub is in use over USB: sleeping suspends the port, and the hub can then need a replug.
 let hubSeenAt=0,awake=null;
 setInterval(()=>{const on=bridge instanceof UsbFtcSocket||Date.now()-hubSeenAt<15000;if(on&&awake===null)awake=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awake!==null){powerSaveBlocker.stop(awake);awake=null;}},5000).unref();
@@ -468,7 +472,7 @@ async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='us
   if(serial&&!nobody)debugTrip(serial,false);
   const before=usb?await robotLink.usbCrashes({serial}):undefined,opMode=robotLink.debugName(),built=await robotLink.send(data?.host,{[robotLink.DEBUG_FILE]:robotLink.debugSource(opMode)},{remove:[robotLink.OLD_DEBUG_FILE],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
   if(built.built&&usb)debugWatch(before,serial);
-  return {...built,opMode,...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
+  return {...built,opMode,...(built.fixed?.length?{fixedNote:robotLink.fixNote(built.fixed)}:{}),...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
 // What waits while that runs: a save or a restart would look like a crash to the guard, and a build is not to be interrupted. Reading the hub's files and ports does neither.
 const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
 // Wiring notes read over the cable, for when Wi-Fi cannot read them (robotLink.notesThrough), and failing that those Drive's Configure Robot keeps. An entry here, empty or not, is what was last saved or read.
@@ -551,7 +555,11 @@ handle('robot-link',async(action,data)=>{
   // The hubs the robot has open show first, from its web server in milliseconds; then each answer from the RS485 cable.
   if(action==='scan'){const live=await robotLink.rcHubs(data?.host),onProgress=p=>emit('robot-link-scan',p);if(live.length)onProgress({portals:robotLink.openHubs(live)});return overLink(o=>robotLink.scanDevices(data?.host,{...o,live,onProgress}),{grace:150},data?.noStart===true?{noStart:true,wait:0}:undefined);}
   if(action==='delete-config')return overLink(o=>robotLink.deleteConfiguration(data?.host,data?.name,o));
-  if(action==='check'){const usb=data?.host==='usb'?await robotLink.usbCheck():[];if(usb.some(s=>!s.ok))return usb;const talk=()=>overLink(o=>robotLink.connectionCheck(data?.host,o),undefined,data?.noStart===true?{noStart:true}:undefined);try{return [...usb,...await talk().catch(async e=>{if(!/not found|offline|closed/i.test(e.message))throw e;await new Promise(r=>setTimeout(r,1200));return talk();})];}catch(e){return [...usb,{name:'Talk to the robot',ok:false,detail:e.message}];}}
+  if(action==='check'){const usb=data?.host==='usb'?await robotLink.usbCheck():[];if(usb.some(s=>!s.ok))return usb;const talk=()=>overLink(o=>robotLink.connectionCheck(data?.host,o),undefined,data?.noStart===true?{noStart:true}:undefined);try{return [...usb,...await talk().catch(async e=>{if(!/not found|offline|closed/i.test(e.message))throw e;await new Promise(r=>setTimeout(r,1200));return talk();})];}catch(e){
+      // The robot holds one Driver Station at a time, and says only that it has one. Over the cable the hub can say who is on its Wi-Fi.
+      let detail=e.message;if(data?.host==='usb'&&/^Another Driver Station is connected/.test(detail)){const on=await robotLink.usbWifiClients();
+        if(on.length)detail=`Another Driver Station is connected to this robot: a device on the robot’s own Wi-Fi (${on.map(c=>c.address).join(', ')}), most likely a Driver Hub that is switched on. Turn it off, or close the Driver Station on it, then try again.`;}
+      return [...usb,{name:'Talk to the robot',ok:false,detail}];}}
   if(action==='read-all')return readThrough(await overLink(o=>robotLink.readConfigurations(data?.host,o)));
   if(action==='activate')return overLink(o=>robotLink.activateConfiguration(data?.host,data?.name,o));
   if(action==='configure'){const saved=await overLink(o=>robotLink.writeConfiguration(data?.host,{name:data?.name,xml:data?.xml,replace:data?.replace===true},o));if(notesRobot)notesStore.set(notesRobot,data?.name,robotLink.notesOf(data?.xml));return saved;}
@@ -641,5 +649,8 @@ app.whenReady().then(async()=>{
   setInterval(()=>void autoOpenUsb(),1500).unref();
 });
 // Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
-let closing=false;app.on('before-quit',e=>{usbWatch?.quit();for(const a of Object.values(axons))a.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
+// USB comes first (src/robot-link.cjs usbPriority, src/ftc.cjs usbHold): the cable takes the robot from a Driver Station on its Wi-Fi and keeps it between uses.
+// Not under test, where the robot is a stand-in that each test connects to by itself (DECK_USB_PRIORITY=1 turns it on there).
+if(process.env.DECK_USB_PRIORITY==='1'||process.env.DECK_HEADLESS!=='1'&&process.env.DECK_USB_PRIORITY!=='0'){robotLink.usbPriority.on=true;usbHold.enable(()=>robotLink.usbLink({noStart:true,wait:0}).then(f=>({port:f.link})));}
+let closing=false;app.on('before-quit',e=>{usbHold.enable(null);usbWatch?.quit();for(const a of Object.values(axons))a.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
   void Promise.all([Promise.race([Promise.all([debugStop(),robotCheck?.ended.catch(()=>{})]),delay(2000)]),closeRobot().catch(()=>{})]).finally(()=>{robotLink.stopUsbRelay();app.quit();});});app.on('window-all-closed',()=>app.quit());

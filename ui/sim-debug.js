@@ -34,7 +34,7 @@
     if(md.kind==='axonFeedback')return `${fix((1-v/span)*360,1)}°`;
     if(md.kind==='potentiometer'){/* REV: V = 445.5·(θ−270)/(θ²−270θ−36450), solved for θ (non-linear) */const a=v,b=-270*v-445.5,c=-36450*v+445.5*270;const d=b*b-4*a*c;if(!a||d<0)return '';return `${fix((-b-Math.sqrt(d))/(2*a),1)}° (REV curve)`;}
     if(md.degrees)return `${fix(v/span*md.degrees,1)}°`;return '';}
-  function create({host,api,native,project,link,onChange=()=>{}}){
+  function create({host,api,native,project,link,onChange=()=>{},encoder=()=>undefined,alsoWanted=()=>false}){
     // flowing: from the robot's first line until it ends, readings are on their way.
     let flowing=false;
     let manifest=null,frame=null,frames=[],running=false,starting=false,plot=new Set(),edges={},seen={},pulse=null,lastPaint=0,paintQueued=false;
@@ -42,14 +42,16 @@
     let auto=false;
     const send=line=>{if(!native||!running)return Promise.resolve(false);if(auto&&!/^[VDKW]\t/.test(line)){auto=false;void api.robotLink('debug-claim').catch(()=>{});}return api.robotLink('debug-send',{line}).catch(()=>false);};
     const listeners=new Set(),cameraListeners=new Set(),endListeners=new Set();
-    host.innerHTML=`<div class="cal-debug-head"><div><h2 id="cal-debug-title">Live debug</h2><p class="hint">Every motor, servo and sensor on the robot, live. Put the robot on blocks first. Anything that spins runs only while you hold its slider, and the robot stops it by itself if Torque goes quiet.</p></div>
-      <div class="cal-debug-state"><i class="dot" data-debug-dot></i><span data-debug-status role="status">Not connected</span></div></div>
-      <div class="button-row cal-debug-actions"><button type="button" class="primary" data-debug-install>1 · Put Torque Debug on the robot</button><button type="button" class="primary" data-debug-start disabled>2 · Start live debug</button></div>
-      <p class="hint cal-debug-gate" data-debug-gate>Put Torque Debug on the robot first. The robot builds it, which takes a minute or so, once; then Start live debug.</p>
+    host.innerHTML=`<div class="cal-debug-top"><div class="cal-debug-title"><h2 id="cal-debug-title">Live debug</h2><div class="cal-debug-state"><i class="dot" data-debug-dot></i><span data-debug-status role="status">Not connected</span></div></div>
+        <div class="button-row cal-debug-actions"><button type="button" class="primary cal-debug-main" data-debug-start>Start live debug</button><button type="button" class="secondary cal-debug-again" data-debug-install hidden>Put Torque Debug on again</button></div></div>
+      <ol class="cal-debug-steps" data-debug-steps aria-label="What Start live debug does"><li data-step="on" data-state="todo"><b>On the robot</b><span></span></li><li data-step="run" data-state="todo"><b>Started</b><span></span></li><li data-step="live" data-state="todo"><b>Live</b><span></span></li></ol>
+      <p class="cal-debug-fixed" data-debug-fixed role="status" hidden></p>
+      <p class="hint cal-debug-gate" data-debug-gate hidden></p>
+      <p class="hint cal-debug-safe">Robot on blocks first.</p>`+`
       <p class="hint cal-debug-stats" data-debug-stats></p>
-      <div class="cal-debug-run" data-check hidden><div class="cal-run-battery" data-port="power:battery"><span>Battery</span><b><span data-live="bat:v">—</span> V</b><meter min="8" max="14" low="11.5" optimum="13" data-live="bat:v:bar"></meter></div><button type="button" class="secondary" data-check-all>Check all, one at a time</button><button type="button" class="cal-debug-stop" data-debug-stopall disabled>STOP<small>or press Space</small></button></div>
+      <div class="cal-debug-run" data-check hidden><div class="cal-run-battery" data-port="power:battery"><span>Battery</span><b><span data-live="bat:v">—</span> V</b><meter min="8" max="14" low="11.5" optimum="13" data-live="bat:v:bar"></meter></div><button type="button" class="secondary" data-check-all>Check all, one at a time</button><button type="button" class="secondary" data-check-markall title="Every device still unchecked is marked as working: for what is there but cannot move, such as a part against a hard stop">Mark the rest as working</button><button type="button" class="cal-debug-stop" data-debug-stopall disabled>STOP<small>or press Space</small></button></div>
       <div data-debug-hubs class="cal-debug-hubs" data-idle></div>
-      <div class="cal-debug-tools" data-debug-tools hidden><section><h3 class="cal-group-title">Timeline</h3><p class="hint">Click any reading to plot it; each line is scaled to its own range. Last ${SPAN} s.</p><canvas data-debug-chart height="160"></canvas><div data-debug-legend class="cal-debug-legend"></div></section></div>`;
+      <div class="cal-debug-tools" data-debug-tools hidden><section><canvas data-debug-chart height="160"></canvas><div data-debug-legend class="cal-debug-legend"></div></section></div>`;
     const q=s=>host.querySelector(s);
     let said={text:'Not connected',kind:''};
     const status=(text,kind='')=>{said={text,kind};q('[data-debug-status]').textContent=text;q('[data-debug-dot]').className=`dot${kind?' '+kind:''}`;};
@@ -68,37 +70,52 @@
     const CHECKS='torque-debug-checks',checks=new Map((()=>{try{const s=JSON.parse(localStorage.getItem(CHECKS)||'[]');return Array.isArray(s)?s.filter(([n,c])=>typeof n==='string'&&['pass','fail'].includes(c?.state)):[];}catch{return [];}})());let checkRun=null;
     const keepChecks=()=>{try{localStorage.setItem(CHECKS,JSON.stringify([...checks].filter(([,c])=>c.state==='pass'||c.state==='fail')));}catch{}};
     const devices=()=>{const m=manifest;if(!m)return [];return [...(m.motors||[]).map(name=>({kind:'motor',name})),...(m.crservos||[]).map(name=>({kind:'crservo',name})),...(m.servos||[]).map(name=>({kind:'servo',name})),...(m.digital||[]).map(name=>({kind:'digital',name})),...(m.touch||[]).map(name=>({kind:'touch',name})),...(m.analog||[]).map(a=>({kind:'analog',name:a.n}))];};
-    function checkPaint(){const list=devices();q('[data-check]').hidden=!manifest;q('[data-check-all]').disabled=!running||!!checkRun;
+    // What a device reads now, if it reads anything: what says it is there and answering.
+    const reading=d=>{const v=values();return d.kind==='motor'?v[`m:${d.name}:pos`]:d.kind==='analog'?v[`a:${d.name}`]:d.kind==='digital'||d.kind==='touch'?v[`d:${d.name}`]:undefined;};
+    const answering=d=>['servo','crservo'].includes(d.kind)||reading(d)!==undefined;
+    function markWorking(d){if(checkRun?.markName===d.name)checkRun.mark();const r=reading(d);checkSet(d.name,'pass',`Marked as working${r===undefined?'':`: it answers, reading ${typeof r==='number'&&d.kind==='analog'?`${r.toFixed(2)} V`:String(r)}`}.`);}
+    function checkPaint(){const list=devices();q('[data-check]').hidden=!manifest;q('[data-check-all]').disabled=!running||!!checkRun;q('[data-check-markall]').disabled=!running||!list.some(d=>checks.get(d.name)?.state!=='pass'&&answering(d));
       for(const d of list){const row=host.querySelector(`[data-check-row="${CSS.escape(d.name)}"]`);if(!row)continue;const c=checks.get(d.name)||{state:'idle',text:''},act=row.querySelector('[data-check-act]'),bad=d.kind==='servo'&&C().problem(settingsOf('servo',d.name));row.dataset.state=c.state;row.closest('.cal-port').dataset.checkState=c.state;row.querySelector('[data-check-text]').textContent=c.text;
-        const html=c.state==='ask'?'<button type="button" class="primary" data-check-answer="yes">Yes</button><button type="button" class="secondary" data-check-answer="no">No</button>':`<button type="button" class="secondary" data-check-one="${esc(d.name)}"${!running||checkRun||bad?' disabled':''}>Check</button>`;if(act.dataset.drawn!==html){act.dataset.drawn=html;act.innerHTML=html;}}}
+        const html=c.state==='ask'?'<button type="button" class="primary" data-check-answer="yes">Yes</button><button type="button" class="secondary" data-check-answer="no">No</button>':`${c.state==='running'&&checkRun?.markName!==d.name?'':`<button type="button" class="secondary" data-check-one="${esc(d.name)}"${!running||checkRun||bad?' disabled':''}>Check</button>`}${c.state==='pass'?'':`<button type="button" class="secondary" data-check-mark="${esc(d.name)}"${!running||!answering(d)?' disabled':''} title="${answering(d)?'It is there and answering: mark it as working without the check':'It has no reading yet: it is not answering'}">Mark as working</button>`}`;if(act.dataset.drawn!==html){act.dataset.drawn=html;act.innerHTML=html;}}}
     const checkSet=(name,state,text)=>{checks.set(name,{state,text});keepChecks();checkPaint();};
+    // What moved with what in a check: [{name, kind, key, dir}] (dir 0: it moved, but which way is not known). Calibrate → Electronics imports it.
+    const FOUND='torque-debug-found';let found=(()=>{try{const s=JSON.parse(localStorage.getItem(FOUND)||'[]');return Array.isArray(s)?s.filter(x=>x&&typeof x.name==='string'&&typeof x.key==='string'):[];}catch{return [];}})();
+    const foundSet=(name,kind,key,dir)=>{found=[...found.filter(x=>!(x.name===name&&x.key===key)),{name,kind,key,dir}];try{localStorage.setItem(FOUND,JSON.stringify(found));}catch{}};
     const stopped=()=>!checkRun||checkRun.stop;
     const pause=async ms=>{for(const end=performance.now()+ms;performance.now()<end&&!stopped();)await new Promise(r=>setTimeout(r,Math.min(50,ms)));};
     async function holdOut(cmd,name,power,ms){const line=`${cmd}\t${name}\t${power.toFixed(3)}`;void send(line);const keep=setInterval(()=>void send(line),100);try{await pause(ms);}finally{clearInterval(keep);void send(`${cmd}\t${name}\t0`);}}
     const checkAsk=(name,question)=>new Promise(done=>{checkRun.answer=done;checkSet(name,'ask',question);});
     // An input's check: follows its readings until it is done, or 30 s pass with nothing done.
-    const checkWatch=(name,key,start,step,prompt,finished)=>new Promise(done=>{let s=start;checkSet(name,'running',prompt(s));const began=performance.now();
-      const finish=ok=>{off();clearInterval(t);done(ok);},off=listeners.add.call(listeners,fn)&&(()=>listeners.delete(fn)),t=setInterval(()=>{if(stopped())finish(null);else if(performance.now()-began>30000)finish(false);},100);
+    const checkWatch=(name,key,start,step,prompt,finished)=>new Promise(done=>{let s=start;const began=performance.now();
+      const finish=ok=>{off();clearInterval(t);if(checkRun?.markName===name){checkRun.markName=null;checkRun.mark=null;}done(ok);},off=listeners.add.call(listeners,fn)&&(()=>listeners.delete(fn)),t=setInterval(()=>{if(stopped())finish(null);else if(performance.now()-began>30000)finish(false);},100);checkRun.markName=name;checkRun.mark=()=>finish(null);checkSet(name,'running',prompt(s));
       function fn(_f,v){const next=step(s,v[key],performance.now());if(next===s)return;const was=prompt(s);s=next;if(prompt(s)!==was)checkSet(name,'running',prompt(s));if(finished(s))finish(true);}});
     async function checkOne({kind,name}){const c=C(),p=settingsOf(kind,name),speed=p.speed/100,v=()=>values();
-      if(kind==='motor'){const key=`m:${name}:pos`,before=v()[key];checkSet(name,'running',`Running forward at ${p.speed}%…`);await holdOut('M',name,speed,1000);if(stopped())return;const moved=Math.abs((v()[key]??0)-(before??0)),cut=v()[`m:${name}:cut`];await pause(300);checkSet(name,'running',`Running backward at ${p.speed}%…`);await holdOut('M',name,-speed,1000);if(stopped())return;
-        if(cut)return checkSet(name,'fail','It drew too much current and was cut. Check nothing is jammed.');if(moved>=5)return checkSet(name,'pass',`It works: the encoder counted ${Math.round(moved)} ticks.`);
-        const a=await checkAsk(name,'The encoder did not count. Did the motor turn?');if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It turned, but no encoder is counting: check the encoder cable.':'It did not turn. Check its power cable and the port in Configure.');}
-      if(kind==='crservo'){checkSet(name,'running','Turning one way…');await holdOut('C',name,speed,1000);if(stopped())return;await pause(300);checkSet(name,'running','Turning the other way…');await holdOut('C',name,-speed,1000);if(stopped())return;
+      if(kind==='motor'){const key=`m:${name}:pos`,before=v()[key];checkSet(name,'running',`Running forward at ${p.speed}%…`);await holdOut('M',name,speed,1000);if(stopped())return;const went=(v()[key]??0)-(before??0),moved=Math.abs(went),cut=v()[`m:${name}:cut`];await pause(300);checkSet(name,'running',`Running backward at ${p.speed}%…`);await holdOut('M',name,-speed,1000);if(stopped())return;
+        if(cut)return checkSet(name,'fail','It drew too much current and was cut. Check nothing is jammed.');if(moved>=5){foundSet(name,'motor',key,Math.sign(went));return checkSet(name,'pass',`It works: the encoder counted ${Math.round(moved)} ticks.`);}
+        const has=encoder(name);if(has===false){const a=await checkAsk(name,'Configure says it has no encoder. Did the motor turn?');if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It turns. It has no encoder, as Configure says.':'It did not turn. Check its power cable and the port in Configure.');}
+        const a=await checkAsk(name,`${has?'Configure says its encoder cable is plugged in, but the encoder did not count.':'The encoder did not count.'} Did the motor turn?`);if(a===null)return;return checkSet(name,'fail',a?'It turned, but its encoder did not count. Is the encoder cable in this motor’s port, and does the motor have an encoder at all? If it has none, turn off “Encoder cable plugged in” in Configure.':'It did not turn. Check its power cable and the port in Configure.');}
+      if(kind==='crservo'){const w=watchAnalogs();checkSet(name,'running','Turning one way…');await holdOut('C',name,speed,1000);if(stopped())return;await pause(300);checkSet(name,'running','Turning the other way…');await holdOut('C',name,-speed,1000);await pause(200);const found=w.done(name);if(stopped())return;
+        if(found.length)return checkSet(name,'pass',`It works: ${found.join(' and ')} moved with it.`);
         const a=await checkAsk(name,'Did it turn one way, then the other?');if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It works.':'It did not turn. Check its cable and the port in Configure.');}
-      if(kind==='servo'){for(const [i,angle] of [p.a,p.b,p.a,p.b].entries()){if(stopped())break;checkSet(name,'running',`Moving to ${angle}° (${i+1} of 4)…`);void send(`S\t${name}\t${c.position(angle,p.range).toFixed(3)}`);await pause(1000);}void send(`E\t${name}\t0`);if(stopped())return;
+      if(kind==='servo'){const w=watchAnalogs();for(const [i,angle] of [p.a,p.b,p.a,p.b].entries()){if(stopped())break;checkSet(name,'running',`Moving to ${angle}° (${i+1} of 4)…`);void send(`S\t${name}\t${c.position(angle,p.range).toFixed(3)}`);await pause(1000);}void send(`E\t${name}\t0`);const found=w.done(name);if(stopped())return;
+        if(found.length)return checkSet(name,'pass',`It works: ${found.join(' and ')} moved with it.`);
         const a=await checkAsk(name,`Did it move between ${p.a}° and ${p.b}°?`);if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It works.':'It did not move. Check its cable, its power and the port in Configure.');}
       if(kind==='digital'||kind==='touch'){const key=`d:${name}`,now=v()[key];if(now===undefined)return checkSet(name,'fail','No reading: it is not connected, or not in the configuration.');const md=rows().find(r=>r.name===name),low=kind==='touch'||H().SENSOR_MODELS[md?.model]?.activeLow;
         const ok=await checkWatch(name,key,c.digitalStart(now,!!low&&!now),(s,x)=>c.digitalStep(s,x),c.digitalPrompt,s=>s.done);if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.digitalPrompt({done:true}):'It did not change. Check its cable and the port in Configure.');}
-      if(kind==='analog'){releaseServos();checkSet(name,'running','Servos let go. Turn it by hand…');let last=null;const ok=await checkWatch(name,`a:${name}`,c.analogStart(),(s,x,t)=>{last=c.analogStep(s,x,t);return last;},c.analogPrompt,s=>s.stage==='done');if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.analogPrompt(last):'It did not change and settle. Check its cable and the port in Configure.');}
+      if(kind==='analog'){releaseServos();let last=null;const kept=!(manifest?.servoHubs>(manifest?.railKept??0)),also=s=>s.stage==='turn'?` Servos are let go${kept?' and still powered, so an Axon’s own encoder reads':''}. If it cannot turn (a hard stop, or an Axon whose Lose PPM keeps position), press Mark as working.`:'';
+        const ok=await checkWatch(name,`a:${name}`,c.analogStart(),(s,x,t)=>{last=c.analogStep(s,x,t);return last;},s=>c.analogPrompt(s)+also(s),s=>s.stage==='done');if(ok===null)return;return checkSet(name,ok?'pass':'fail',ok?c.analogPrompt(last):'It did not change and settle. Check its cable and the port in Configure.');}
     }
     async function checkList(list){if(checkRun||!running)return;checkRun={stop:false};for(const d of list)if(!checks.has(d.name)||list.length===1||checks.get(d.name).state!=='pass')checks.delete(d.name);checkPaint();
-      try{for(const d of list){if(stopped())break;await checkOne(d);if(d.kind==='servo'||d.kind==='crservo')releaseServos();}}finally{checkRun=null;checkPaint();}}
+      try{for(const d of list){if(stopped())break;if(list.length>1&&checks.get(d.name)?.state==='pass')continue;await checkOne(d);if(d.kind==='servo'||d.kind==='crservo')releaseServos();}}finally{checkRun=null;checkPaint();}}
+    // Follows every analog input while a servo moves; done() names those that changed by 0.15 V or more, and passes them.
+    function watchAnalogs(){const base={},most={},fn=(_f,v)=>{for(const a of manifest?.analog||[]){const x=v[`a:${a.n}`];if(!Number.isFinite(x))continue;if(!(a.n in base))base[a.n]=x;most[a.n]=Math.max(most[a.n]||0,Math.abs(x-base[a.n]));}};listeners.add(fn);
+      return {done(by){listeners.delete(fn);const moved=Object.keys(most).filter(n=>most[n]>=.15);for(const n of moved){checkSet(n,'pass',`It works: it moved with ${by}, so it is that servo’s encoder.`);foundSet(by,manifest?.crservos?.includes(by)?'crservo':'servo',`a:${n}`,0);}return moved;}};}
     // Every servo off: position servos stop holding, continuous ones stop driving, so whatever they turn moves freely by hand.
     function releaseServos(){for(const n of manifest?.servos||[])void send(`E\t${n}\t0`);for(const n of manifest?.crservos||[])void send(`C\t${n}\t0`);for(const c of host.querySelectorAll('[data-enable]'))c.checked=false;}
     function checkStop(){if(!checkRun)return;checkRun.stop=true;checkRun.answer?.(null);for(const [name,c] of checks)if(c.state==='running'||c.state==='ask')checks.set(name,{state:'idle',text:'Stopped'});void send('X');checkPaint();}
     q('[data-check-all]').onclick=()=>void checkList(devices());
-    q('[data-debug-hubs]').addEventListener('click',e=>{const a=e.target.closest('[data-check-answer]');if(a){const done=checkRun?.answer;if(checkRun)checkRun.answer=null;done?.(a.dataset.checkAnswer==='yes');return;}const b=e.target.closest('[data-check-one]');if(b){const d=devices().find(x=>x.name===b.dataset.checkOne);if(d)void checkList([d]);}});
+    q('[data-check-markall]').onclick=()=>{for(const d of devices())if(checks.get(d.name)?.state!=='pass'&&answering(d)&&!(checkRun&&checks.get(d.name)?.state==='running'&&checkRun.markName!==d.name))markWorking(d);};
+    q('[data-debug-hubs]').addEventListener('click',e=>{const a=e.target.closest('[data-check-answer]');if(a){const done=checkRun?.answer;if(checkRun)checkRun.answer=null;done?.(a.dataset.checkAnswer==='yes');return;}const k=e.target.closest('[data-check-mark]');if(k){const d=devices().find(x=>x.name===k.dataset.checkMark);if(d)markWorking(d);return;}const b=e.target.closest('[data-check-one]');if(b){const d=devices().find(x=>x.name===b.dataset.checkOne);if(d)void checkList([d]);}});
     // ---- layout: the wiring's ports, with the robot's devices on them
     function rows(){try{return W().state(project()).rows;}catch{return [];}}
     function layout(){
@@ -129,8 +146,8 @@
       const other=[...live.motor.map(n=>['motor',n]),...live.servo.map(n=>['servo',n]),...live.crservo.map(n=>['crservo',n]),...live.analog.map(n=>['analog',n]),...live.digital.map(n=>['digital',n]),...live.light.map(n=>['light',n])].filter(([f,n])=>!used.has(`${f}:${n}`));
       const otherI2c=(m.i2c||[]).filter(d=>!used.has(`i2c:${d.n}`));
       if(other.length||otherI2c.length)cards.push(`<section class="cal-hub"><h3>On the robot</h3>${other.length?`<div class="cal-ports">${other.map(([f,n])=>tile(f,n,'')).join('')}</div>`:''}${otherI2c.length?`<div class="cal-port-group"><h4>I2C</h4><div class="cal-buses">${otherI2c.map(d=>`<div class="cal-port cal-bus"><div class="cal-port-head"><span class="cal-port-who"><b>${d.b===undefined?'I2C':`Bus ${d.b}`}</b></span></div>${onBus(d.n,'')}</div>`).join('')}</div></div>`:''}</section>`);
-      q('[data-debug-hubs]').innerHTML=`<p class="hint">Everything here comes from the robot’s active configuration. I2C devices and analog ports show whether anything is really there. Motors, servos and digital ports can’t tell: a motor with nothing plugged in just won’t move.</p>${cards.join('')}`;
-      q('[data-debug-tools]').hidden=false;
+      q('[data-debug-hubs]').innerHTML=`${cards.join('')}`;
+      q('[data-debug-tools]').hidden=true;
       for(const k of plot)host.querySelector(`[data-plot-key="${CSS.escape(k)}"]`)?.classList.add('plotted');
       paint(true);}
     // ---- readings
@@ -185,45 +202,68 @@
     // ---- events from the robot link
     function event(e){
       if(e.camera){for(const fn of cameraListeners)fn(e.camera);return;}
-      if(e.manifest){manifest=e.manifest;frame=null;flowing=true;frames=[];edges={};seen={};onRobot=true;for(const [n,c] of checks)if(c.state!=='pass'&&c.state!=='fail')checks.delete(n);status('Live: reading the robot','live');layout();checkPaint();onChange();return;}
+      if(e.manifest){manifest=e.manifest;frame=null;flowing=true;rebuilt=false;frames=[];edges={};seen={};onRobot=true;for(const [n,c] of checks)if(c.state!=='pass'&&c.state!=='fail')checks.delete(n);status('Live: reading the robot','live');steps();layout();checkPaint();onChange();return;}
       if(e.frame){const prev=values(frame);frame=e.frame;frames.push(frame);const cut=frame.t-(SPAN+2)*1000;while(frames.length&&frames[0].t<cut)frames.shift();
         const v=values(frame);for(const [k,x] of Object.entries(v)){if(k.startsWith('d:')&&prev[k]!==undefined&&prev[k]!==x)edges[k.slice(2)]=(edges[k.slice(2)]||0)+1;if(k.startsWith('a:')&&finite(x)){const n=k.slice(2),s=seen[n]||[x,x];seen[n]=[Math.min(s[0],x),Math.max(s[1],x)];}}
         if(pulse)pulse.frames.push(frame);for(const fn of listeners)fn(frame,v);paint(false);return;}
-      if(e.ended||e.error){checkStop();flowing=false;paint(true);running=false;starting=false;auto=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();for(const fn of endListeners)fn(e);}}
+      if(e.ended||e.error){checkStop();flowing=false;paint(true);running=false;starting=false;auto=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();for(const fn of endListeners)fn(e);
+        if(e.error&&NOT_BUILT.test(e.error)&&!rebuilt&&!lastAuto){rebuilt=true;void buildAndStart(false);}}}
+    // lastAuto: the start that failed was one nobody pressed (Camera's, Calibrate's). Those are run by who asked for them, who try again their own way, so only a pressed start is built and started again here.
+    let rebuilt=false,lastAuto=false;
+    async function buildAndStart(byItself){if(running||starting||installing||going)return;const {host:to,label}=link(),was=unplugs,extra=byItself?{auto:true}:{};going=true;buttons();
+      try{const ok=await install(to,extra);if(was!==unplugs||!ok)return;starting=true;buttons();status(`Starting Torque Debug on ${label}…`);await api.robotLink('debug-start',{host:to,...extra,...(lastBuild?.opMode?{opMode:lastBuild.opMode}:{})});if(was===unplugs){running=true;auto=!!byItself;}}
+      catch(e){if(was===unplugs)status(e.message,'error');}finally{going=false;starting=false;buttons();checkPaint();onChange();}}
     if(native&&api.onRobotDebug)api.onRobotDebug(event);
     // onRobot: whether the robot has this version of Torque Debug. null until asked; Start waits for true.
     let onRobot=null,asking=false;
-    function buttons(){const go=q('[data-debug-start]'),put=q('[data-debug-install]'),ready=onRobot===true;go.textContent=running||starting?'Stop live debug':'2 · Start live debug';go.disabled=!(running||starting)&&(!ready||installing);
-      put.textContent=ready?'Put Torque Debug on again':'1 · Put Torque Debug on the robot';put.className=ready?'secondary':'primary';put.disabled=running||starting||installing;q('[data-debug-stopall]').disabled=!running;
-      q('[data-debug-gate]').hidden=ready||running;q('[data-debug-gate]').textContent=onRobot===false?'This robot does not have this version of Torque Debug yet. Put it on first: the robot builds it, which takes a minute or so. Then Start live debug.':'Put Torque Debug on the robot first. The robot builds it, which takes a minute or so, once; then Start live debug.';}
+    // going: Start was pressed and is on its way, through putting Torque Debug on if the robot lacks it.
+    let going=false;
+    function steps(){const set=(k,state,note)=>{const li=q(`[data-step="${k}"]`);if(!li)return;li.dataset.state=state;li.lastElementChild.textContent=note;};
+      set('on',installing?'doing':onRobot===true?'done':'todo',installing?'Building, about a minute…':'');
+      set('run',running?'done':starting&&!installing?'doing':'todo',starting&&!installing&&!running?'Starting…':'');
+      set('live',running&&flowing?'done':running?'doing':'todo','');}
+    function buttons(){const go=q('[data-debug-start]'),put=q('[data-debug-install]'),ready=onRobot===true,busy=running||starting||going;go.textContent=running||starting?'Stop live debug':installing&&going?'Putting Torque Debug on…':'Start live debug';go.disabled=installing&&!running&&!starting;
+      go.classList.toggle('stop',running||starting);put.textContent=ready?'Put Torque Debug on again':'Put Torque Debug on the robot';put.disabled=busy||installing;q('[data-debug-stopall]').disabled=!running;
+      steps();}
     // Asks the robot whether its copy is this version, without starting anything: on the tab, and when the hub comes back.
     async function recheck(){if(!native||asking||running||starting||installing)return;asking=true;try{const c=await api.robotLink('debug-current',{host:link().host,noStart:true});onRobot=!!c?.current;}catch{}finally{asking=false;buttons();}}
     // The Control Hub left the cable: what was on its way to it will only fail, in words about ports and sockets, so that is not shown.
     let unplugs=0,installing=false;function unplugged(){unplugs++;flowing=false;paint(true);if(!starting&&!installing)return;starting=false;status('Lost the robot connection','');buttons();checkPaint();onChange();}
+    const NOT_BUILT=/has no Torque Debug op mode|has no op mode/;
     async function start(){
-      if(!native)return status('Live debug needs the installed app.','error');if(running||starting)return stop();if(onRobot!==true)return status('Put Torque Debug on the robot first.','error');
-      const {host:to,label}=link(),was=unplugs;starting=true;buttons();status(`Starting Torque Debug on ${label}…`);
-      try{await api.robotLink('debug-start',{host:to});if(was===unplugs)running=true;}catch(e){if(was===unplugs)status(e.message,'error');}finally{starting=false;buttons();checkPaint();onChange();}}
+      if(!native)return status('Live debug needs the installed app.','error');if(running||starting)return stop();if(going||installing)return;
+      const {host:to,label}=link(),was=unplugs;let opMode;going=true;starting=true;lastAuto=false;buttons();
+      try{
+        // Whether the robot has this version: asked every time, since a copy from another Torque, or none, looks the same from here.
+        status(`Checking ${label} for Torque Debug…`);const copy=await api.robotLink('debug-current',{host:to});if(was!==unplugs)return;onRobot=!!copy?.current;opMode=copy?.opMode||undefined;
+        let built=!onRobot;if(!onRobot){starting=false;buttons();const ok=await install(to);if(was!==unplugs||!ok)return;opMode=lastBuild?.opMode;starting=true;buttons();}
+        const begin=()=>{status(`Starting Torque Debug on ${label}…`);return api.robotLink('debug-start',{host:to,...(opMode?{opMode}:{})});};
+        try{await begin();}catch(e){if(built||!NOT_BUILT.test(e.message))throw e;built=true;starting=false;buttons();const ok=await install(to);if(was!==unplugs||!ok)return;opMode=lastBuild?.opMode;starting=true;buttons();await begin();}
+        if(was===unplugs)running=true;}
+      catch(e){if(was===unplugs)status(e.message,'error');}finally{going=false;starting=false;buttons();checkPaint();onChange();}}
     async function stop(){checkStop();zeroHolds();await api.robotLink('debug-stop').catch(()=>{});flowing=false;paint(true);running=false;auto=false;buttons();checkPaint();onChange();}
     // Calibrate → Camera's way in, with nobody pressing anything: the robot's copy is asked about first and built only if it is not this one, so it builds once and not on every visit. The same install and the same start as the buttons here.
     // noStart: nobody pressed anything, so the Robot Controller app is not started. build: build whatever the robot's copy says. mayBuild: whether a build may happen on this try at all. still: whether it is still wanted, before a build and again once it is done.
     // Answers {started}, {built:false, problem}, {cantBuild}, {error}, or {left}.
     async function run({host:to=link().host,noStart=false,build=false,mayBuild=true,still=()=>true}={}){
       if(!native)return {error:'This needs the installed app.'};if(running||starting||installing)return {left:true};
-      const was=unplugs,extra=noStart?{noStart:true}:{};let built=false;manifest=null;frame=null;starting=true;buttons();status('Getting ready…');
+      const was=unplugs,extra=noStart?{noStart:true}:{};let built=false;manifest=null;frame=null;starting=true;lastAuto=true;buttons();status('Getting ready…');
       try{const copy=build?{current:false}:await api.robotLink('debug-current',{host:to,...extra});if(was!==unplugs)return {left:true};let opMode=copy?.opMode;if(!build)onRobot=!!copy?.current;
         if(!still()){status('Not connected');return {left:true};}
         if(!copy?.current){if(!mayBuild){status('Torque Debug is not on this robot yet');return {cantBuild:true};}
           starting=false;const ok=await install(to,{auto:true,...extra});if(was!==unplugs)return {left:true};if(!ok)return {built:false,...lastBuild};opMode=lastBuild.opMode;built=true;starting=true;buttons();}
         if(!still()){status('Not connected');return {left:true,built};}
-        await api.robotLink('debug-start',{host:to,auto:true,opMode,...extra});if(was!==unplugs)return {left:true};running=true;auto=true;return {started:true,built};}
+        try{await api.robotLink('debug-start',{host:to,auto:true,opMode,...extra});}catch(e){if(built||!mayBuild||!NOT_BUILT.test(e.message))throw e;
+          starting=false;const ok=await install(to,{auto:true,...extra});if(was!==unplugs)return {left:true};if(!ok)return {built:false,...lastBuild};opMode=lastBuild.opMode;built=true;starting=true;buttons();await api.robotLink('debug-start',{host:to,auto:true,opMode,...extra});}
+        if(was!==unplugs)return {left:true};running=true;auto=true;return {started:true,built};}
       catch(e){if(was===unplugs)status(e.message,'error');return was===unplugs?{error:e.message}:{left:true};}
       finally{starting=false;buttons();checkPaint();onChange();}}
     // Over the cable this tab starts it by itself, the way Camera does, until someone stops it here. Leaving the tab forgets that.
     let heldOff=false;
     // warm: for a while after a Save it starts with no one looking, so it is already going when they get there.
-    let warmUntil=0;
-    const wanted=()=>{if(root.deckHoldAuto)return false;if(heldOff&&!host.offsetParent)heldOff=false;if(Date.now()<warmUntil&&!heldOff)return true;return !!host.offsetParent&&!heldOff;};
+    // warm: wanted for a while even off screen (after a Save). holdUntil: not before then, while the Robot Controller restarts with the new configuration.
+    let warmUntil=0,holdUntil=0;
+    const wanted=()=>{if(root.deckHoldAuto||Date.now()<holdUntil)return false;const here=!!host.offsetParent||!!alsoWanted();if(heldOff&&!here)heldOff=false;if(Date.now()<warmUntil&&!heldOff)return true;return here&&!heldOff;};
     // Puts this version on the robot ahead of time if it has another, and only that: nothing starts. Once for a hub.
     let preparedFor=null;
     async function prepare(to,serial){if(!native||root.deckHoldAuto||preparedFor===serial||running||starting||installing)return;preparedFor=serial;try{const copy=await api.robotLink('debug-current',{host:to,noStart:true});if(!copy?.current&&!running&&!starting&&!installing)await install(to,{auto:true,noStart:true}).catch(()=>{});}catch{}}
@@ -235,8 +275,9 @@
     document.addEventListener('keydown',e=>{if(e.code!=='Space'||e.repeat||!running||!host.offsetParent||e.target?.matches?.('textarea,[contenteditable],input:not([type]),input[type=text]'))return;e.preventDefault();e.stopPropagation();stopAll();},true);
     // lastBuild: what the last install answered, for run: {opMode} or {problem}. An error on the way, such as the crash guard's, is thrown again for run to say.
     let lastBuild=null;
-    async function install(host,extra={}){const {host:picked,label}=link(),to=host||picked,b=q('[data-debug-install]'),was=unplugs;b.disabled=true;installing=true;lastBuild=null;status(`Putting Torque Debug on ${label} and building…`);
-      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};onRobot=!lastBuild.problem;status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
+    async function install(host,extra={}){const {host:picked,label}=link(),to=host||picked,b=q('[data-debug-install]'),was=unplugs;b.disabled=true;installing=true;lastBuild=null;fixedNote('');buttons();status(`Putting Torque Debug on ${label} and building…`);
+      try{const r=await api.robotLink('debug-install',{host:to,...extra});if(was!==unplugs)return false;fixedNote(r?.fixedNote||'');lastBuild=r?.built===false?{problem:r.problem||'The robot could not build. Open its OnBot Java page to see why.'}:{opMode:r?.opMode};onRobot=!lastBuild.problem;status(lastBuild.problem||`${r?.opMode||'Torque Debug'} is on the robot. Start live debug.`,lastBuild.problem?'error':'');return !lastBuild.problem;}catch(e){if(was===unplugs){status(e.message,'error');if(host)throw e;}return false;}finally{installing=false;b.disabled=false;buttons();}}
+    function fixedNote(text){const p=q('[data-debug-fixed]');p.textContent=text;p.hidden=!text;}
     q('[data-debug-install]').onclick=()=>void install();
     // Hold-to-run: the slider sends while held and springs back to 0 when let go (pointer up, key up, focus lost). Its bar grows from the middle, the way it turns.
     let held=null,sentAt=0;
@@ -288,7 +329,7 @@
       return {changes};}
     // Readings over a while (for captures and ramps): the values of every frame in the next ms milliseconds.
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
-    return {recheck,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:ms=>{warmUntil=Date.now()+ms;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    return {found:()=>found.slice(),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

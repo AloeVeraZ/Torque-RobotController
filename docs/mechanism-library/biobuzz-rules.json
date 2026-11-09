@@ -1,0 +1,68 @@
+{
+ "source": {
+  "manual": "BIOBUZZ presented by RTX, FIRST Tech Challenge 2026-27 Competition Manual, HTML version",
+  "version": "TU08, updated Nov 5, 2026 (Section 11 Game Rules and Section 12 Robot Construction Rules are TU08; Section 9 ARENA TU06 Oct 22, 2026; Section 10 Game Details TU05 Oct 15, 2026)",
+  "url": "https://ftc-resources.firstinspires.org/ftc/game/cm-html",
+  "index": "https://ftc-resources.firstinspires.org/ftc/game",
+  "teamUpdates": "TU00 to TU08 are listed at https://ftc-resources.firstinspires.org/ftc/game/tu-combined (Combined TU08, Nov 5, 2026)",
+  "method": "I read the HTML manual through a page-to-text tool that limits verbatim quotes to about 125 characters. Short quotes below are verbatim. Longer rule bodies are paraphrased and marked that way. Check the exact wording in the manual before quoting it to students."
+ },
+ "overview": "Two alliances of two teams collect POLLEN and NECTAR, launch them into their HIVE, and place them into FLOWERS (Section 8). Match: AUTO 30 s, transition 8 s, TELEOP 2 min.",
+ "gameElements": {
+  "POLLEN": "\"POLLEN are approximately 2.8 in. (7.1 cm) Gopher ResisDent polyethylene balls in yellow.\" 40 per match: 4 in each FLOWER (16), 4 in each GARDEN (8), 4 preloaded per ROBOT (16). Each ROBOT must start touching 4 preloaded POLLEN.",
+  "NECTAR": "\"NECTAR are approximately 3.6 in. (9.1 cm) Gopher ResisDent polyethylene balls in red\" and blue, 8 of each color. 3 sit in each upward-facing CELL at the start (6 total). 5 are staged in each ALLIANCE AREA of that color (10 total).",
+  "AprilTags": "3.25 in. (8.25 cm) tags from the 36h11 family (Section 9.9). Each CELL carries a cluster of 4 on its bottom, facing down toward the TILES. IDs: red CELL far side 30-33, red CELL audience side 34-37, blue CELL audience side 38-41, blue CELL far side 42-45. The text describes no tags on the FLOWERS or the walls."
+ },
+ "fieldElements": {
+  "HIVE": "One HIVE Structure sits in the center of the field and holds the red and blue HIVES on one frame. Each HIVE has 2 CELLS, one on each end. It pivots on the frame and is bi-stable, with one CELL facing up. The pivot axis is about 43.95 in. above the TILES. A HIVE TIP happens when the HIVE moves to its other stable state: the CELL that faced down now faces up, and the damper on the side that was not touching the frame now touches it.",
+  "CELL": "Each CELL can hold NECTAR and POLLEN. The opening is about 20 in. (50.8 cm) wide, 14 in. (35.6 cm) tall and 12 in. (30.5 cm) deep. The text I read does not give the CELL opening's height above the TILES.",
+  "FLOWER": "There are 4 FLOWERS on the perimeter wall. Elements go in through the top opening, about 4 in. (10.15 cm) across and about 21.5 in. (54.6 cm) above the TILES. The scoring volume is between the top ring and the middle ring. A Retrieval Opening at the bottom is about 3.55 in. tall and 3.57 in. deep. Ownership: the alliance whose own-color NECTAR is top-most in a FLOWER owns it and scores every element in it that meets the criteria, whoever placed it.",
+  "GARDEN": "\"GARDEN: an approximately 23 in. (58.40 cm) by 2 in. (5.10 cm) wide and infinitely tall volume\" marked with tape in opposite corners. Each GARDEN belongs to one alliance. An element must be at least partly in the GARDEN to score. GARDENS are not protected, and either alliance can remove elements from either one (see G411).",
+  "LOADING ZONE": "About 23 in. wide by 11 in. deep and infinitely tall, bounded by red or blue tape and the perimeter wall. It belongs to the adjacent alliance. NECTAR is introduced there (G427), and preloaded POLLEN for an absent ROBOT is placed there against the wall.",
+  "parking": "PARK: \"To qualify for PARK points, a ROBOT must move so that it is at least partially in the LOADING ZONE.\" LEAVE: the ROBOT moves so it no longer touches the perimeter wall. The manual names no separate BASE."
+ },
+ "scoring": {
+  "LEAVE": 3,
+  "PARK": 5,
+  "HIVE TIP": 20,
+  "element remaining in a CELL": 2,
+  "Bottom NECTAR Bonus": "5 points (TELEOP) to the alliance whose own-color NECTAR is the bottom-most scored NECTAR",
+  "element in an owned FLOWER": 2,
+  "element in a GARDEN": 1,
+  "RP": "WIN 3, TIE 1, SWARM 1 (LEAVE + PARK points reaching a threshold), POLLINATOR 1 and POLLINATOR 2 at 1 each (HIVE TIP thresholds). At most events the thresholds are 16 points for SWARM, 4 TIPS for POLLINATOR 1 and 7 TIPS for POLLINATOR 2.",
+  "notes": "The tool's extract made Table 10-2's AUTO/TELEOP columns hard to read, so check them in the manual. 10.5.1: \"LAUNCHING into the upward-facing CELL is the only allowed way to earn a HIVE TIP.\" 10.5.2: \"Placing SCORING ELEMENTS into the top of the FLOWER is the only allowable way to score.\" Each TIP lets the alliance enter one of its 5 staged NECTAR. TIPS completed before TELEOP count as AUTO."
+ },
+ "rulesText": {
+  "R105": "Verbatim: \"ROBOTS must be physically constrained to fit within these limits without the use of software.\" Paraphrase: after the match starts the expansion volume is 18 in. (45.70 cm) x 24 in. (61.0 cm) x 29 in. (73.65 cm) tall, measured from the field surface. G416 applies R105 during the match. (The 18 in. starting cube is R102.)",
+  "R301": "Verbatim: \"COTS MAJOR MECHANISMS purposefully designed to complete a game task are prohibited.\" Paraphrase: COTS drive chassis and StarterBot mechanisms are exceptions.",
+  "R303": "Verbatim: \"COTS COMPONENTS and MECHANISMS must not exceed a single degree of mechanical freedom (DoF).\" Paraphrase: listed exceptions include ratcheting devices, holonomic wheels and universal joints.",
+  "R501": "Paraphrase: only 12 V DC motors on the approved list. The list includes AndyMark NeveRest and NeveRest Hex, goBILDA Yellow Jacket 5201-5204 and 5000 series, Modern Robotics/MATRIX (discontinued), NFR Yuksel, REV HD Hex REV-41-1291, REV Core Hex REV-41-1300, Studica Maverick 75001, SWYFT Spike SR-MOTOR-DC-01, TETRIX MAX and TorqueNADO, and WATTOS Stingray WDM12. Motors built into factory vibration units or COTS sensors are exempt from the count.",
+  "R502": "Verbatim: \"Servos must meet both requirements to be legal for use.\" Paraphrase: a standard servo must have mechanical output power of 8 W or less at 6 V and stall current of 4 A or less at 6 V. A linear servo must have stall current of 1 A or less at 6 V. Output power = 0.25 x stall torque (N·m) x no-load speed (rad/s).",
+  "R503": "Verbatim: \"A ROBOT may not have more than 8 motors and 8 servos from the allowable actuator lists per R501 and R502\". The limit is a total across all configurations.",
+  "R506": "Verbatim: \"The use of relays, electromagnets, and electrical solenoid actuators is prohibited.\"",
+  "R801": "Paraphrase, related to energy storage: sealed, manufacturer-pre-charged closed-air COTS items such as gas springs and dampers are allowed. User-adjustable gas vessels, stored-pressure parts actuated by solenoids, and pressure or vacuum generation are prohibited. I found no numeric spring-energy limit and no launch speed or energy limit in the R rules.",
+  "R102": "Paraphrase: the STARTING CONFIGURATION must be fully self-contained within an 18 in. wide x 18 in. long x 18 in. high volume."
+ },
+ "gameRules": {
+  "G405": "Paraphrase: a ROBOT may not deliberately eject a SCORING ELEMENT from the FIELD.",
+  "G407": "Verbatim: \"A ROBOT may not simultaneously CONTROL more than 4 SCORING ELEMENTS.\" Paraphrase: momentarily controlling 5 and quickly correcting it is likely acceptable. Repeatedly controlling 5 or more is likely strategic. Penalty: verbal warning, or a MAJOR FOUL and YELLOW CARD if strategic.",
+  "G408": "Paraphrase: a ROBOT may not CONTROL the opponent's NECTAR. Doing it repeatedly is likely strategic, even with a sorter that gives it back. Verbal warning, or a YELLOW CARD if strategic.",
+  "G409": "Paraphrase: a ROBOT may not catch or deflect a SCORING ELEMENT released by a TIPPED HIVE until that element touches something other than the ROBOT. Repeatedly waiting under the HIVE to catch elements is likely strategic.",
+  "G410": "Verbatim: \"ROBOTS may not enter NECTAR into the FLOWER scoring volume until the last 60 seconds of the MATCH.\" Penalty: MAJOR FOUL per NECTAR.",
+  "G411": "Verbatim: \"An ALLIANCE may not STRATEGICALLY prevent the opposing ALLIANCE from accessing SCORING ELEMENTS.\"",
+  "G415": "Verbatim lead-in: \"A ROBOT is prohibited from the following interactions with an ARENA element, except for SCORING ELEMENTS:\" Paraphrase: no grabbing, grasping, attaching, entangling or suspending. Concave shapes that partly wrap a FLOWER for alignment are allowed. Penalties escalate from a verbal warning to a YELLOW CARD, and to DISABLED if damage is likely.",
+  "G416": "Verbatim: \"ROBOTS may not violate the limits outlined in R105 during the MATCH.\"",
+  "G417": "Verbatim: \"ROBOTS may not manipulate the motion of the HIVE in any way other than by LAUNCHING SCORING ELEMENTS\". Paraphrase: high-speed ramming, launching into faces of a CELL other than its top, and repeating after a warning are listed as likely strategic. Verbal warning, or a MAJOR FOUL and YELLOW CARD if strategic.",
+  "G418": "Verbatim lead-in: \"ROBOTS may not enter SCORING ELEMENTS into or remove SCORING ELEMENTS from a FLOWER except:\" Paraphrase: elements may enter only at the top, and only POLLEN may be removed, only from the bottom. Pulling elements through the side, shaking a FLOWER, or forcing NECTAR out of the middle ring are listed as likely strategic.",
+  "G426": "Paraphrase: drive team members may enter one NECTAR for each TIP of their alliance's HIVE, or all remaining NECTAR once 60 s or less remain.",
+  "G427": "Paraphrase: NECTAR is introduced through the LOADING ZONE, without tools, by a drive team member of the matching alliance. It must touch the LOADING ZONE TILE before it touches a ROBOT or field element.",
+  "T405": "Paraphrase: no launching SCORING ELEMENTS during the optional field calibration or measurement time."
+ },
+ "discrepancies": [
+  "R105 limits ROBOT size, not mechanisms as such. The 29 in. maximum height matters for every shooter because the HIVE pivot is about 44 in. up, so elements must be launched.",
+  "G415 is about grabbing, grasping, attaching, entangling or suspending ARENA elements. It is not specifically a FLOWER rule. The FLOWER entry and removal rule is G418.",
+  "G410 limits NECTAR entering a FLOWER's scoring volume to the last 60 s. It is not a general NECTAR handling rule.",
+  "The page-to-text tool did not read the Glossary (Section 16), so I have no verbatim definitions of LAUNCH and CONTROL.",
+  "No rule I read restricts where a ROBOT may launch from."
+ ]
+}

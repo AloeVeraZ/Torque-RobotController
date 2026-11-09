@@ -174,7 +174,7 @@ class SimEngine{
     if(m.enabled){const mount=Mech.engineIntakeMount(m);if(mount)r.spec.intakeMount=mount;r.spec.deckCaps={...m.capacity};r.spec.deckFixedYaw=m.shooters.map(s=>s.type==='fixed');r.spec.deckShooterPieces=m.shooters.map(s=>s.pieces);
       // Each intake's box is its hitbox: it sticks out past the frame, and a piece must touch it to be taken.
       // flower: whether it is the intake kind the physics reaches into flowers with (a ramp or side rollers).
-      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;boxes[e]={reach:i.reach,width:i.width??edge,height:i.height,flower:i.kind===flower};}r.spec.deckIntakeBoxes=boxes;
+      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;const col=i.pickup==='rollers'&&i.column?i.column:null,reach=col?Mech.columnReach(col,e,c.robot):i.reach;boxes[e]={reach,width:i.width??edge,height:i.height,flower:i.kind===flower,...(col?{column:{a:col.a,b:col.b,r:col.d/2}}:{})};}r.spec.deckIntakeBoxes=boxes;
       // Two shooters on one turret launch from its one spot; the game's spawn checks moved the second apart.
       if(m.shooters[1]?.sharesTurret&&r.spec.bbMech?.launcher)r.spec.bbMech={...r.spec.bbMech,launcher:{...r.spec.bbMech.launcher,mount:m.shooters[0].mount,mount2:m.shooters[0].mount}};
       this.rampDown=false;this.rampOut=false;this.rampHeld=false;}
@@ -306,7 +306,8 @@ class SimEngine{
   // follows the flywheel's speed now through the calibrated hood angles (the fixed hood angle without them).
   jointTick(dt=this.dsim.SIM_DT){
     if(!this.kin)return;const m=this.mech,c=this.mechCmd||{},on=this.config.mechanisms.enabled;
-    this.kin.tick(dt,on?{turrets:m.turrets,flywheel:m.flywheel,kick:m.kick,lift:m.lift,intake:!!c.intake,spin:!!c.spin,aim:!!c.aim,feed:!!c.feed,chained:Mech.chained(this.config.mechanisms),rpm:this.config.mechanisms.shooter.rpm,hood:m.hood()}:{});
+    const last=this.world?.robots?.[0]?.hopper?.at?.(-1),piece=last===undefined?null:/^(red|blue)$/.test(String(last))?3.6:2.8;
+    this.kin.tick(dt,on?{turrets:m.turrets,flywheel:m.flywheel,kick:m.kick,lift:m.lift,piece,intake:!!c.intake,spin:!!c.spin,aim:!!c.aim,feed:!!c.feed,chained:Mech.chained(this.config.mechanisms),rpm:this.config.mechanisms.shooter.rpm,hood:m.hood()}:{});
   }
   // Where shooters aim: the cell the route's action names (the hive cell up at the start, or the other one);
   // in teleop, whichever cell faces up right now, as a driver would.

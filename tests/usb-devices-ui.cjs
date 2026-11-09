@@ -29,19 +29,29 @@ const LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);await page.setViewportSize({width:1280,height:800});
     await app.evaluate(({BrowserWindow})=>{for(const w of BrowserWindow.getAllWindows())w.webContents.setBackgroundThrottling(false);});
-    await app.evaluate(({ipcMain},{hex,lime})=>{const g=global;g.__s={hex,lime,on:true,calls:[]};ipcMain.removeHandler('robot-link');ipcMain.handle('robot-link',async(e,action,data)=>{const s=g.__s,ok=value=>({ok:true,value});s.calls.push([action,data]);
-      if(action==='detect')return ok({usb:{found:false},wifi:{robot:false}});if(action==='usb-status')return ok({found:false});if(action==='usb-recover')return ok(null);
+    await app.evaluate(({ipcMain},{hex,lime,xml})=>{const g=global;g.__s={hex,lime,xml,on:true,hub:false,early:true,calls:[]};ipcMain.removeHandler('robot-link');ipcMain.handle('robot-link',async(e,action,data)=>{const s=g.__s,ok=value=>({ok:true,value});s.calls.push([action,data]);
+      if(action==='detect')return ok({usb:s.hub?{found:true,serial:'hub1'}:{found:false},wifi:{robot:false}});if(action==='usb-status')return ok(s.hub?{found:true,serial:'hub1'}:{found:false});if(action==='usb-recover')return ok(null);
+      // Once plugged in: a Control Hub with an active configuration, and Torque Debug on it.
+      if(s.hub){if(action==='read-usb')return ok({serial:'hub1',active:{name:'robot'},configurations:['robot'],files:{robot:s.xml}});if(action==='check')return ok([{name:'Robot Controller app',ok:true,detail:'FTC SDK 12.0'}]);if(action==='scan')return ok({portals:[{serial:'(embedded)',modules:[{address:173,parent:true}],servoHubs:[]}],others:[]});
+        if(action==='hub-usb')return ok({serial:'hub1',devices:[],addresses:[],at:1});if(action==='hub-rc-up')return ok(true);if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});if(['debug-start','debug-stop','debug-claim','debug-send'].includes(action))return ok(true);if(action==='limelight'&&!data?.path&&s.early)return ok({status:null});}
       if(['hub-usb-camera','hub-usb-drops','limelight'].includes(action)&&!s.on)return {ok:false,error:'not in this test: '+action};
       if(action==='hub-usb-camera')return ok({hex:s.hex});if(action==='hub-usb-drops')return ok(s.drops||[]);
       if(action==='limelight'){if(!data?.path)return ok(s.lime);if(data.path==='/cal-file')return ok({ok:true,status:200,json:{fx:800}});if(data.path==='/cal-default')return ok({ok:true,status:200,json:{fx:500}});if(data.path==='/cal-stats')return ok({ok:true,status:200,json:{reprojectionError:.52}});return ok({ok:false,status:404,json:null});}
-      return {ok:false,error:'not in this test: '+action};});},{hex:HEX,lime:LIME});
+      return {ok:false,error:'not in this test: '+action};});},{hex:HEX,lime:LIME,xml:XML});
     const calls=name=>app.evaluate(({},name)=>global.__s.calls.filter(c=>c[0]===name).length,name);
     const text=s=>page.locator(s).first().innerText(),gone=async s=>assert.equal(await page.locator(s).count(),0,s),fits=async what=>assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${what} fits 1280 wide`);
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');
+    // No robot: Calibrate is one line saying to connect it, every step after Setup waits, and nothing else shows.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.waitForSelector('#cal-gate',{state:'visible'});
+    assert.match(await text('#cal-gate'),/^Connect to the robot first: plug the Control Hub in by USB-C/);for(const s of ['#cal-debug','#cal-usb','#cal-sim-cam','#cal-save','[data-cal-top-tabs]'])assert.equal(await page.locator(s).isVisible(),false,s+' waits behind the gate');
+    assert.deepEqual(await page.$$eval('#calibrate-view .flow-steps [data-flow]',l=>l.map(b=>[b.dataset.flow,b.hasAttribute('data-locked')])),[['setup',false],['configure',true],['debug',true],['calibrate',true],['axon',false]]);
+    await page.click('#calibrate-view [data-flow=calibrate]');assert.match(await text('#cal-gate'),/^Connect to the robot first/,'Calibrate says the first thing missing');await page.click('#calibrate-view [data-flow=debug]');
+    // The hub plugged in and read in Setup: the gate opens.
+    await app.evaluate(()=>{global.__s.hub=true;});await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.waitForSelector('#cal-gate',{state:'hidden'});
 
-    // A. No hub. The app's own instances.
+    // A. A hub with nothing on its USB. The app's own instances.
     // Calibrate is its own step, and its panel hides Debug's tabs, Camera among them. With no camera on the hub, Debug's link opens Camera on the simulated webcam.
-    const toElectronics=async()=>{await page.click('#calibrate-view [data-flow=calibrate]');await page.click('#cal-tab-electronics');},toCamera=async()=>{await page.click('#calibrate-view [data-flow=debug]');if(await page.locator('#cal-tab-camera').isVisible())await page.click('#cal-tab-camera');else await page.click('#cal-sim-cam [data-sim-cam]');};await toElectronics();assert.equal(await page.locator('#cal-usb h2').innerText(),'USB devices');assert.match(await text('#cal-usb'),/No Control Hub connected/);await gone('#cal-usb button');
+    const toElectronics=async()=>{await page.click('#calibrate-view [data-flow=debug]');},toCamera=async()=>{await page.click('#calibrate-view [data-flow=debug]');if(await page.locator('#cal-tab-camera').isVisible())await page.click('#cal-tab-camera');else await page.click('#cal-sim-cam [data-sim-cam]');};await toElectronics();assert.equal(await page.locator('#cal-usb h2').innerText(),'USB devices');await gone('#cal-usb button');
     await toCamera();assert.doesNotMatch(await text('#cal-camera'),/next scan/,'no scan to wait for');assert.equal(await page.locator('#cam-gain').isVisible(),true,'the simulated webcam keeps its gain');assert.equal(await page.locator('[data-cam-checks]').isVisible(),false,'it has no USB port to check');assert.equal(await text('[data-cam-name]'),'Simulated webcam');assert.match(await text('[data-cam-status]'),/simulated\. Its numbers are a model of the FTC docs, not a measurement\./);
     const distance=page.locator('#cam-lens-distance'),saved=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).calibration?.lens?.sim?.['640x480']||null);
     assert.equal(await page.getAttribute('[data-cam-lens]','open'),null,'Measure this lens starts closed');await page.click('[data-cam-lens] summary');
@@ -67,6 +77,7 @@ const LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'
     },{xml:XML});
     const setHub=(devices,context,others)=>page.evaluate(([d,c,o])=>{window.__t.set(d,c||{},o||[]);window.__t.camera.refresh();window.__t.usb.refresh();},[devices,context||null,others||null]);
 
+    await app.evaluate(()=>{global.__s.early=false;});
     // B. The USB tab.
     await toElectronics();await page.waitForFunction(()=>/No Control Hub/.test(document.querySelector('#cal-usb').textContent));
     await page.evaluate(()=>{window.__t.hub=[];window.__t.usb.refresh();});await page.waitForFunction(()=>/has not read the Control Hub/.test(document.querySelector('#cal-usb').textContent));

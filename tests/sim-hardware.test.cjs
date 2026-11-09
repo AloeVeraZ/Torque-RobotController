@@ -27,7 +27,7 @@ test('the catalogue: every model with its configuration tag, Axon servos with th
   // Roles: a flywheel reads its speed only from its motor's encoder; a turret may be a motor, a servo or a continuous servo;
   // a hood is a servo; every role says what it does.
   const kinds=role=>H.sensorsFor(role).map(s=>s.kind);
-  assert.deepEqual([...new Set(kinds('flywheel'))],['motorEncoder']);assert.ok(['throughBore','axonFeedback','touch','motorEncoder'].every(k=>kinds('turret').includes(k)));assert.ok(!kinds('turret').includes('potentiometer'),'270° is short of a turret');
+  assert.deepEqual([...new Set(H.sensorsFor('flywheel').filter(s=>H.ROLES.flywheel.sensors[s.kind]==='velocity').map(s=>s.kind))],['motorEncoder'],'speed only from its motor encoder');assert.ok(kinds('flywheel').includes('color'),'a piece sensor at the flywheel');assert.ok(['throughBore','axonFeedback','touch','motorEncoder'].every(k=>kinds('turret').includes(k)));assert.ok(!kinds('turret').includes('potentiometer'),'270° is short of a turret');
   assert.deepEqual(H.ROLES.turret.kinds,['dcmotor','servo','crservo']);assert.ok(H.modelsFor('hood').every(m=>m.kind==='servo'||m.kind==='linear'));assert.ok(H.modelsFor('hood').some(m=>m.id==='axon-max'));
   assert.ok(H.modelsFor('flywheel').every(m=>m.kind==='dcmotor')&&H.modelsFor('roller').some(m=>m.kind==='crservo'));
   for(const [id,r] of Object.entries(H.ROLES))if(id!=='sensor')assert.ok(r.explain.length>20,id);

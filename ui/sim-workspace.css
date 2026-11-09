@@ -377,3 +377,6 @@ body.sim-workspace{overflow:hidden}
 }
 /* Readouts that change many times a second during a run lay out on their own, not the whole page. */
 #sim-telemetry,.sim-data-lanes{contain:content}
+
+/* Run & review: Play, Stop and Reset centred over the clock column; the view controls stay on the right, as on Path planning. */
+.sim-workspace #simulation-view[data-tab=run] .sim-run-buttons{width:calc(var(--sim-timing-column,262px) - 12px);justify-content:center;flex:none}

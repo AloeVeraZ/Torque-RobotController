@@ -44,19 +44,22 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     const until=async(what,fn,ms=20000)=>{for(const end=Date.now()+ms;;await page.waitForTimeout(100)){if(await fn())return;if(Date.now()>end)assert.fail('timed out: '+what);}};
 
     // A. The order, and where it opens. Debug's own start and Auto-configure's are held off here: this is the Camera tab by itself.
-    await page.evaluate(()=>{window.deckHoldAuto=true;});await toCalibrate();
+    // Debug and Camera wait for a robot with an active configuration: Setup reads it first. Nothing is plugged into the hub's USB yet.
+    await page.evaluate(()=>{window.deckHoldAuto=true;});await app.evaluate(()=>{global.__u.others=[];});
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);await until('the first scan',async()=>(await u()).scans>=1);
+    await toCalibrate();await page.waitForSelector('#cal-gate',{state:'hidden'});
     assert.deepEqual(await page.$$eval('#calibrate-view [data-cal-top]',l=>l.map(b=>[b.id,b.textContent])),[['cal-tab-debug','Debug'],['cal-tab-camera','Camera'],['cal-tab-calibrate','Calibrate']],'Debug first');
     const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id)),shown=()=>page.$$eval('#calibrate-view [data-cal-top]',l=>l.filter(b=>!b.hidden).map(b=>b.dataset.calTop));
     assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','it opens on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);assert.deepEqual(await shown(),['debug'],'nothing scanned yet: no camera, so no Camera tab, and Calibrate is a step of its own');
-    await page.focus('#cal-tab-debug');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-debug'],'the arrow keys skip hidden tabs');
+    assert.equal(await page.locator('[data-cal-top-tabs]').isHidden(),true,'Debug alone has no row of tabs');
     // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, and its tab stays from then on.
-    assert.equal(await page.locator('#cal-sim-cam').isVisible(),true);await page.click('#cal-sim-cam [data-sim-cam]');assert.deepEqual(await opened(),['cal-panel-camera']);assert.deepEqual(await shown(),['debug','camera']);
+    assert.equal(await page.locator('#cal-sim-cam').isVisible(),true);await page.click('#cal-sim-cam [data-sim-cam]');assert.deepEqual(await opened(),['cal-panel-camera']);assert.deepEqual(await shown(),['debug','camera']);assert.equal(await page.locator('[data-cal-top-tabs]').isVisible(),true,'with Camera, the row shows');
     await page.focus('#cal-tab-camera');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-debug'],'round to Debug, past Calibrate');await page.keyboard.press('ArrowRight');assert.deepEqual(await opened(),['cal-panel-camera']);
     // Nothing a student has to read first, and no words about how it works.
     const cameraWords=async()=>{const t=await page.locator('#cal-camera').evaluate(e=>e.textContent);assert.doesNotMatch(t,/see what a webcam sees/i);assert.doesNotMatch(t,/live debug|torque debug|decimation/i,t.slice(0,400));};await cameraWords();
 
-    // B. It scans by itself; Setup, Configure and Camera all have the camera.
-    await page.click('#robot-setup-tab');await page.waitForFunction(()=>/Ucamera001/.test(document.querySelector('#rs-hubs').textContent));assert.ok((await u()).scans>=1);
+    // B. A camera plugged in: the next scan finds it, and Setup, Configure and Camera all have it.
+    await app.evaluate(({},cam)=>{global.__u.others=[cam];},CAM);await page.click('#robot-setup-tab');await page.waitForFunction(()=>state.page==='setup');await page.evaluate(()=>document.querySelector('#rs-scan').click());await page.waitForFunction(()=>/Ucamera001/.test(document.querySelector('#rs-hubs').textContent));assert.ok((await u()).scans>=1);
     await toConfigure();
     const row=page.locator('#rs-step-configure .ce-usb',{hasText:'Ucamera001'});await row.waitFor();assert.match(await row.innerText(),/Webcam · Ucamera001\s+(Add\s+)?plugged in, not in this configuration/);assert.equal(await page.locator('#rs-step-configure [data-ce-usb-add]').count(),1,'one Add button');
     assert.ok(await page.evaluate(()=>{const r=document.querySelector('#rs-step-configure .ce-usb button').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),'on screen without scrolling');assert.equal(await page.locator('[data-ce-save]').isDisabled(),false,'Save would take it along');assert.equal((await u()).saves.length,0,'seeing it writes nothing');
@@ -119,6 +122,8 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await debugEvent({manifest});await debugEvent(live());
     // Someone else's run is shared: stopping it is not this tab's to do. And on Drive nothing starts.
     await leave();await until('it lets go again',async()=>(await u()).stops===2,Cam.LINGER+8000);{const was=(await u()).starts;await page.evaluate(()=>window.deck.page('drive'));await page.waitForFunction(()=>state.page==='drive');await page.waitForTimeout(2500);assert.equal((await u()).starts,was,'never on Drive');}
+    // Leaving Camera for Calibrate's own tabs starts Torque Debug there (Calibrate's helper); on Drive every run is let go.
+    await until('every run let go on Drive',async()=>{const r=await u();return r.stops>=r.starts;},Cam.LINGER+8000);
     // A failed build: its one line, with the file and the symbol; nothing tries again by itself; Try again does.
     await app.evaluate(()=>{const r=global.__u;r.installed=false;r.build={built:false,errors:[{file:'TeamAuto.java',line:12,message:'cannot find symbol: method bar()'}],problem:'Your file TeamAuto.java has an error on line 12: cannot find symbol: method bar(). OnBot Java builds every file together, so nothing new can go on the robot until that file is fixed. Torque did not change it.'};});
     await toCalibrate();await camTab();await until('it says to press',()=>page.locator('[data-cam-again]').isVisible());await page.click('[data-cam-again]');await page.waitForFunction(()=>/TeamAuto\.java/.test(document.querySelector('[data-cam-status]').textContent));assert.match(await text('[data-cam-status]'),/^Your file TeamAuto\.java has an error on line 12: cannot find symbol: method bar\(\)\./);assert.equal(await page.locator('[data-cam-again]').isVisible(),true);assert.equal(await page.locator('[data-cam-image]').isVisible(),false);await page.screenshot({path:path.join(out,'camera-build-failed.png')});

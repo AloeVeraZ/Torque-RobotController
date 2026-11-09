@@ -1,0 +1,325 @@
+{
+ "fixVerification": [
+  {
+   "id": "REV-1",
+   "fixed": true,
+   "evidence": "winch.legality.status is 'not-verified' and the note matches the requested text word for word. The hang-only records (hook-and-winch-hang, hang-hook and the others) are still 'not-allowed'. Leftover: winch still has hang aliases ('hook-and-winch', 'winch-based hanging', 'pull-up winch') and its short says it pulls the robot up off the floor (see R2-9)."
+  },
+  {
+   "id": "REV-2",
+   "fixed": true,
+   "evidence": "arm-counterbalance: rules ['R801'] and the requested note. elastic-retraction, lift-counterbalance and constant-force-spring-lift now say 'The BIOBUZZ manual sets no limit on mechanical springs; pneumatic parts are covered by R801'. No 'tell inspectors' text is left anywhere."
+  },
+  {
+   "id": "REV-3",
+   "fixed": true,
+   "evidence": "biobuzz-flower-placer.short is the requested sentence, which cites G418."
+  },
+  {
+   "id": "REV-4",
+   "fixed": true,
+   "evidence": "side-belt-conveyor.image.kind is 'illustration' and the credit reads '...(hand sketch of a side-belt concept)'."
+  },
+  {
+   "id": "REV-5",
+   "fixed": true,
+   "evidence": "The param is now key 'podCountsPerRev', unit 'counts/rev', default 2000, with the note '...about 13.26 ticks per mm'. 'podTicksPerMm' appears nowhere in ui, src or tests."
+  },
+  {
+   "id": "REV-6",
+   "fixed": true,
+   "evidence": "tracked-drive has been removed. tread-drive (category drive) now holds its aliases ('Tracked (tread) drive', 'continuous track', 'caterpillar track')."
+  },
+  {
+   "id": "REV-7",
+   "fixed": true,
+   "evidence": "articulated-chassis has been removed. rocker-bogie is category drive, seasons ['non-ftc'], dof 3, and carries the merged aliases."
+  },
+  {
+   "id": "REV-8",
+   "fixed": true,
+   "evidence": "spring-launcher has been removed. drone-launcher holds its aliases ('spring launcher', 'Spring / elastic launcher', 'plunger launcher')."
+  },
+  {
+   "id": "REV-9",
+   "fixed": false,
+   "evidence": "geneva-drive is now category 'inside', indexing-table is gone, and star-wheel-indexer has parent 'geneva-drive'. But star-wheel-indexer still lists the aliases 'Geneva drive' and 'cam indexer', which geneva-drive also lists, and its name is still 'Star-wheel or Geneva indexer'. It was meant to cover only the star-wheel singulator. geneva-drive has also picked up the alias 'rotary indexer', which clashes with biobuzz-spindexer and with the separate rotary-indexer record."
+  },
+  {
+   "id": "REV-10",
+   "fixed": true,
+   "evidence": "slide-to-slide-transfer has been removed. grate-transfer (category inside) holds its aliases."
+  },
+  {
+   "id": "REV-11",
+   "fixed": true,
+   "evidence": "belt-intake has been removed. belt-conveyor has the aliases 'belt intake' and 'tread intake'. band-conveyor now has parent belt-conveyor."
+  },
+  {
+   "id": "REV-12",
+   "fixed": true,
+   "evidence": "multi-stage-roller-intake has parent 'roller-conveyor', and the aliases 'roller conveyor' and 'omni wheel conveyor' are gone. It still shares the 7244-roller.jpg image with roller-conveyor, which the fix allowed."
+  },
+  {
+   "id": "REV-13",
+   "fixed": true,
+   "evidence": "kicker-wheel has parent 'feeder-wheels', and 'pre-accelerator' and 'feeder wheel' are gone from its aliases."
+  },
+  {
+   "id": "REV-14",
+   "fixed": true,
+   "evidence": "index-and-release has parent 'kicker', and 'flicker', 'pusher' and 'ring pusher' are gone from its aliases."
+  },
+  {
+   "id": "REV-15",
+   "fixed": true,
+   "evidence": "scoring-gate has parent 'servo-gate' and aliases ['gate','trapdoor']. 'stopper' has been removed from biobuzz-shot-gate."
+  },
+  {
+   "id": "REV-16",
+   "fixed": true,
+   "evidence": "passive-funnel-intake and gravity-drop-chute both have parent 'guide-channel', and gravity-drop-chute.type is null. None of the three share 'funnel', 'chute' or 'ramp' any more."
+  },
+  {
+   "id": "REV-17",
+   "fixed": true,
+   "evidence": "differential-joint now has type null, parent 'mechanical-differential', entry 'concept', and no wrist aliases. It still carries a preset that can never be used because it has no type (minor)."
+  },
+  {
+   "id": "REV-18",
+   "fixed": true,
+   "evidence": "'extendo' is gone from telescoping-intake.aliases, and its parent is now 'extendo'."
+  },
+  {
+   "id": "REV-19",
+   "fixed": true,
+   "evidence": "Only flip-up-transfer has 'flip-up intake'. deployable-intake and rotating-deposit no longer list flip-up aliases."
+  },
+  {
+   "id": "REV-20",
+   "fixed": true,
+   "evidence": "camera-pan-tilt has parent 'pan-tilt-platform' and aliases ['two-axis camera mount']. 'pan tilt' and 'gimbal' are only on pan-tilt-platform."
+  },
+  {
+   "id": "REV-21",
+   "fixed": false,
+   "evidence": "Both children now have parent 'vision-assisted-aiming', and 'target lock' is only on the parent. But vision-assisted-turret still has 'auto-aim' while the parent has 'auto aim'. Search normalizes both to 'auto aim', so it is still a shared alias. 'closed-loop turret aiming' is also shared by biobuzz-auto-aim and biobuzz-turret-shooter."
+  },
+  {
+   "id": "REV-22",
+   "fixed": true,
+   "evidence": "articulated-scoring-arm has been removed, and arm-with-wrist holds its aliases. New overlap: 'outtake arm' is now on both arm-with-wrist and rotating-deposit (R2-5)."
+  },
+  {
+   "id": "REV-23",
+   "fixed": true,
+   "evidence": "biobuzz-hooded-shooter.parent is 'adjustable-hood'."
+  },
+  {
+   "id": "REV-24",
+   "fixed": true,
+   "evidence": "biobuzz-ramp-intake.legality.rules is ['R102','R105','G416'], and its 'how' and cons cite R102 for the 18 in. cube."
+  },
+  {
+   "id": "REV-25",
+   "fixed": true,
+   "evidence": "biobuzz-rules.json now has an R102 entry for the 18 in. cube. The R105 entry covers only the 18 x 24 x 29 in. expansion and the physical-constraint rule, and adds '(The 18 in. starting cube is R102.)'."
+  },
+  {
+   "id": "REV-26",
+   "fixed": true,
+   "evidence": "biobuzz-hive-camera has rules ['R707','R708','R105'] and the requested note."
+  },
+  {
+   "id": "REV-27",
+   "fixed": true,
+   "evidence": "biobuzz-fixed-shooter's note ends with 'Do not launch during field measurement or calibration time (T405).'"
+  },
+  {
+   "id": "REV-28",
+   "fixed": true,
+   "evidence": "The G409 con and rule are present on biobuzz-sweeper-intake, biobuzz-size-adaptive-intake and biobuzz-four-ball-hopper."
+  },
+  {
+   "id": "REV-29",
+   "fixed": true,
+   "evidence": "four-bar.image.kind is 'cad'."
+  },
+  {
+   "id": "REV-30",
+   "fixed": true,
+   "evidence": "arm.image.kind is 'cad', with the credit 'goBILDA product render, as shown on Game Manual 0'."
+  },
+  {
+   "id": "REV-31",
+   "fixed": true,
+   "evidence": "cycloidal-gearbox.image is null."
+  },
+  {
+   "id": "REV-33",
+   "fixed": true,
+   "evidence": "mecanum-drive-odometry.how gives 'strafe (right-positive, same convention as mecanum-drive) = (fl - fr - bl + br)/4'. Checked against mecanum-drive's wheel equations: it gives 4x/4 = x."
+  },
+  {
+   "id": "REV-34",
+   "fixed": true,
+   "evidence": "three-dead-wheel-odometry.how adds the gm0 sign-convention note and the CCW-positive form (dxR - dxL)/L."
+  },
+  {
+   "id": "REV-35",
+   "fixed": true,
+   "evidence": "quadruped-walker's note is the requested text."
+  },
+  {
+   "id": "REV-36",
+   "fixed": true,
+   "evidence": "crank-rocker.how is the requested Grashof wording, with the rocker named as the other ground-pivoted link."
+  },
+  {
+   "id": "REV-37",
+   "fixed": true,
+   "evidence": "pantograph.type is 'custom-pivot'."
+  },
+  {
+   "id": "REV-38",
+   "fixed": true,
+   "evidence": "modular-drivetrain-chassis is category 'drive' with dof null."
+  },
+  {
+   "id": "REV-39",
+   "fixed": true,
+   "evidence": "type is null on lift-counterbalance, constant-force-spring-lift and arm-counterbalance."
+  },
+  {
+   "id": "REV-40",
+   "fixed": true,
+   "evidence": "The developer took the second option the fix allowed: confidence is now 'low'. The only ref is still the Chief Delphi 'FTC swerve is useless' thread, so a WPILib swerve-kinematics ref would still be better."
+  },
+  {
+   "id": "REV-41",
+   "fixed": true,
+   "evidence": "cycloidal-gearbox.how gives 'The reduction is lobes : (pins - lobes) (e.g. 10:1 with 11 pins and 10 lobes), and the output turns opposite to the input.'"
+  },
+  {
+   "id": "REV-42",
+   "fixed": true,
+   "evidence": "rotating-platform has parent 'turret' and aliases ['rotating base','waist joint','slewing ring','base yaw']. 'lazy susan', 'bearing stack' and 'turntable' are gone."
+  }
+ ],
+ "newIssues": [
+  {
+   "id": "R2-1",
+   "severity": "MAJOR",
+   "record_or_file": "flywheel-shooter, dual-flywheel-shooter, hooded-flywheel, kicker-wheel, roller-ejector (preset) and ui/sim-mechanism-list.js add()",
+   "evidence": "These records use continuous joint types (flywheel, feeder, roller-intake). Their presets are {states:{stop:0,run:1},speed:1}; roller-ejector has run:-1. For continuous types a state is a position in degrees (sim-mechanism-types.js: 'a \"run\" position (a few turns)'). The type defaults are run:3600 at speed 18000 (flywheel), run:3600 at speed 3600 (feeder) and run:2160 at speed 2400 (roller-intake). add() copies p.states and p.speed onto the joint and the actuator, so Add to robot makes a part whose 'run' action turns 1 degree at 1 deg/s. kicker-wheel (feeder) is not in AS_GAME, so this happens even with BIOBUZZ on. The other four go through it only when the game is off.",
+   "fix": "Delete preset from these 5 records, or set it in the type's units: flywheel {states:{stop:0,run:3600},speed:18000}, feeder {states:{stop:0,run:3600},speed:3600}, roller-ejector {states:{stop:0,run:-2160},speed:2400}. Add a test that a preset's states are the same order of magnitude as the type default for continuous joints.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-2",
+   "severity": "MINOR",
+   "record_or_file": "linkage-slide",
+   "evidence": "how: 'Output speed and force vary with angle and are highest when the bars are perpendicular'. For a fixed input, output force times speed equals the input power, so force is lowest where speed is highest. A slider-crank's force is highest near the toggle (dead-center) positions, which the record's own 'past center the linkage locks' depends on.",
+   "fix": "how: '...Output speed is highest near the middle of the stroke, where the crank and link are near perpendicular. Output force is highest near the ends of the stroke, close to the toggle positions. Past center the linkage locks against backdriving...'",
+   "confirmed": true
+  },
+  {
+   "id": "R2-3",
+   "severity": "MINOR",
+   "record_or_file": "deployable-intake, claw-family, camera-pan, camera-pan-tilt, pan-tilt-platform, wrist-mounted-camera (preset.states)",
+   "evidence": "deploy-intake is positive:'lower' with default {up:0,down:90}, and the child biobuzz-ramp-intake follows that ({up:0,down:100}). deployable-intake has {up:90,down:0}, so the 'up' route action swings it 90 degrees toward the floor. camera-mount's default down:20 means positive is down, but camera-pan, camera-pan-tilt and pan-tilt-platform use down:-30, and wrist-mounted-camera uses down:-90. Every claw record uses {open:35,closed:0}, while the claw type default is {open:0,closed:25}.",
+   "fix": "deployable-intake preset.states: {up:0,down:90}. Camera presets: down:+30 (wrist-mounted-camera: {up:0,down:90}). Either switch the claw presets to {open:0,closed:N} like the type, or document that the claw's CAD pose is closed.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-4",
+   "severity": "MINOR",
+   "record_or_file": "telescoping-intake, extendo (params and preset; both rule-checked R105)",
+   "evidence": "BIOBUZZ R105 limits a robot to 18 x 24 in. after the start, so a horizontal slide on an 18 in. robot can reach only about 6 in. beyond the frame. telescoping-intake defaults extension to 12 in. (max 24), with preset out:12 and upper:18. extendo defaults to 450 mm (17.7 in.), with preset out:18 and upper:22. Both are marked rule-checked against R105, but the numbers they ship with break R105 on a typical BIOBUZZ robot.",
+   "fix": "telescoping-intake: extension default 5, max 6 in., note 'BIOBUZZ R105: 24 in. total length, so about 6 in. beyond an 18 in. frame'; preset {states:{in:0,out:5},upper:6}. extendo: extension default 150 mm, note the same; preset {states:{in:0,out:5},upper:6}. Or keep the bigger values only as historical (INTO THE DEEP) and say so in the note.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-5",
+   "severity": "MINOR",
+   "record_or_file": "aliases across records (search duplicates)",
+   "evidence": "Many search-normalized aliases still sit on two records. BIOBUZZ records hold generic aliases: 'surgical tubing intake' (biobuzz-sweeper-intake, surgical-tubing-intake), 'flap intake', 'gecko wheel intake', 'drop down intake' and 'flip out intake' (biobuzz-ramp-intake, deployable-intake), 'floating roller', 'vertical conveyor', 'inclined conveyor', 'servo release gate' (biobuzz-shot-gate, servo-gate), 'separator gate', 'ball singulator', and 'spindexer', 'carousel indexer', 'revolver' and 'encoder indexed storage' (biobuzz-spindexer, rotary-indexer). More: 'sensor controlled diverter', 'pivoting selection gate', 'fixed shooter', 'dual flywheel', 'two wheel shooter', 'launcher', 'variable hood', 'hood shooter', 'tilting shooter', 'belt driven turret' and 'gear driven turret'. Generic pairs: 'funnel' (guide-channel, controlled-release-funnel), 'klann linkage' (walking-linkage, six-bar), 'spool' (winch, string-spool-drive), 'hook and winch' (winch, hook-and-winch-hang), 'compact retracting extension' (linear-slide-hang, relic-extension-arm), 'viper slide' (linear-slide, drawer-slide), 'cascading elevator' (cascade-rigging, lift), 'lazy tongs' (scissor-lift, pantograph), 'outtake arm' (arm-with-wrist, rotating-deposit), 'odometry computer' (encoder-imu-fusion, gobilda-pinpoint) and 'rotary indexer' (biobuzz-spindexer, geneva-drive).",
+   "fix": "Keep each alias only on the generic parent; BIOBUZZ children keep game-specific aliases only. Remove: 'lazy tongs' from pantograph, 'spool' and 'hook-and-winch' from winch, 'compact retracting extension' from relic-extension-arm, 'viper slide' from drawer-slide (keep 'Viper-Slide'), 'cascading elevator' from lift, 'outtake arm' from rotating-deposit, 'odometry computer' from encoder-imu-fusion, 'Klann linkage' from six-bar, 'funnel' from controlled-release-funnel, 'rotary indexer' and 'indexing table' from geneva-drive. Add a validate() check that a normalized alias is not used by two records.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-6",
+   "severity": "MINOR",
+   "record_or_file": "seasons: linear-slide, lift vs turret, multi-level-deposit",
+   "evidence": "linear-slide and lift use 'historical:powerplay', while turret and multi-level-deposit use 'historical:power-play'. The detail panel then shows 'Past game: powerplay' for some records and 'Past game: power play' for others.",
+   "fix": "Change 'historical:powerplay' to 'historical:power-play' in linear-slide and lift.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-7",
+   "severity": "MINOR",
+   "record_or_file": "lift, lead-screw, dual-screw-lift, rack-pinion, chain-driven-lift, string-spool-drive, linear-slide, worm-gearbox, toggle-linkage (uses)",
+   "evidence": "These records have seasons 'general', which the season filter shows as 'Any season'. Their uses still offer hanging: 'lifting the robot to hang', 'hanging or lifting the robot', 'robot hang', 'hang if well supported', 'heavy hang mechanisms', 'hang winches', 'hang or climb', 'Endgame hang or lift that must not drop' and 'locking a hang or arm'. BIOBUZZ has no hang task, and G415 forbids suspending from ARENA elements.",
+   "fix": "Rewrite each hang use as '(past games) hanging the robot; BIOBUZZ has no hang (G415)', or drop the hang uses from general-season records.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-8",
+   "severity": "MINOR",
+   "record_or_file": "lead-screw (params.stroke)",
+   "evidence": "stroke is 203 mm, marked estimate:false with the note 'ServoCity Linear Actuator Kit lists 203 mm'. The record's own vendor ref URL is .../linear-actuator-kit-1120-series-201mm-stroke-8mm-lead, which says 201 mm.",
+   "fix": "Check the listing and set stroke default to 201 with the note 'ServoCity Linear Actuator Kit (1120 series) lists 201 mm stroke', or explain why it differs.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-9",
+   "severity": "MINOR",
+   "record_or_file": "winch (short, aliases, uses)",
+   "evidence": "After REV-1 the generic winch is 'not-verified', but its short ('pull the robot up off the floor. A hook or slide must reach the bar first') and its aliases ('winch-based hanging', 'hook-and-winch', 'pull-up winch') still describe only hanging. hook-and-winch-hang is not-allowed and is the record those words belong to.",
+   "fix": "short: 'A motor winds string or cable onto a spool to pull a mechanism or, in past games, the robot itself.' Move 'winch-based hanging', 'hook-and-winch' and 'pull-up winch' to hook-and-winch-hang.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-10",
+   "severity": "MINOR",
+   "record_or_file": "biobuzz-size-adaptive-intake (image)",
+   "evidence": "The image is gm0 8375-intake.png, credited 'Res-Q tubing intake showing funneling'. It is labelled mechanism-photo, but it shows funnelling, not the sprung or adjustable-gap roller the record describes. funnel-guided-roller-intake uses the same image, and there it is correct.",
+   "fix": "Set image to null, or use a photo of a spring-loaded roller (for example gm0 9971-intake.png, which spring-loaded-roller-intake already uses), with a credit saying it is not a BIOBUZZ robot.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-11",
+   "severity": "MINOR",
+   "record_or_file": "ui/sim-mechanism-list.js add() with architecture/multi-joint records",
+   "evidence": "Add to robot adds one joint of record.type, named after the record, and ignores dof and actuation. quadruped-walker (dof 12) adds one 'hip'. hexapod (18) adds one hip. stewart-platform (6) adds one leg. mecanum-drive adds one drive wheel named 'Four-wheel mecanum drive'. elbow (a 2-link arm, type 'elbow' = the second joint) adds an elbow with no shoulder. motor-wrist (actuation motor) gets the wrist type's default servo. feeder-wheels (crservo) gets the feeder type's goBILDA 6000 rpm motor.",
+   "fix": "For entry 'architecture', or any record whose dof is above 1 and has no multi-joint preset, show 'Reference only' or label the button 'Add one <type name>'. When record.actuation is a single FTC kind that differs from TY().motorFor(type).kind, apply that kind. Give elbow type 'arm' (shoulder) and note that the elbow is added on it.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-12",
+   "severity": "SUGGESTION",
+   "record_or_file": "ui/sim-mechanism-list.js add() (joint name)",
+   "evidence": "The new joint is named after the record, and 30 typed records have names over 40 characters (up to 60, e.g. dual-flywheel-shooter). The card's Name input has maxlength 40, and route actions are named '<joint name> <state>', e.g. 'Turret (rotating base for a shooter, arm or slides) front'.",
+   "fix": "Use a short name: TY().short(type), or the record name with any parenthetical removed and cut to 40 characters.",
+   "confirmed": true
+  },
+  {
+   "id": "R2-13",
+   "severity": "MINOR",
+   "record_or_file": "dead-wheel-pod, two-dead-wheel-odometry, three-dead-wheel-odometry, rotating-platform, turret, biobuzz-turret-shooter (legality notes)",
+   "evidence": "These notes say R303 lists dead-wheel odometry kits (an 'explicit R303 exception') and COTS turntables as single-DoF parts. The project's own biobuzz-rules.json lists R303 exceptions only as 'ratcheting devices, holonomic wheels and universal joints'. Odometry pods and turntables are not mentioned. I could not open the manual here.",
+   "fix": "Check the TU08 R303 text. If they are not listed, reword to 'A single-DoF COTS part under R303 (not a listed exception); legality depends on the whole robot and the current manual', and change dead-wheel-pod and two-dead-wheel-odometry to 'not-verified'.",
+   "confirmed": false
+  },
+  {
+   "id": "R2-14",
+   "severity": "SUGGESTION",
+   "record_or_file": "four-wheel-tank-drive (aliases), color-sensor (aliases)",
+   "evidence": "'west coast drive (FRC term)' is normally a 6- or 8-wheel drop-center tank, which matches six-wheel-drop-center-drive, not a 4WD. 'MR Color Sensor' is the Modern Robotics sensor, a different product from the REV Color Sensor V3 this record documents.",
+   "fix": "Move 'west coast drive' to six-wheel-drop-center-drive. Remove 'MR Color Sensor' from color-sensor, or add a note that it is a different, discontinued device.",
+   "confirmed": true
+  }
+ ],
+ "testsRun": "ELECTRON_RUN_AS_NODE=1 .cache/runtime-win32-x64-44.8.0/electron.exe --test tests/mech-library.test.cjs tests/pinout.test.cjs tests/preview-assets.test.cjs tests/mech-catalog.test.cjs: 21 tests, 21 pass, 0 fail. Playwright UI tests not run. Code review: no XSS found (every record string goes through esc(), which escapes & < > \" for double-quoted attributes; only numeric p.min and p.max are inserted unescaped, and the data is bundled). The open-reference IPC is sound: trusted() requires the shell main frame, the URL must exactly match a refs[].url or image.page from the bundled data, and loading failures leave an empty allow-list. Photo merge is sound: the 'mech:lib:<id>' keys cannot collide with 'mech:<type>' or 'mech:cat:'; main loads them through device-art.js's require of the library and data, and baseOf maps them to safe filenames; prefetch skips mech: keys and every library image has a src.",
+ "verdict": "REJECT"
+}
