@@ -67,6 +67,10 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // The chassis first: Simulate's drivetrain, each wheel guessed from the names, and Configure's note that rightBack has no encoder.
     assert.equal(await page.getAttribute('[data-elec-pick="@setup"]','aria-pressed'),'true','Setup comes first');assert.match(await page.textContent('[data-elec-device="@setup"]'),/Ctrl\+Z undoes/);assert.equal(await page.locator('.cal-board-meter').count(),0,'no count bar');
     assert.equal(await page.inputValue('[data-elec-drive]'),'mecanum');
+    // Camera is listed under Setup, to do until a lens is measured; its tile opens Calibrate's Camera tab, and Electronics is a press back.
+    assert.match(await page.textContent('[data-elec-camera]'),/Camera.*to do/);assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is in Calibrate’s row');
+    await page.click('[data-elec-camera]');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true');assert.equal(await page.locator('#cal-panel-camera').isVisible(),true);assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'false');
+    await page.focus('#cal-tab-camera');await page.keyboard.press('ArrowRight');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'true','round to Electronics');assert.equal(await page.locator('#cal-links').isVisible(),true);
     assert.deepEqual(await page.$$eval('[data-elec-field=motor]',l=>l.map(s=>s.value)),['leftFront','rightFront','leftBack','rightBack']);
     assert.match(await page.textContent('.cal-elec-slots'),/No encoder/);assert.match(await page.textContent('[data-elec-device="@setup"]'),/That makes 3 links/);
     // The guess goes on the board by itself, as planned links to be checked at the end: nothing to press.

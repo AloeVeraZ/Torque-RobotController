@@ -198,8 +198,22 @@
       if(spec.kind==='swerve'){const steer=new T.Group();steer.name='DeckSteer';steer.position.copy(location);steer.userData.deckSteer={x:location.x,y:location.y};wheel.parent.add(steer);steer.add(wheel);wheel.position.set(0,0,0);scene.updateMatrixWorld(true);for(const part of podParts)if(part.userData.deckSteerBody.pod===wheel.name)steer.attach(part);}
       wheel.userData.deckWheel={...spec,x:location.x,y:location.y,angle:0,driven:meta?.id!=='swechanum'||spec.kind==='swerve'};
     }
+    if(meta?.id==='strafer')straferOdometry(scene,T);
     scene.userData.builtin=meta?.id;return scene;
   }
+  // goBILDA's Strafer CAD comes without odometry. Its two 4-Bar pods (32 mm wheel) and Pinpoint are drawn where goBILDA's Pinpoint user guide puts them on this chassis: both pods on the rear
+  // axle line, 168 mm behind the centre, the X (forward) pod 84 mm to the right and the Y (strafe) pod 84 mm to the left, the Pinpoint between them, sticker up. The same places
+  // DeckMechanisms.PRESETS.startermecanum gives the simulation as offsets. The CAD's frame: inches, the wheel axles at z = 0 (the floor 52 mm below), its front toward -x, so the rear is +x and the robot's right +y.
+  function straferOdometry(scene,T){const mm=1/25.4,floor=-52*mm,r=16*mm,x=168*mm,side=84*mm,mat=c=>new T.MeshStandardMaterial({color:c,roughness:.55,metalness:.2}),black=mat(0x1b1c1e),yellow=mat(0xf2c200),g=new T.Group();g.name='Odometry: goBILDA 4-Bar pods and Pinpoint';
+    const mesh=(geo,m,pos,name)=>{const o=new T.Mesh(geo,m);o.position.set(pos[0],pos[1],pos[2]);o.name=name;o.castShadow=true;o.receiveShadow=true;g.add(o);return o;};
+    for(const [name,y,forward] of [['Odometry pod X (forward)',side,true],['Odometry pod Y (strafe)',-side,false]]){
+      // A cylinder's axis is y: across the robot, as the forward pod's axle lies; the strafe pod's lies along it.
+      for(const o of [mesh(new T.CylinderGeometry(r,r,.28,24),black,[x,y,floor+r],name+' wheel'),mesh(new T.CylinderGeometry(r*.55,r*.55,.32,16),yellow,[x,y,floor+r],name+' hub')])if(!forward)o.rotation.z=Math.PI/2;
+      mesh(new T.BoxGeometry(43*mm,.84,1.1),black,[x,y,floor+2*r+.65],name+' body');}
+    // The Pinpoint sits on whatever the CAD has there (the rear cross channel's top).
+    let top=24*mm;try{scene.updateMatrixWorld(true);const hit=new T.Raycaster(new T.Vector3(x,0,20),new T.Vector3(0,0,-1)).intersectObject(scene,true)[0];if(hit&&hit.point.z>floor+1)top=hit.point.z;}catch{}
+    mesh(new T.BoxGeometry(43*mm,43*mm,.42),black,[x,0,top+.21],'goBILDA Pinpoint');mesh(new T.BoxGeometry(43*mm-.4,43*mm-.7,.02),yellow,[x,.15,top+.43],'Pinpoint label');
+    scene.add(g);}
   // ---- mechanisms that move -----------------------------------------------------------------
   // A placed body is split into links by the robot's joints (DeckKinematics): each joint's parts become their own mesh
   // (same vertex buffers, own triangle list, so nothing is copied), in a group whose matrix pose() sets from the

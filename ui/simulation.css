@@ -511,8 +511,10 @@
 .sim-presets{margin-bottom:12px}#sim-preset-lock #sim-preset-note{margin:6px 0 0}
 /* A preset robot is its card alone; the adjustable one (Starter Mecanum) also shows its size, weight, wheels and power. */
 [data-setup-page=robot][data-preset=fixed] #sim-robot-custom{display:none}
-[data-setup-page=robot][data-preset=adjust] :is(.sim-robot-cad,#sim-parts,.sim-drive-group,#sim-mesh-size,.sim-robot-save){display:none!important}
-[data-setup-page=robot][data-preset=adjust] .sim-robot-layout{display:block}
+/* The kit: its CAD shows and turns as any robot's does, but is not swapped, re-sided or re-scaled; the numbers goBILDA lists are greyed. */
+[data-setup-page=robot][data-preset=adjust] :is(#sim-parts,.sim-drive-group,#sim-mesh-size,.sim-robot-save,.sim-cad-head .button-row,#sim-model-drop,.sim-side-assignments,#sim-units-box){display:none!important}
+[data-kit-fixed]{opacity:.6}
+[data-setup-page=robot][data-preset=adjust] .sim-robot-cad{align-self:stretch;display:flex;flex-direction:column}[data-setup-page=robot][data-preset=adjust] :is(#sim-model-box,.sim-model-preview){flex:1;min-height:460px}
 /* Custom robot: Import CAD sits on the model's own heading. */
 .sim-cad-head{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 10px}
 .sim-cad-head .button-row{margin:0;flex-wrap:wrap}

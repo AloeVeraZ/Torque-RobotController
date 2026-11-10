@@ -139,7 +139,7 @@ const HUBS=[{serial:'(embedded)',modules:[{moduleAddress:173,isParent:true,imuTy
     // Over Wi-Fi the camera program goes on only with a press, and then it runs by itself.
     await page.waitForSelector('[data-cam-install]:not([hidden])',{timeout:30000});await page.click('[data-cam-install]');
     await page.waitForFunction(()=>/Stop live debug/.test(document.querySelector('[data-debug-start]').textContent),null,{timeout:90000});
-    await page.click('#cal-tab-debug');assert.match(await page.locator('[data-debug-usb]').innerText(),/USB devices[\s\S]*Webcam[\s\S]*Go to Camera/);assert.equal(await page.locator('#cal-debug [data-debug-install]').count(),1,'the button is still there');
+    await page.click('#calibrate-view [data-flow=debug]');assert.match(await page.locator('[data-debug-usb]').innerText(),/USB devices[\s\S]*Webcam[\s\S]*Go to Camera/);assert.equal(await page.locator('#cal-debug [data-debug-install]').count(),1,'the button is still there');
     // What is really on the hub's ports is what the hub heard. Anything answering that the configuration does not have says so.
     {const words=s=>page.locator(s).textContent(),until2=async(what,fn)=>{const end=Date.now()+8000;while(Date.now()<end){if(await fn().catch(()=>false))return;await wait(150);}throw Error('Not within 8 s: '+what);};
       await hub(()=>{global.__hub.debug.stray.push({bus:2,a:0x52});global.__hub.debug.strayAnalog[3]=1.65;});

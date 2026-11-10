@@ -49,7 +49,8 @@ const MAN={deck:'debug',version:1,motors:['arm','lift'],servos:['claw'],crservos
     await soon('it starts with nothing pressed',async()=>/Stop live debug/.test(await page.textContent('[data-debug-start]')));
     // Stopped here it stays stopped, while this tab shows.
     await page.click('[data-debug-start]');await soon('stopped',async()=>/Start live debug/.test(await page.textContent('[data-debug-start]')));await wait(3500);assert.match(await page.textContent('[data-debug-start]'),/Start live debug/,'nothing starts it again');
-    // The robot has the file but never built it (a build that failed on a team file): a start that finds no op mode builds it and starts again, with nothing pressed.
+    // The robot has the file but never built it (a build that failed on a team file): a pressed start that finds no op mode builds it and starts again, with nothing more pressed.
+    await page.click('[data-debug-start]');await soon('started by the press',async()=>/Stop live debug/.test(await page.textContent('[data-debug-start]')));
     await send({error:'The robot has no Torque Debug op mode yet. Put Torque Debug on the robot first.'});await soon('built and started by itself',async()=>await app.evaluate(()=>global.__installs)===1&&/Stop live debug/.test(await page.textContent('[data-debug-start]')));
     await page.click('[data-debug-start]');await soon('stopped again',async()=>/Start live debug/.test(await page.textContent('[data-debug-start]')));
     // One button, no timeline, and nothing to read first.

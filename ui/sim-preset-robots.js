@@ -10,7 +10,7 @@
   const Mech=()=>globalThis.DeckMechanisms||(typeof require==='function'?require('./sim-mechanisms.js'):null);
   const Kin=()=>globalThis.DeckKinematics||(typeof require==='function'?require('./sim-kinematics.js'):null);
   const {C,lin,frame,pt,add,mul,RAD,X,Y,Z,EPS,WHEEL_R,MECANUM_HALF,box,obox,prism,lathe,cylinder,tube,band,disc,gear,part,holes,channel,motor,servo,mecanumWheel}=TR.kit;
-  const K={...C,tire:lin(0x1f2022),blue:lin(0x2b6cd4),tube:lin(0xb8bec6),bumper:lin(0xc8282d)};
+  const K={...C,yellow:lin(0xf2c200),tire:lin(0x1f2022),blue:lin(0x2b6cd4),tube:lin(0xb8bec6),bumper:lin(0xc8282d)};
   const VERSION=1,CHASSIS='Chassis',ELECTRONICS='Electronics',DECK_Z=2.99,PLATE_Z=3.09,src='metadata';
   const CORNERS=[['FL',1,1],['FR',1,-1],['BL',-1,1],['BR',-1,-1]];
   // ---- shared parts --------------------------------------------------------------------------------------------------
@@ -45,7 +45,25 @@
   // ---- Starter Mecanum: a goBILDA Strafer-style kit bot ----------------------------------------------------------------
   // U-channel frame, grid plate deck, four 104 mm mecanum wheels on Yellow Jackets, a Control Hub and battery: its
   // IMU and the drive motors' own encoders are the only sensors, as on a kit robot straight out of the box,, and a polycarbonate push plate. The side rails are 16.9 in (18 holes), inside the 17.56 in length.
-  const MECANUM={id:'startermecanum',name:'Starter Mecanum',L:17.56,W:17.79};
+  const MECANUM={id:'startermecanum',name:'Starter Mecanum',L:17.32,W:17.79};
+  // goBILDA's own layout for two 4-Bar Odometry Pods (32 mm wheel) and a Pinpoint on this chassis, from its Pinpoint user guide: both pods in the rear cross channel, 168 mm behind the
+  // robot's centre, the X (forward) pod 84 mm to the right and the Y (strafe) pod 84 mm to the left, the Pinpoint between them, sticker side up. at: where the channel's open side is.
+  const ODO={x:-168/25.4,y:84/25.4,r:16/25.4};
+  function odometryParts(path,at,deck){
+    // forward: the pod tracks forward, so its wheel's axle lies across the robot; the strafe pod's lies along it.
+    const pod=(name,y,forward)=>{const p=[...path,name],c=[ODO.x,y];
+      part(p,'Odometry wheel',K.tire,g=>cylinder(g,frame([c[0],c[1],ODO.r],forward?Y:X,forward?X:Y),ODO.r,-.14,.14,24));
+      part(p,'Wheel hub',K.yellow,g=>cylinder(g,frame([c[0],c[1],ODO.r],forward?Y:X,forward?X:Y),ODO.r*.55,-.16,.16,16));
+      part(p,'4-Bar arms',K.black,g=>{box(g,[c[0]-.36,c[1]-.36,2*ODO.r+.02],[c[0]+.36,c[1]+.36,2*ODO.r+.14]);if(forward){box(g,[c[0]-.2,c[1]-.3,ODO.r-.1],[c[0]+.2,c[1]-.2,2*ODO.r+.02]);box(g,[c[0]-.2,c[1]+.2,ODO.r-.1],[c[0]+.2,c[1]+.3,2*ODO.r+.02]);}
+        else{box(g,[c[0]-.3,c[1]-.2,ODO.r-.1],[c[0]-.2,c[1]+.2,2*ODO.r+.02]);box(g,[c[0]+.2,c[1]-.2,ODO.r-.1],[c[0]+.3,c[1]+.2,2*ODO.r+.02]);}});
+      // Its body bolts inside the cross channel (it fits the channel's 43 mm inside).
+      part(p,'4-Bar Odometry Pod',K.black,g=>box(g,[at-1.45,c[1]-.42,2*ODO.r+.1],[c[0]+.2,c[1]+.42,2.85]));};
+    pod('Odometry pod X (forward)',-ODO.y,true);pod('Odometry pod Y (strafe)',ODO.y,false);
+    const pin=[...path,'Pinpoint'],h=43/25.4/2;
+    part(pin,'goBILDA Pinpoint',K.black,g=>box(g,[ODO.x-h,-h,deck],[ODO.x+h,h,deck+.42]));
+    part(pin,'Pinpoint label',K.yellow,g=>box(g,[ODO.x-h+.2,-h+.5,deck+.42],[ODO.x+h-.2,h-.2,deck+.43]));
+    part(pin,'Pinpoint ports',C.alu,g=>{for(const dy of [-.45,-.15,.15])box(g,[ODO.x-h+.25,dy-.1,deck+.42],[ODO.x-h+.6,dy+.1,deck+.45]);});
+  }
   function starterMecanum(){
     const HX=MECANUM.L/2,HY=MECANUM.W/2,R=WHEEL_R,wy=HY-MECANUM_HALF,outY=wy-MECANUM_HALF-.365,railW=48/25.4,inY=outY-railW,end=HX-.012,WX=HX-2.9;
     for(const s of [1,-1]){const side=s>0?'left':'right';channel([CHASSIS,`U-Channel 1120 ${side}`],'U-Channel 1120 432mm','x',-8.45,8.45,s*outY,s);}
@@ -57,6 +75,7 @@
     part([CHASSIS,'Push plate'],'Push plate',K.poly,g=>box(g,[HX-.125,-outY+.1,.55],[HX,outY-.1,4.2]));
     part([CHASSIS,'Push plate'],'Hole pattern',C.hole,g=>holes(g,frame([HX+EPS,0,3.6],X,Y),11,{small:false}));
     hubAndBattery([ELECTRONICS],-HX+.7,-HX+6.3,outY-railW/2-.25,-(outY-railW/2-.25)-1.4,PLATE_Z);
+    odometryParts([ELECTRONICS],-end+48/25.4,PLATE_Z);
   }
   function mecanumJoints(name){const HX=MECANUM.L/2,HY=MECANUM.W/2,WX=HX-2.9,wy=HY-MECANUM_HALF;
     return CORNERS.map(([k,sx,sy])=>({id:'wheel'+k,name:'Mecanum wheel '+k,kind:'drive-wheel',type:'continuous',parts:[`${name}/${CHASSIS}/Mecanum wheel ${k}`],
@@ -108,9 +127,10 @@
   // gets its position; wiring: Control Hub ports as on the robot; parts: its mechanisms' CAD assemblies; cad: the vendor
   // CAD the app shows in its place where the build has it (ui/assets/robots, personal local builds only).
   const ROBOTS={
-    startermecanum:{...MECANUM,cad:'strafer',draw:starterMecanum,joints:mecanumJoints,heightIn:7.25,wheelDiameterMm:104,localization:'encoders',imuSource:'hub',
-      wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-1150',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-1150',hub:'control',port:1},
-        'robot.backLeft':{model:'gobilda-5203-1150',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-1150',hub:'control',port:3},'robot.imu':{hub:'control',bus:0}}}},
+    // It comes with odometry on (its pods and Pinpoint are on its CAD); a kit without them unticks it in Chassis and runs on its motor encoders and the hub's IMU.
+    startermecanum:{...MECANUM,cad:'strafer',draw:starterMecanum,joints:mecanumJoints,heightIn:7.25,wheelDiameterMm:104,localization:'fused',imuSource:'device',
+      wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-312',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-312',hub:'control',port:1},
+        'robot.backLeft':{model:'gobilda-5203-312',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-312',hub:'control',port:3},'robot.imu':{hub:'control',bus:0},'robot.pinpoint':{hub:'control',bus:1}}}},
     a301swerve:{...SWERVE,cad:'swechanum',draw:a301Swerve,joints:swerveJoints,heightIn:9.25,wheelDiameterMm:76,localization:'optical',imuSource:'device',
       wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-1150',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-1150',hub:'control',port:1},
         'robot.backLeft':{model:'gobilda-5203-1150',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-1150',hub:'control',port:3},
@@ -125,11 +145,12 @@
   const plain=note=>({style:'sharp',note});
   const ROUTES={
     // The kit push bot drives square, as teams first test one: forward off the wall, a 90° turn, straight up the field to
-    // (24, 120), turned around, straight back down to (24, 24), then up to park in the loading zone.
+    // (24, 84), turned around, straight back down to (24, 48), then up to park in the loading zone. At the kit's real speed
+    // (312 RPM wheels) on motor encoders alone it stops a little short of each end, more the further it has driven, so the legs are kept this long.
     startermecanum:{start:{x:10.11,y:27,heading:0},pins:[
       P(24,27,'','LEAVE: forward off the wall, then a 90° turn',plain('Drive forward'),{turn:90}),
-      P(24,120,'','Up the field, then turned around',plain('Straight up the field'),{turn:-90}),
-      P(24,24,'','Back down the field',plain('Straight back down')),
+      P(24,84,'','Up the field, then turned around',plain('Straight up the field'),{turn:-90}),
+      P(24,48,'','Back down the field',plain('Straight back down')),
       P(21,107,'','PARK: partly in the red LOADING ZONE, facing it',plain('Up into the loading zone, pushing its pollen into the corner'),{turn:-180})]},
     // Swerve showing off: curves that spin the robot a whole turn while it drives, face the hive while it circles, spin
     // back the other way and face where it drives, then sweep the loading zone's pollen into the corner as it parks.

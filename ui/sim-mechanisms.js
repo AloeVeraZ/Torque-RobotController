@@ -581,7 +581,12 @@
   // bot (drive: the card's drivetrain words, where the drivetrain's own name says less). Their CAD, joints, wiring,
   // sensors and demo routes are in ui/sim-preset-robots.js.
   const PRESETS={
-    startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer-style kit bot: Control Hub IMU and motor encoders, pushes pieces. Set its size and wiring to match yours',adjustable:true,robot:{drivetrain:'mecanum',length:17.56,width:17.79,massLb:22,driveRpm:800}},
+    // goBILDA's own figures for the Strafer Chassis Kit with 104 mm GripForce mecanum wheels (3209-0001-0007): 4269 g assembled, four 5203 Yellow Jackets at 19.2:1 (312 RPM)
+    // turning the wheels 1:1 through miter gears. Its page gives no outside dimensions, so they are measured on goBILDA's own CAD of the kit (the STEP file it publishes): 17.32 in over the wheels, 17.79 in wide, and the wheel axles
+    // 168 mm ahead of and behind the centre and 207 mm to each side. Odometry is goBILDA's own layout for this chassis (Pinpoint user guide, pages 2 and 3): two 4-Bar pods on the rear axle line with the Pinpoint
+    // between them, so the X (forward) pod is 84 mm right of the centre and the Y (strafe) pod 168 mm behind it, the offsets its guide and the FTC SDK's Pinpoint sample give (-84, -168 mm). adjustable: where its motors are plugged in, which have their encoder cable, and whether it has odometry; nothing else.
+    startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer chassis kit: 104 mm mecanum wheels on 312 RPM motors, Control Hub IMU and motor encoders, pushes pieces. Say where its motors are plugged in',adjustable:true,robot:{drivetrain:'mecanum',length:17.32,width:17.79,heightIn:7.25,massLb:9.41,driveRpm:312,wheelDiameterMm:104,
+      wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:-3.307,yOffset:-6.614}}}},
     a301swerve:{name:'A301 Swerve',blurb:'NYC FIRST A301 push bot: the fastest',robot:{drivetrain:'swerve',length:17,width:17,massLb:28,driveRpm:1150}}};
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
