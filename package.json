@@ -1,14 +1,14 @@
 {
   "name": "deck-driver-station",
   "productName": "Torque",
-  "version": "2.4.31",
+  "version": "2.4.32",
   "repository": {
     "type": "git",
     "url": "https://github.com/AloeVeraZ/Torque-RobotController.git"
   },
-  "updateChannel": "testing",
+  "updateChannel": "main",
   "testingReleaseTargets": ["windows"],
-  "releaseName": "V2",
+  "releaseName": "V2.1",
   "bugReportUrl": "",
   "private": true,
   "license": "MIT",

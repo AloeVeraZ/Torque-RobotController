@@ -123,6 +123,10 @@ jobs:
           node tools/release-targets.cjs prepare dist "$TARGETS" "$VERSION" "$TAG" > "$RUNNER_TEMP/release.json"
           args=(--title "$(jq -r .title "$RUNNER_TEMP/release.json")")
           notes=$(jq -r .notes "$RUNNER_TEMP/release.json")
+          if [[ "$BRANCH" == main && -f "docs/releases/$VERSION.md" ]]; then
+            summary=$(cat "docs/releases/$VERSION.md")
+            notes="${summary}${notes:+$'\n\n'$notes}"
+          fi
           # gh puts --notes before the generated notes; the in-app changelog shows both.
           if [[ -n "$notes" ]]; then args+=(--notes "$notes"); fi
           if [[ "$BRANCH" == testing ]]; then args+=(--prerelease); fi
