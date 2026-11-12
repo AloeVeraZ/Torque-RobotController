@@ -61,3 +61,20 @@ test('a moving part takes motor or servo from the robot: a ramp set as continuou
   const config=RC.parse(`<?xml version='1.0'?><Robot type="FirstInspires-FTC"><LynxUsbDevice name="Control Hub Portal" serialNumber="(embedded)" parentModuleAddress="173"><LynxModule name="Control Hub" port="173"><Servo name="ramp" port="2" /></LynxModule></LynxUsbDevice></Robot>`);
   const next=HS.apply(project,HS.plan(project,config));assert.equal(next.kinematics.actuators.find(a=>a.id==='rampServo').kind,'servo');
 });
+
+test('a Kiwi swerve’s absolute encoder is its steering’s: a second copy on the drive motor is removed, not called missing',()=>{
+  const base=testSetup(),names={front:'frontPod',backLeft:'leftPod',backRight:'rightPod',steerFront:'frontPodS',steerBackLeft:'leftPodS',steerBackRight:'rightPodS',imu:'imu'};
+  const abs=(id,key,port,name,model='analog-absolute')=>({id,model,for:'robot.'+key,use:'position',hub:'control',port,name});
+  const robot=wiring=>C.robot({...base.robot,drivetrain:'kiwiSwerve',devices:Object.fromEntries(Object.entries(names).map(([k,name])=>[k,{name}])),wiring},'ftc');
+  const cfg=hub('<Motor name="frontPod" port="0" /><Motor name="rightPod" port="1" /><Motor name="leftPod" port="2" /><ContinuousRotationServo name="frontPodS" port="0" /><ContinuousRotationServo name="rightPodS" port="1" /><ContinuousRotationServo name="leftPodS" port="2" /><AnalogInput name="frontPodE" port="0" /><AnalogInput name="rightPodE" port="1" /><AnalogInput name="leftPodE" port="2" />');
+  // As a team's saved setup had it: frontPodE once on the front drive motor (an older read put it there) and once on the steering.
+  const p={...base,sensors:{...base.sensors,localization:'encoders'},mechanisms:M.sanitize({...base.mechanisms,enabled:false}),robot:robot({sensors:[abs('frontPodE','front',0,'frontPodE','rev-through-bore-abs'),abs('sF','steerFront',0,'frontPodE'),abs('sL','steerBackLeft',2,'leftPodE'),abs('sR','steerBackRight',1,'rightPodE')]})};
+  const r=HS.plan(p,cfg);assert.deepEqual(r.missing,[],'nothing is missing: the robot has one frontPodE');
+  assert.deepEqual(r.dropped.map(d=>[d.id,d.kept]),[['frontPodE','Front steering: Analog absolute encoder']]);
+  assert.equal(r.assign.find(a=>a.name==='frontPodE').sensor,'sF');assert.ok(HS.lines(r).some(l=>/second copy of “frontPodE”/.test(l.text)));
+  const q=HS.apply(p,r);assert.deepEqual(q.robot.wiring.sensors.filter(s=>s.model!=='motor-encoder').map(s=>s.id).sort(),['sF','sL','sR']);
+  assert.deepEqual(HS.plan(q,cfg).dropped,[],'and the next read has nothing to remove');
+  // A setup with no encoders yet: each one lands on its steering, never on the drive motor its name is closer to.
+  const fresh={...p,robot:robot({sensors:[]})},f=HS.plan(fresh,cfg);
+  assert.deepEqual(f.sensors.map(s=>[s.name,s.for]).sort(),[['frontPodE','robot.steerFront'],['leftPodE','robot.steerBackLeft'],['rightPodE','robot.steerBackRight']]);
+});

@@ -16,13 +16,19 @@
   // Held still: how far the heading wandered, in degrees a minute.
   const drift=(turned,ms)=>ms>0?turned/(ms/60000):NaN;
   // Turned `turns` whole turns counterclockwise, it read `measured` degrees: what to multiply its heading by.
-  function headingScale(measured,turns=TURNS){const actual=360*turns;if(!(Math.abs(measured)>actual*.5))return null;return {scale:actual/Math.abs(measured),errorDeg:Math.abs(measured)-actual,errorPct:(Math.abs(measured)-actual)/actual*100,backwards:measured<0};}
+  const LINE_UP_DEG=.3;
+  // The turn check finishes by itself: the robot has turned (a whole turn or more, 300° to allow for the IMU's error) and
+  // then stood still, within a third of a degree for a second and a half. samples: [[ms, degrees turned so far]].
+  function atRest(samples,{turned=300,ms=1500,within=.3}={}){const n=samples?.length||0;if(n<2)return false;const [end,total]=samples[n-1];if(Math.abs(total)<turned||end-samples[0][0]<ms)return false;
+    let lo=total,hi=total;for(let i=n-1;i>=0&&end-samples[i][0]<=ms;i--){lo=Math.min(lo,samples[i][1]);hi=Math.max(hi,samples[i][1]);}return hi-lo<=within;}
+  function headingScale(measured,turns){const m=Math.abs(measured);turns=turns||Math.round(m/360);if(!(turns>=1)||!(m>360*turns*.5))return null;const actual=360*turns;
+    return {turns,scale:actual/m,errorDeg:m-actual,errorPct:(m-actual)/actual*100,tolerancePct:Math.max(PASS.headingPct,LINE_UP_DEG/actual*100),backwards:measured<0};}
   // Pushed `actual` inches, a pod read `measured` inches (sign as it counts now): whether it counts backwards, and its scale.
   function push(measured,actual=PUSH_IN){if(!(Math.abs(measured)>actual*.25))return null;return {backwards:measured<0,scale:actual/Math.abs(measured),errorPct:(Math.abs(measured)-actual)/actual*100};}
   // Spun in place by `radians` (counterclockwise positive): where a pod sits, from how far it rolled (inches, sign as it counts now).
   const forwardPodY=(rolled,radians)=>-rolled/radians,strafePodX=(rolled,radians)=>rolled/radians;
   const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-  const api={TURNS,PUSH_IN,PASS,wrap,unwrapper,drift,headingScale,push,forwardPodY,strafePodX};
+  const api={TURNS,PUSH_IN,PASS,wrap,unwrapper,drift,headingScale,atRest,push,forwardPodY,strafePodX};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,11 +49,14 @@
     function snapshot(){const r=v(),out={};for(const d of pods())out[d.key]=r[`m:${d.name}:pos`];if(loc()==='fused'){const n=dev('pinpoint')||'pinpoint';out.ex=r[`i:${n}:ex`];out.ey=r[`i:${n}:ey`];}if(loc()==='optical'){const n=dev('otos')||'sensor_otos';out.ox=r[`i:${n}:x`];out.oy=r[`i:${n}:y`];}return out;}
     // ---- the tests: each records from Start to Done, following the heading through every reading
     function begin(kind){const h=headingSource();if(!live())return;const u=unwrapper();const first=v()[h?.key];if(h)u.add(first);
-      test={kind,at:performance.now(),start:snapshot(),turn:u,off:debug.listen((_f,vals)=>{if(h)u.add(vals[h.key]);if(kind==='still'&&performance.now()-test.at>=30000)finish();else paintTest();})};paint();}
+      const seen=[];test={kind,at:performance.now(),start:snapshot(),turn:u,off:debug.listen((_f,vals)=>{if(h)u.add(vals[h.key]);
+        // The turn check ends itself once the robot has turned and is still again, flat against the wall.
+        if(kind==='turns'){const now=performance.now();seen.push([now,u.total]);while(seen.length>2&&now-seen[0][0]>2500)seen.shift();if(atRest(seen))return finish();}
+        if(kind==='still'&&performance.now()-test.at>=30000)finish();else paintTest();})};paint();}
     function cancel(){test?.off?.();test=null;paint();}
     function finish(){if(!test)return;const t=test;t.off?.();test=null;const ms=performance.now()-t.at,end=snapshot(),turned=t.turn.total,rad=turned*Math.PI/180,d=k=>(end[k]??NaN)-(t.start[k]??NaN),h=headingSource();
       if(t.kind==='still')results.still={perMin:drift(turned,ms),what:h?.what};
-      if(t.kind==='turns'){const s=headingScale(turned);results.turns=s?{...s,what:h?.what,kind:h?.kind}:{problem:`It read ${f(turned,0)}°, far from ${TURNS} turns. Press Start, turn it ${TURNS} times counterclockwise, then press Done.`};}
+      if(t.kind==='turns'){const s=headingScale(turned);results.turns=s?{...s,what:h?.what,kind:h?.kind}:{problem:`It read only ${f(turned,0)}°. Press Start, spin it at least one whole turn, either way round, and push it flat against the wall again.`};}
       if(t.kind==='forward'||t.kind==='left'){const along=t.kind==='forward'?'forward':'strafe',out=[];
         for(const pd of pods()){if(pd.axis!==along)continue;const r=push(podInches(pd.key,d(pd.key)));out.push({key:pd.key,name:pd.name,...(r||{problem:`“${pd.name}” hardly counted. Is its encoder cable in the motor port named “${pd.name}”?`})});}
         if(loc()==='fused'){const axis=t.kind==='forward'?'x':'y',r=push(ppInches(axis,d(axis==='x'?'ex':'ey')));out.push({key:'pinpoint-'+axis,name:`Pinpoint ${axis.toUpperCase()} pod`,axis,...(r||{problem:`The Pinpoint’s ${axis.toUpperCase()} pod hardly counted. Check its cable in the Pinpoint’s ${axis.toUpperCase()} port.`})});}
@@ -74,8 +83,8 @@
     function resultHtml(kind){const r=results[kind];if(!r)return '';if(r.problem)return `<p class="cal-sense-note bad">${esc(r.problem)}</p>`;
       const used=r.used?'<p class="hint">Used: saved to this setup. Send the code to the robot again to put it on.</p>':'';
       if(kind==='still')return `<p class="cal-sense-result">${pass(Math.abs(r.perMin)<=PASS.driftPerMin)} Drifts <b>${f(Math.abs(r.perMin))}°</b> a minute while still. ${Math.abs(r.perMin)<=PASS.driftPerMin?'Over a 30 s autonomous that is nothing to correct.':'Keep the robot completely still while the op mode initializes; if it stays above 0.5° a minute, the hub may be mounted where it vibrates.'}</p>`;
-      if(kind==='turns'){const ok=Math.abs(r.errorPct)<=PASS.headingPct;const fix=r.kind==='pinpoint'?(r.scale<.95||r.scale>1.05?'goBILDA tunes every Pinpoint at the factory; this far off, contact goBILDA.':'goBILDA tunes the Pinpoint at the factory, so Torque leaves it.'):r.kind==='otos'?`Use sets the OTOS’s angular scalar to ${f(clamp((opts.odometry().otos.angularScalar||1)*r.scale,.872,1.127),4)}.`:`Use makes the robot’s code multiply the IMU’s heading by ${f((opts.odometry().imu?.scale||1)*r.scale,5)}.`;
-        return `<p class="cal-sense-result">${pass(ok)} ${TURNS} turns read <b>${f(360*TURNS+r.errorDeg,1)}°</b>: ${f(Math.abs(r.errorDeg),1)}° ${r.errorDeg>0?'too many':'too few'} (${f(Math.abs(r.errorPct),3)}%).${r.backwards?' It counted clockwise: check how the hub is mounted in Setup.':''} ${esc(fix)}</p>${!ok&&r.kind!=='pinpoint'&&!r.used?`<button type="button" class="primary" data-sense-use="turns">Use</button>`:''}${used}`;}
+      if(kind==='turns'){const ok=Math.abs(r.errorPct)<=(r.tolerancePct??PASS.headingPct),n=r.turns||TURNS;const fix=r.kind==='pinpoint'?(r.scale<.95||r.scale>1.05?'goBILDA tunes every Pinpoint at the factory; this far off, contact goBILDA.':'goBILDA tunes the Pinpoint at the factory, so Torque leaves it.'):r.kind==='otos'?`Use sets the OTOS’s angular scalar to ${f(clamp((opts.odometry().otos.angularScalar||1)*r.scale,.872,1.127),4)}.`:`Use makes the robot’s code multiply the IMU’s heading by ${f((opts.odometry().imu?.scale||1)*r.scale,5)}.`;
+        return `<p class="cal-sense-result">${pass(ok)} ${n===1?'One turn':`${n} turns`} ${r.backwards?'clockwise':'counterclockwise'} read <b>${f(360*n+r.errorDeg,1)}°</b>: ${f(Math.abs(r.errorDeg),1)}° ${r.errorDeg>0?'too many':'too few'} (${f(Math.abs(r.errorPct),2)}%).If you spun it the other way, the hub’s mounting in Setup is wrong. ${ok?`That is as close as squaring it against a wall can tell${n<3?'; spin it more times for a finer check':''}.`:esc(fix)}</p>${!ok&&r.kind!=='pinpoint'&&!r.used?`<button type="button" class="primary" data-sense-use="turns">Use</button>`:''}${used}`;}
       if(kind==='forward'||kind==='left'){const rows=r.map(x=>x.problem?`<li class="bad">${esc(x.problem)}</li>`:`<li>${pass(!x.backwards&&Math.abs(x.errorPct)<=PASS.distancePct)} <b>${esc(x.name)}</b>: ${x.backwards?'counts backwards (Use flips it), ':''}${f(Math.abs(x.errorPct),2)}% ${x.errorPct>0?'long':'short'}${x.key.startsWith('pinpoint-')?' (the Pinpoint’s pod size is fixed; a few % means a worn wheel or the wrong pod type in Setup)':''}</li>`).join('');
         const any=r.some(x=>!x.problem&&(x.backwards||!x.key.startsWith('pinpoint-')&&Math.abs(x.errorPct)>PASS.distancePct));
         return `<ul class="cal-sense-rows">${rows}</ul>${any&&!r.used?`<button type="button" class="primary" data-sense-use="${kind}">Use</button>`:''}${used}`;}
@@ -84,7 +93,7 @@
         return `<p class="hint">Turned ${f(r.turned/360,2)} times.</p><ul class="cal-sense-rows">${rows}</ul>${r.rows.some(x=>Math.abs(x.at-was(x))>PASS.offsetIn)&&!r.used?'<button type="button" class="primary" data-sense-use="spin">Use</button>':''}${used}`;}
       return '';}
     const STEPS={still:['Hold still','Leave the robot untouched on the floor for 30 s: how far its heading wanders on its own.','Start'],
-      turns:[`Turn it ${TURNS} times`,`Line a side of the robot up with a tile seam, press Start, turn it by hand ${TURNS} whole turns counterclockwise, line it up with the same seam, then press Done.`,'Start'],
+      turns:['Spin it off a wall','Push one side of the robot flat against a wall and press Start. Pull it out, spin it one whole turn or more, either way round and any way you like, and push the same side flat against the wall again. Torque counts the turns and finishes by itself once it is still.','Start'],
       forward:['Push it forward',`Line the back of the robot up with a tile seam, press Start, push it straight forward ${PUSH_IN} in (two tiles), then press Done.`,'Start'],
       left:['Push it left',`Line a side up with a tile seam, press Start, push it straight left ${PUSH_IN} in (two tiles) without turning, then press Done.`,'Start'],
       spin:['Spin it in place','Press Start, turn it on the spot counterclockwise a few whole turns (5 is plenty), keeping its centre where it was, then press Done.','Start']};
@@ -96,7 +105,7 @@
       const position=odo?`<section class="cal-card"><h2>Position · ${esc(loc()==='fused'?'Pinpoint pods':loc()==='optical'?'OTOS':`${pods().length} odometry pods`)}</h2><p class="hint">Direction and distance from straight pushes, then ${loc()==='optical'?'nothing more: the OTOS’s place comes from Setup':'where each pod sits, from a spin in place'}. Do Heading first: the spin uses it.</p><ol class="cal-sense-steps">${stepHtml('forward')}${stepHtml('left')}${loc()==='optical'?'':stepHtml('spin')}</ol></section>`:
         `<section class="cal-card"><h2>Position</h2><p class="hint">${loc()==='encoders'?'This robot counts its position with its drive motors’ encoders: they need no calibration beyond the heading.':'This robot has nothing measuring its position to calibrate.'}</p></section>`;
       const html=need+heading+position;if(box.dataset.html!==html){box.dataset.html=html;box.innerHTML=html;}paintTest();}
-    function paintTest(){const s=box?.querySelector('[data-sense-live]');if(!s||!test)return;const secs=(performance.now()-test.at)/1000;s.textContent=test.kind==='still'?`${Math.max(0,30-secs).toFixed(0)} s left · ${f(test.turn.total)}°`:`Turned ${f(test.turn.total,1)}°`;}
+    function paintTest(){const s=box?.querySelector('[data-sense-live]');if(!s||!test)return;const secs=(performance.now()-test.at)/1000;s.textContent=test.kind==='still'?`${Math.max(0,30-secs).toFixed(0)} s left · ${f(test.turn.total)}°`:test.kind==='turns'?`Turned ${f(test.turn.total,0)}° · push it flat against the wall and leave it; it finishes by itself`:`Turned ${f(test.turn.total,1)}°`;}
     box?.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
       if(t.dataset.senseGo)begin(t.dataset.senseGo);else if(t.hasAttribute('data-sense-done'))finish();else if(t.hasAttribute('data-sense-cancel'))cancel();else if(t.dataset.senseUse)use(t.dataset.senseUse);else if(t.hasAttribute('data-sense-start'))void debug?.start?.();});
     return {refresh:paint,stop:cancel};}

@@ -86,3 +86,76 @@
 #simulation-view :is(#sim-speed,#sim-log-origin){height:36px;min-height:36px}
 .driver-station :is(#sim-auto-seconds,#library-search){font-size:14px}
 .driver-station .sim-send-head .text-button{min-height:32px;padding:0 6px;font-size:12px}
+
+/* ---- Apple's design language, over every screen ------------------------------------------------------------------------
+   Hierarchy: type and grouping say what matters, not boxes and lines. Harmony: one palette (the system colours in
+   tokens.css), one corner family, one tint. Consistency: a control looks and answers the same on every tab.
+   The tint (blue) is the main action and what is picked or focused; green, orange and red stay the robot's state. */
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: -.003em; }
+h1, h2, h3, dialog h2, .cal-card h2 { letter-spacing: -.02em; font-weight: 600; }
+h1 { font-weight: 700; letter-spacing: -.028em; }
+:where(.driver-station) :is(.hint, small) { line-height: 1.45; }
+html { scrollbar-width: thin; }
+
+/* The bar is a material: what scrolls under it shows through, blurred. */
+body.driver-station > header { background: var(--bar); border-bottom: .5px solid var(--line-strong); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+@media (prefers-reduced-transparency: reduce) { body.driver-station > header { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+/* Buttons: the tint for the one main action, a quiet fill for the rest; both give a little when pressed. */
+.driver-station :is(.primary, .secondary) { border: 0; border-radius: var(--radius-control); font-weight: 600; letter-spacing: -.008em; }
+.driver-station .primary { background: var(--accent-fill); color: var(--on-accent); }
+.driver-station .primary:hover:not(:disabled) { background: var(--accent-hover); }
+.driver-station .primary:active:not(:disabled) { background: var(--accent-active); }
+.driver-station .secondary, .driver-station :is(.cal-card, .cal-gate) .button-row > button.secondary { background: var(--track); color: var(--text); }
+.driver-station .secondary:hover:not(:disabled), .driver-station :is(.cal-card, .cal-gate) .button-row > button.secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--track) 100%, var(--hover) 60%); }
+@media (prefers-reduced-motion: no-preference) { .driver-station :is(.primary, .secondary, .sim-tile, .cal-chip):active:not(:disabled) { transform: scale(.98); } }
+
+/* Fields: rounded, quiet until used; focus is the system's soft ring. */
+.driver-station :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea) { border-radius: var(--radius-control); }
+.driver-station :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); outline: none; }
+:is(#setup-view, #calibrate-view, #simulation-view, #settings-view, #bug-dialog) :is(button, a, select, textarea, input:not(.num-slider), [tabindex]):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+.driver-station :is(input[type=checkbox], input[type=radio], input[type=range]) { accent-color: var(--accent); }
+/* A switch that is on is green, as on every Apple device. */
+.driver-station .cal-switch[aria-checked=true] .cal-switch-track, .driver-station .axon-toggle input:checked { background: var(--connected); }
+
+/* Pick-one rows: a grey track with the picked one lifted on it. */
+.driver-station :is(.sim-setup-steps, .sim-planning-steps, .sim-settings-tabs, .cal-tabs, .studio-side-tabs) { border: 0; background: var(--track); border-radius: var(--radius-control); }
+.driver-station :is(.sim-setup-steps, .sim-planning-steps, .sim-settings-tabs, .cal-tabs, .studio-side-tabs) > [aria-selected=true],
+.driver-station :is(.sim-setup-steps, .sim-planning-steps, .sim-settings-tabs, .cal-tabs, .studio-side-tabs) > [aria-selected=true]:hover:not(:disabled),
+.driver-station .segmented > button[aria-pressed=true],
+#sim-panel-setup .segmented > button[aria-pressed=true],
+#sim-panel-setup :is(.sim-setup-steps, .sim-planning-steps) > [aria-selected=true]:not([data-state=attention], [data-state=incomplete]) { background: var(--thumb); color: var(--text); box-shadow: 0 0 0 .5px #0000000a, 0 1px 3px #0000001f; }
+
+/* Panels: a soft, larger corner and, in light, the faintest lift off the page. */
+.driver-station .cal-card { border-radius: var(--radius-panel); box-shadow: var(--card-shadow); }
+.driver-station .cal-card h2 { font-size: 17px; }
+dialog { border: 0; border-radius: 18px; box-shadow: var(--shadow); }
+dialog::backdrop { background: var(--backdrop); }
+.menu { border: 0; border-radius: 14px; padding: 6px; box-shadow: var(--shadow); background: color-mix(in srgb, var(--raised) 86%, transparent); -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px); }
+.menu button { border-radius: 8px; }
+.menu button:hover { background: var(--accent); color: var(--on-accent); }
+.menu button:hover .ui-icon { color: inherit; }
+
+/* Lists (Electronics, Mechanisms, Camera, the garage): section names in sentence case, rows that tint when picked. */
+.sim-garage > h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.driver-station .sim-tile { border: 0; border-radius: 12px; background: var(--surface); box-shadow: var(--card-shadow); }
+.driver-station .sim-tile:hover:not(:disabled) { background: color-mix(in srgb, var(--surface) 100%, var(--hover) 45%); }
+.driver-station .sim-tile[aria-pressed=true], .driver-station .sim-tile[aria-selected=true] { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); box-shadow: 0 0 0 1.5px var(--accent); }
+.cal-elec-badge { border: 0; border-radius: 8px; background: var(--track); }
+.cal-elec-tile.done .cal-elec-badge { background: var(--connected-bg); color: var(--connected); }
+
+/* State, said once: a tinted capsule instead of an outline. */
+.rs-pill { border: 0; padding: 3px 10px; background: var(--track); font-weight: 600; }
+.rs-pill.ok { background: var(--connected-bg); color: var(--connected); }
+.rs-pill.warn { background: var(--warning-bg); color: var(--warning); }
+.rs-pill.bad { background: var(--danger-bg); color: var(--danger); }
+.driver-station .cal-chip { border: 0; background: var(--track); }
+.driver-station .cal-chip[data-state=pass] { background: var(--connected-bg); color: var(--connected); }
+.driver-station .cal-chip[aria-pressed=true] { box-shadow: 0 0 0 1.5px var(--accent); }
+.cal-mech, .cal-mech.done { border: 0; border-radius: var(--radius-panel); background: var(--surface); box-shadow: var(--card-shadow); }
+.cal-g0[data-state=pass], .cal-g0[data-state=stale] { border: 0; }
+/* What is picked in a row of choices: the lifted thumb where it is one of a few, the tint where it is one of many. */
+.driver-station .update-channels > button[aria-pressed=true] { background: var(--thumb); color: var(--text); box-shadow: 0 0 0 .5px #0000000a, 0 1px 3px #0000001f; }
+.sim-pin-row.selected .sim-badge { background: var(--accent); color: var(--on-accent); }
+.sim-mech-cat[aria-selected=true], .sim-mech-src[aria-pressed=true], .driver-station .studio-side-tabs button[aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.driver-station .check-row input { accent-color: var(--accent); }

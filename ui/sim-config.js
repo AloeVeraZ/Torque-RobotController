@@ -45,7 +45,7 @@
   // The robot's own names for the drive motors and sensors in its Control Hub configuration (Deck's names otherwise),
   // and drive motors set to turn the other way. Only what differs from Deck's defaults is kept.
   // The drive motors and steering of drivetrains Deck exports no code for (Kiwi, swerve...) keep their configuration names too.
-  const DEVICE_KEYS=['frontLeft','frontRight','backLeft','backRight','left','right','imu','pinpoint','otos','par','perp','par_left','par_right','front','leftB','rightB','frontLeftB','frontRightB','backLeftB','backRightB','steerFront','steerFrontLeft','steerFrontRight','steerBackLeft','steerBackRight'],DRIVE_KEYS=DEVICE_KEYS.slice(0,6);
+  const DEVICE_KEYS=['frontLeft','frontRight','backLeft','backRight','left','right','imu','pinpoint','otos','par','perp','par_left','par_right','front','leftB','rightB','frontLeftB','frontRightB','backLeftB','backRightB','steerFront','steerFrontLeft','steerFrontRight','steerBackLeft','steerBackRight'],DRIVE_KEYS=[...DEVICE_KEYS.slice(0,6),'front','leftB','rightB','frontLeftB','frontRightB','backLeftB','backRightB'];
   const deviceName=v=>typeof v==='string'&&/^[A-Za-z][\w .-]{0,39}$/.test(v.trim())?v.trim():null;
   function devices(raw){const out={};if(!raw||typeof raw!=='object')return out;
     for(const key of DEVICE_KEYS){const v=raw[key];if(!v||typeof v!=='object')continue;const name=deviceName(v.name),entry={...(name?{name}:{}),...(DRIVE_KEYS.includes(key)&&typeof v.reversed==='boolean'?{reversed:v.reversed}:{})};if(Object.keys(entry).length)out[key]=entry;}
@@ -66,7 +66,7 @@
     const pods={};for(const [key,d] of Object.entries(ODOMETRY.pods)){const v=raw.pods?.[key];if(!v||typeof v!=='object')continue;const e={};
       for(const axis of ['x','y']){const n=inch(v[axis]);if(n!==undefined&&n!==d[axis])e[axis]=n;}if(v.reversed===true)e.reversed=true;if(finite(v.scale)&&v.scale>=.8&&v.scale<=1.25&&Math.abs(v.scale-1)>1e-6)e.scale=+v.scale.toFixed(5);if(Object.keys(e).length)pods[key]=e;}
     if(Object.keys(pods).length)out.pods=pods;
-    // The Control Hub IMU's heading scale, from ten turns in Calibrate. Further than 5% off is a fault, not something to scale away.
+    // The Control Hub IMU's heading scale, from whole turns in Calibrate. Further than 5% off is a fault, not something to scale away.
     const im=raw.imu;if(im&&typeof im==='object'&&finite(im.scale)&&im.scale>=.95&&im.scale<=1.05&&Math.abs(im.scale-1)>1e-6)out.imu={scale:+im.scale.toFixed(6)};
     const p=raw.pinpoint,pd=ODOMETRY.pinpoint;if(p&&typeof p==='object'){const e={};if(Object.hasOwn(POD_TYPES,p.pods)&&p.pods!==pd.pods)e.pods=p.pods;
       for(const k of ['xOffset','yOffset']){const n=inch(p[k]);if(n!==undefined&&n!==pd[k])e[k]=n;}for(const k of ['xReversed','yReversed'])if(p[k]===true)e[k]=true;if(Object.keys(e).length)out.pinpoint=e;}

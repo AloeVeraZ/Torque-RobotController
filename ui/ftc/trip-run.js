@@ -1,5 +1,5 @@
 'use strict';
-// Trip Run: a small endless runner for the Drive tab's Robot status panel while no robot is connected.
+// Robo Run: a small endless runner for the Drive tab's Robot status panel while no robot is connected.
 // A robot legs it through a wrecked, burning data center; catching a virus gets it glitched out of its mind.
 // One 2D canvas, no WebGL and no asset files, so it stays light on a Steam Deck on battery and fits the
 // page CSP. The frame loop only runs during a run; idle, paused, game over and hidden cost nothing.
@@ -88,7 +88,7 @@ function create(container,options){
   Object.assign(root.style,{position:'relative',width:'100%',lineHeight:'0'});
   const cv=document.createElement('canvas');cv.className='trip-run-canvas';
   Object.assign(cv.style,{display:'block',width:'100%',height:'0px',touchAction:'none',cursor:'pointer'});
-  cv.setAttribute('role','img');cv.setAttribute('aria-label','Trip Run mini game. Press Space or tap to play.');
+  cv.setAttribute('role','img');cv.setAttribute('aria-label','Robo Run mini game. Press Space or tap to play.');
   const muteBtn=document.createElement('button');muteBtn.type='button';muteBtn.className='trip-run-mute';
   Object.assign(muteBtn.style,{position:'absolute',top:'4px',left:'4px',width:'26px',height:'26px',padding:'4px',border:'0',borderRadius:'6px',
     background:'transparent',color:'#e8eef7',opacity:'.6',cursor:'pointer',lineHeight:'0'});
@@ -737,7 +737,7 @@ function create(container,options){
     const cy=cssH*0.36;
     if(phase==='idle'){
       const tall=cssH>130;ctx.fillStyle='rgba(4,5,9,.6)';ctx.fillRect(0,cy-fs*2.1,cssW,fs*(tall?4.9:3.3));
-      glitchText('TRIP RUN',cssW/2,cy-fs*1.1,Math.round(fs*1.5),1.5);
+      glitchText('ROBO RUN',cssW/2,cy-fs*1.1,Math.round(fs*1.5),1.5);
       text('Press Space or tap to play',cssW/2,cy+fs*0.4,fs,500,'center',col,ol);
       if(tall)text('Space / ↑ jump  ·  ↓ duck  ·  viruses are… interesting',cssW/2,cy+fs*1.8,Math.max(10,fs-3),400,'center','#aab4c3');
     }else if(phase==='over'){

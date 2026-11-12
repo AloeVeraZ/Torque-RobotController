@@ -58,7 +58,7 @@ button.controller:hover { background: var(--surface); border-color: var(--line);
 .welcome .primary { margin-top: 8px; }
 .welcome-note { font-size: 12px !important; color: var(--quiet) !important; margin-top: 24px; margin-bottom: 0; }
 .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
-.primary { background: var(--accent); border: 1px solid var(--accent); color: #081525; }
+.primary { background: var(--accent); border: 1px solid var(--accent); color:var(--on-accent); }
 .primary:hover:not(:disabled) { background: #7cb1ff; border-color: #7cb1ff; }
 .primary:active:not(:disabled) { background: #4385e4; }
 .primary span { margin-left: 8px; }

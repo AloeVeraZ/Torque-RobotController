@@ -52,9 +52,11 @@
     let best=null;
     for(const row of rows){if(['sensor','pod','imu','pinpoint','otos'].includes(row.role))continue;const allowed=H.ROLES[row.role]?.sensors||{};
       const rt=[...new Set([...words(row.name),...words(row.label)])],shared=dt.filter(w=>rt.includes(w)).length;if(!shared)continue;
-      const a=dirsOf(dt),b=dirsOf(rt);if(a&&b&&a!==b)continue;
+      // The side is the one in the name the robot uses (leftPodS), before Setup's label for the slot (Back left steering).
+      const a=dirsOf(dt),b=dirsOf(words(row.name))||dirsOf(rt);if(a&&b&&a!==b)continue;
       const fit=models.filter(m=>Object.hasOwn(allowed,m.kind)).sort((x,y)=>hint(y,n)-hint(x,n));if(!fit.length)continue;
-      const s=shared/new Set([...dt,...rt]).size;if(!best||s>best.s)best={s,row,model:fit[0],use:allowed[fit[0].kind]};}
+      // A swerve module's analog sensor is its steering's absolute encoder, though the drive motor's name is closer (frontPodE: frontPod, frontPodS).
+      const s=shared/new Set([...dt,...rt]).size+(row.role==='steer'&&dev.kind==='analog'?1:0);if(!best||s>best.s)best={s,row,model:fit[0],use:allowed[fit[0].kind]};}
     return best;}
   const hint=(m,n)=>(/pot/.test(n)&&m.kind==='potentiometer'||/axon/.test(n)&&m.kind==='axonFeedback'||/magnet/.test(n)&&m.kind==='magnetic'||/(limit|switch)/.test(n)&&m.kind==='limit'||/v2/.test(n)&&/v2/.test(m.id)||/(abs|bore)/.test(n)&&m.kind==='analogAbs'?1:0);
   // The model a configured motor or servo type names, when it names only one (goBILDA5202SeriesMotor is every Yellow
@@ -71,7 +73,7 @@
   // project: Setup's project; config: {devices, hubs} (RobotConfig.parse of the active configuration).
   // only: 'chassis' matches the drivetrain and the IMU alone (a preset robot, whose mechanisms are its own).
   function plan(project,config,{only}={}){
-    const W=g('DeckWiring'),devices=(config?.devices||[]).filter(d=>d.module||d.kind==='imu'),hubs=hubsOf(config||{}),chassis=only==='chassis',out={localization:null,assign:[],sensors:[],missing:[],unused:[],notes:[],hubs:{}};
+    const W=g('DeckWiring'),devices=(config?.devices||[]).filter(d=>d.module||d.kind==='imu'),hubs=hubsOf(config||{}),chassis=only==='chassis',out={localization:null,assign:[],sensors:[],missing:[],dropped:[],unused:[],notes:[],hubs:{}};
     // The position sensor first: it decides which rows Setup has.
     let p=project;const loc=['pinpoint','otos'].map(k=>devices.some(d=>d.kind===k)?LOCALIZATION[k]:null).find(Boolean);
     out.sensing={localization:loc||project.sensors?.localization||null,hubImu:devices.some(d=>d.kind==='imu')};
@@ -89,6 +91,14 @@
       for(const row of [first,...mates]){doneRow.add(row.key);
         const at=row.role==='imu'?null:placeOf(dev,hubs),model=row.role==='sensor'?null:modelOf(row,dev),kind=kindsFor(row).includes(dev.kind)&&!(ACT_KINDS[row.need]||[row.need]).includes(dev.kind)?dev.kind:null;
         out.assign.push({key:row.key,label:row.label,name:dev.name,was:row.name,family:row.family,tag:dev.tag,exact:s>=95,...(row===first?{}:{shared:first.label}),...(at||{}),...(model?{model}:{}),...(kind?{kind}:{}),...(row.role==='sensor'?{sensor:row.id}:{})});}}
+    // Two of Setup's sensors under one name are one device on the robot: the copy on the wrong owner goes (an absolute
+    // encoder is the steering's, not the drive motor's), instead of being reported as missing from the robot.
+    const pref=r=>rows.find(x=>x.key===r.for)?.role==='steer'&&r.family==='analog'?1:0;
+    for(const row of rows){if(doneRow.has(row.key)||row.role!=='sensor')continue;
+      const a=out.assign.find(x=>x.sensor&&x.name.toLowerCase()===row.name.toLowerCase()),twin=a&&rows.find(r=>r.key===a.key);if(!twin||twin.family!==row.family||pref(row)===pref(twin))continue;
+      doneRow.add(row.key);
+      if(pref(row)>pref(twin)){out.dropped.push({id:twin.id,label:twin.label,name:a.name,kept:row.label});Object.assign(a,{key:row.key,label:row.label,was:row.name,sensor:row.id});}
+      else out.dropped.push({id:row.id,label:row.label,name:a.name,kept:twin.label});}
     for(const row of rows)if(!doneRow.has(row.key)&&row.role!=='imu')out.missing.push({key:row.key,label:row.label,name:row.name});
     // Chassis only: the robot's mechanism devices are none of Setup's business, so only a leftover drive-like motor is listed.
     for(const dev of devices){if(doneDev.has(dev)||!['motor','servo','crservo',...SENSOR_KINDS].includes(dev.kind)||chassis&&!(dev.kind==='motor'&&dirsOf(words(dev.name))))continue;
@@ -105,6 +115,7 @@
     const was=H.wiringOf({wiring:p.robot.wiring}).hubs,count=H.hubIds({hubs:result.hubs}).length-1,lone=result.hubs.expansion&&count===1;
     let w=H.sanitizeWiring({...H.wiringOf({wiring:p.robot.wiring}),hubs:{...result.hubs,...(was.spm?{spm:was.spm}:{}),layout:lone?'stack':'custom'}});
     const devices={...(p.robot.devices||{})};
+    if(result.dropped?.length){const cur=H.wiringOf({wiring:w}),gone=new Set(result.dropped.map(d=>d.id));w=H.sanitizeWiring({...cur,sensors:cur.sensors.filter(x=>!gone.has(x.id))});}
     for(const a of result.assign){const k=H.parseKey(a.key);if(!k)continue;
       if(a.sensor){w=H.sanitizeWiring({...H.wiringOf({wiring:w}),sensors:H.wiringOf({wiring:w}).sensors.map(s=>s.id===a.sensor?{...s,name:a.name,...(a.hub?{hub:a.hub,...(a.bus!==undefined?{bus:a.bus}:{port:a.port})}:{})}:s)});continue;}
       if(k.robot)devices[k.robot]={...(devices[k.robot]||{}),name:a.name};
@@ -130,6 +141,7 @@
     return [...(sensing?[{level:'ok',text:sensing}]:[]),...result.assign.map(a=>({level:a.exact?'ok':'guess',text:`${a.label} → “${a.name}”${where(a)}${a.shared?` (the same motor as ${a.shared.toLowerCase()}: belted together)`:a.was!==a.name?` (was “${a.was}”)`:''}`})),
       ...result.sensors.map(s=>({level:'ok',text:`New sensor on ${s.forLabel} → “${s.name}”${where(s)}`})),
       ...(result.localization?[{level:'ok',text:`Position sensor: ${result.localization==='fused'?'goBILDA Pinpoint':'SparkFun OTOS'} (the robot has one)`}]:[]),
+      ...(result.dropped||[]).map(d=>({level:'ok',text:`${d.label} was a second copy of “${d.name}”: removed, it is ${d.kept}`})),
       ...result.missing.map(m=>({level:'missing',text:`${m.label} (“${m.name}”) is not on the robot: Send to robot can add it`})),
       ...result.unused.map(u=>({level:'unused',text:`“${u.name}” (${u.kind}${u.where?', '+u.where:''}) is on the robot; nothing in Setup uses it`})),
       ...result.notes.map(t=>({level:'missing',text:t}))];}

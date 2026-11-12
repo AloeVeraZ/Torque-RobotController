@@ -138,7 +138,7 @@ body.sim-workspace{overflow:hidden}
 .sim-workspace .sim-settings-tabs>button{flex:1;min-width:0;padding:5px 6px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
 /* Five or more views wrap to rows of three so every label has room. */
 .sim-settings-tabs:has(>:nth-child(5)){display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
-.sim-settings-tabs [aria-selected=true]{border-color:var(--accent);color:var(--on-accent,var(--bg));background:var(--accent);font-weight:600}
+.sim-settings-tabs [aria-selected=true]{border-color:var(--accent);color:var(--on-accent);background:var(--accent);font-weight:600}
 .sim-settings-tabs [aria-selected=false]{background:transparent;border-color:var(--line)}
 .sim-heading-arrow{fill:none;stroke-width:.65;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .sim-aim-target{fill:none;stroke:#49cbb3;stroke-width:.6;pointer-events:none}

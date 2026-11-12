@@ -4,42 +4,48 @@
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
 :root {
   color-scheme: dark;
-  --bg: #0a0a0a;
-  --surface: #121212;
-  --raised: #1c1c1c;
-  --well: #0d0d0d;
-  --control: #222;
-  --hover: #282828;
-  --line: #222;
-  --line-strong: #333;
+  /* Apple's system colours, dark: black base, grouped grey surfaces, the system tint for the main action. */
+  --bg: #000;
+  --surface: #1c1c1e;
+  --raised: #2c2c2e;
+  --well: #141416;
+  --control: #2c2c2e;
+  --hover: #3a3a3c;
+  --line: #2a2a2c;
+  --line-strong: #3a3a3c;
   --edge-top: var(--line);
-  --input-hover: #444;
-  --placeholder: #5c5c5c;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --quiet: #737373;
-  --accent: #f5f5f5;
-  --accent-text: #f5f5f5;
-  --accent-bg: #1c1c1c;
-  --accent-hover: #d4d4d4;
-  --accent-active: #bdbdbd;
+  --input-hover: #48484a;
+  --placeholder: #636366;
+  --text: #f5f5f7;
+  --muted: #a1a1a6;
+  --quiet: #77777c;
+  --accent: #0a84ff;
+  --accent-text: #f5f5f7;
+  --accent-bg: #1c1c1e;
+  --accent-hover: #339dff;
+  --accent-active: #0071e3;
   --accent-fill: var(--accent);
-  --on-accent: #0a0a0a;
-  --connected: #45cf9a;
-  --connected-bg: #14231e;
+  --on-accent: #fff;
+  --thumb: #48484a;
+  --track: #76768033;
+  --ring: #0a84ff80;
+  --bar: #000000b8;
+  --card-shadow: none;
+  --connected: #30d158;
+  --connected-bg: #10291a;
   --success: var(--connected);
-  --warning: #f0c063;
-  --warning-bg: #2a2418;
-  --danger: #ff8189;
-  --danger-bg: #2b1a1c;
+  --warning: #ff9f0a;
+  --warning-bg: #2b1f0d;
+  --danger: #ff453a;
+  --danger-bg: #2e1614;
   --go: #22c55e;
   --on-go: #05160c;
   --stop: #dc2626;
   --on-stop: #fff;
-  --radius: 12px;
-  --radius-panel: 12px;
-  --radius-control: 8px;
-  --radius-detail: 6px;
+  --radius: 14px;
+  --radius-panel: 16px;
+  --radius-control: 10px;
+  --radius-detail: 7px;
   --space: 16px;
   --space-1: 4px;
   --space-2: 8px;
@@ -49,34 +55,40 @@
   --bar-height: 52px;
   --page-gutter: 24px;
   --page-max: 1320px;
-  --font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* San Francisco where the system has it (a Mac); Inter, drawn to the same proportions, everywhere else. */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-display: var(--font);
-  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  --shadow: 0 16px 48px #000a;
-  --backdrop: #000c;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --ease: cubic-bezier(.25, .1, .25, 1);
+  --shadow: 0 0 0 .5px #ffffff1f, 0 24px 64px #000000b3;
+  --backdrop: #0009;
   --grid-major: transparent;
   --grid-minor: transparent;
 }
 /* Light theme: chosen in Settings, or followed from the system when set to System. */
 :root[data-theme=light] {
   color-scheme: light;
-  --bg: #f7f7f7; --surface: #fff; --raised: #efefef; --well: #f7f7f7; --control: #e8e8e8;
-  --line: #e6e6e6; --line-strong: #d4d4d4; --text: #0a0a0a; --muted: #525252; --quiet: #737373;
-  --accent: #0a0a0a; --accent-text: #0a0a0a; --accent-bg: #efefef; --on-accent: #fafafa;
-  --accent-hover: #262626; --accent-active: #404040; --hover: #e2e2e2; --input-hover: #a3a3a3; --placeholder: #a3a3a3;
-  --backdrop: #0006; --shadow: 0 16px 48px #0002;
-  --connected: #16a34a; --connected-bg: #dcfce7; --warning: #a16207; --warning-bg: #fef9c3; --danger: #dc2626; --danger-bg: #fee2e2;
-  --go: #16a34a; --on-go: #fff;
+  /* Light, turned down: a soft grey page and off-white panels, so a whole screen of it does not glare. */
+    --bg: #e4e4e9; --surface: #f1f1f4; --raised: #e3e3e8; --well: #e8e8ec; --control: #dadadf;
+    --line: #d6d6dc; --line-strong: #c2c2c9; --text: #1d1d1f; --muted: #5c5c61; --quiet: #77777c;
+    --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
+    --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
+    --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
+    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029;
+    --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
+    --go: #16a34a; --on-go: #fff;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme=dark]) {
     color-scheme: light;
-    --bg: #f7f7f7; --surface: #fff; --raised: #efefef; --well: #f7f7f7; --control: #e8e8e8;
-    --line: #e6e6e6; --line-strong: #d4d4d4; --text: #0a0a0a; --muted: #525252; --quiet: #737373;
-    --accent: #0a0a0a; --accent-text: #0a0a0a; --accent-bg: #efefef; --on-accent: #fafafa;
-    --accent-hover: #262626; --accent-active: #404040; --hover: #e2e2e2; --input-hover: #a3a3a3; --placeholder: #a3a3a3;
-    --backdrop: #0006; --shadow: 0 16px 48px #0002;
-    --connected: #16a34a; --connected-bg: #dcfce7; --warning: #a16207; --warning-bg: #fef9c3; --danger: #dc2626; --danger-bg: #fee2e2;
+    /* Light, turned down: a soft grey page and off-white panels, so a whole screen of it does not glare. */
+    --bg: #e4e4e9; --surface: #f1f1f4; --raised: #e3e3e8; --well: #e8e8ec; --control: #dadadf;
+    --line: #d6d6dc; --line-strong: #c2c2c9; --text: #1d1d1f; --muted: #5c5c61; --quiet: #77777c;
+    --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
+    --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
+    --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
+    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029;
+    --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
     --go: #16a34a; --on-go: #fff;
   }
 }
@@ -87,10 +99,10 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .45; }
 button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
-:where(button, a, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:where(button, a, input, select, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 @media (prefers-reduced-motion: no-preference) {
-  button, a, input, select { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+  button, a, input, select { transition: background-color 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease), box-shadow 160ms var(--ease), transform 160ms var(--ease); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

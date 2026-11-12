@@ -106,11 +106,11 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await pick('beam');await page.click('[data-elec-piece]');await page.waitForSelector('[data-elec-ready="1"]');
     beam=0;await page.waitForSelector('[data-seen-key="d:beam"]');assert.match(await seenRow('d:beam').innerText(),/goes LOW/);await seenRow('d:beam').locator('[data-seen-link]').click();beam=1;
     assert.match(await page.textContent('[data-elec-pick="claw"]'),/✓ claw.*no sensor on it/s);assert.match(await page.textContent('[data-elec-pick="beam"]'),/✓ beam.*← a game piece/s);assert.match(await page.textContent('[data-elec-pick="rightFront"]'),/to do/);
-    assert.match(await page.textContent('.cal-elec-listhead'),/6 of 7 done/);
+    assert.match(await page.textContent('#cal-links .cal-elec-listhead'),/6 of 7 done/);
     await page.click('[data-elec-next]');assert.equal(await page.getAttribute('[data-elec-pick="rightFront"]','aria-pressed'),'true','Next to do');
     // A check can be skipped (it counts as done) and taken back.
-    await page.click('[data-elec-skip="on"]');assert.match(await page.textContent('.cal-elec-listhead'),/7 of 7 done/);assert.match(await page.textContent('[data-elec-pick="rightFront"]'),/skipped/);
-    await page.click('[data-elec-skip="off"]');assert.match(await page.textContent('.cal-elec-listhead'),/6 of 7 done/);
+    await page.click('[data-elec-skip="on"]');assert.match(await page.textContent('#cal-links .cal-elec-listhead'),/7 of 7 done/);assert.match(await page.textContent('[data-elec-pick="rightFront"]'),/skipped/);
+    await page.click('[data-elec-skip="off"]');assert.match(await page.textContent('#cal-links .cal-elec-listhead'),/6 of 7 done/);
     // The IMU: nothing turns it by itself, so the student moves it by hand; every reading before and after.
     await pick('imu');await page.click('[data-elec-hand]');await page.waitForSelector('[data-elec-ready="1"]');pitch=20;
     await page.waitForSelector('[data-hand-row="pitch"]',{timeout:15000});pitch=0;
@@ -137,13 +137,34 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
 
     // Mechanisms starts with the chassis Simulate describes. Simulate's default senses position with a Pinpoint, which
     // this robot lacks, so the chassis says so until the student picks drive encoders in Simulate.
-    await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-chassis .cal-chassis');assert.equal(await page.locator('#cal-hub-setup').isVisible(),true,'the hub card is here');
-    assert.match(await page.textContent('#cal-chassis'),/Not on the robot: pinpoint/);assert.equal(await page.locator('[data-chassis=confirm]').isDisabled(),true);
+    await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-chassis .cal-chassis',{state:'attached'});
+    // The list is Electronics' list: the Control Hub, the chassis' steps, then the mechanisms; one shows at a time.
+    await page.click('[data-mech-pick=hub]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),true,'the hub card is here');assert.equal(await page.locator('#cal-chassis').isVisible(),false,'one part at a time');
+    await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),false);
+    assert.match(await page.textContent('#cal-chassis'),/Not on the robot: pinpoint/);assert.equal(await page.locator('[data-chassis=go]').count(),0,'nothing to check until Simulate and the robot agree');
     await page.evaluate(()=>{const s=document.querySelector('#sim-localization');s.value='encoders';s.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');if(await page.locator('#cal-tab-mechanisms').isHidden())await page.click('#calibrate-view [data-flow=calibrate]');await page.click('#cal-tab-mechanisms');
     await soon('the chassis follows Simulate',async()=>!/Not on the robot/.test(await page.textContent('#cal-chassis')));
-    assert.match(await page.textContent('[data-chassis-step="1"]'),/Mecanum · 4 DC motors on leftFront, rightFront, leftBack, rightBack, with Drive encoders [+] IMU/);
-    await page.click('[data-chassis=confirm]');await soon('step 2 passes',async()=>await page.locator('[data-chassis-step="2"]').getAttribute('data-state')==='pass');assert.match(await page.textContent('[data-chassis-step="2"]'),/3 of 3 chassis links work/);
+    // A mecanum with drive encoders and no Pinpoint: nothing Electronics already checked is asked again. Its wheels, then
+    // how far it rolls, then the field map.
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['Wheels roll forward','How far it rolls','Where it is on the field','Use it in your code','Drive it']);
+    await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('[data-chassis-step="2"]').isVisible(),false,'one step at a time');
+    // Each drive motor spins by itself and the student says which way its wheel rolled. One that rolled backwards is reversed.
+    const spin=async(key,answer)=>{await page.click(`[data-chassis=go][data-pod="${key}"]`);await page.waitForSelector(`[data-chassis=${answer}]`,{timeout:8000});await page.click(`[data-chassis=${answer}]`);};
+    const reversedBefore=await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft?.reversed);
+    await spin('frontLeft','yes');await spin('frontRight','yes');await spin('backLeft','no');
+    await soon('the motor that rolled backwards is reversed in Simulate',async()=>await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft?.reversed)===!reversedBefore);assert.match(await page.textContent('[data-chassis-step="1"]'),/leftBack is reversed now/);
+    assert.equal(await page.locator('[data-chassis-step="1"]').getAttribute('data-state'),'todo','not done until it rolls forward');
+    await spin('backLeft','yes');await spin('backRight','yes');assert.ok(motorLines.some(l=>/^M\tleftBack\t-?0\.30$/.test(l)),'spun at a third of its power');
+    await soon('the list moves on to the next step to do',async()=>await page.getAttribute('[data-mech-pick="chassis-2"]','aria-pressed')==='true');assert.match(await page.textContent('[data-mech-pick="chassis-1"]'),/✓/);
+    assert.match(await page.textContent('[data-mech-pick="chassis-2"]'),/How far it rolls/);assert.equal(await page.locator('[data-chassis-step="3"]').getAttribute('data-state'),'locked');assert.equal(await page.locator('[data-mech-pick="chassis-code"]').count(),1);
+    // The push: every wheel rolls forward, which is each motor turning the way Simulate now has it.
+    const push=async()=>{const dirs=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices;return Object.fromEntries(['frontLeft','frontRight','backLeft','backRight'].map(k=>[d[k].name,d[k].reversed?-1:1]));});
+      await app.evaluate((e,dirs)=>{for(const [n,dir] of Object.entries(dirs))global.__sent.push(`M\t${n}\t${.5*dir}`);},dirs);await wait(900);await app.evaluate(()=>{global.__sent.push('X');});await wait(300);};
+    await page.click('[data-chassis=roll-start]');await push();
+    await page.click('[data-chassis=roll-done]');await soon('the push is measured',async()=>/ticks an inch/.test(await page.textContent('[data-chassis-step="2"]')));assert.doesNotMatch(await page.textContent('[data-chassis-step="2"]'),/backwards|hardly/);
+    await soon('and the map is next',async()=>await page.getAttribute('[data-mech-pick="chassis-3"]','aria-pressed')==='true');
+    await page.click('[data-mech-pick="chassis-code"]');assert.match(await page.textContent('[data-chassis-code]'),/DRIVE_TICKS_PER_INCH = [0-9.]+; \/\/ measured by pushing 48 in/);assert.match(await page.textContent('[data-chassis-code]'),/LEFT_FRONT_REVERSED = (true|false);\n/);await page.click('[data-mech-pick="chassis-3"]');
     await page.click('[data-chassis=zero]');await page.waitForSelector('#cal-chassis svg.cal-fieldmap .cal-fieldmap-bot');
     await app.evaluate(()=>{for(const n of ['leftFront','leftBack','rightFront','rightBack'])global.__sent.push(`M\t${n}\t0.5`);});await wait(600);await app.evaluate(()=>{global.__sent.push('X');});
     await soon('the map follows',async()=>(await page.textContent('[data-chassis-now="x"]'))!=='0.0 in'||(await page.textContent('[data-chassis-now="y"]'))!=='0.0 in');
@@ -159,14 +180,14 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     assert.equal(await page.getAttribute('#calibrate-view [data-flow=calibrate]','data-locked'),null,'Calibrate is not locked by Simulate');
     if(await page.locator('#cal-tab-mechanisms').isHidden())await page.click('#calibrate-view [data-flow=calibrate]');
     // Mechanisms waits only for Simulate's Setup to have nothing in red: no path is needed, so this robot gets straight in.
-    await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-chassis',{state:'visible'});assert.equal(await page.locator('#cal-mech-sim').isVisible(),false,'nothing to finish in Simulate');assert.equal(await page.locator('#cal-hub-card').isVisible(),true);
+    await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-mech-rail [data-mech-pick=hub]',{state:'visible'});assert.equal(await page.locator('#cal-mech-sim').isVisible(),false,'nothing to finish in Simulate');await page.click('[data-mech-pick=hub]');assert.equal(await page.locator('#cal-hub-card').isVisible(),true);
     // Something in red there, and Mechanisms says only that.
     await page.evaluate(()=>{const box=document.querySelector('#cal-mech-sim');box.hidden=false;});assert.match(await page.textContent('#cal-mech-sim'),/^Finish Simulate/);
     await page.click('#cal-tab-electronics');assert.equal(await page.locator('#cal-gate').isVisible(),false);await pick('leftBack');await moveIt();assert.match(await seenRow('m:leftBack:pos').innerText(),/Linked/,'Electronics works with Simulate unfinished');
 
     // Kept with the setup: saved, and back after a reload.
     const cal=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).calibration);
-    assert.equal(cal.links.length,4);assert.ok(cal.links.some(l=>l.causes[0].kind==='piece'&&l.effect.key==='d:beam'&&l.effect.dir===-1));assert.deepEqual(cal.electronics.none,['claw']);assert.ok(cal.electronics.zeroedAt);assert.ok(cal.chassis.confirmed&&cal.chassis.placed);
+    assert.equal(cal.links.length,4);assert.ok(cal.links.some(l=>l.causes[0].kind==='piece'&&l.effect.key==='d:beam'&&l.effect.dir===-1));assert.deepEqual(cal.electronics.none,['claw']);assert.ok(cal.electronics.zeroedAt);assert.ok(cal.chassis.pods.frontLeft.drive&&cal.chassis.pods.backLeft.drive&&cal.chassis.roll.ok&&cal.chassis.placed);
     run=false;await wait(200);await page.reload();await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);
     assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).calibration.links)).length,4,'kept across a reload');
     assert.deepEqual(errors,[]);
