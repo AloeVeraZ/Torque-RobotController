@@ -18,7 +18,9 @@ class SimLink{
   async write(tx){const r=Buffer.alloc(64);r[0]=4;
     switch(tx[1]){
       case 0x91:r[1]=1;r[5]=0x22;break;
-      case 0xAF:{const out=this.out||1500;r[4]=0xAF;r[5]=out>>8;r[6]=out&255;r[9]=this.volts>>8;r[10]=this.volts&255;r[14]=this.out?(this.mode==='cr'&&Math.abs(this.out-1500)>30?160:this.amps+20):this.amps;r[15]=this.out?1:0;}r[16]=this.powerOn?3:0;if(this.inputPulse){r[19]=1;r[20]=0x4E;r[21]=0x20;r[22]=this.inputPulse>>8;r[23]=this.inputPulse&255;}break;
+      case 0xAF:{const out=this.out||1500;r[4]=0xAF;r[5]=out>>8;r[6]=out&255;r[9]=this.volts>>8;r[10]=this.volts&255;r[14]=this.out?(this.mode==='cr'&&!this.bootSilent&&Math.abs(this.out-1500)>30?(this.spinAdc||112):this.amps+20):this.amps;
+        // pinsReport: bytes 7-8 as the real V2 programmer gives them, 03FF with a servo on its pins and 0416 with none (pinsStuck: always 0416).
+        if(this.pinsReport){const on=!this.bootSilent&&!this.pinsStuck;r[7]=on?3:4;r[8]=on?0xFF:0x16;}r[15]=this.out?1:0;}r[16]=this.powerOn?3:0;if(this.inputPulse){r[19]=1;r[20]=0x4E;r[21]=0x20;r[22]=this.inputPulse>>8;r[23]=this.inputPulse&255;}break;
       case 0xAC:r[1]=1;this.out=(tx[5]<<8)|tx[6];this.pulses=(this.pulses||[]).concat(this.out);break;
       case 0xB0:this.powerOn=tx[3]===1;r[1]=1;break;
       // bootOnly: a V1 servo on the V2 programmer, whose own program never answers it (its bootloader does).

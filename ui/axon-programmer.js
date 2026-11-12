@@ -27,7 +27,10 @@ window.DeckAxon=(()=>{
   }
   // The model of the last V1 servo the V1 programmer read: a hint on the V2 programmer, never used without the student picking it.
   let lastV1Code=null;const lastV1=()=>{for(const k of Object.keys(snaps)){const m=snaps[k]?.servo?.model;if(m?.family==='v1'&&!snaps[k].servo.viaBoot)lastV1Code=m.code;}return lastV1Code;};
-  function choose(k){if(k===cur)return;stopDrive();cur=k;lastRun=null;snap=snaps[k];}
+  // What the student picked belongs to one programmer's servo: it is put away when the page moves to the other programmer and brought
+  // back when it returns, as long as the same servo is still there. A question on screen about the first programmer's servo goes too.
+  const picks={};
+  function choose(k){if(k===cur)return;stopDrive();if(cur)picks[cur]={picked,epoch:snaps[cur]?.servo?.epoch};cur=k;lastRun=null;snap=snaps[k];const was=picks[k];picked=was&&snap?.servo?.viaBoot&&was.epoch===snap.servo.epoch?was.picked:null;ask=null;}
   const $=id=>root.querySelector('#'+id);
   const R=globalThis.DeckAxonResponse;let view='settings';
   const busy=()=>!!snap?.busy,servo=()=>snap?.servo||{},settings=()=>snap?.settings||null,models=()=>snap?.models||[];
@@ -44,9 +47,32 @@ window.DeckAxon=(()=>{
   const unverified=()=>viaBoot();
   // The mode a Test drives: the servo's own, or on a V1 servo through the V2 programmer the one picked when Torque cannot know it.
   const testMode=()=>viaBoot()?wanted():servo().mode;
-  const detected=()=>servo().model?.code||null;
-  // The servo Torque is sure of, or the one picked. With nothing plugged in it is what the page previews and what Recover writes.
-  const modelCode=()=>detected()||picked;
+  // carried: a servo whose name Torque read on its own programmer just before it showed up on this one (the service's carry()).
+  // It is taken to be the same servo, but not locked in: the student can still pick the other model.
+  // guessed: a V1 servo the V2 programmer measured as one model (what it drew while Torque turned it). Offered the same way.
+  const guessed=()=>viaBoot()&&!!servo().guessed&&!!servo().model;
+  const carried=()=>viaBoot()&&(!!servo().carried||!!servo().guessed)&&!!servo().model;
+  const detected=()=>carried()?null:servo().model?.code||null;
+  // The servo Torque is sure of, or the one picked, or the one carried over. With nothing plugged in it is what the page previews and what Recover writes.
+  const modelCode=()=>detected()||picked||(carried()?servo().model.code:null);
+  // A V1 servo on the V2 programmer whose mode Torque does not know, and that was not read on the V1 programmer first.
+  const unidentified=()=>viaBoot()&&snap?.programmer?.kind==='v2'&&servo().family==='v1'&&!modeNow()&&!servo().carried;
+  // Asked once for each servo found that way, and for a MK2 servo on the V1 programmer that nothing is known about.
+  const askedFor={},lastEpoch={};
+  const IDENTIFY_ASK=()=>({title:'Which V1 servo is this?',text:'The V2 programmer cannot read which V1 servo this is (MAX+ or MINI+) or which mode it is in. Torque can find out by moving the servo: a slow crawl and a short nudge one way, then the other, about three seconds in all, ending about where it began.',more:'The servo will move. If something is attached to it that must not move, pick the servo and its mode yourself instead.',buttons:[['Move it and identify','identify-go'],['Pick it myself','cancel-ask']],closable:true});
+  function offerIdentify(){
+    // Once for every servo plugged in that this programmer cannot identify (the service counts them: epoch), and only for the
+    // programmer the page is showing: the other one's servo is asked about when the page moves to it.
+    // A question about a servo goes when that servo does: pulled out while the pop-up is up, the pop-up closes with it.
+    const s=servo();if(ask?.aboutServo&&(!s.present||ask.aboutServo!==`${cur}/${s.epoch}`)){ask=null;error='';}
+    if(!s.present||!viaBoot()||ask||busy()||!shown)return;const key=`${cur}/${s.epoch}`;
+    // Another servo than the one before on this programmer: nothing picked for the last one carries over (a mode picked by hand for one
+    // servo used to stay and silence the question for every servo after it).
+    if(lastEpoch[cur]!==undefined&&lastEpoch[cur]!==key){picked=null;target=null;rewrite=false;result=null;pending={};formEpoch++;error='';}lastEpoch[cur]=key;if(askedFor[cur]===key)return;
+    if(unidentified()&&s.modeHow!=='unclear'&&!picked){askedFor[cur]=key;ask={...IDENTIFY_ASK(),aboutServo:key};}
+    else if(s.family==='v2'&&!s.carried&&!picked){askedFor[cur]=key;ask={title:'Which MK2 servo is this?',text:'The V1 programmer cannot read which MK2 servo this is, and it cannot move the servo to find out. Pick it here: the MAX MK2 is the bigger one.',more:'Or close this and pick it under 1 Servo, or plug it into the V2 programmer, which reads its name.',buttons:[['MINI MK2','ask-pick','mini2'],['MAX MK2','ask-pick','max2']],choice:true,closable:true,aboutServo:key};}
+  }
+  const modeHow=()=>{const s=servo();return s.modeHow==='written'?'Torque wrote that mode. ':s.modeHow==='carried'?`Torque read that mode on the ${other().home}. `:'Torque nudged it slightly to tell its mode. ';};
   const chosenModel=()=>modelCode()||models().find(m=>m.family===servo().family)?.code||'max1';
   const modelTitle=code=>models().find(m=>m.code===code)?.title||'servo';
   const familyOf=code=>models().find(m=>m.code===code)?.family;
@@ -73,7 +99,9 @@ window.DeckAxon=(()=>{
       if(p.handshakeFailed)return {tone:'bad',main:'The programmer is not answering',sub:'Unplug it and plug it back in. Make sure the USB cable carries data, not just charge.'};
       return {tone:'wait',main:'Plug in an Axon programmer to continue',sub:'The V2 programmer (MK2) or the V1 one. '+'Use a USB cable that carries data. USB-C powers the programmer and the servo, so no battery is needed.'};}
     if(!s.present)return {tone:'wait',main:`Plug a servo into the ${p.kind==='v1'?'V1':'V2'} programmer`,sub:p.kind==='v1'?'Top row of pins, grey signal wire on the right. The V1 programmer reads V1 servos (MAX+, MINI+); a MK2 servo needs the V2 programmer.':`Top row of pins on the left, grey signal wire on the right. The V2 programmer only talks to MK2 servos: a V1 servo (MAX+, MINI+) never answers it, so plug that one into the V1 programmer.`};
-    if(viaBoot()&&!switching()){const o=other();return {tone:'good',main:`${picked?modelTitle(picked):`A ${o.servo}`} is on the ${o.here}${modeNow()?`, in ${MODE[modeNow()]}`:''}`,sub:`${modeNow()?(s.modeHow==='written'?'Torque wrote that mode. ':'Torque turned it briefly to tell its mode, so keep the horn free. '):p.kind==='v1'?'Torque cannot tell its mode here: the V1 programmer cannot move it. ':'Torque could not tell its mode: take anything off its horn, then unplug it and plug it back in. '}Its mode can be switched here; its settings${p.kind==='v1'?' and tests':''} need the ${o.home}.${picked?'':` Pick whether it is ${o.models} before switching.${s.family==='v1'&&lastV1()?` The last V1 servo read on the V1 programmer was a ${modelTitle(lastV1())}.`:''}`}`};}
+    // A V1 servo on the V2 programmer that nothing is known about yet: the student picks it, or asks Torque to move it and find out.
+    if(unidentified()&&!switching())return {tone:'warn',main:`${picked?modelTitle(picked):'A V1 servo'} is on the V2 programmer`,sub:`${s.modeHow==='unclear'?'Torque moved it but could not tell its mode. ':''}The V2 programmer cannot read which V1 servo this is or which mode it is in. Pick them under 1 Servo and 2 Mode, or press Identify and Torque works both out by moving the servo slightly. Its settings need the V1 programmer.`,identify:true};
+    if(viaBoot()&&!switching()){const o=other(),code=modelCode(),mine=carried()&&code===s.model.code;return {tone:'good',main:`${code?modelTitle(code):`A ${o.servo}`} is on the ${o.here}${modeNow()?`, in ${MODE[modeNow()]}`:''}`,sub:`${mine&&guessed()?`Torque nudged it slightly and it drew ${s.guessed.amps.toFixed(2)} A, which is what a ${s.model.code==='mini1'?'MINI+':'MAX+'} draws. Its name cannot be read here. `:mine?`Torque read its name on the ${o.home} before it was moved here. `:code?`You picked ${modelTitle(code)}: Torque cannot read the model on the ${o.here}. To have Torque read it, plug the servo into the ${o.home} once, then move it back here. `:''}${modeNow()?(mine&&guessed()?'':modeHow()):p.kind==='v1'?'Torque cannot tell its mode here: the V1 programmer cannot move it. ':'Torque could not tell its mode: take anything off its horn, then unplug it and plug it back in. '}Its mode can be switched here; its settings${p.kind==='v1'?' and tests':''} need the ${o.home}.${mine?' If this is a different servo, pick it under 1 Servo.':code?'':` Pick whether it is ${o.models} before switching.${s.family==='v1'&&lastV1()?` The last V1 servo read on the V1 programmer was a ${modelTitle(lastV1())}.`:''}${readyKeys().length>1?` Or plug it into the ${o.home} first and then move it here: Torque reads its name there and carries it across.`:''}`}`};}
     if(s.family==='unknown')return {tone:'bad',main:'Torque does not know this servo',sub:`It answered ${s.firmware}, which neither Axon app knows. Nothing will be written.`};
     if(switching()){
       if(!modelCode())return {tone:'warn',main:'Pick which servo this is',sub:viaBoot()?`On the ${other().here} Torque cannot tell ${other().models.replace(' or a ',' from a ')}, and each needs its own firmware. Pick it under 1 Servo: ${other().big}.`:'Torque could not read its name, and it needs the right firmware. Pick it under 1 Servo.'};
@@ -84,11 +112,12 @@ window.DeckAxon=(()=>{
     if(result&&!result.ok)return {tone:'bad',main:'It did not take',sub:result.message,ready:n>0};
     if(n)return {tone:'good',main:`Ready to write ${n} ${n===1?'change':'changes'} to the servo`,sub:'Torque reads it back after writing, and shows what the servo reports.',ready:true};
     if(result)return {tone:'good',main:'Confirmed',sub:result.message};
+    if(!s.model&&s.name)return {tone:'good',main:`A ${s.family.toUpperCase()} servo named "${s.name}" is ready`,sub:'Torque does not know this model, so it shows the name the servo gave and will not switch its mode. Its settings can be changed: change one, then press Apply.'};
     return {tone:'good',main:`${s.model?s.model.title:'This servo'} is ready`,sub:'Change a setting or switch mode, then press Apply.'};
   }
   function renderBar(){
     const g=gate(),apply=$('axon-apply'),discard=$('axon-discard');
-    setHtml('axon-banner',`<strong>${esc(g.main)}</strong>${g.sub?`<span>${esc(g.sub)}</span>`:''}${g.percent!==null&&g.percent!==undefined?`<progress id="axon-progress" max="100" value="${g.percent}" aria-label="Progress"></progress>`:''}${g.closeRivals?'<button id="axon-close-rivals" class="secondary" type="button" data-axon="close-rivals">Close it</button>':''}`);
+    setHtml('axon-banner',`<strong>${esc(g.main)}</strong>${g.sub?`<span>${esc(g.sub)}</span>`:''}${g.percent!==null&&g.percent!==undefined?`<progress id="axon-progress" max="100" value="${g.percent}" aria-label="Progress"></progress>`:''}${g.closeRivals?'<button id="axon-close-rivals" class="secondary" type="button" data-axon="close-rivals">Close it</button>':''}${g.identify?'<button id="axon-identify" class="secondary" type="button" data-axon="identify">Identify</button>':''}`);
     $('axon-banner').dataset.tone=g.tone;
     apply.disabled=!g.ready;apply.textContent=g.flash?'Switch mode':changeList().length?`Apply ${changeList().length} ${changeList().length===1?'change':'changes'}`:'Apply';
     discard.hidden=!(changeList().length||switching())||busy();
@@ -105,10 +134,10 @@ window.DeckAxon=(()=>{
   }
   function renderCards(){
     // A servo Torque cannot identify shows no model as picked until the student picks one: a default would look like a choice.
-    const s=servo(),here=detected(),chosen=viaBoot()?picked:chosenModel();
+    const s=servo(),here=detected(),chosen=viaBoot()?modelCode():chosenModel(),moved=carried()?s.model.code:null;
     const prog=snap?.programmer?.ready?snap.programmer.kind:null;
     setHtml('axon-models',models().map(m=>{const off=busy()||(here&&m.code!==here)||(s.present&&m.family!==s.family)||(!!prog&&m.family!==prog&&!(s.present&&s.family===m.family));
-      return `<button id="axon-model-${m.code}" type="button" class="axon-card" data-axon="model" data-code="${m.code}" aria-pressed="${chosen===m.code}"${off?' disabled':''}><strong>${esc(m.title)}</strong><span${here===m.code?' data-good':''}>${here===m.code?'Plugged in':`sold as ${esc(m.sold)}`}</span></button>`;}).join(''));
+      return `<button id="axon-model-${m.code}" type="button" class="axon-card" data-axon="model" data-code="${m.code}" aria-pressed="${chosen===m.code}"${off?' disabled':''}><strong>${esc(m.title)}</strong><span${here===m.code||moved===m.code?' data-good':''}>${here===m.code?'Plugged in':moved===m.code?(guessed()?'Looks like this one':`Read on the ${other().home}`):`sold as ${esc(m.sold)}`}</span></button>`;}).join(''));
     const now=modeNow(),locked=busy()||(s.present&&s.family==='unknown')||(s.present&&!s.model&&!!s.name);
     const mode=(key,title,text)=>`<button id="axon-mode-${key}" type="button" class="axon-card" data-axon="mode" data-mode="${key}" aria-pressed="${wanted()===key}"${locked?' disabled':''}><strong>${title}${now===key?' <em>Now</em>':''}</strong><span>${text}</span></button>`;
     setHtml('axon-modes',mode('servo','Servo Mode','Moves to and holds a position')+mode('cr','CR Mode','Continuous rotation'));
@@ -119,7 +148,11 @@ window.DeckAxon=(()=>{
     const st=settings(),s=servo(),code=chosenModel();
     if(st&&st.schema.mode===wanted())return {kind:'live',...st};
     if(switching())return {kind:'switch'};
-    if(viaBoot()&&!picked){const o=other();return {kind:'none',text:`Pick which ${o.servo} this is under 1 Servo: ${o.big}. On the ${o.here} Torque cannot tell them apart, and its settings can only be read and changed on the ${o.home}.`};}
+    // No settings, not even a preview, for a servo whose mode Torque does not know: which settings it has depends on the mode, and
+    // showing one mode's would look like something to edit. They appear once the mode is known: read on the servo's own programmer,
+    // found by Identify, or written here by a mode switch.
+    if(viaBoot()&&!modeNow()){const o=other(),v2=snap?.programmer?.kind==='v2';return {kind:'none',text:`Torque does not know which mode this ${o.servo} is in, so there are no settings to show yet. ${modelCode()?'':`Pick which servo it is under 1 Servo, then `}${modelCode()?'P':'p'}ick a mode under 2 Mode and press Switch mode: that writes the mode, and Torque then knows it.${v2?' Or press Identify, and Torque finds the mode by moving the servo slightly.':''} Its settings can only be read and changed on the ${o.home}.`};}
+    if(viaBoot()&&!modelCode()){const o=other();return {kind:'none',text:`Pick which ${o.servo} this is under 1 Servo: ${o.big}. On the ${o.here} Torque cannot tell them apart, and its settings can only be read and changed on the ${o.home}.`};}
     if(s.present&&!s.editable&&s.family!=='unknown'&&!viaBoot())return {kind:'none',text:'This servo\'s settings cannot be edited, but its mode can be switched.'};
     const key=`${code}/${wanted()}`;if(shown&&!previews.has(key)&&api){previews.set(key,null);void axon('preview',{code,mode:wanted()}).then(p=>{previews.set(key,p);render();},()=>previews.delete(key));}
     const p=previews.get(key);return p?{kind:'preview',schema:p.schema,values:p.values,factory:p.values}:{kind:'none',text:''};
@@ -232,7 +265,7 @@ window.DeckAxon=(()=>{
     const p=snap?.programmer,t=snap?.telemetry,s=servo(),adv=level==='advanced',info=p?.info,hex=v=>`0x${Number(v).toString(16).toUpperCase().padStart(2,'0')}`,st=settings();
     const signal=t&&(t.inputValid&&t.inputPeriod?`${t.inputPulse} µs, ${Math.round(1e6/t.inputPeriod)} Hz`:'None');
     setHtml('axon-report',rows([
-      ['Name',s.viaBoot?`Not readable on the ${other().here}`:s.present?(s.name||(st?'(not reported)':'(not read yet)')):'-'],['Mode',s.present&&s.mode!=='unknown'?cap(MODE[s.mode])+(s.viaBoot?(s.modeHow==='written'?' (written by Torque)':' (measured)'):''):s.viaBoot?`Not readable on the ${other().here}`:'-'],adv&&['Firmware',s.present?s.firmware||'-':'-'],adv&&['Made',s.made||'-'],
+      ['Name',s.viaBoot&&s.guessed&&s.model?`Not readable here. Measured as a ${s.model.title}`:s.viaBoot&&s.carried&&s.name?`${s.name} (read on the ${other().home})`:s.viaBoot?`Not readable on the ${other().here}`:s.present?(s.name||(st?'(not reported)':'(not read yet)')):'-'],['Mode',s.present&&s.mode!=='unknown'?cap(MODE[s.mode])+(s.viaBoot?(s.modeHow==='written'?' (written by Torque)':s.modeHow==='carried'?` (read on the ${other().home})`:' (measured)'):''):s.viaBoot?`Not readable on the ${other().here}`:'-'],adv&&['Firmware',s.present?s.firmware||'-':'-'],adv&&['Made',s.made||'-'],
       adv&&['Link',s.family==='v1'||s.family==='v2'?`${s.family.toUpperCase()} servo through ${(p?.kind||'v2').toUpperCase()} programmer`:'-']])+
       (s.viaBoot?`<p class="axon-note">On the ${other().here} only the bootloader of a ${other().servo} answers: Torque can switch its mode${p?.kind==='v2'?' and test it':''}. To read or change its settings, use the ${other().home}.</p>`:s.family==='v1'&&p?.kind==='v2'?'<p class="axon-note">On the V2 programmer only the bootloader of a V1 servo answers: Torque can switch its mode and test it. To read or change its settings, use the V1 programmer.</p>':'')+
       (p?.kind==='v1'&&!adv?'':`<h4 class="axon-side-title">${p?.kind==='v1'?'V1':'V2'} programmer</h4>`)+rows([p?.kind!=='v1'&&['Power',t?`${t.volts.toFixed(2)} V, ${t.amps.toFixed(2)} A`:'-'],adv&&['Device',p?.ready?info?.product||'HID device':'-'],adv&&['Servo pins',t?(t.powerAlarm?'Alarm: off':t.powerOn?'On':'Off'):'-'],adv&&['Pulse out',t?`${t.outputPulse} µs`:'-'],adv&&['Signal in',signal||'-'],
@@ -252,7 +285,9 @@ window.DeckAxon=(()=>{
   function syncAsk(){
     const box=$('axon-ask');if(!ask){if(box.open)box.close();box.dataset.for='';return;}
     const key=ask.text+ask.buttons.map(b=>b[0]).join();if(box.dataset.for===key&&box.open)return;box.dataset.for=key;
-    box.innerHTML=`<h2 id="axon-ask-title">${esc(ask.title)}</h2><p>${esc(ask.text)}</p>${ask.more?`<p>${esc(ask.more)}</p>`:''}<div class="button-row">${ask.buttons.map(([label,act],i)=>`<button id="axon-ask-${i}" class="${i?'secondary':'primary'}" type="button" data-axon="${act}">${esc(label)}</button>`).join('')}</div>`;
+    // closable: an X at the top right that only closes it. A button's third part is the servo it picks. choice: the buttons are equal answers, so none is drawn as the main one.
+    box.toggleAttribute('data-choice',!!ask.choice);
+    box.innerHTML=`${ask.closable?'<button id="axon-ask-x" class="axon-ask-x" type="button" data-axon="cancel-ask" aria-label="Close">\u00d7</button>':''}<h2 id="axon-ask-title">${esc(ask.title)}</h2><p>${esc(ask.text)}</p>${ask.more?`<p>${esc(ask.more)}</p>`:''}<div class="button-row">${ask.buttons.map(([label,act,code],i)=>`<button id="axon-ask-${i}" class="${i||ask.choice?'secondary':'primary'}" type="button" data-axon="${act}"${code?` data-code="${code}"`:''}>${esc(label)}</button>`).join('')}</div>`;
     if(!box.open)box.showModal();
   }
   function render(){
@@ -262,7 +297,7 @@ window.DeckAxon=(()=>{
     // that is not a new servo, so what the student picked stays.
     if(snap&&servo().key!==lastServoKey&&!(lastServoKey.endsWith('/boot')&&!servo().present)){lastServoKey=servo().key;pending={};formEpoch++;target=null;rewrite=false;if(!(result?.mode&&servo().present&&result.mode===servo().mode))result=null;if(servo().present&&!(servo().viaBoot&&picked&&familyOf(picked)===servo().family))picked=null;ask=null;}
     const button=$('axon-level');button.textContent=level==='advanced'?'Back to Simple':'Show Advanced';button.setAttribute('aria-pressed',String(level==='advanced'));
-    renderChips();renderCards();renderSettings();renderHint();renderSide();renderBar();syncAsk();renderWait();
+    offerIdentify();renderChips();renderCards();renderSettings();renderHint();renderSide();renderBar();syncAsk();renderWait();
   }
   // No programmer to talk to: nothing to pick or change yet. Another app holding it keeps the page, for its Close button.
   function renderWait(){const p=snap?.programmer,waiting=!api||!snap||!snap.busy&&(!snap.supported||!!p?.error||!p?.ready&&!p?.rivals?.length);
@@ -299,7 +334,9 @@ window.DeckAxon=(()=>{
   }
   const actions={
     level:()=>{level=level==='advanced'?'simple':'advanced';if(level==='simple'){const st=settings();for(const key of Object.keys(pending))if(st?.schema.fields.find(f=>f.key===key)?.advanced)delete pending[key];}formEpoch++;syncTrace();},
-    'close-rivals':()=>axon('close-rivals'),read:()=>axon('read'),
+    'close-rivals':()=>axon('close-rivals'),read:()=>axon('read'),identify:()=>{ask={...IDENTIFY_ASK(),aboutServo:`${cur}/${servo().epoch}`};},
+    // A servo pulled out before or during the movement is not an error to show: the page already says it is gone.
+    'identify-go':async()=>{closeAsk();render();try{await axon('identify');}catch(e){if(servo().present&&viaBoot())throw e;}},
     model:b=>{picked=b.dataset.code;},
     prog:b=>{choose(b.dataset.which);formSig='';},
     view:b=>{view=b.dataset.view;formSig='';},
@@ -311,11 +348,13 @@ window.DeckAxon=(()=>{
     'open-file':async()=>{const r=await axon('open-settings');if(!r)return;const st=settings();pending={};for(const f of st.schema.fields.filter(visible))if(r.values[f.key]!==undefined&&r.values[f.key]!==st.values[f.key])pending[f.key]=r.values[f.key];result=null;formEpoch++;},
     'save-file':()=>axon('save-settings',{changes:pending}),
     'cancel-ask':()=>closeAsk(),
+    // A servo picked in the pop-up: the same as pressing its card under 1 Servo.
+    'ask-pick':b=>{picked=b.dataset.code;closeAsk();},
     download:async()=>{const a=ask;closeAsk();render();await axon('download',{code:a.code,mode:a.mode});await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     'software-switch':async()=>{const a=ask;await axon('software-open',{family:familyOf(a.code)});closeAsk();},
     'import-keys':async()=>{const a=ask,r=await axon('import-keys');if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
     'choose-firmware':async()=>{const a=ask,r=await axon('choose-firmware',{code:a.code,mode:a.mode});if(!r)return;closeAsk();await startSwitch({...a.extra,code:a.code,mode:a.mode});},
-    flash:()=>{const a=ask;if(unverified()&&!a.extra?.recovery){const o=other(),m=models().find(x=>x.code===a.code);ask={...a,title:'Check the servo first',text:`Torque cannot verify which servo this is with the ${o.here}: it cannot read its name${p2()?'':' or its mode'}. Make sure the servo plugged in is a ${modelTitle(a.code)} (sold as ${m?.sold}), and that ${MODE[a.mode]} is what you want.`,more:`${o.big[0].toUpperCase()+o.big.slice(1)}. Writing the wrong model's firmware can make the servo misbehave. If you are not sure, plug it into the ${o.home}, where Torque reads its name and mode.`,buttons:[[`Yes, it is a ${modelTitle(a.code)}`,'flash-checked'],['Cancel','cancel-ask']],confirmed:a.code};return;}return doFlash(a);},
+    flash:()=>{const a=ask;if(unverified()&&!a.extra?.recovery){const o=other(),m=models().find(x=>x.code===a.code);ask={...a,title:'Check the servo first',text:`${guessed()&&a.code===servo().model.code?`Torque measured this servo as a ${modelTitle(a.code)} from the current it drew, which is not the same as reading its name. `:carried()&&a.code===servo().model.code?`Torque read a ${modelTitle(a.code)} on the ${o.home} just before this servo showed up here, and takes it to be the same one. `:''}Torque cannot verify which servo this is with the ${o.here}: it cannot read its name${p2()?'':' or its mode'}. Make sure the servo plugged in is a ${modelTitle(a.code)} (sold as ${m?.sold}), and that ${MODE[a.mode]} is what you want.`,more:`${o.big[0].toUpperCase()+o.big.slice(1)}. Writing the wrong model's firmware can make the servo misbehave. If you are not sure, plug it into the ${o.home}, where Torque reads its name and mode.`,buttons:[[`Yes, it is a ${modelTitle(a.code)}`,'flash-checked'],['Cancel','cancel-ask']],confirmed:a.code};return;}return doFlash(a);},
     'flash-checked':()=>{const a=ask;return doFlash({...a,code:a.confirmed});},'flash-anyway':()=>doFlash(ask,true),
     recover:()=>startSwitch({recovery:true,code:chosenModel(),mode:wanted()}),
   };

@@ -67,7 +67,7 @@ class Programmer{
   async telemetry(){
     const r=await this.exchange(frame(0xAF),x=>x[4]===0xAF,120,3,true);if(!r)return null;
     let amps=((r[13]*256+r[14])/4096)*3.3/0.6;if(amps<0.08)amps=0;if(amps>5)amps=5;
-    return {volts:((r[9]*256+r[10])/4096)*3.3*5.99,amps,source:r[15],powerState:r[16],powerOn:r[16]===3,powerAlarm:r[16]===1,outputPulse:r[5]*256+r[6],inputValid:r[19]===1,inputPeriod:r[20]*256+r[21],inputPulse:r[22]*256+r[23],lowReturn:r[24]===1,raw:hex(r,32)};
+    return {volts:((r[9]*256+r[10])/4096)*3.3*5.99,amps,source:r[15],powerState:r[16],powerOn:r[16]===3,powerAlarm:r[16]===1,outputPulse:r[5]*256+r[6],pins:r[7]*256+r[8],ampsRaw:r[13]*256+r[14],inputValid:r[19]===1,inputPeriod:r[20]*256+r[21],inputPulse:r[22]*256+r[23],lowReturn:r[24]===1,raw:hex(r,32)};
   }
   // The programmer only powers its servo pins after this. Axon's app sends it by itself below 8.6 V.
   async setServoPower(on){await this.exchange(frame(0xB0,0,on?1:0),()=>true,400,1,false);}
@@ -117,7 +117,9 @@ class Programmer{
     for(let busy=0;;busy++){this.log('TX',tx,true);if(!await this.link.write(tx,1000))throw new DeviceLost('The programmer stopped accepting USB data.');const rx=await this.link.read(timeoutMs);if(!rx)return -1;this.log('RX',rx,true);
       if(rx[2]===2&&busy<5){await delay(60);continue;}return rx[5];}}
   // Axon's V1 app puts the V1 programmer in update mode (04 90 00) before it asks for the bootloader, and back (04 90 01) before 0x83.
-  async v1UpdateMode(on){await this.exchange(frame(0x90,on?0:1),r=>r[1]===1,400,2,false);}
+  // V1 programmer only. The V2 programmer takes 0x90 as "store these bytes as my own identity" (the ones its 0x91 handshake reports), so
+  // sending it there makes it fail every handshake until they are put back (seen on real hardware, 2026-11-10). Never send it to one.
+  async v1UpdateMode(on){if(this.kind!=='v1')return;await this.exchange(frame(0x90,on?0:1),r=>r[1]===1,400,2,false);}
   // Leaves the bootloader. The two official apps place the 0xFF 0x55 0xAA signature at different offsets.
   async bootExit(family){await this.exchange(family==='v1'?frame(0x83,22,0xFF,0x55,0xAA):frame(0x83,22,0,0,0xFF,0x55,0xAA),()=>true,600,1,false);}
 }

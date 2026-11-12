@@ -139,6 +139,95 @@ The same in reverse. The MK2 servo's own program does not answer the V1 programm
 
 Reading a MK2 servo through the V1 programmer was tried and is not possible. A `0x8A` with the MK2's `22` marker in every position, and with every link value the V1 programmer's `0x90` accepts (00 to FF; the programmer stores it and its "no servo" reply echoes it), always gets "no servo". The V1 programmer echoes command numbers it does not know (`0x84` to `0x8F`, `0xAC`, `0xAF`, `0xB0`) straight back without passing them on, and the bootloader refuses `0xCD` (read). So the model, mode and settings of a MK2 servo can only be read on the V2 programmer.
 
+### Naming a servo on the other generation's programmer (2026-11-10)
+
+Asked for: a V1 servo on the V2 programmer named as the model it is, the way the V1 programmer names it, and the same for a MK2 servo on the V1 programmer. What real hardware allows, tried with a V1 MAX (SA81BHMW, continuous rotation firmware V020108) on each programmer, reads only:
+
+- **On the V1 programmer** the model comes from the servo's settings, not from its status. `0x8A` answers `04 01 00 01 01 04 02 01 08` (a V1 servo, continuous rotation, firmware V020108), which is the same for a MAX+ and a MINI+. The name is bytes 0x40 to 0x47 of the settings block: `0xCD` at 59 for 36 bytes answers `04 01 00 3B 24 24 20 00 00 00 53 41 38 31 42 48 4D 57`, "SA81BHMW", which is the V1 MAX. A MINI+ says "SA33".
+- **On the V2 programmer** that read cannot be made. `0x8A` always answers `04 FA 00 22 8A` (no servo), with every variation of its address and length bytes tried. `0xCD` is refused by the programmer itself within 2 ms (`04 CD 02 <address> <length>`), because it only passes a read on after a servo answered its `0x8A`. Only the bootloader answers (`04 01 00 01 80 56 30 2E 33 08 01`), and that is the same for both V1 models. So the generation is known there and the model is not.
+- **Nothing the V2 programmer can measure tells a MAX+ from a MINI+ either.** Axon's continuous rotation firmware for the two has the same settings but for the name, the date and the inversion flag, and the programmer measures current and voltage only. Torque does not guess: a wrong guess would offer the wrong firmware.
+- **Never send `0x90` to the V2 programmer.** On the V1 programmer it is the update-mode switch. The V2 programmer takes it as "store the bytes that follow as my identity", the ten bytes its `0x91` handshake reports (`22 00 FF 01 BB 07 D8 07 10 0D` on this one). It answers after 26 ms where its own commands take 2 ms, which is the time a flash write takes, so the change probably outlives a power cycle (not checked: the programmer was not unplugged). Trying it as a way to make the V2 programmer talk like a V1 one left this programmer answering its handshake with `01` and zeros, which Torque and Axon's app both refuse. It was put back with `04 90 22 00 01 FF 07 BB 07 D8 0D 10` (the four words after the first two bytes go in high byte first) and reads back as before. No value of that byte, 00 to FF, made the servo answer. `Programmer.v1UpdateMode` now does nothing unless the programmer is a V1 one.
+- **A MK2 servo on the V1 programmer** was not tried again: no MK2 servo was plugged in. What is above under "A MK2 servo on the V1 programmer" still stands: its bootloader says hardware 08 22, which is both MK2 models, and nothing else answers.
+
+**What Torque does instead: it carries the name across.** The app runs one service per programmer in one process. The service that reads a servo's name on its own programmer remembers it. When that servo stops answering there, and a servo of the same generation then shows up through its bootloader on the other programmer within a minute, that service takes it to be the same servo: the tab names it ("V1 MAX", "Read on the V1 programmer"), shows its name, and asks nothing. For a MK2 servo moved to the V1 programmer the mode read on the V2 programmer comes along too, since the V1 programmer cannot measure it. This is the usual reason a V1 servo is on the V2 programmer at all: only the V2 programmer can run Test.
+
+- It is an inference, and the tab says so. The other model can still be picked, and a firmware write still asks "Check the servo first", now saying how Torque came to that model.
+- A servo that was already on the other programmer while the first one still answered is never given its name. With a servo plugged into each programmer from the start, the one on the other generation's programmer is still asked about: nothing links the two.
+- Pulling a servo off the V1 programmer can drop that programmer off USB for a moment ("USB write failed (error 1167)", seen on the first real move, 2026-11-10). What it read is kept through that: the programmer going away counts as the servo going away.
+- A servo found on the other programmer after a gap is looked at afresh, so pulling one servo off it and plugging the moved one in works however quickly it is done. With no name to take, it keeps the name it had only if the gap was under 12 seconds (a missed check, not a swap).
+- The name is saved beside the USB log as `axon-carried.json`, so it is still there after the programmer drops off USB or Torque restarts. It is dropped once the servo has been gone for 12 seconds, or when a servo answers there normally. Torque cannot see a swap made while it was closed.
+- Tested with simulated programmers (unit tests and the tab in the real app). On real hardware: the first real move (V1 MAX read on the V1 programmer at 05:38:26, gone at 05:39:04, a V1 servo on the V2 programmer at 05:39:19) happened before the USB-drop fix and was not carried at the time; its entry was then written to `axon-carried.json` by hand from the USB log, and the real app on the real V2 programmer showed that servo as "V1 MAX · Read on the V1 programmer". **A move with the fixed code has not been watched on real hardware.**
+
+### Telling a MAX+ from a MINI+ on the V2 programmer (2026-11-10)
+
+A V1 servo tells the V1 programmer its name. It tells the V2 programmer nothing: its bootloader answers there, and says exactly the same for a MAX+ and a MINI+ (`04 01 00 01 80 56 30 2E 33 08 01`, seen from both). That translation lives in the programmer's own firmware, which is Axon's and which Torque cannot change. So on the V2 programmer the generation is read with nothing moving, and the model and mode are not readable at all.
+
+**What Torque does, in order.**
+
+1. It reads what can be read without moving anything: that a servo is there, and that it is a V1 one.
+2. If its name and mode were read on the V1 programmer and carried over, that is the answer and nothing more happens.
+3. Otherwise a pop-up asks, once for each servo found: "Which V1 servo is this?" with **Move it and identify** and **Pick it myself**. It says the servo will move and how, and that anything attached that must not move means picking by hand. Torque never moves a servo before that button is pressed. Identify stays on the banner for later.
+
+For a MK2 servo on the V1 programmer the pop-up only offers picking: that programmer has no pulse and reports no current, so it cannot move a servo or measure one. Asked for again and checked again on the real V1 programmer with a MINI MK2 on it (2026-11-10, evening): status is `04 01 FA 00 01` (no servo); the status report, pulse and servo power commands (`0xAF`, `0xAC`, `0xB0`) come straight back unchanged, so nothing is measured and no pulse leaves the programmer; a settings read is refused (`04 CD 02`); and the bootloader says `04 01 00 01 02 56 30 2E 33 08 22`, version V0.3 and hardware 08 22, which Axon's firmware files give for both MK2 models. So there is no movement test to offer there, as there is on the V2 programmer. Whether a MAX MK2's bootloader says anything different has not been seen: none has been plugged in.
+
+**How Identify moves it, and why that much.** First the two crawl points: the pulse steps out from centre 5 µs at a time, a continuous rotation servo does nothing inside its stop zone and starts to crawl at its edge, and the pulse goes back to centre the moment it does. Up, then down. That alone tells the mode. Then the two nudges: from centre straight to 80 µs past each crawl point for 350 ms, reading the current over the last 100 ms, and back. Up, then down, so the servo ends about where it began. About four seconds in all. How many degrees that is was not measured.
+
+| Read as raw current counts (one is about 1.3 mA) | V1 MAX | V1 MINI |
+|---|---|---|
+| At the crawl point, each way | 48 | 48 |
+| 60 µs past it, both ways added, six checks each | 204 to 218 | 249 to 263 |
+| 80 µs past it, both ways added, six checks each | 238 to 247 | 309 to 320 |
+
+At the crawl point the two read the same, because the same firmware starts both at the same drive, so the crawl alone cannot tell the model; the nudge can. 60 µs left too small a gap, so it is 80. Torque says MAX+ at 265 or less, MINI+ at 292 or more, and nothing in between.
+
+Both crawl points are found before either nudge. A first version nudged straight after finding each one, and a crawl point found just after a nudge came out 5 to 20 µs late, which moved the readings by different amounts for each servo: its figures (MAX 222 to 231, MINI 317 to 325) did not hold, and the real MINI then read 287 in the finished app, inside the band where nothing is said.
+
+What this rests on, and does not:
+
+- One MAX and one MINI, both used servos, one USB port, one day. The crawl point still moved by 5 to 10 µs between checks, and the readings a little with it. A stiff or worn servo, a load on the horn, or a different supply could land on the wrong side. So the result is offered ("Looks like this one"), the other model can be picked, and a firmware write still asks "Check the servo first" and says the model was measured, not read.
+- Continuous rotation only. A servo in servo mode follows each step and settles, so there is no crawl: Torque then says servo mode and does not say the model. In servo mode the first pulse also sends the servo to its centre from wherever it was, which can be a large move. No V1 servo in servo mode was on hand to try any of this.
+- Tried before this and dropped: holding 1650 µs and then 1350 µs for a second each (it told the models apart, 0.42 to 0.48 A against 0.58 to 0.62 A, but it was a visible spin); doing any of it automatically when a servo is found; and looking for a reading that needs no movement (switching servo power off and on with `0xB0` shows the idle floor throughout, and status bytes 11-12 and 17-18 are the programmer's own joystick).
+
+**Plugging and unplugging, seen quickly on both programmers.**
+
+- *V2 programmer.* Bytes 7 and 8 of its status report read `03 FF` while a servo's own program is running on its pins and `04 16` to `04 18` otherwise: with nothing plugged in, and also for a moment while a servo restarts (seen 2026-11-10; Axon's app does not use these bytes and what they measure is not known). So they only decide when Torque asks the bootloader. While a V1 servo is shown and they read empty, Torque asks at once with one short wait: no answer and the servo is gone, in about a second. An answer means it was only restarting; after three such answers in a row Torque goes back to its usual 5 second pace until the reading changes. The pins filling asks at once too, and three more times under a second apart while a servo just plugged in is still starting. A MK2 servo there answers every poll, so it is seen gone within one (0.4 s).
+- *V1 programmer.* It has no such reading. Its own V1 servo is asked every poll: two missed answers and the page is told it is gone (under a second), and the restart that brings back a servo that had only stopped answering comes on the poll after. A MK2 servo it only sees through the bootloader is asked every 5 seconds with one retry while it is shown, so it shows as gone within about 7 seconds; with nothing shown the pins are asked every 2 seconds, so one plugged in is found within about 2. (Asking a shown MK2 servo every 2 seconds was tried: each ask restarts the servo, and the real V1 programmer then dropped off USB every few seconds, errors 995 and 1167. It still drops now and then at the slower pace, and comes back by itself.)
+- *Any servo found after one was declared gone is a new servo*: asked about again, with nothing picked or measured for the last one left over.
+
+**Awkward moments, and what happens** (unit tests with simulated programmers; the first three also seen with real servos):
+
+| What happens | What Torque does |
+|---|---|
+| The servo is pulled out while the "Which servo is this?" pop-up is up | The pop-up closes with it |
+| The servo is pulled out during Identify | The movement finds nothing, the bootloader is asked at once, and the servo is shown as gone, with no error left on screen |
+| One servo is swapped for another, however quickly | The new one is asked about; the first one's model, mode and picks are gone |
+| The programmer drops off USB (as the real ones do when a servo is pulled: errors 1167 and 995) during Identify or at rest | The job ends, the programmer reconnects by itself, and the servo is found and asked about again |
+| The pins read empty but the servo still answers | It stays shown; three early asks, then the usual pace |
+| Identify is pressed with no servo there | Refused, nothing is sent |
+
+Not covered: a servo pulled out while Test is spinning it or during a firmware write (a write that fails says to use Recover), and anything with a V1 servo in servo mode.
+
+### Every Axon model, and what identifies it
+
+Axon's range is three V1 servos (MAX+, MINI+, MICRO+) and two MK2 servos (MAX MK2, MINI MK2). No MICRO MK2 exists in Axon's documents. The generation comes from the status reply (byte 7: `01` V1, `22` MK2) or the bootloader's hardware ID. The model only ever comes from the factory name in the settings block, read on the servo's own programmer.
+
+| Model | Factory name | Bootloader hardware ID | How it is known |
+|---|---|---|---|
+| V1 MAX (MAX+) | `SA81BHMW` | 08 01 | Read from two real servos, one on each programmer (2026-11-10), and Axon's firmware files |
+| V1 MINI (MINI+) | `SA33` | 08 01 | The name from Axon's firmware files; a real one seen on the V2 programmer only (2026-11-10: bootloader 08 01, measured current). Not yet read on the V1 programmer |
+| V1 MICRO (MICRO+) | unknown | unknown | Nothing: Axon publishes no firmware for it and none has been read |
+| V2 MAX (MAX MK2) | `MAXMK2` | 08 22 | Axon's firmware files only. No MAX MK2 has been plugged in |
+| V2 MINI (MINI MK2) | `MINIMK2` | 08 22 | Read from a real servo on the V2 programmer, and its bootloader on the V1 programmer (2026-11-04) |
+
+A servo whose name is none of these is not matched to a near one. The tab says "A V1 servo named "…" is ready", the log gives the name and the raw status bytes, its settings can still be changed with its generation's layout, and its mode cannot be switched. A servo that only answers through a bootloader with a hardware ID other than 08 01 or 08 22 is shown as unknown with the raw bootloader reply. A V1 status type of `02` is one Axon's V1 app knows but has no settings page for; which product it is was never established.
+
+| Servo on programmer | Generation | Model | Mode |
+|---|---|---|---|
+| V1 on V1 | read | read (name) | read |
+| MK2 on V2 | read | read (name) | read |
+| V1 on V2 | read (bootloader) | not readable: carried over if the servo was read on the V1 programmer; otherwise measured from its current in continuous rotation (MAX+ or MINI+); otherwise picked | carried over, otherwise measured |
+| MK2 on V1 | read (bootloader) | not readable: carried over if the servo was read on the V2 programmer (seen working on a real MINI MK2, 2026-11-10), otherwise picked | carried over, otherwise unknown |
+
 ### Checks before writing firmware
 
 - **The mode it is already in:** when Torque knows the mode (read, measured, or written by Torque), picking that mode says "This is already in servo mode". Switch mode then asks "currently in servo mode, are you sure you want to write it again?", and writes only on "Write it again".

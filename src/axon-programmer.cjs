@@ -6,7 +6,25 @@
 const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
 const S=require('./axon-servo.cjs');
 const SOFTWARE_MS=3000;
-const BOOT_PROBE_MS=5000,MODE_PROBE_US=1650,MODE_PROBE_AMPS=.1,TEST_STEPS=5,TEST_MIN_V=3.4,CR_MIN_V=4.1,CR_STOP=1500,CR_SPAN=450,CR_SPAN_V1=500,CR_RAMP=600;
+const BOOT_PROBE_MS=5000,BOOT_PROBE_V1_MS=2000,CREEP_STEP=5,CREEP_STEP_MS=90,CREEP_END=150,CREEP_RISE=10,CREEP_NUDGE=80,CREEP_HOLD=350,TEST_STEPS=5,TEST_MIN_V=3.4,CR_MIN_V=4.1,CR_STOP=1500,CR_SPAN=450,CR_SPAN_V1=500,CR_RAMP=600;
+// A servo moved from its own programmer to the other one: see carry() below.
+const HANDOVER_MS=60000,BOOT_SAME_MS=12000,known={};
+// A V1 servo in continuous rotation on the V2 programmer, told apart by what it draws while Torque turns it to find its mode: the two
+// currents of that check added together (one each way, so the Inversion setting does not matter). Measured 2026-11-10 from a laptop
+// USB port with nothing on the horn: two V1 MAX in 7 checks, 0.42 to 0.48 A; one V1 MINI in 7 checks, 0.58 to 0.62 A. Between the
+// two limits Torque says nothing rather than guess. It is a measurement of three servos, not a reading of the name: the tab says
+// so, the other model can be picked, and a firmware write still asks.
+const V1_CR_MAX_BELOW=.50,V1_CR_MINI_ABOVE=.555;
+// The same, from the crawl check's raw counts (both ways added). Not set until both models have been measured this way.
+// Measured 2026-11-10 on one V1 MAX and one V1 MINI, six checks each, laptop USB, nothing on the horn: MAX 238 to 247 counts,
+// MINI 309 to 320. (At the crawl point itself both read 48 counts: the same firmware starts both at the same drive. A nudge of
+// 60 µs gave 204 to 218 against 249 to 263, too close.) Between the two limits Torque says nothing rather than guess.
+const V1_CRAWL_MAX_BELOW=265,V1_CRAWL_MINI_ABOVE=292;
+// Whether anything is on the V2 programmer's servo pins, from bytes 7-8 of its status report (seen 2026-11-10 while V1 MAX and MINI
+// servos were plugged and unplugged): 0x03FF with a servo on the pins, 0x0416 to 0x0418 with none, within one report of the change.
+// Axon's app does not use these bytes and what they measure is not known, so they only decide WHEN Torque asks the bootloader
+// (at once, instead of at the next 5 second check); the bootloader's answer is still what says a servo is there or gone.
+const PINS_SERVO=0x3FF,pinsEmpty=v=>v>=0x410&&v<=0x420;
 const AUTO_POWER_BELOW=8.6,OVER_VOLTAGE=9.1,POLL_MS=400,RIVALS_MS=1000,LOG_LINES=60,TRACE_LINES=400,delay=ms=>new Promise(r=>setTimeout(r,ms));
 
 // ---- the helper. One request a line, one answer a line, in order.
@@ -44,9 +62,9 @@ class AxonService{
   // since taking turns on one lost the V1 servo). Without it, one service takes whichever programmer is plugged in, and asks for one
   // to be unplugged when both are.
   constructor({transport=usbTransport(),firmwareDir,logFile,keyFile=null,sharedKeyFile=null,findSoftware=null,catalog=S.FIRMWARE,onState=()=>{},fetchFile=null,only=null}={}){
-    Object.assign(this,{transport,firmwareDir,logFile,keyFile,sharedKeyFile,findSoftware,catalog,onState,fetchFile,only});this.softwareNow=null;this.softwareAt=0;this.loadKeys();this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
+    Object.assign(this,{transport,firmwareDir,logFile,keyFile,sharedKeyFile,findSoftware,catalog,onState,fetchFile,only});this.carriedFile=logFile?path.join(path.dirname(logFile),'axon-carried.json'):null;this.softwareNow=null;this.softwareAt=0;this.loadKeys();this.running=null;this.stopping=false;this.jobs=[];this.link=null;this.prog=null;this.resetView();this.log=[];this.traceLines=[];this.chosen=new Map();this.lastPower=0;
   }
-  resetView(){this.testLive=null;this.programmer=blank();this.telemetry=null;this.servo=S.parseStatus(Buffer.alloc(S.REPORT));this.block=null;this.blockKey=null;this.lastKey='';this.readPending=false;this.readAttempts=0;this.busy=null;this.warnedVoltage=false;this.warnedHandshake=false;this.v1Misses=0;this.v1Restarted=false;this.bootServo=null;this.bootProbeAt=0;}
+  resetView(){this.testLive=null;this.programmer=blank();this.telemetry=null;this.servo=S.parseStatus(Buffer.alloc(S.REPORT));this.block=null;this.blockKey=null;this.lastKey='';this.readPending=false;this.readAttempts=0;this.busy=null;this.warnedVoltage=false;this.warnedHandshake=false;this.v1Misses=0;this.v1Restarted=false;this.bootServo=null;this.bootProbeAt=0;this.gone();this.carried=null;this.carriedOld=false;this.bootFirstAt=0;this.bootLastAt=0;}
   say(text,tone='info'){if(this.log.at(-1)?.text===text)return;this.log.push({text,tone,at:Date.now()});if(this.log.length>LOG_LINES)this.log.shift();this.trace(`[${tone}] ${text}`);this.publish();}
   trace(line){const text=`${new Date().toISOString().slice(11,23)} ${this.only?`[${this.only}] `:''}${line}`;this.traceLines.push(text);if(this.traceLines.length>TRACE_LINES)this.traceLines.shift();if(this.logFile){try{fs.appendFileSync(this.logFile,text+'\n');}catch{}}}
   // Axon's own program for each servo family, if this computer has it (src/axon-software.cjs). Nothing needs it: it is only offered for a mode switch.
@@ -55,12 +73,12 @@ class AxonService{
   softwareView(){const s=this.softwareFound();return Object.fromEntries(['v1','v2'].map(f=>[f,{found:!!s[f]?.found,fileName:s[f]?.fileName||null}]));}
   // What the page draws. A value only the main process should hold (paths, the block's buffer) stays out.
   state(){
-    const s=this.servo,block=this.block,present=S.servoPresent(s),name=block?S.blockName(block):null,model=name?S.modelByName(name):null,editable=S.servoEditable(s);
+    const s=this.servo,block=this.block,present=S.servoPresent(s),carried=s.viaBoot&&this.carried&&S.modelByCode(this.carried.code)?.family===s.family?this.carried:null,name=block?S.blockName(block):carried?.name||null,guess=s.viaBoot&&!carried&&s.family==='v1'&&this.prog?.kind==='v2'?this.bootGuess:null,model=name?S.modelByName(name):guess?S.modelByCode(guess.code):null,editable=S.servoEditable(s);
     let settings=null;
     if(block&&editable&&present){const schema=S.schemaFor(s.family,s.mode),values=schema.decode(block.data),factory=model?schema.decode(S.factoryBlock(model,s.mode)):null;
       settings={schema:S.schemaView(schema),values,factory};}
     return {only:this.only,supported:this.transport.supported!==false,running:!!this.running,programmer:this.programmer,telemetry:this.telemetry,
-      servo:{...s,present,editable,key:S.servoKey(s),model:model?S.modelView(model):null,name,made:block?S.blockMade(block):null,validLen:block?.validLen??0,raw:block?S.hex(block.data,block.data.length):null,
+      servo:{...s,present,editable,key:S.servoKey(s),model:model?S.modelView(model):null,name,carried:carried?{from:carried.from,...(carried.restored?{restored:true}:{})}:null,guessed:guess?{amps:guess.amps}:null,epoch:s.viaBoot?this.bootEpoch||0:0,made:block?S.blockMade(block):null,validLen:block?.validLen??0,raw:block?S.hex(block.data,block.data.length):null,
         unconfirmed:block&&s.family==='v2'&&s.mode==='servo'?S.v2Unconfirmed.map(u=>({...u,value:block.data[u.at]})):[]},
       settings,models:S.MODELS.map(S.modelView),software:this.softwareView(),busy:this.busy,log:this.log,test:this.testLive||null};
   }
@@ -85,7 +103,7 @@ class AxonService{
         else{this.say(`Internal error: ${e.message}`,'bad');await delay(500);}
       }
     }
-    await this.drop();for(const job of this.jobs.splice(0))job.fail(Error('The Axon programmer page closed.'));
+    await this.drop();this.forget();for(const job of this.jobs.splice(0))job.fail(Error('The Axon programmer page closed.'));
   }
   async drop(){this.prog=null;this.lastKey='';this.readPending=false;const link=this.link;this.link=null;if(link)await link.close?.();}
   async step(){
@@ -126,26 +144,66 @@ class AxonService{
   }
   async poll(){
     const v1=this.prog.kind==='v1',t=v1?null:await this.prog.telemetry();if(!v1)await this.managePower(t);let s=await this.prog.status();this.telemetry=t;
+    // The pins read empty while a servo is shown: ask its bootloader now, with one short wait. The pins also read empty for a moment
+    // while a servo restarts, so an answer means it is still there; after three such answers in a row Torque stops asking early until
+    // the pins change. (It used to ask early once only, at the second empty report: after an Identify that one early ask was spent
+    // while the servo was still in, and pulling it then took 5 seconds to show, 2026-11-10.)
+    if(t&&!S.servoPresent(s)){const empty=pinsEmpty(t.pins),full=t.pins===PINS_SERVO;if(!empty)this.quickHits=0;
+      if(this.bootServo&&empty&&(this.quickHits||0)<3&&Date.now()-(this.quickAt||0)>=500){this.quickAt=Date.now();this.bootProbeAt=0;this.bootQuick=true;}else if(!this.bootServo&&full&&this.pinsWere==='empty')this.bootProbeAt=0;
+      if(empty||full)this.pinsWere=empty?'empty':'full';}
     // A V1 servo that stops answering is restarted once (no unplugging): one missed poll is allowed first. With nothing plugged in,
     // the restart finds no bootloader and Torque waits; a servo plugged in later answers by itself.
-    if(v1&&!S.servoPresent(s)){if(this.lastKey&&++this.v1Misses<2)return;if(!this.v1Restarted){this.v1Restarted=true;s=await this.prog.restartV1();}}
-    if(v1&&S.servoPresent(s)){this.v1Misses=0;this.v1Restarted=false;}
-    if(S.servoPresent(s))this.bootServo=null;else if(!v1||this.v1Restarted){const b=await this.bootCheck();if(b)s=b;}
+    // Two missed polls and the page is told the servo is gone at once (under a second); the restart, which takes about three seconds
+    // with nothing there, comes on the poll after, and a servo that had only stopped answering shows up again from it.
+    if(v1&&!S.servoPresent(s)){if(this.lastKey&&++this.v1Misses<2)return;if(this.lastKey&&!this.v1Gone)this.v1Gone=true;else if(!this.v1Restarted){this.v1Restarted=true;s=await this.prog.restartV1();}}
+    if(v1&&S.servoPresent(s)){this.v1Misses=0;this.v1Restarted=false;this.v1Gone=false;}
+    if(S.servoPresent(s)){this.bootServo=null;if(this.carried)this.setCarried(null);this.bootFirstAt=0;}else if(!v1||this.v1Restarted){const b=await this.bootCheck();if(b)s=this.carry(b);}
     this.servo=s;
     const present=S.servoPresent(s),key=present?S.servoKey(s):'';
     if(!v1)await this.guardV2(t,s,present);
     if(key!==this.lastKey){
       if(present){
         if(s.family==='unknown')this.say(`A servo answered with an ID Torque does not know (${s.firmware}).`,'warn');
+        else if(s.viaBoot&&this.carried)this.say(`The ${S.modelByCode(this.carried.code).title} that was on the ${NAME[this.carried.from]} ${this.carried.restored?'earlier':'a moment ago'} is now on the ${NAME[this.prog.kind]}${s.mode==='unknown'?'':`, in ${s.mode==='cr'?'continuous rotation':'servo mode'}`}. Torque read its name (${this.carried.name}) there and takes this to be the same servo: here only its bootloader answers, so its settings still need the ${NAME[this.carried.from]}.`,'good');
         else if(s.viaBoot&&s.family==='v2')this.say('A MK2 servo is on the V1 programmer. Only its bootloader answers here, so Torque cannot read its model, mode or settings, and the V1 programmer cannot move it to tell. Its mode can be switched here; settings and tests need the V2 programmer.','good');
-        else if(s.viaBoot)this.say(s.mode==='unknown'?'A V1 servo is on the V2 programmer, but Torque could not tell its mode. Its settings need the V1 programmer.':`A V1 servo is on the V2 programmer, in ${s.mode==='cr'?'continuous rotation':'servo mode'}: Torque turned it briefly to tell. Its settings need the V1 programmer.`,'good');
+        else if(s.viaBoot&&this.bootGuess&&this.prog.kind==='v2')this.say(`A V1 servo is on the V2 programmer, in continuous rotation, and it looks like a ${S.modelByCode(this.bootGuess.code).title}: Torque nudged it slightly and it drew ${this.bootGuess.amps.toFixed(2)} A (a MAX+ draws about 0.16 A in that check, a MINI+ about 0.21 A). Its name cannot be read here, so that is a measurement. Its settings need the V1 programmer.`,'good');
+        else if(s.viaBoot)this.say(s.mode==='unknown'?(s.modeHow==='unclear'?'A V1 servo is on the V2 programmer, but Torque could not tell its mode from how it turned. Its settings need the V1 programmer.':'A V1 servo is on the V2 programmer. This programmer cannot read which V1 servo it is or its mode: pick them, or let Torque identify it by moving it slightly. Its settings need the V1 programmer.'):`A V1 servo is on the V2 programmer, in ${s.mode==='cr'?'continuous rotation':'servo mode'}: Torque nudged it slightly to tell. Its settings need the V1 programmer.`,'good');
         else{this.say(`${s.family.toUpperCase()} servo found on the ${NAME[this.prog.kind]}, running ${s.mode==='cr'?'continuous rotation':'servo'} firmware ${s.firmware}.`,'good');if(s.family==='v1'&&this.prog.kind==='v2'&&!this.saidV1){this.saidV1=true;this.say('The V2 programmer can see this V1 servo.','good');}}
         this.readPending=S.servoEditable(s);this.readAttempts=0;this.block=null;
         if(!S.servoEditable(s)&&s.family==='v1'&&!s.viaBoot)this.say('This V1 variant has no settings layout in Axon\'s V1 app, so its settings cannot be edited.','warn');
       }else{if(this.lastKey)this.say('Servo removed.','warn');this.readPending=false;this.block=null;}
       this.lastKey=key;
     }
-    this.publish();if(this.readPending)await this.readNow(s);
+    this.publish();if(this.readPending)await this.readNow(s);this.noteKnown();
+  }
+  // ---- A servo carried from one programmer to the other. Neither programmer can read the name of the other generation's servo
+  // (tried on real hardware, 2026-11-10: a V1 MAX's own program answers nothing on the V2 programmer, whatever is asked), so the
+  // model is only ever read on the servo's own programmer. But a student moves a servo across to test it or switch it, and the app
+  // runs one service per programmer in one process: the service that read a servo's name remembers it here (known), and when that
+  // servo stops answering and a servo of the same generation shows up through its bootloader on the other programmer afterwards,
+  // within HANDOVER_MS, that service takes it to be the same one. It is an inference, said as one, and a firmware write still asks.
+  // A servo that was already on the other programmer while this one still answered is never taken for it.
+  noteKnown(){
+    const s=this.servo,name=this.block&&S.servoPresent(s)&&!s.viaBoot?S.blockName(this.block):null,model=name?S.modelByName(name):null;
+    if(model&&model.family===this.prog?.kind){known[model.family]={code:model.code,name,mode:s.mode,owner:this,present:true,seenAt:Date.now()};this.knows=model.family;}
+    else if(this.knows&&known[this.knows]?.owner===this&&(!S.servoPresent(s)||s.viaBoot))known[this.knows].present=false;
+  }
+  forget(){if(this.knows&&known[this.knows]?.owner===this)delete known[this.knows];this.knows=null;}
+  // The programmer itself going away is the servo going away too: pulling a servo off the V1 programmer can drop the programmer off USB
+  // for a moment (seen 2026-11-10, USB error 1167 as the servo left), and what was read must outlive that.
+  gone(){if(this.knows&&known[this.knows]?.owner===this)known[this.knows].present=false;}
+  // What was carried is kept beside the USB log, so the name is still there after the programmer drops off USB or Torque restarts.
+  // It is dropped once the servo has been gone for BOOT_SAME_MS, or a servo answers here normally. Torque cannot see a swap made while
+  // it was closed, which is one more reason a firmware write still asks.
+  carriedSaved(){try{return JSON.parse(fs.readFileSync(this.carriedFile,'utf8'))||{};}catch{return {};}}
+  setCarried(c){this.carried=c;this.carriedOld=false;if(!this.carriedFile)return;const all=this.carriedSaved(),key=this.only||'all';if(c)all[key]={code:c.code,name:c.name,mode:c.mode,from:c.from,at:new Date().toISOString()};else if(key in all)delete all[key];else return;try{fs.writeFileSync(this.carriedFile,JSON.stringify(all,null,2));}catch{}}
+  restoreCarried(hw){if(!this.carriedFile)return;const c=this.carriedSaved()[this.only||'all'],model=c&&S.modelByCode(c.code);if(model&&model.family===(hw==='0822'?'v2':'v1')&&model.factoryName===c.name&&(c.from==='v1'||c.from==='v2'))this.carried={code:c.code,name:c.name,mode:c.mode,from:c.from,restored:true};}
+  carry(b){
+    const k=known[b.family];
+    if((!this.carried||this.carriedOld)&&k&&k.owner!==this&&k.owner.running&&!k.present&&this.bootFirstAt>=k.seenAt&&this.bootFirstAt-k.seenAt<=HANDOVER_MS){this.setCarried({code:k.code,name:k.name,mode:k.mode,from:k.owner.only||k.owner.prog?.kind});delete known[b.family];this.lastKey='';}
+    // The V1 programmer cannot move a servo to tell its mode, so the mode read on the V2 programmer comes along too.
+    if(this.carried&&!this.bootMode&&(this.carried.mode==='servo'||this.carried.mode==='cr')){this.bootMode=this.carried.mode;this.bootModeHow='carried';b=this.bootServo=this.bootView(b.hardware,this.bootMode);}
+    return b;
   }
   // The V2 programmer's pulse stays off. With a pulse, a servo drives to that position, and in servo mode (just after a switch, say) the
   // current can pass what USB gives, so the programmer drops off USB or locks up (seen 2026-11-04). Axon's MK2 app does not send
@@ -162,28 +220,89 @@ class AxonService{
   // its generation, so which one it is must be picked. Only the V2 programmer can measure the mode (it moves the servo); on the V1
   // programmer the mode is unknown until Torque writes one.
   async bootCheck(){
-    if(this.bootServo&&Date.now()-this.bootProbeAt<BOOT_PROBE_MS)return this.bootServo;if(Date.now()-this.bootProbeAt<BOOT_PROBE_MS)return null;this.bootProbeAt=Date.now();
+    // The V1 programmer has no pins reading to say a servo came or went, so there the bootloader is asked more often.
+    // Only while nothing is shown, though: every ask restarts the servo, and a MK2 servo restarting every 2 seconds pulled the real
+    // V1 programmer off USB again and again (errors 995 and 1167 a few seconds after each time it was found, 2026-11-10).
+    const every=this.prog.kind==='v1'&&!this.bootServo?BOOT_PROBE_V1_MS:BOOT_PROBE_MS;
+    if(this.bootServo&&Date.now()-this.bootProbeAt<every)return this.bootServo;if(Date.now()-this.bootProbeAt<every)return null;this.bootProbeAt=Date.now();
     // One missed answer is asked again at once before the servo counts as gone.
-    const v1=this.prog.kind==='v1';let hw=await this.bootProbe(this.prog);if(!hw&&this.bootServo)hw=await this.bootProbe(this.prog);if(!hw||hw!==(v1?'0822':'0801')){this.bootServo=null;this.bootMode=null;return null;}
-    if(!this.bootMode&&!v1){this.bootMode=await this.measureMode(this.prog);this.bootModeHow='measured';}
+    const v1=this.prog.kind==='v1',quick=this.bootQuick;this.bootQuick=false;let hw=await this.bootProbe(this.prog,quick);if(!hw&&this.bootServo&&!quick)hw=await this.bootProbe(this.prog);if(hw)this.fullRetries=0;if(quick&&hw)this.quickHits=(this.quickHits||0)+1;
+    // Something is on the pins but did not answer yet (a servo just plugged in is still starting): asked again in under a second, three times.
+    // The pins went empty and the bootloader is gone: the servo really was unplugged, so whatever is plugged in next is another servo,
+    // however quickly (a servo swapped in three seconds was taken for the one before it, 2026-11-10).
+    if(quick&&!hw){this.bootLastAt=0;if(this.carried)this.setCarried(null);}
+    if(!hw&&!v1&&this.telemetry?.pins===PINS_SERVO&&(this.fullRetries=(this.fullRetries||0)+1)<=3)this.bootProbeAt=Date.now()-BOOT_PROBE_MS+800;
+    if(!hw||hw===(v1?'0801':'0822')){this.bootServo=null;if(this.carried&&this.bootLastAt&&Date.now()-this.bootLastAt>BOOT_SAME_MS)this.setCarried(null);return null;}
+    // A bootloader with a hardware ID that is neither generation's (a model Torque has no evidence for): shown as it answered, never guessed at.
+    if(hw!=='0801'&&hw!=='0822'){this.bootMode=null;this.bootGuess=null;return this.bootServo={family:'unknown',mode:'unknown',type:0,b6:0,b7:0,b8:0,firmware:`bootloader reply ${this.bootReply}`,hardware:hw};}
+    // The same servo while it keeps answering. One found after a gap may be another one: it can take a name from the other programmer
+    // (carry), and failing that keeps the name it had only if the gap was shorter than BOOT_SAME_MS (a missed check, not a swap).
+    // The first one found after this programmer was opened takes back the name saved for it.
+    {const now=Date.now();if(!this.bootFirstAt&&!this.carried)this.restoreCarried(hw);
+      if(!this.bootFirstAt||!this.bootServo){const fresh=!this.bootFirstAt||now-this.bootLastAt>BOOT_SAME_MS;if(this.bootFirstAt&&this.carried){if(fresh)this.setCarried(null);else this.carriedOld=true;}
+        // What was measured stays through a missed check: the servo is not turned again for it.
+        // Whatever was learned by moving the last servo goes with it: any servo found after one was declared gone is asked about again.
+        this.bootGuess=null;this.bootTried=false;if(this.bootModeHow!=='carried'||fresh)this.bootMode=null;
+        // epoch: which servo this is, for the page (it asks about each newly plugged in servo once). The V1 programmer has no pins
+        // reading, so there any servo found after one was declared gone counts as newly plugged in.
+        this.bootEpoch=(this.bootEpoch||0)+1;this.bootFirstAt=now;}this.bootLastAt=now;}
+    // A servo Torque already read on its own programmer is not turned at all: its mode came with its name. Only one it knows nothing
+    // about is turned, for about two seconds, because how it moves and what it draws are all the V2 programmer can learn about it.
+    {const was=this.carried;this.carry({family:hw==='0822'?'v2':'v1',hardware:hw});if(this.carried&&this.carried!==was&&this.bootModeHow!=='written'){const m=this.carried.mode;this.bootGuess=null;this.bootMode=m==='servo'||m==='cr'?m:null;this.bootModeHow='carried';}}
+    if(!this.bootMode&&this.carried&&(this.carried.mode==='servo'||this.carried.mode==='cr')){this.bootMode=this.carried.mode;this.bootModeHow='carried';}
+    // Torque never moves a servo by itself: something may be attached to it. A V1 servo it knows nothing about stays "mode and model
+    // not known" until the student picks them, or asks for Identify (identify() below) after a pop-up that says the servo will move.
+    // (Decided with the user, 2026-11-10, after trying a spin when found, no movement at all, and a smaller automatic nudge.)
     return this.bootServo=this.bootView(hw,this.bootMode);
   }
   // Its mode, from how it moves: with the pulse held a little off centre a continuous rotation servo keeps spinning and keeps drawing
   // current, while a servo in servo mode moves a few degrees and stops. Measured on a V1 MAX with nothing on its horn (2026-11-04):
   // about 0.21 A spinning against 0.03 A holding, 0.02 A idle. A load on the horn can blur this, so the page says to take it off.
+  // The check that moves the servo as little as it can (2026-11-10: a mechanism may be on the horn, so the old one second spin each
+  // way had to go). It only ever runs when the student asks for it (identify()), or just before a mode switch.
+  // 1. The crawl points. The pulse steps outward from centre CREEP_STEP µs at a time. A continuous rotation servo does nothing inside
+  //    its stop zone, and at the first step past its edge it starts to crawl and draws a small current: that step is its crawl
+  //    point, and the pulse goes back to centre at once. Up, then down. A servo in servo mode follows each step by a fraction of a
+  //    degree and settles, so no step keeps its current up: no crawl point either way by CREEP_END µs means servo mode.
+  // 2. The nudges. From centre straight to CREEP_NUDGE µs past each crawl point for CREEP_HOLD ms, reading the current over the last
+  //    100 ms, and back to centre. Up, then down, so it ends about where it began. This is what tells a MAX+ from a MINI+: at the
+  //    crawl point itself they read the same.
+  // Both crawl points are found before either nudge because a crawl point found just after a nudge comes out 5 to 20 µs late (seen
+  // on both real servos), which moved the readings by different amounts for each. Readings are the programmer's raw current counts
+  // (one is about 1.3 mA).
   async measureMode(p){
-    // Both directions are tried; when they disagree the mode is unknown rather than guessed.
-    const hold=async us=>{await p.output(us);const end=Date.now()+900,late=Date.now()+350,amps=[];while(Date.now()<end){const x=await p.telemetry();if(x&&Date.now()>=late)amps.push(x.amps);}await p.output(1500);await delay(350);return amps.length<5?null:amps.reduce((a,b)=>a+b,0)/amps.length;};
-    try{await delay(500);await p.output(1500);await delay(400);const up=await hold(MODE_PROBE_US),down=await hold(3000-MODE_PROBE_US);this.trace(`V1 servo mode check: ${up?.toFixed(3)} A at ${MODE_PROBE_US} µs, ${down?.toFixed(3)} A at ${3000-MODE_PROBE_US} µs`);
-      if(up===null||down===null)return null;const spin=v=>v>MODE_PROBE_AMPS;return spin(up)&&spin(down)?'cr':!spin(up)&&!spin(down)?'servo':null;}
+    const raw=async()=>{const x=await p.telemetry();return x?(x.ampsRaw??Math.round(x.amps*4096*.6/3.3)):null;},mean=a=>a.reduce((x,y)=>x+y,0)/a.length;let base=null;
+    const edge=async dir=>{const floor=[];for(let i=0;i<6;i++){const v=await raw();if(v!==null)floor.push(v);}if(!floor.length)return null;base=mean(floor);
+      for(let o=CREEP_STEP;o<=CREEP_END;o+=CREEP_STEP){await p.output(1500+dir*o);const seen=[];for(const end=Date.now()+CREEP_STEP_MS;Date.now()<end;){const v=await raw();if(v!==null)seen.push(v);}
+        if(seen.length&&mean(seen.slice(-6))>=base+CREEP_RISE){await p.output(1500);await delay(250);return o;}}
+      await p.output(1500);await delay(250);return 0;};
+    const nudge=async us=>{await p.output(us);const late=[];for(const t0=Date.now();Date.now()-t0<CREEP_HOLD;){const v=await raw();if(v!==null&&Date.now()-t0>=CREEP_HOLD-100)late.push(v);}await p.output(1500);await delay(250);return late.length?+mean(late).toFixed(1):0;};
+    try{await p.output(1500);await delay(300);this.creep=null;const eu=await edge(1),ed=eu===null?null:await edge(-1);
+      if(eu===null||ed===null){this.trace('V1 servo mode check: the programmer gave no readings');return null;}
+      if(!eu&&!ed){this.trace(`V1 servo mode check: no crawl up to ${CREEP_END} µs either way`);return 'servo';}
+      if(!eu||!ed){this.trace(`V1 servo mode check: a crawl one way only (+${eu} / -${ed} µs)`);return null;}
+      const up=await nudge(1500+eu+CREEP_NUDGE),down=await nudge(1500-ed-CREEP_NUDGE);this.trace(`V1 servo mode check: crawls from +${eu} and -${ed} µs; ${CREEP_NUDGE} µs past them it draws ${up} and ${down} counts`);
+      if(up<base+CREEP_RISE||down<base+CREEP_RISE)return null;this.creep={up:{at:eu,raw:up},down:{at:-ed,raw:down}};return 'cr';}
     finally{await p.pulse(false).catch(()=>{});this.pulseOn=false;}
   }
-  bootView(hw,mode){return {family:hw==='0822'?'v2':'v1',mode:mode||'unknown',modeHow:mode?this.bootModeHow:null,type:0,b6:0,b7:hw==='0822'?0x22:1,b8:0,firmware:'',viaBoot:true,hardware:hw};}
+  guessV1(){const c=this.creep;if(!c?.up?.at||!c?.down?.at)return null;const counts=+(c.up.raw+c.down.raw).toFixed(1),code=counts<=V1_CRAWL_MAX_BELOW?'max1':counts>=V1_CRAWL_MINI_ABOVE?'mini1':null;this.trace(`V1 model from that check: ${counts} counts both ways together, ${code||'not said'}`);return code?{code,amps:+(counts/2/4096*3.3/.6).toFixed(3),counts}:null;}
+  // Identify: turns a V1 servo on the V2 programmer for about two seconds to tell its mode, and in continuous rotation its model.
+  identify(){
+    if(this.prog?.kind!=='v2'||!this.servo?.viaBoot||this.servo.family!=='v1')throw Error('Identify is for a V1 servo on the V2 programmer.');
+    return this.job('identify','Moving the servo slightly to identify it.',async p=>{
+      const mode=await this.measureMode(p);this.bootTried=true;this.bootMode=mode;this.bootModeHow='measured';this.bootGuess=mode==='cr'?this.guessV1():null;
+      if(this.bootServo?.viaBoot){this.servo=this.bootServo=this.bootView(this.bootServo.hardware,mode);this.lastKey='';}
+      // No answer from the movement can mean the servo was pulled out while it ran: its bootloader is asked at once, so a servo that
+      // is gone is shown as gone and not as "mode unknown".
+      if(!mode){this.bootProbeAt=0;this.bootQuick=true;this.quickHits=0;}
+      return {ok:!!mode,mode,model:this.bootGuess?.code||null};});
+  }
+  bootView(hw,mode){return {family:hw==='0822'?'v2':'v1',mode:mode||'unknown',modeHow:mode?this.bootModeHow:this.bootTried?'unclear':null,type:0,b6:0,b7:hw==='0822'?0x22:1,b8:0,firmware:'',viaBoot:true,hardware:hw};}
   // The V1 programmer passes the bootloader through only in its update mode (04 90 00), as for its own servos.
-  async bootProbe(p){
-    if(p.kind==='v1'){await p.v1UpdateMode(true);const info=await p.exchange(S.frame(0x80,4,1,2,3,4),r=>r[5]===0x56,700,2,false);if(info){await p.bootExit('v2');await p.bootExit('v1');}await p.v1UpdateMode(false);await p.status();await delay(300);
+  async bootProbe(p,quick=false){
+    if(p.kind==='v1'){await p.v1UpdateMode(true);const info=await p.exchange(S.frame(0x80,4,1,2,3,4),r=>r[5]===0x56,450,1,false);if(info){this.bootReply=S.hex(info,11);await p.bootExit('v2');await p.bootExit('v1');}await p.v1UpdateMode(false);await p.status();await delay(300);
       return info?info[9].toString(16).padStart(2,'0')+info[10].toString(16).padStart(2,'0'):null;}
-    if(this.pulseOn!==false){await p.pulse(false).catch(()=>{});this.pulseOn=false;}const info=await p.exchange(S.frame(0x80,4,1,2,3,4),r=>r[5]===0x56,700,2,false);if(!info)return null;await p.bootExit('v1');
+    if(this.pulseOn!==false){await p.pulse(false).catch(()=>{});this.pulseOn=false;}const info=await p.exchange(S.frame(0x80,4,1,2,3,4),r=>r[5]===0x56,quick?400:700,quick?1:2,false);if(!info)return null;this.bootReply=S.hex(info,11);await p.bootExit('v1');
     // The exit alone leaves a V1 servo in its bootloader until something asks it a normal question: one 0x8A starts its own program
     // again (seen 2026-11-04: without it the servo neither spun nor held for 20 s, even across a power cycle).
     await p.status();await delay(300);
@@ -193,7 +312,10 @@ class AxonService{
     if(!block){if(this.readAttempts>=3){this.readPending=false;this.say(`Could not read this servo's settings. ${error}`,'bad');}return false;}
     this.readPending=false;this.block=block;
     if(block.family==='v1'&&block.validLen<95)this.say('The programmer returned only the first 59 of 95 bytes. All the settings are there, but the servo\'s name is not.','warn');
-    this.say('Read the servo\'s current settings.','good');return true;
+    this.say('Read the servo\'s current settings.','good');
+    // A name that is none of the four models Torque has evidence for (a MICRO+, say): said as it is, with the raw status bytes, never matched to a near one.
+    const name=S.blockName(block);if(name&&!S.modelByName(name))this.say(`This ${s.family.toUpperCase()} servo calls itself "${name}", which is not a model Torque knows (${S.MODELS.map(m=>`${m.factoryName} is the ${m.title}`).join(', ')}). Its status reply was ${[s.type,s.b6,s.b7,s.b8].map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')}. Torque will not switch its mode: it has no firmware for it.`,'warn');
+    return true;
   }
 
   // ---- jobs, one at a time on the loop
