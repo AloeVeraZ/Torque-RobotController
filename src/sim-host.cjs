@@ -7,6 +7,7 @@ const port=process.parentPort,workDir=process.argv[2];
 const engine=new SimEngine({workDir,emit:message=>port.postMessage(message)});
 const calls={load:c=>engine.load(c),play:()=>{if(engine.mode!=='program'&&(!engine.practice||engine.practice.phase==='finished'))throw Error('Start a practice run first.');return engine.play();},pause:()=>engine.pause(),speed:s=>engine.setSpeed(s),practice:p=>engine.startPractice(p),practiceInput:p=>engine.practiceInput(p),
   run:p=>engine.run(p),calibrateTimed:power=>engine.timedCalibration(power),stop:()=>engine.stop(),reset:()=>engine.reset(),zones:z=>engine.setZones(z),start:s=>engine.setStart(s),step:n=>engine.step(Math.max(1,Math.min(600,n|0))),convertStep:file=>convertStep(file,path.join(__dirname,'../sim-runtime')),
+  preview:p=>engine.preview(p),
   evaluate:candidates=>engine.evaluate(candidates,(index,total)=>port.postMessage({type:'optimize',index,total}))};
 port.on('message',async({data})=>{
   const {id,method,args=[]}=data||{};

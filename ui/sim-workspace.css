@@ -26,13 +26,40 @@
 .sim-popover .sim-pop-head h3{font-size:14px}
 .sim-popover textarea{height:46px;min-height:38px;resize:none}
 .sim-active-setup{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;text-align:left;margin:0 0 8px;padding:6px 10px;min-height:32px;border:1px solid var(--line);background:var(--surface);border-radius:6px;color:var(--text)}.sim-active-setup:hover{background:var(--hover)}.sim-active-setup>span{flex:none;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.sim-active-setup>strong{min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sim-live-status{display:block;width:100%;text-align:left;font-size:11px;margin:0 0 8px;padding:5px 8px;min-height:28px;color:var(--muted);border:1px solid var(--line);background:var(--surface);border-radius:6px}
-.sim-live-status.has-issues{color:var(--text)}
-/* The route checks open under the status line (and only in Path planning, where the line shows). */
-.sim-live-status[aria-expanded=true]{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
-#sim-plan-diagnostics{margin:0 0 8px;padding:0 8px 4px;border:1px solid var(--line);border-top:0;border-radius:0 0 6px 6px;background:var(--surface)}
+/* The Setup chip on Path planning and Run & review is a picker: it opens the saved setups under it. */
+.sim-active-picker[hidden]{display:none}.sim-active-setup{align-items:center}.sim-active-setup>strong{flex:1}.sim-active-setup>.ui-icon{flex:none;width:16px;height:16px;color:var(--muted)}.sim-active-picker>.sim-setup-list{top:calc(100% - 4px);width:100%;min-width:min(320px,calc(100vw - 32px))}
+.sim-setup-list-actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 4px 2px}.sim-setup-list-actions>button{min-height:32px;padding:4px 12px;font-size:13px}
+/* Route checks: a card in the column beside the field (where Run & review keeps its clock), so it takes no room
+   from the field or the planning panel. Its head is a state dot, a title and one line per fact; the issues list under it. */
+.sim-plan-checks{flex:none;box-sizing:border-box;width:calc(var(--sim-timing-column,262px) - 12px);align-self:flex-start;max-height:100%;display:flex;flex-direction:column;min-height:0;text-align:left;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-y:auto;overscroll-behavior:contain}
+#simulation-view:not([data-tab=plan]) .sim-plan-checks{display:none}
+.driver-station .sim-plan-checks .sim-live-status{flex:none;display:flex;align-items:flex-start;gap:10px;width:100%;box-sizing:border-box;margin:0;padding:12px 14px;min-height:0;border:0!important;border-radius:0;box-shadow:none;background:none;color:var(--text);text-align:left;font:inherit;cursor:default}
+.sim-check-dot{flex:none;width:10px;height:10px;margin-top:4px;border-radius:50%;background:var(--quiet)}
+.sim-live-status[data-state=ok] .sim-check-dot{background:var(--connected)}.sim-live-status[data-state=warn] .sim-check-dot{background:var(--warning)}.sim-live-status[data-state=bad] .sim-check-dot{background:var(--danger)}
+.sim-check-text{display:grid;gap:3px;min-width:0}
+.sim-check-text strong{font-size:14px;font-weight:600;line-height:1.3}
+.sim-check-text small{font-size:12px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.sim-check-text small.warn{color:var(--warning)}.sim-check-text small.bad{color:var(--danger)}
+#sim-plan-diagnostics{flex:none;margin:0;padding:0 14px 12px;border-top:1px solid var(--line)}
 #sim-plan-diagnostics h3{display:none}
-#sim-live-status[hidden]+#sim-plan-diagnostics,#sim-live-status[aria-expanded=false]+#sim-plan-diagnostics{display:none}
+#sim-plan-diagnostics ul{margin:6px 0 0}
+#sim-plan-diagnostics li:last-child{border-bottom:0}
+.sim-plan-checks .sim-diagnostics li:is(.sim-issue,.warn){border:0!important;box-shadow:none;background:var(--danger-bg);color:var(--text)}
+.sim-plan-checks .sim-diagnostics li.warn{background:var(--warning-bg)}
+#sim-plan-diagnostics>.hint{font-size:11px;line-height:1.4;margin:8px 0 0;padding-top:10px;border-top:1px solid var(--line);color:var(--muted)}
+#sim-live-status[hidden]+#sim-plan-diagnostics{display:none}
+/* What the export proves and what is left to do on the robot: folded under the checks until asked for. */
+.sim-plan-checks>#sim-export-ready{flex:none;margin:0;padding:8px 14px;border-top:1px solid var(--line)}
+.sim-plan-checks>#sim-export-ready>summary{cursor:pointer;font-size:12px;font-weight:600;padding:2px 0}
+.sim-plan-checks>#sim-export-ready .hint{font-size:11px;line-height:1.4;margin:8px 0 0;color:var(--muted)}.sim-plan-checks>#sim-export-ready .hint:empty{display:none}
+.sim-plan-checks>#sim-export-ready .sim-checklist{margin-bottom:6px}
+/* Stacked layouts put the card over the field, so it folds to its head and opens on a tap. */
+@media(max-width:700px){
+ .sim-plan-checks{width:auto;align-self:stretch;max-height:none}
+ .driver-station .sim-plan-checks .sim-live-status{padding:8px 10px;cursor:pointer}
+ .sim-live-status::after{content:'Details';margin-left:auto;font-size:11px;color:var(--muted)}.sim-live-status[aria-expanded=true]::after{content:'Hide'}
+ #sim-live-status[aria-expanded=false]+#sim-plan-diagnostics{display:none}
+}
 @media(max-height:600px){.sim-popover .hint{display:none}.sim-popover label{margin-top:3px}.sim-popover{max-height:calc(100dvh - 110px)}}
 body.sim-workspace{overflow:hidden}
 .sim-workspace #simulation-view{height:calc(100dvh - 76px);padding:4px 16px 12px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
@@ -57,7 +84,7 @@ body.sim-workspace{overflow:hidden}
    and live readout scroll under them when the window is short. */
 .sim-run-timing{flex:none;box-sizing:border-box;width:calc(var(--sim-timing-column,262px) - 12px);display:flex;flex-direction:column;min-height:0;text-align:left;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .sim-run-controls{flex:none;display:grid;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
-.sim-run-details{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 14px 14px}
+.sim-run-details{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 14px 14px}
 .sim-workspace .sim-run-timing .sim-practice-clock{flex-direction:column;align-items:flex-start;border:0;padding:0;margin:0;gap:0}
 .sim-workspace .sim-run-timing .sim-practice-clock>span{font-size:13px}
 .sim-workspace .sim-run-timing .sim-practice-clock>strong{font-size:40px;line-height:1.1}
@@ -98,7 +125,7 @@ body.sim-workspace{overflow:hidden}
 }
 /* Too short to keep Run pinned and still show a recording under it: the whole column scrolls as one. */
 @media(max-height:660px) and (min-width:701px){
- .sim-run-timing{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+ .sim-run-timing{overflow-y:auto;overscroll-behavior:contain}
  .sim-run-details{flex:none;overflow:visible}
 }
 .sim-workspace .sim-3d{height:100%;min-height:0}
@@ -224,7 +251,6 @@ body.sim-workspace{overflow:hidden}
  .sim-workspace #sim-plan-next{display:none}
  .sim-workspace .sim-panel .sim-planning-steps{margin-bottom:4px}
  .sim-workspace .sim-panel .sim-planning-steps button{min-height:30px}
- .sim-workspace .sim-live-status{min-height:24px;margin-bottom:4px}
  .sim-workspace .sim-settings-tabs>button{min-height:26px}
  .sim-workspace .sim-panel h2{font-size:13px;margin-block:3px}
 }
@@ -244,8 +270,17 @@ body.sim-workspace{overflow:hidden}
 .sim-data-lane-range{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
 .sim-data-pick{margin-top:8px;font-size:12px}.sim-data-pick summary{cursor:pointer;color:var(--muted);padding:4px 0}
 .sim-data-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.sim-data-track{border-radius:6px;padding:6px 4px;border:1px solid var(--line)}
-.sim-data-track input[type=range]{width:100%;margin:0;min-height:0}
+/* The run timeline is a plain slider over the whole period. */
+.sim-data-track{padding:4px 0}
+/* Drawn by hand so the thumb sits flush with the left end at 0 s and flush with the right end at the period's end,
+   and the filled part (--at: 0 to 1) never shows to the left of the thumb. */
+.sim-data-track input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:18px;margin:0;min-height:0;padding:0;border:0;background:none;cursor:pointer}
+.sim-data-track input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--accent) calc(9px + (100% - 18px)*var(--at,0)),var(--line) 0)}
+.sim-data-track input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6px;border-radius:50%;border:0;background:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.sim-data-track input[type=range]:disabled{cursor:default;opacity:.5}
+.sim-run-timeline{grid-column:1/-1;margin:2px 0 0}
+.sim-run-timeline .sim-data-row{margin-top:4px}
+.sim-run-timeline .sim-data-row .secondary{min-height:26px;padding:2px 12px;font-size:12px}
 .sim-data-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px}
 .sim-data-clock{font-variant-numeric:tabular-nums;font-size:12px}
 .sim-data-row .secondary{min-height:30px;padding:4px 14px}
@@ -268,12 +303,12 @@ body.sim-workspace{overflow:hidden}
 .sim-workspace .sim-run-timing .sim-telemetry dd{overflow-wrap:anywhere}
 /* Run & review's right side: the setup button and view tabs stay put while the chosen view
    scrolls, so long graph lists and logs are never cut off at the window edge. */
-.sim-workspace .sim-panel{overflow-y:auto;scrollbar-width:thin}
+.sim-workspace .sim-panel{overflow-y:auto}
 .sim-workspace #simulation-view[data-tab=run] .sim-panel{display:flex;flex-direction:column;overflow:hidden}
 .sim-workspace #sim-panel-run{flex:1;min-height:0;display:flex;flex-direction:column}
 .sim-workspace #sim-panel-run>.sim-settings-tabs{flex:none;display:flex;gap:4px;margin-bottom:10px}
 .sim-workspace #sim-panel-run>.sim-settings-tabs>button{padding-inline:2px;text-overflow:clip}
-.sim-workspace #sim-panel-run>.sim-settings-page{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable;padding-right:2px}
+.sim-workspace #sim-panel-run>.sim-settings-page{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:2px}
 .sim-workspace #sim-panel-run .sim-run-analysis{margin:0 0 12px}
 
 /* Run analysis: what the run picked up, shot and scored. */
@@ -369,6 +404,40 @@ body.sim-workspace{overflow:hidden}
 .sim-path-more{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px}
 .sim-path-more .text-button{font-size:12px}
 .sim-path-empty{padding:8px}
+/* Each path and the pin it ends at read as one card: the path on top with quiet icon actions, its pin as a
+   single line under a hairline. The open one lifts, and its fields sit on a 2-column grid. */
+.sim-path-list.sim-list,.sim-workspace .sim-path-list.sim-list{gap:0;padding:1px}
+.sim-path-list .sim-path-start{padding:8px 12px;border-radius:12px;background:var(--surface);font-size:13px}
+.sim-path-list .sim-path-row{margin-top:8px;border-bottom:0;border-radius:12px 12px 0 0}
+.sim-path-list .sim-path-pick{min-height:40px;padding:4px 6px 4px 12px;gap:10px;font-size:13px}
+.sim-path-list .sim-path-swatch{width:4px;height:18px;border-radius:2px}
+.sim-path-list .sim-path-title{font-weight:600}
+.sim-path-list .sim-path-at{font-size:12px}
+.sim-path-list .sim-path-head{gap:0;padding-right:6px}
+.driver-station .sim-path-list .sim-path-head .icon-button{width:28px;min-width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:8px;background:none;color:var(--quiet)}
+.sim-path-list .sim-path-head .icon-button .ui-icon{width:15px;height:15px}
+.sim-path-list :is(.sim-path-row:hover,.sim-path-row:focus-within,.sim-path-row.selected) .icon-button:not(:disabled){color:var(--muted)}
+.driver-station .sim-path-list .sim-path-head .icon-button:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.driver-station .sim-path-list .sim-path-head [data-remove]:hover{color:var(--danger)}
+.sim-path-list .sim-path-head .icon-button:disabled{opacity:.3}
+.sim-path-list .sim-path-row .sim-pin-summary{margin:-6px 12px 8px 26px}
+.sim-path-list .sim-stop-row{display:flex;flex-wrap:wrap;align-items:center;margin:0;border:1px solid var(--line);border-top-color:color-mix(in srgb,var(--line) 60%,transparent);border-radius:0 0 12px 12px;background:var(--surface)}
+.sim-path-list .sim-path-row.selected+.sim-stop-row,.sim-path-list .sim-stop-row.selected{border-color:var(--line-strong)}
+.sim-path-list .sim-path-row.selected+.sim-stop-row{border-top-color:var(--line)}
+.sim-path-list .sim-stop-row.selected{background:var(--raised)}
+.sim-path-list .sim-stop-row>.sim-path-head{flex:none}
+.sim-path-list .sim-stop-row .sim-path-pick{min-height:34px;padding-left:9px;gap:8px;font-size:12px;font-weight:500;color:var(--muted)}
+.sim-path-list .sim-stop-row [data-at]{display:none}
+.sim-path-list .sim-stop-row .sim-pin-summary{flex:1;min-width:0;margin:0;padding:0 12px 0 4px;text-align:right;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sim-path-list .sim-stop-row.acts .sim-pin-summary{color:var(--text)}
+.sim-path-list .sim-stop-row.selected .sim-path-pick{color:var(--text)}
+.sim-path-list .sim-stop-row>.sim-path-body{flex:0 0 100%;box-sizing:border-box}
+.sim-path-list .sim-pin-badge{width:18px;height:18px;font-size:10px}
+.sim-path-list .sim-path-body{padding:6px 12px 12px}
+.sim-path-list .sim-path-body .sim-grid2{gap:0 10px}
+.sim-path-list .sim-path-body label{margin:8px 0 3px;color:var(--muted)}
+.sim-path-list .sim-path-body :is(input,select){min-height:32px;height:32px;border-radius:8px}
+.sim-path-list .sim-path-more{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);justify-content:space-between}
 /* Phones: the Run button and speed get their own row under the clock and modes, so "Run" never squeezes. */
 @media(max-width:480px){
  .sim-run-controls{grid-template-columns:auto minmax(0,1fr)}
@@ -380,3 +449,117 @@ body.sim-workspace{overflow:hidden}
 
 /* Run & review: Play, Stop and Reset centred over the clock column; the view controls stay on the right, as on Path planning. */
 .sim-workspace #simulation-view[data-tab=run] .sim-run-buttons{width:calc(var(--sim-timing-column,262px) - 12px);justify-content:center;flex:none}
+/* Path planning reads left to right: the path list, the field, then the route checks. The field's zoom and 2D/3D
+   sit with its tools on the left. Stacked (narrow) layouts keep their own order. */
+@media(min-width:701px){
+.sim-workspace #simulation-view[data-tab=plan] .simulation-layout{grid-template-columns:350px minmax(0,1fr)}
+.sim-workspace #simulation-view[data-tab=plan] .sim-panel{order:-1}
+#simulation-view[data-tab=plan] .sim-field-row>.sim-plan-checks{order:2}
+.sim-workspace #simulation-view[data-tab=plan] .sim-toolbar{justify-content:flex-start}
+#simulation-view[data-tab=plan] .sim-transport{flex:none}
+#simulation-view[data-tab=plan] .sim-view-controls{margin-left:0}
+}
+/* The Start card opened: the starting pose form under its head. */
+.sim-path-start.open{flex-wrap:wrap}
+.sim-path-start>#sim-start-controls{flex:1 0 100%;min-width:0;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.sim-workspace .sim-panel .sim-path-start #start-title{display:none}
+/* The path list is separate cards: a Path card, then the card of the Pin it ends at, set in and joined by a short
+   elbow so the pair still reads as one stop. Each open card is its whole editor. */
+.sim-path-list .sim-path-row{border-bottom:1px solid var(--line);border-radius:12px}
+.sim-path-list .sim-path-row.selected{border-color:var(--line-strong)}
+.sim-path-list .sim-stop-row{position:relative;margin:6px 0 0 20px;border-radius:12px;border-top-color:var(--line)}
+.sim-path-list .sim-stop-row.selected,.sim-path-list .sim-path-row.selected+.sim-stop-row{border-top-color:var(--line)}
+.sim-path-list .sim-stop-row.selected{border-color:var(--line-strong)}
+.sim-path-list .sim-stop-row::before{content:'';position:absolute;left:-11px;top:-7px;width:10px;height:24px;border-left:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong);border-radius:0 0 0 7px;pointer-events:none}
+.sim-path-list .sim-path-top{gap:0 8px}
+.sim-path-list .sim-path-body .sim-pop-label{display:block;margin:14px 0 6px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.sim-chip-row{display:flex;flex-wrap:wrap;gap:6px}
+.driver-station .sim-path-list .sim-chip-row .sim-chip{min-height:28px;padding:2px 10px;font-size:11px}
+/* The list never scrolls sideways: its one column gives way, and the inset Pin cards shrink with it. */
+.sim-path-list.sim-list,.sim-workspace .sim-path-list.sim-list{grid-template-columns:minmax(0,1fr);overflow-x:hidden}
+.sim-path-list .sim-stop-row{min-width:0}
+.sim-path-list .sim-stop-row>.sim-path-body{min-width:0}
+.sim-path-list .sim-path-body :is([id^=path-note],[id^=pin-note]){width:100%;box-sizing:border-box}
+.sim-path-list .sim-path-more{justify-content:flex-end}
+/* One card per stop: the pin's part sits inside its path's card, under it. Closed, the card shows the path's line and,
+   when the pin does something, the pin's line. Open, it reads top to bottom as 1 Drive there, 2 At the pin, each a few
+   labelled rows (label on the left, its choices on the right). */
+.sim-path-list .sim-path-row>.sim-stop-row{position:static;display:block;margin:0;border:0;border-radius:0;background:none;min-width:0}
+.sim-path-list .sim-path-row>.sim-stop-row::before{content:none}
+.sim-path-list .sim-path-row>.sim-stop-row>.sim-path-head{display:none}
+.sim-path-list .sim-path-row>.sim-stop-row .sim-pin-summary{display:none;margin:-4px 12px 8px 26px;padding:0;text-align:left;white-space:normal;color:var(--muted)}
+.sim-path-list .sim-path-row:not(.selected)>.sim-stop-row.acts .sim-pin-summary{display:block}
+.sim-path-list .sim-path-row>.sim-stop-row.acts .sim-pin-summary::before{content:'At the pin: ';color:var(--quiet)}
+.sim-path-list .sim-path-row>.sim-stop-row>.sim-path-body{border-top:1px solid var(--line)}
+.sim-part-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 2px}
+.sim-part-head h4{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;font-weight:600}
+.sim-part-n{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:999px;background:var(--accent);color:var(--on-accent);font:700 10px var(--font)}
+.sim-part-head .text-button{font-size:11px;color:var(--muted)}
+.sim-edit-row{display:grid;grid-template-columns:58px minmax(0,1fr);gap:4px 10px;align-items:start;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.sim-path-top+.sim-edit-row{margin-top:10px}
+/* Actions get the card's full width (a step's row has a name, a time and three buttons): the label sits above. */
+.sim-edit-row.wide{grid-template-columns:minmax(0,1fr)}
+.sim-edit-row.wide>.sim-field-label{padding-top:0}
+.sim-field-label{padding-top:6px;font-size:11px;font-weight:600;color:var(--muted)}
+.sim-field-main{min-width:0}
+.sim-field-main>.sim-chip-row+label{margin-top:8px}
+.sim-path-list .sim-path-body .sim-field-main>:is(label,.sim-grid2,.hint):first-child{margin-top:0}
+.sim-short-field{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.sim-path-list .sim-path-body .sim-short-field input{width:72px;flex:none}
+/* In a card the actions are just their rows and the + buttons; each button's tooltip says what it does. */
+.sim-path-list .sim-field-main .sim-steps :is(.sim-steps-hint,.sim-steps-empty){display:none}
+.sim-path-list .sim-field-main .sim-steps-list:empty{display:none}
+.sim-path-list .sim-field-main .sim-steps-list{margin:0 0 6px;padding:0}
+/* Each setting in an open card is its own box, so it reads as a separate thing to edit. The card's two parts are
+   two panels with their own heading band and a gap between them: 1 Drive there (blue), 2 At the pin (amber, as a pin
+   that does something is on the field). A closed card opens from anywhere on it. Preview belongs to an open path. */
+.sim-preview-row{display:none!important}
+.sim-path-list .sim-path-row:not(.selected){cursor:pointer}
+.sim-path-list .sim-path-row.selected{background:var(--surface)}
+.sim-path-list .sim-path-row>.sim-path-body,.sim-path-list .sim-path-row>.sim-stop-row>.sim-path-body{margin:0 8px 8px;padding:0 10px 10px;border:1px solid var(--line-strong);border-radius:10px;background:var(--raised);overflow:hidden}
+.sim-path-list .sim-path-row>.sim-stop-row>.sim-path-body{margin-top:12px;border-top:1px solid var(--line-strong)}
+.sim-part-head{margin:0 -10px 10px;padding:7px 10px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--accent) 12%,var(--raised))}
+.sim-stop-row .sim-part-head{background:color-mix(in srgb,var(--warning) 16%,var(--raised))}
+.sim-stop-row .sim-part-n{background:var(--warning);color:#1b1300}
+.sim-part-tools{display:flex;align-items:center;gap:10px}
+.driver-station .sim-path-list .sim-path-preview{min-height:26px;padding:2px 10px;font-size:11px;border-radius:999px}
+.driver-station .sim-path-list .sim-path-preview[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.sim-path-list .sim-path-top,.sim-edit-row{margin:8px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.sim-path-list .sim-path-top{padding-top:2px}
+.sim-edit-row{border-top:1px solid var(--line)}
+.sim-path-top+.sim-edit-row{margin-top:8px}
+.sim-edit-row>.sim-field-label{color:var(--text)}
+/* Action rows fill their box edge to edge and never run past it: no list indent, a narrower time box, and the
+   name column gives way before the move and remove buttons do. */
+.sim-path-list .sim-field-main .sim-steps{margin:0;padding-left:0}
+.sim-path-list .sim-field-main .sim-step{grid-template-columns:18px minmax(0,1fr) auto auto;min-width:0}
+.sim-path-list .sim-field-main .sim-steps .sim-step .sim-step-time input.sim-step-num{width:54px}
+.sim-path-list .sim-field-main .sim-steps-add{margin-top:8px}
+/* Run & review's run column: under the controls and the period lengths, the route checks and the run's output
+   (two small state cards, then the one picked). The column scrolls when they are long. */
+.sim-run-timing{overflow-y:auto;overscroll-behavior:contain}
+.sim-run-checks{flex:none;display:grid;gap:8px;padding:12px;border-top:1px solid var(--line)}
+.sim-run-checks .sim-diag-pick{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0}
+.driver-station .sim-run-checks .sim-diag-card{min-width:0;padding:7px 9px}
+.sim-run-checks .sim-diag-title{font-size:11px}.sim-run-checks .sim-diag-value{font-size:12px}
+.sim-run-checks #sim-run-diagnostics h3{display:none}
+.sim-run-checks #sim-run-diagnostics ul{margin:0;padding:0;list-style:none;font-size:11px;line-height:1.4}
+.sim-run-checks #sim-run-diagnostics li{margin:0 0 6px}
+.sim-run-checks .hint{font-size:11px;line-height:1.4;margin:0}
+.sim-run-checks .sim-log{margin:0}
+.sim-run-checks .sim-log pre{max-height:220px;overflow:auto;margin:0;padding:8px;font-size:10.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--line);border-radius:8px;background:var(--well)}
+.sim-run-checks [hidden]{display:none!important}
+/* Path planning's left panel is only the paths (one view, so no tabs). Space around obstacles, Optimize and the
+   route's status line head the route checks card on the right. Next is amber while the route has issues. */
+#sim-route-step>.sim-settings-tabs{display:none}
+.sim-route-space{flex:none;padding:12px 14px;border-bottom:1px solid var(--line)}
+.sim-route-space .start-xy{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin:0}
+.sim-route-space label{display:block;margin:0 0 4px;font-size:11px;font-weight:600;color:var(--muted)}
+.sim-route-space input{width:100%;min-height:32px;height:32px;margin:0;box-sizing:border-box}
+.sim-route-space input.num-slider{min-height:20px;height:20px;margin-top:4px}
+.driver-station .sim-route-space #sim-optimize{min-height:32px;padding:4px 12px}
+.sim-route-space #sim-plan-status{margin:8px 0 0;font-size:11px;line-height:1.4;color:var(--muted);min-height:0}
+.sim-route-space #sim-plan-status:empty,.sim-route-space .sim-tested:empty{display:none}
+.sim-route-space .sim-tested{margin-top:6px;font-size:11px}
+.driver-station #sim-plan-next.blocked{background:var(--warning-bg);border-color:var(--warning);color:var(--text)}
+#sim-route-step .button-row{margin-top:8px}

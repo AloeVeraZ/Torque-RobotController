@@ -239,7 +239,8 @@
       failure=f;tryAt=at+Math.min(f.rc?30000:60000,f.again*2**(fails-1));}
     // A build happens with nobody pressing only over the cable, where the crash guard can bring the app back, and once a visit: a robot whose copy never matches is not built over and over.
     async function startLink(){moving=true;startedAt=Date.now();tryAt=startedAt+3000;const asked=pressed,build=needBuild,usb=conn()?.host==='usb';runPressed=asked;pressed=false;needBuild=false;let r={};paint();
-      try{r=await debug.run({host:conn()?.host,noStart:!asked,build,mayBuild:asked,still:()=>(wantNow()||debugWants())&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
+      // wake: Debug or Calibrate is open over the cable, and opening it was the press that may start the Robot Controller app.
+      try{r=await debug.run({host:conn()?.host,noStart:!asked,wake:!asked&&debugWants(),build,mayBuild:asked,still:()=>(wantNow()||debugWants())&&!busy()});}catch(e){r={error:e.message};}finally{moving=false;}
       took(r,usb);}
     // What a run said, from this tab's own start or another's (Calibrate starts Torque Debug by itself): a failure shows here
     // with Try again, and nothing tries again by itself.

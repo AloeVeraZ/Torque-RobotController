@@ -122,8 +122,8 @@ window.DeckSim3D={create(host,options){
     beams();previewGhost();
   }
   // ---------------------------------------------------------------- route preview ghost
-  // Plan → Paths preview: a see-through, low-poly robot drives the planned route without physics. With an imported
-  // model it is that model in coarse blocks; without one, a pushbot chassis. At pins it acts out the action with
+  // Plan → Paths preview: a see-through robot drives the planned route without physics. With an imported model it is
+  // that model itself, faded (the same meshes, not a blocky stand-in); without one, a pushbot chassis. At pins it acts out the action with
   // see-through pieces: shots arc to the goal, the intake side glows and pulls pieces in, a pause rings the floor.
   // One hologram blue in both themes: the theme accent is near black in light mode, which reads as solid, not see-through.
   const GHOST=0x5cc8ff,previewGroup=new THREE.Group(),previewFx=new THREE.Group();scene.add(previewGroup,previewFx);
@@ -157,8 +157,20 @@ window.DeckSim3D={create(host,options){
     part(new THREE.BoxGeometry(1.5,1.5,10),mid-len*.2,0,7.2);part(new THREE.BoxGeometry(len*.55,1.2,1.2),mid-len*.2+len*.27,0,12.2);part(new THREE.BoxGeometry(1.2,4,3),mid-len*.2+len*.55,0,11.2);
     part(new THREE.ConeGeometry(1.8,3.6,3),f.front-2.5,0,5.2,[0,0,-Math.PI/2]);return group;
   }
+  // The model itself, see-through: its own meshes (the geometry is shared, not copied) as they stand now, each with a
+  // faded copy of its material. Writing depth keeps it a clean shell instead of every inner face showing through.
+  let ghostMaterials=[];
+  function seeThrough(holder){
+    holder.updateMatrixWorld(true);const inv=holder.matrixWorld.clone().invert(),group=new THREE.Group(),made=new Map();group.userData.keep=true;
+    const fade=m=>{if(!m)return m;if(!made.has(m)){const c=m.clone();c.transparent=true;c.opacity=.4;c.depthWrite=true;made.set(m,c);}return made.get(m);};
+    const shown=o=>{for(let p=o;p&&p!==holder.parent;p=p.parent)if(p.visible===false)return false;return true;};
+    holder.traverse(o=>{if(!o.isMesh||o.isInstancedMesh||o.isSkinnedMesh||!o.geometry?.attributes?.position||!shown(o))return;
+      const mesh=new THREE.Mesh(o.geometry,Array.isArray(o.material)?o.material.map(fade):fade(o.material));mesh.matrixAutoUpdate=false;mesh.matrix.multiplyMatrices(inv,o.matrixWorld);mesh.frustumCulled=false;group.add(mesh);});
+    ghostMaterials=[...made.values()];return group;}
   function ghostBody(){const f=info?.footprint||{front:9,rear:9,half:9},key=JSON.stringify([body?.uuid||'',f]);if(key===previewKey)return;previewKey=key;
-    clear(previewGroup);const look=ghostLook();previewGroup.add(body?blocks(body,look):pushbot(f,look));previewGroup.traverse(o=>{o.renderOrder=9;});
+    clear(previewGroup);for(const m of ghostMaterials)m.dispose();ghostMaterials=[];const look=ghostLook();
+    // (A model with nothing to draw, or still loading, falls back to its coarse blocks.)
+    const copy=body?seeThrough(body):null;previewGroup.add(copy?.children.length?copy:body?blocks(body,look):pushbot(f,look));previewGroup.traverse(o=>{o.renderOrder=9;});
     for(const v of Object.values(fx||{}))v.dispose();const accent=new THREE.Color(GHOST),see=o=>new THREE.MeshBasicMaterial({color:accent,transparent:true,depthWrite:false,...o});
     fx={piece:new THREE.SphereGeometry(1.8,10,8),ring:new THREE.RingGeometry(.92,1,48),torus:new THREE.TorusGeometry(2.6,.35,6,20),slab:new THREE.BoxGeometry(1,1,1),
       solid:see({opacity:.45}),glow:see({opacity:.2,side:THREE.DoubleSide}),pulse:see({side:THREE.DoubleSide}),
@@ -170,7 +182,8 @@ window.DeckSim3D={create(host,options){
     previewGroup.position.set(q.x,q.y,0);previewGroup.rotation.set(0,0,q.heading*DEG);
     const a=q.act;if(!a)return;const h=q.heading*DEG,c=Math.cos(h),s=Math.sin(h),f=q.fp||info?.footprint||{front:9,rear:9,half:9},at=(ox,oy)=>({x:q.x+ox*c-oy*s,y:q.y+ox*s+oy*c});
     const k=a.progress??(performance.now()/900)%1,keep=o=>{o.renderOrder=10;previewFx.add(o);return o;},mesh=(g,m)=>keep(new THREE.Mesh(g,m));
-    if(a.kind==='wait'||a.kind==='custom'){const ring=mesh(fx.ring,fx.pulse);fx.pulse.opacity=.5*(1-k);ring.scale.setScalar(Math.max(f.front,f.rear,f.half)+2+4*k);ring.position.set(q.x,q.y,.4);}
+    // Anything with no picture of its own (a pause, a ramp, a turret angle, a moving part, the team's own action) rings the floor.
+    if(!['intake','shoot','spin','aim'].includes(a.kind)){const ring=mesh(fx.ring,fx.pulse);fx.pulse.opacity=.5*(1-k);ring.scale.setScalar(Math.max(f.front,f.rear,f.half)+2+4*k);ring.position.set(q.x,q.y,.4);}
     if(a.kind==='intake')for(const side of a.intakes){const along=side==='front'||side==='back',sign=side==='front'||side==='left'?1:-1,edge=along?(sign>0?f.front:f.rear):f.half,span=along?2*f.half:f.front+f.rear;
       const o=along?at(sign*(edge+1.5),0):at((f.front-f.rear)/2,sign*(edge+1.5)),slab=mesh(fx.slab,fx.glow);slab.scale.set(along?3:span,along?span:3,4);slab.position.set(o.x,o.y,2.5);slab.rotation.set(0,0,h);
       for(let n=0;n<2;n++){const t=(k*2+n/2)%1,out=edge+12*(1-t),p=along?at(sign*out,(n?-1:1)*f.half*.4*(1-t)):at((n?-1:1)*f.half*.4*(1-t),sign*out),ball=mesh(fx.piece,fx.solid);ball.position.set(p.x,p.y,1.8);}}
@@ -233,6 +246,9 @@ window.DeckSim3D={create(host,options){
   // above; inset: true adds that top view in the corner, as the follow camera's videos have it.
   function picture(nextFrame,nextState,shots){
     frame=nextFrame;state=nextState||state;prepare();renderer.setScissorTest(true);
+    // guides: false leaves out what is drawn for the planner's eyes, not the audience's: the shooters' aim beams, the
+    // planned route with its pins, the driven trail and the sensor estimate, and the collision outlines.
+    const plain=state?.guides===false;trailGroup.visible=!plain;overlay.visible=!plain;if(plain){beamGroup.visible=false;estimateLine.visible=false;markersHost.visible=false;elementMarkers.visible=false;}
     for(const s of shots){const [x,y,w,h]=s.rect,yb=H-y-h;renderer.setViewport(x,yb,w,h);renderer.setScissor(x,yb,w,h);
       if(s.top){fitTop(w/h,1.06);beamsFrom(null);renderer.render(scene,top);continue;}
       camera.fov=s.pose.fov;camera.aspect=w/h;camera.updateProjectionMatrix();camera.position.set(...s.pose.p);camera.lookAt(...s.pose.l);beamsFrom(s.pose.p);renderer.render(scene,camera);

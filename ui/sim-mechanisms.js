@@ -103,7 +103,7 @@
       const sides=EDGES.filter(e=>(Array.isArray(raw.sides)?raw.sides:SIDE_EDGES[raw.side]||[]).includes(e)&&!used.has(e));if(!sides.length)continue;sides.forEach(e=>used.add(e));
       // Its box: how far it sticks out past the frame (pieces are taken at its outer face), how wide its
       // mouth is (null: the whole edge) and how tall its opening is (a taller piece does not fit).
-      const n=intakes.length,kind=pick(raw.kind,INTAKES,'sweeper');intakes.push({kind,sides,reach:num(raw.reach,DEFAULTS.intake.reach,0,18),width:finite(raw.width)?clamp(raw.width,1,48):null,height:num(raw.height,DEFAULTS.intake.height,1,24),
+      const n=intakes.length,kind=pick(raw.kind,INTAKES,'sweeper');intakes.push({kind,sides,...(raw.frameOnly===true?{frameOnly:true}:{}),reach:num(raw.reach,DEFAULTS.intake.reach,0,18),width:finite(raw.width)?clamp(raw.width,1,48):null,height:num(raw.height,DEFAULTS.intake.height,1,24),
         motor:name(raw.motor,n?`intake${n+1}`:'intake'),power:num(raw.power,1,.05,1),...(kind!=='kicker'?roller(raw):{}),...more(raw,kind),...(point(raw.at)?{at:point(raw.at)}:{}),...cadParts(raw),...(kind!=='kicker'?column(raw):{}),
         // A kicker or a ramp moves on a servo: seconds to go down and back up, the servo, and its positions (0-1) down and up.
         // A ramp keeps its rollers (motor and power) too; the game physics folds a ramp down in 0.3 s.
@@ -348,9 +348,12 @@
         busy=!moving&&own.some((on,n)=>on&&Math.abs((state.turrets?.[n]??0)-deg)>2);}
       else if(a.kind==='shoot'&&m.shooters.length&&!slot.done){
         cmd.spin=cmd.aim=true;
-        if(slot.feedStart<0&&state.ready&&state.aligned&&now-this.lastIntake>=m.transfer.seconds+liftSeconds(m))slot.feedStart=now;
+        // Shooting while the intake runs (opts.stream): the feeders run with the intake, so nothing waits for pieces to
+        // move up: each is shot as it reaches the shooter, for as long as the path or the set time lasts.
+        if(opts?.stream)slot.stream=true;
+        if(slot.feedStart<0&&state.ready&&state.aligned&&(opts?.stream||now-this.lastIntake>=m.transfer.seconds+liftSeconds(m)))slot.feedStart=now;
         // Shooting for a set time keeps feeding until the route ends the action; otherwise it feeds for N shots.
-        const window=finite(opts?.seconds)?Infinity:shootSeconds(m,a.count);
+        const window=finite(opts?.seconds)||slot.stream&&moving?Infinity:shootSeconds(m,a.count);
         // A pusher pushes at the start of each feed cycle, like the robot code; other feeders run the whole time.
         if(slot.feedStart>=0){const t=now-slot.feedStart;cmd.feed=t<window&&(!pusherOnly(m)||t%feedCycle(m)<m.indexer.pushSeconds);if(t>=window){slot.done=true;this.spinning=false;}}
         busy=!moving&&!slot.done;
@@ -364,19 +367,22 @@
     steps(act,state,now){
       const key=`${act.moving?'path'+(act.path??act.leg):'pin'+act.leg}:${act.name}`,list=act.steps;
       if(key!==this.key){this.key=key;this.run={t0:now,at:0,slots:list.map(()=>({feedStart:-1,done:false,t0:null,finished:false}))};}
-      const r=this.run,j=this.joints,isPart=s=>action(s.action).kind==='custom';
+      const r=this.run,j=this.joints,m=this.m,isPart=s=>action(s.action).kind==='custom';
       const begin=(s,slot)=>{if(slot.t0!==null)return;slot.t0=now;if(isPart(s)&&j)slot.part=j.start(s.action)!==false;};
       const finish=(s,slot)=>{slot.finished=true;if(action(s.action).kind==='shoot')this.spinning=false;};
-      if(act.moving){const cmd=this.base();let cell;
+      const isIntake=s=>action(s.action).kind==='intake';
+      if(act.moving){const cmd=this.base();let cell;const stream=list.some((s,i)=>isIntake(s)&&!r.slots[i].finished&&!(finite(s.seconds)&&r.slots[i].t0!==null&&now-r.slots[i].t0>=s.seconds));
         list.forEach((s,i)=>{const slot=r.slots[i];begin(s,slot);if(slot.finished)return;
           if(finite(s.seconds)&&now-slot.t0>=s.seconds){finish(s,slot);return;}
-          const out=this.one(s.action,{moving:true,seconds:s.seconds},slot,state,now);if(slot.done)finish(s,slot);
+          const out=this.one(s.action,{moving:true,seconds:s.seconds,stream},slot,state,now);if(slot.done)finish(s,slot);
           for(const k of ['intake','spin','aim','feed'])cmd[k]=cmd[k]||out.cmd[k];
           if(finite(out.cmd.turretDeg))cmd.turretDeg=out.cmd.turretDeg;if(out.cmd.turretDegs)cmd.turretDegs=out.cmd.turretDegs.map((v,n)=>finite(v)?v:cmd.turretDegs?.[n]);
           if(/^(shoot|aim)/.test(action(s.action).kind)&&cell===undefined)cell=s.cell;});
         if('ramp' in cmd)cmd.ramp=this.ramp;return {cmd,busy:false,cell};}
+      // At a pin an Intake with no time of its own stays on for the steps after it: "Intake, Shoot for 2 s" shoots while intaking.
       while(r.at<list.length){const s=list[r.at],slot=r.slots[r.at];begin(s,slot);
-        const out=this.one(s.action,{moving:false,seconds:s.seconds},slot,state,now),t=now-slot.t0;
+        if(isIntake(s)&&!finite(s.seconds)&&m.intakes.length){r.keep=true;finish(s,slot);r.at++;continue;}
+        const out=this.one(s.action,{moving:false,seconds:s.seconds,stream:!!r.keep},slot,state,now),t=now-slot.t0;if(r.keep){out.cmd.intake=true;this.lastIntake=now;}
         const part=slot.part&&j.busy(s.action),done=finite(s.seconds)?t>=s.seconds-1e-9:!out.busy&&!part;
         if(!done)return {cmd:out.cmd,busy:true,cell:s.cell};
         finish(s,slot);r.at++;}

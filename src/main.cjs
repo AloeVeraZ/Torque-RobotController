@@ -29,7 +29,7 @@ const LEGACY_NAME='Deck Driver Station';
 if(!process.env.DECK_DATA_DIR){const legacy=path.join(app.getPath('appData'),LEGACY_NAME);if(fs.existsSync(legacy)&&!fs.existsSync(path.join(app.getPath('appData'),'Torque')))app.setPath('userData',legacy);}
 // Offline simulator: a utility process started by the Simulation view, never connected to a robot.
 const {DevicePhotos}=require('./device-photos.cjs');let devicePhotos=null;const photos=()=>devicePhotos||=new DevicePhotos(path.join(app.getPath('userData'),'device-photos'));
-const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs'),axonSoftware=require('./axon-software.cjs'),{UsbWatch}=require('./usb-watch.cjs'),HubUsb=require('./hub-usb.cjs');let axon=null,usbWatch=null;const axons={};
+const {SimulationHost}=require('./sim-bridge.cjs');let simulation=null;const robotLink=require('./robot-link.cjs'),axonProgrammer=require('./axon-programmer.cjs'),swyftProgrammer=require('./swyft-programmer.cjs'),axonSoftware=require('./axon-software.cjs'),{UsbWatch}=require('./usb-watch.cjs'),HubUsb=require('./hub-usb.cjs');let axon=null,usbWatch=null;const axons={};
 if(process.env.DECK_DATA_DIR){fs.mkdirSync(process.env.DECK_DATA_DIR,{recursive:true});app.setPath('userData',process.env.DECK_DATA_DIR);}
 // UI checks on GPU-less CI displays: Chromium's software WebGL, which it no longer falls back to on its own.
 if(process.env.DECK_TEST_SOFTWARE_GL==='1')app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -43,7 +43,7 @@ function terminalSetup(argv){
   try{
     const abs=path.resolve(file);if(!/\.json$/i.test(abs)||!fs.statSync(abs).isFile()||fs.statSync(abs).size>150*1024*1024)throw Error('Use a simulation setup .json file.');
     const model=arg('model'),axis=v=>['+x','-x','+y','-y','+z','-z'].includes(v)?v:'';
-    terminalRequest={name:path.basename(abs),text:fs.readFileSync(abs,'utf8'),tab:['setup','plan','run'].includes(arg('tab'))?arg('tab'):'run',run:argv.includes('--deck-sim-run'),model:model&&path.isAbsolute(model)&&fs.existsSync(model)?model:'',front:axis(arg('front')),top:axis(arg('top'))};
+    terminalRequest={name:path.basename(abs),text:fs.readFileSync(abs,'utf8'),tab:['setup','field','plan','run'].includes(arg('tab'))?arg('tab'):'run',run:argv.includes('--deck-sim-run'),model:model&&path.isAbsolute(model)&&fs.existsSync(model)?model:'',front:axis(arg('front')),top:axis(arg('top'))};
     void deliverTerminalSetup();
   }catch(e){emit('notice',`Could not open ${path.basename(file)} from the terminal: ${e.message}`);}
 }
@@ -336,6 +336,8 @@ setInterval(()=>{const on=bridge instanceof UsbFtcSocket||Date.now()-hubSeenAt<1
 ipcMain.handle('ftc-device-photo',async(e,tag)=>{fromDs(e);return photos().photo(String(tag||''));});
 ipcMain.handle('ftc-device-photos',async e=>{fromDs(e);return photos().prefetch();});
 // The hubs the open robot's web server lists, with each one's IMU (Configure Robot's New: the scan leaves it UNKNOWN).
+// Self Inspect → Inspect Driver Station: a Driver Hub plugged into this computer, read over ADB (nothing is changed on it).
+ipcMain.handle('ftc-inspect-driver-hub',async e=>{fromDs(e);try{return await robotLink.inspectDriverHub();}catch(err){return {found:false,error:err.message};}});
 ipcMain.handle('ftc-rc-hubs',async e=>{fromDs(e);if(!(bridge instanceof FtcSocket))return [];return robotLink.rcHubs(bridge instanceof UsbFtcSocket?'usb':bridge.host);});
 // Configure Robot's wiring notes (a motor's gearbox, whether its encoder cable is in) by robot and configuration: the robot
 // sends configurations without them. notes: set (an empty object removes); omitted: read.
@@ -389,7 +391,7 @@ async function setPage(page){
   // Leaving them ends the simulation's processes, including any running Java program, and a guided check running on a robot.
   else {simulation?.stop();robotCheck?.stop();}
   // Live debug drives the robot's outputs: it only runs while Calibrate or Setup's hub test shows.
-  if(page!=='calibrate'&&page!=='setup')robotDebug?.stop();
+  if(page!=='calibrate'&&page!=='setup')robotDebug?.stop();if(page!=='calibrate')servoTest?.stop();
   if(page==='drive'&&driveRobot)void driveAgain();
   return snapshot();
 }
@@ -424,13 +426,22 @@ handle('cursor',(x,y)=>{
 app.on('will-quit',()=>{try{cursorHelper?.kill();}catch{}});
 handle('sim',async(method,args)=>{if(!offlinePage(state.page))throw Error('Open the Simulation view first.');return simulation.call(method,args);});
 handle('sim-file',(action,data)=>simulation.file(dialog,win,action,data));
-// Setup & Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
+// Calibrate → Axon Programmer: Axon servos through Axon's V2 programmer. USB runs only between start and stop, while that tab shows.
 const axonSoftwareFolders=()=>{const home=app.getPath('home'),cloud=process.env.OneDrive;return [app.getPath('downloads'),app.getPath('desktop'),app.getPath('documents'),path.join(home,'Downloads'),path.join(home,'Desktop'),path.join(home,'Documents'),...(cloud?['Downloads','Desktop','Documents'].map(n=>path.join(cloud,n)):[])];};
 // One Axon service per programmer, so a V1 and a V2 programmer can both be plugged in and used side by side. A test that gives
 // its own transport gets the one service that takes either. Each state says which it is for.
 const axonWhich=()=>axonProgrammer.overrides.transport?['all']:['v1','v2'],axonAll=()=>axonWhich().map(w=>axonService(w));
 const axonService=(which=axonWhich()[0])=>axons[which]||=new axonProgrammer.AxonService({only:which==='all'?null:which,findSoftware:axonSoftware.finder({folders:axonSoftwareFolders()}),firmwareDir:path.join(app.getPath('userData'),'axon-firmware'),keyFile:path.join(app.getPath('userData'),'axon-keys.json'),sharedKeyFile:process.env.DECK_DATA_DIR?null:path.join(app.getPath('documents'),'Torque Axon keys.json'),logFile:path.join(app.getPath('userData'),'axon-usb.log'),onState:s=>emit('axon-state',{...s,which}),
   fetchFile:async url=>{const r=await net.fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`Axon's link answered ${r.status}.`);return Buffer.from(await r.arrayBuffer());},...axonProgrammer.overrides});
+// Calibrate → SWYFT Programmer: SWYFT servos through SWYFT's USB programmer (a COM port). The port is open only between
+// start and stop, while that tab shows. Tests give their own transport through swyftProgrammer.overrides.
+let swyft=null;
+const swyftService=()=>swyft||=new swyftProgrammer.SwyftService({logFile:path.join(app.getPath('userData'),'swyft-serial.log'),onState:s=>emit('swyft-state',s),...swyftProgrammer.overrides});
+handle('swyft',async(action,data)=>{
+  const s=swyftService();
+  if(action==='start')return s.start();if(action==='stop')return void await s.dispose();if(action==='state')return s.state();if(action==='trace')return s.traceLines;
+  if(action==='read')return s.read();if(action==='write')return s.write(data?.changes);if(action==='close-rivals')return void await s.closeRivals();
+  throw Error('Unknown SWYFT action.');});
 handle('axon',async(action,data)=>{
   if(action==='start')return axonWhich().map(w=>({...axonService(w).start(),which:w}));if(action==='stop')return void await Promise.all(axonAll().map(a=>a.dispose()));
   const which=axonWhich().includes(data?.which)?data.which:axonWhich()[0],s=axonService(which),ext=()=>s.state().servo.family==='v1'?'svo':'svp';
@@ -451,7 +462,12 @@ handle('axon',async(action,data)=>{
 // robot-link-check events, then one {ended} (or {error}) when it stops.
 // debug-install / debug-start / debug-send / debug-stop: Torque Debug (Calibrate → Camera and Debug). Its device
 // list and readings arrive as robot-link-debug events ({manifest}, {frame}), then one {ended} (or {error}).
-let sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null;
+let sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null,servoTest=null,servoLive=null;
+// The Servo Test's slider: the pulse now, written to the robot's plan with a count the op mode watches. Writes never overlap
+// (a newer pulse waits for the one going out, and only the newest goes), and the plan is written again every second so the op
+// mode knows Torque is still there: 3 s without a new count and it turns the port off by itself.
+function servoLiveWrite(){const l=servoLive;if(!l)return;if(l.writing){l.again=true;return;}l.writing=true;l.seq++;
+  robotLink.servoPlan({port:l.port,hub:l.hub,enable:l.enable,live:true,us:l.us,seq:l.seq}).catch(()=>{}).finally(()=>{l.writing=false;if(servoLive===l&&l.again){l.again=false;servoLiveWrite();}});}
 const debugStop=async()=>{const debug=robotDebug;if(!debug)return;debug.stop();const over=await Promise.race([debug.ended.then(()=>true,()=>true),delay(5000).then(()=>false)]);
   // Given up on: what comes next must not be reached by a late stop of this one's. The page still hears that it ended.
   if(!over&&!debug.told){debug.told=true;debug.abandon();emit('robot-link-debug',{ended:'stopped'});}if(robotDebug===debug)robotDebug=null;};
@@ -492,7 +508,7 @@ const hubWatcher=()=>usbWatch||=new UsbWatch({adbPath:robotLink.adbPath,logFile:
 // The hub to ask, for a page that asks before the watch has said: the watch knows without running ADB.
 const hubOnUsb=async()=>{const known=HubUsb.hubToFollow({hub:usbWatch?.hub});if(known)return known;const s=await robotLink.usbStatus();if(!s.found)throw Error(s.message||'No Control Hub on USB.');return s.serial;};
 handle('robot-link',async(action,data)=>{
-  if(action==='competition'){competition=data?.on===true;return competition;}
+  if(action==='competition'){competition=data?.on===true;robotLink.usbPriority.on=usbFirst&&!competition;usbHold.enable(usbFirst&&!competition?usbHoldLink:null);return competition;}
   if(action==='usb-watch'){if(data?.shown)return hubWatcher().shown(data.shown,data.at);if(!data?.on)return usbWatch?.stop()??null;const s=hubWatcher().start();hubFollower.follow(HubUsb.hubToFollow(s));return {...s,hubUsb:hubFollower.latest()};}
   // What is on the hub's own USB ports. They only read the hub, so they go on while live debug runs.
   if(action==='hub-usb'){const serial=await hubOnUsb();return hubFollower.serial===serial?hubFollower.latest()||await hubFollower.read():HubUsb.readHubUsbList(serial);}
@@ -527,16 +543,41 @@ handle('robot-link',async(action,data)=>{
   const usbOptions=data?.noStart===true?{noStart:true,wait:0}:undefined;
   // Over the cable these go through the Driver Station link, as over Wi-Fi. link: for what nobody pressed, which does not start the Robot Controller app.
   const overLink=async(task,options,link)=>{if(data?.host!=='usb')return task({});const socket=await new UsbFtcSocket(()=>robotLink.usbLink(link).then(f=>({port:f.link})),options).open();try{return await task({socket});}finally{await socket.close();}};
-  if(action==='debug-install'){const job=debugInstall(data,overLink,usbOptions),done=()=>{if(debugBusy===job)debugBusy=null;};debugBusy=job;job.then(done,done);return job;}
+  if(action==='debug-install'){if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);const job=debugInstall(data,overLink,usbOptions),done=()=>{if(debugBusy===job)debugBusy=null;};debugBusy=job;job.then(done,done);return job;}
   if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
   // Try again on Calibrate → Camera, when the Robot Controller app is not answering: a press may start it.
   if(action==='rc-start'){if(data?.host==='usb')await robotLink.usbController((await robotLink.usbForward()).serial);return true;}
   // Is the robot's Torque Debug this one? The app has to be up to say.
   if(action==='debug-current'){if(data?.host==='usb')await robotLink.usbLink(usbOptions);return robotLink.debugCurrent(data?.host);}
-  if(action==='check-start'){
+  if(action==='check-start'){if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const check=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-check',update)});robotCheck=check;check.usb=data?.host==='usb';
     check.ended.then(why=>{if(!check.told)emit('robot-link-check',{ended:why});},e=>{if(!check.told)emit('robot-link-check',{error:e.message});}).finally(()=>{if(robotCheck===check)robotCheck=null;});
     return true;}
+  // Calibrate → Servo Test: its own op mode (src/onbot/TorqueServoTest.java), over the USB cable only. The plan's pulses
+  // are written to the robot, the op mode is built if the robot's copy is not this one (only its own file: no team file is touched
+  // or fixed), then run as a Driver Station runs one. Progress goes to the page as robot-link-servo.
+  if(action==='servo-test-start'){
+    if(data?.host!=='usb')throw Error('The Servo Test runs over the USB cable only.');
+    if(state.page!=='calibrate')throw Error('Open Calibrate → Servo Test first.');
+    if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+    if(robotDebug)throw Error('Live debug is running. Stop it first.');if(robotCheck)throw Error('The guided check is running. Stop it first.');if(servoTest)throw Error('A Servo Test is already running.');
+    robotLink.servoPlanText(data);const say=stage=>emit('robot-link-servo',{stage});
+    say('connecting');await robotLink.usbLink(usbOptions);
+    if(!await robotLink.servoTestCurrent('usb')){say('building');const built=await robotLink.send('usb',{[robotLink.SERVO_TEST_FILE]:robotLink.servoTestSource()},{fix:false,backupDir:path.join(app.getPath('userData'),'robot-backups')});
+      if(!built.built)throw Error(robotLink.buildProblem(built.errors));}
+    const live=data.live===true;if(live)servoLive={port:data.port??0,hub:data.hub??0,enable:data.enable!==false,us:Math.round(Number(data.us)||0),seq:0,writing:false,again:false,timer:null};
+    say('plan');await robotLink.servoPlan(live?{port:servoLive.port,hub:servoLive.hub,enable:servoLive.enable,live:true,us:servoLive.us,seq:0}:data);
+    const socket=await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open();
+    if(state.page!=='calibrate'){await socket.close();throw Error('Torque left this page before the test started.');}
+    say('starting');const test=robotLink.runServoTest('usb',{socket,live,steps:live?0:data.steps.length,onUpdate:update=>emit('robot-link-servo',{update})});servoTest=test;
+    if(live)servoLive.timer=setInterval(servoLiveWrite,1000);
+    test.ended.then(why=>emit('robot-link-servo',{ended:why}),e=>emit('robot-link-servo',{error:e.message})).finally(()=>{if(servoTest===test)servoTest=null;if(servoLive){clearInterval(servoLive.timer);servoLive=null;}void socket.close();});
+    return true;}
+  if(action==='servo-test-stop'){servoTest?.stop();return true;}
+  // The hubs on the robot now, for the Servo Test's Hub picker: the Control Hub's own, and any Expansion Hub on its RS485.
+  if(action==='servo-test-hubs'){if(data?.host!=='usb')throw Error('The Servo Test runs over the USB cable only.');await robotLink.usbForward();return (await robotLink.rcHubs('usb')).map(h=>({address:h.moduleAddress,name:h.name,parent:h.parentSerial==='(embedded)'||h.moduleAddress===173,firmware:h.firmwareVersion}));}
+  // The slider moved: 0 (no pulse) to 2500 µs, sent at once.
+  if(action==='servo-test-set'){const us=Math.round(Number(data?.us));if(!(us>=0&&us<=2500))throw Error('A pulse must be 0 to 2500 µs.');if(!servoLive)return false;servoLive.us=us;servoLiveWrite();return true;}
   if(action==='debug-start'){
     if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
@@ -651,6 +692,7 @@ app.whenReady().then(async()=>{
 // Over the cable a stop reaches the robot through the relay, so Torque Debug's stop goes first and the relay last. A hub that does not answer holds quitting up for two seconds at most.
 // USB comes first (src/robot-link.cjs usbPriority, src/ftc.cjs usbHold): the cable takes the robot from a Driver Station on its Wi-Fi and keeps it between uses.
 // Not under test, where the robot is a stand-in that each test connects to by itself (DECK_USB_PRIORITY=1 turns it on there).
-if(process.env.DECK_USB_PRIORITY==='1'||process.env.DECK_HEADLESS!=='1'&&process.env.DECK_USB_PRIORITY!=='0'){robotLink.usbPriority.on=true;usbHold.enable(()=>robotLink.usbLink({noStart:true,wait:0}).then(f=>({port:f.link})));}
-let closing=false;app.on('before-quit',e=>{usbHold.enable(null);usbWatch?.quit();for(const a of Object.values(axons))a.quit();simulation?.stop();robotCheck?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
+const usbFirst=process.env.DECK_USB_PRIORITY==='1'||process.env.DECK_HEADLESS!=='1'&&process.env.DECK_USB_PRIORITY!=='0',usbHoldLink=()=>robotLink.usbLink({noStart:true,wait:0}).then(f=>({port:f.link}));
+if(usbFirst&&!competition){robotLink.usbPriority.on=true;usbHold.enable(usbHoldLink);}
+let closing=false;app.on('before-quit',e=>{usbHold.enable(null);usbWatch?.quit();for(const a of Object.values(axons))a.quit();swyft?.quit();simulation?.stop();robotCheck?.stop();servoTest?.stop();if(closing){robotDebug?.stop();robotLink.stopUsbRelay();return;}e.preventDefault();closing=true;clearInterval(pollTimer);
   void Promise.all([Promise.race([Promise.all([debugStop(),robotCheck?.ended.catch(()=>{})]),delay(2000)]),closeRobot().catch(()=>{})]).finally(()=>{robotLink.stopUsbRelay();app.quit();});});app.on('window-all-closed',()=>app.quit());

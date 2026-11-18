@@ -1,6 +1,6 @@
 'use strict';
 // A camera on the Control Hub's USB in the real app, against a stubbed hub:
-//  A. Debug comes first and opens, Camera has a tab only for a camera or when asked for, and Calibrate is a step of its own;
+//  A. Calibrate's row: Electronics, Mechanisms, Camera and Real run, then Debug and the programmers; Debug's link opens Camera on the simulated webcam;
 //  B. a scan's camera reaches Configure and Camera, a new scan redraws both with nothing lost, and neither writes to the robot until Save;
 //  C. Add, rename and remove, and the XML Save sends;
 //  D. the Robot Controller restarting after a scan does not hide the camera from Configure while Setup still shows it;
@@ -39,24 +39,25 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     const u=()=>app.evaluate(()=>global.__u),text=s=>page.locator(s).first().innerText();
     const toCalibrate=async()=>{await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');};
     const toConfigure=async()=>{await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');};
-    // Calibrate is its own step and hides Debug's row of tabs, so Camera is reached through Debug while it shows.
-    const leave=()=>page.click('#calibrate-view [data-flow=calibrate]'),camTab=async()=>{if(await page.getAttribute('#cal-tab-camera','aria-selected')!=='true')await page.click('#calibrate-view [data-flow=debug]');await page.evaluate(()=>document.querySelector('#cal-tab-camera').click());};
+    // Camera is Calibrate's step 3, reached straight from the row; leaving it for Electronics is leaving it for Calibrate's own tabs.
+    const leave=()=>page.click('#calibrate-view [data-flow=electronics]'),camTab=async()=>{await page.evaluate(()=>document.querySelector('#cal-tab-camera').click());};
     const until=async(what,fn,ms=20000)=>{for(const end=Date.now()+ms;;await page.waitForTimeout(100)){if(await fn())return;if(Date.now()>end)assert.fail('timed out: '+what);}};
 
     // A. The order, and where it opens. Debug's own start and Auto-configure's are held off here: this is the Camera tab by itself.
     // Debug and Camera wait for a robot with an active configuration: Setup reads it first. Nothing is plugged into the hub's USB yet.
     await page.evaluate(()=>{window.deckHoldAuto=true;});await app.evaluate(()=>{global.__u.others=[];});
-    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);await until('the first scan',async()=>(await u()).scans>=1);
-    await toCalibrate();await page.waitForSelector('#cal-gate',{state:'hidden'});
-    // Camera is calibrated, so its tab is in Calibrate's row, after Electronics and Mechanisms. Debug has no row of tabs.
-    assert.deepEqual(await page.$$eval('#cal-subtabs [role=tab]',l=>l.map(b=>[b.id,b.textContent])),[['cal-tab-electronics','Electronics'],['cal-tab-mechanisms','Mechanisms'],['cal-tab-camera','Camera']]);
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);await until('the first scan',async()=>(await u()).scans>=1);
+    // Calibrate itself opens on Electronics, whose helper starts Torque Debug by itself (save-flow-app and usb-devices-ui cover that). This is the
+    // Camera tab by itself, so the first visit goes straight to Debug's step, where the hold above keeps it off.
+    await page.evaluate(()=>document.querySelector('#calibrate-view [data-flow=debug]').click());await page.waitForFunction(()=>state.page==='calibrate');await page.waitForSelector('#cal-gate',{state:'hidden'});
+    // Calibrate's row: four numbered steps with Camera third, then Debug and the programmers, unnumbered.
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.map(b=>b.dataset.flow)),['electronics','tune','camera','realrun','debug','axon','swyft','servotest']);
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.filter(b=>b.querySelector('.flow-num')).map(b=>[b.id,b.textContent])),[['cal-tab-electronics','1Electronics'],['cal-tab-mechanisms','2Mechanisms'],['cal-tab-camera','3Camera'],['cal-tab-realrun','4Real run']]);
     const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id)),shown=()=>page.$$eval('#calibrate-view [data-cal-top]',l=>l.filter(b=>!b.hidden).map(b=>b.dataset.calTop));
-    assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','it opens on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);
-    assert.equal(await page.locator('[data-cal-top-tabs]').isHidden(),true,'Debug has no row of tabs');assert.equal(await page.locator('#cal-subtabs').isHidden(),true,'and Calibrate\u2019s row is not on Debug');
-    // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, in Calibrate's Camera tab.
+    assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);
+    // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, in Calibrate's Camera step.
     assert.equal(await page.locator('#cal-sim-cam').isVisible(),true);await page.click('#cal-sim-cam [data-sim-cam]');assert.deepEqual(await opened(),['cal-panel-camera']);assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'the row shows, with Camera picked');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'false');
-    assert.equal(await page.getAttribute('#calibrate-view [data-flow=calibrate]','data-here'),'','Camera is part of the Calibrate step');
-    assert.deepEqual(await page.$$eval('#cal-subtabs [role=tab]',l=>l.filter(b=>!b.hidden&&b.offsetParent).map(b=>b.id)),['cal-tab-electronics','cal-tab-mechanisms','cal-tab-camera'],'all three show');
+    assert.equal(await page.getAttribute('#calibrate-view [data-flow=camera]','data-here'),'','Camera is the step marked');
     // Nothing a student has to read first, and no words about how it works.
     const cameraWords=async()=>{const t=await page.locator('#cal-camera').evaluate(e=>e.textContent);assert.doesNotMatch(t,/see what a webcam sees/i);assert.doesNotMatch(t,/live debug|torque debug|decimation/i,t.slice(0,400));};await cameraWords();
 

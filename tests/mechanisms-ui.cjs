@@ -1,5 +1,5 @@
 'use strict';
-// Simulate → Mechanisms in the real app, on the first run's Test setup: only what a new student needs.
+// Setup → Mechanisms in the real app, on the first run's Test setup: only what a new student needs.
 //  A. no log of what the CAD held, no Configure from Setup, no range test, no Actuators sections; one Feeder and one Turret card;
 //  B. every device row is the same few choices in the same order, with one sensor list that starts at No sensor;
 //  C. a ramp has one fold time, and a range from 0 that a negative number flips;
@@ -18,6 +18,8 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechani
     await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);await page.setViewportSize({width:1280,height:900});
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');
     await page.waitForFunction(()=>/Deck test robot.*fitted/.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
+    // Mechanisms is Setup's step 2 now.
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');
     await page.click('#sim-setup-step-mechanisms');await page.waitForTimeout(800);
     // A. What is gone.
     assert.deepEqual(await page.locator('.sim-mech-toolbar button').allTextContents(),['+ Add mechanism','Configure from CAD']);
@@ -28,7 +30,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechani
     await page.click('#mech-from-cad');await page.waitForFunction(()=>/From your CAD|Nothing in your CAD/.test(document.querySelector('#mech-list-status').textContent),null,{timeout:60000});assert.ok((await page.locator('#mech-list-status').textContent()).length<220,'one line');
     {const tiles=await page.locator('#mech-rail .sim-tile b').allTextContents();for(const want of ['Chassis','Feeder','Preloads','Moving parts'])assert.ok(tiles.includes(want),`${want} tile: ${tiles}`);assert.ok(tiles.some(t=>t.startsWith('Turret 1 · '))&&!tiles.includes('Turret'),`the turret is named for its shooter: ${tiles}`);
       // The turret carries its shooter: the turret is the parent tile, the shooter rides under it.
-      assert.equal(await page.locator('[data-garage="turret:0"].sim-tile-parent:not(.sim-tile-sub)').count(),1,'the turret is a parent');assert.equal(await page.locator('[data-garage="shooter:0"].sim-tile-sub').count(),1,'its shooter rides under it');assert.equal(await page.locator('#simulation-view .sim-tile[aria-pressed=true]').count(),1);}
+      assert.equal(await page.locator('[data-garage="turret:0"].sim-tile-parent:not(.sim-tile-sub)').count(),1,'the turret is a parent');assert.equal(await page.locator('[data-garage="shooter:0"].sim-tile-sub').count(),1,'its shooter rides under it');assert.equal(await page.locator('#setup-view .sim-tile[aria-pressed=true]').count(),1);}
     await tile('feeder');assert.equal(await page.locator('#mech-feeder').isVisible(),true,'one part at a time');assert.equal(await page.locator('#mech-drive').isVisible(),false);assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight),'one screen');await page.screenshot({path:path.join(out,'garage.png')});
     await tile('turret:0');assert.equal(await page.locator('#mech-turret').isVisible(),true);assert.match(await page.locator('#mech-gears').textContent()+await page.locator('#mech-gear-add').textContent(),/gear pair/i);await tile('moving');assert.equal(await page.locator('#mech-joints').isVisible(),true);await page.screenshot({path:path.join(out,'moving.png')});
     assert.equal(await page.locator('[data-part^="shooter"] [data-wire-row*="indexer"]').count(),0,'the feeder is not under a shooter');assert.equal(await page.locator('[data-part^="shooter"] [data-wire-row*="turretMotor"]').count(),0,'the turret is not under a shooter');

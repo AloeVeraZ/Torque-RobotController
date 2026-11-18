@@ -1,18 +1,19 @@
 {
   "name": "deck-driver-station",
   "productName": "Torque",
-  "version": "2.4.32",
+  "version": "2.4.33",
   "repository": {
     "type": "git",
     "url": "https://github.com/AloeVeraZ/Torque-RobotController.git"
   },
   "updateChannel": "main",
   "testingReleaseTargets": ["windows"],
-  "releaseName": "V2.1",
+  "mainReleaseTargets": ["windows", "macos-arm64"],
+  "releaseName": "V2.15",
   "bugReportUrl": "",
   "private": true,
   "license": "MIT",
-  "description": "A free driver station and robot toolkit for FIRST Tech Challenge teams: drive a robot, set up and check its hardware, simulate autonomous routes and program Axon servos",
+  "description": "A free driver station and robot toolkit for FIRST Tech Challenge teams: drive a robot, set up and check its hardware, simulate autonomous routes and program Axon and SWYFT servos",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",

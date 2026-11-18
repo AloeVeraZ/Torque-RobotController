@@ -1,0 +1,74 @@
+/* Setup & Calibrate → Servo Test: one page. Drawn with the programmer tabs' classes (ui/axon-programmer.css): chips on top, the
+   setup and the pulse on the left, what the hub reports on the right, one bar at the bottom with the button that starts or stops. */
+.driver-station .flow-steps > .flow-servotest { margin-left: -8px; }
+.servo-test-tab .axon-chips { margin-left: auto; }
+.servo-test-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 8px; min-width: 0; }
+.servo-test-card { display: grid; gap: 18px; align-content: start; min-width: 0; padding: 16px 18px; }
+.servo-test-side { display: grid; gap: 10px; align-content: start; padding: 14px 16px; }
+.servo-test-side .hint { margin: 0; font-size: 11px; line-height: 1.4; }
+.servo-test-side dd[data-tone=good] { color: var(--connected); }
+.servo-test-side dd[data-tone=warn] { color: var(--warning); }
+
+/* Setup: a label column and the choices, one row each. */
+.servo-test-setup { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; gap: 10px 16px; }
+.servo-test-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.servo-test-setup .segmented { max-width: 560px; }
+.servo-test-setup #st-model-row[hidden], .servo-test-label[hidden] { display: none; }
+.servo-test-hub { display: flex; align-items: center; gap: 10px; min-height: 34px; font-size: 13px; }
+.servo-test-hub span:last-child { color: var(--muted); }
+.servo-test-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.servo-test-dot[data-on=true] { background: var(--connected); }
+.servo-test-port { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); }
+.servo-test-ports { display: flex; gap: 4px; }
+.driver-station .servo-test-ports > button { display: grid; place-items: center; width: 34px; height: 34px; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.driver-station .servo-test-ports > button:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
+.driver-station .servo-test-ports > button[aria-pressed=true] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.driver-station .servo-test-ports > button:disabled { opacity: .45; cursor: default; }
+
+/* The pulse: the number now, the slider across, and three equal preset cards under it. */
+.servo-test-pulse { display: grid; gap: 14px; padding-top: 16px; border-top: 1px solid var(--line); }
+.servo-test-readout { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: baseline; column-gap: 8px; }
+.servo-test-readout output { font-size: 48px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.servo-test-readout > span { font-size: 18px; color: var(--muted); }
+.servo-test-readout p { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.servo-test-slider { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.servo-test-slider input { width: 100%; }
+.servo-test-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.driver-station .servo-test-presets > .axon-card { justify-items: center; align-content: center; gap: 2px; min-height: 64px; text-align: center; }
+.servo-test-presets > .axon-card strong { justify-content: center; font-size: 15px; }
+.servo-test-presets > .axon-card span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.driver-station .servo-test-presets > .axon-card[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.servo-test-tab .axon-bar > button[hidden] { display: none; }
+@media (min-width: 861px) and (min-height: 560px) {
+  .servo-test-tab { flex: 1; min-height: 0; }
+  /* Both cards get the room left above the bar and scroll inside it, as the Axon tab's do: on a short window Hub reports
+     would otherwise set the row's height and push the cards under the bar. */
+  .servo-test-main { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .servo-test-card, .servo-test-side { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (max-width: 960px) { .servo-test-main { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .servo-test-setup { grid-template-columns: minmax(0, 1fr); } .servo-test-port { flex-wrap: wrap; } }
+
+/* Connected to: the Control Hub on USB-C, and any Expansion Hubs on it. Range: from and to, inside the hub's 500-2500 µs. */
+.servo-test-hub .segmented { flex: 1; max-width: 560px; }
+.servo-test-hub .segmented small { margin-left: 6px; font-size: 10px; font-weight: 600; color: var(--muted); }
+.servo-test-none { font-size: 13px; color: var(--muted); }
+.servo-test-range { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 13px; }
+.servo-test-range label { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--muted); }
+.servo-test-range select { min-height: 34px; min-width: 110px; }
+.servo-test-range > span { color: var(--muted); }
+.driver-station .servo-test-presets > .axon-card:disabled { opacity: .4; }
+/* The range's labels sit beside their dropdowns, at control height (the app's labels stack by default). */
+.driver-station .servo-test-range label { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.driver-station .servo-test-range select { width: auto; min-width: 110px; height: 36px; min-height: 0; padding-top: 0; padding-bottom: 0; font-size: 13px; }
+
+/* Even spacing: the bar uses the cards' own two columns and gap, so Start sending sits exactly under Hub reports, as wide; both
+   cards share one padding, and the tab's rows the same gap. */
+.servo-test-tab { gap: 12px; }
+.servo-test-main { gap: 12px; }
+.driver-station .servo-test-card, .driver-station .servo-test-side { padding: 18px 20px; }
+.driver-station .servo-test-tab .axon-bar { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: stretch; }
+.driver-station .servo-test-tab .axon-bar > .axon-banner { min-width: 0; }
+.driver-station .servo-test-tab .axon-bar > #servo-test-go { width: 100%; min-height: 56px; margin: 0; }
+@media (max-width: 960px) { .driver-station .servo-test-tab .axon-bar { grid-template-columns: minmax(0, 1fr) auto; } }

@@ -77,3 +77,11 @@ test('tips that name a Route options setting say where it is and carry it, so th
   const named=tips.filter(t=>/Optimize|Space around obstacles/.test(t.text));assert.ok(named.length>=1,tips.map(t=>t.text).join('\n'));
   for(const t of named){assert.match(t.text,/Path planning → Route options/);assert.ok(['optimize','clearance'].includes(t.setting),t.text);}
 });
+test('a leg the route gave up on just short of its end is reported once, with what to change',()=>{
+  const f=frames(),said='Leg 3 stopped 2.7 in short of its end point';for(const x of f.slice(-5))x.telemetry.blocked=said;
+  f.at(-1).result.truth={x:87.3,y:72,heading:0};
+  const r=R.build(f,{pins,defaultPower:1,autoSeconds:30});assert.equal(r.level,'warn');
+  // One line for it: the plain "stopped away from the last end point" line would say the same thing twice.
+  assert.equal(r.issues.length,1);assert.match(r.issues[0].text,/^Path 3 stopped 2\.7 in short of its end point: something the robot cannot push/);assert.equal(r.issues[0].pin,2);
+  assert.match(r.tips[0].text,/Game pieces resting against a wall/);assert.equal(r.tips[0].pin,2);
+});

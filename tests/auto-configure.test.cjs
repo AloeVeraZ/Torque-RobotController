@@ -113,10 +113,18 @@ test('Debug: a Limelight says how it is',()=>{
   const NET=`1-1|1d6b|0104|00|0100|480|1|5|Some|Gadget||100mA|80|0|02/06/00/cdc_ether/eth0,`,LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'EthernetOverUsb:eth0:172.29.0.23',status:{name:'limelight'}},list=usb([NET],{limelight:LIME});
   assert.match(U.liveHtml(list,{lime:{temp:48.52,fps:90,pipelineIndex:2}}),/rs-pill ok">Answering · 48\.5 °C · 90 frames a second · pipeline 2/);assert.match(U.liveHtml(list,{lime:null}),/rs-pill warn">Not answering/);assert.match(U.liveHtml(list,{}),/Asking it how it is/);
 });
-test('Debug is step 3 and Calibrate step 4, with a camera tab only for a camera, and USB devices inside Debug, not Electronics',()=>{
-  const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),tops=[...src.matchAll(/data-cal-top="(\w+)"/g)].map(m=>m[1]);assert.deepEqual(tops,['debug','calibrate','camera'],'Camera is in Calibrate\u2019s row');assert.match(src,/id="cal-tab-mechanisms"[^>]*>Mechanisms<\/button><button type="button" role="tab" id="cal-tab-camera" data-cal-top="camera" aria-controls="cal-panel-camera">Camera</);assert.match(src,/data-flow="debug"><span class="flow-num" aria-hidden="true">3<\/span>Debug/);assert.match(src,/data-flow="calibrate"><span class="flow-num" aria-hidden="true">4<\/span>Calibrate/);assert.doesNotMatch(src,/cal-panel-usb|cal-tab-usb/);
+test('Setup and Calibrate each have their own steps; Debug and the programmers sit beside Calibrate\u2019s, and USB devices are inside Debug, not Electronics',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');
+  // Calibrate: Electronics, Mechanisms, Camera, Real run, numbered; then Debug (no number) and the programmers.
+  const cal=[...src.matchAll(/flowStep_\('cal-tab-(\w+)','(\w+)',(\d),'([^']+)'/g)].map(m=>[m[1],+m[3],m[4]]);
+  assert.deepEqual(cal,[['electronics',1,'Electronics'],['mechanisms',2,'Mechanisms'],['camera',3,'Camera'],['realrun',4,'Real run']]);
+  assert.deepEqual([...src.matchAll(/class="flow-(\w+) flow-tool" data-flow="(\w+)"/g)].map(m=>m[2]),['debug','axon','swyft','servotest'],'Debug, then the programmers and Servo Test');
+  assert.match(src,/id="cal-tab-debug" class="flow-debug flow-tool" data-flow="debug" data-cal-top="debug"/,'Debug has no number');
+  assert.match(src,/class="flow-axon flow-tool" data-flow="axon" data-cal-top="axon"><span class="flow-new">New<\/span>Axon Programmer/);
+  // Setup: Robot, Mechanisms (or a kit's Chassis), Hubs, Configure.
+  assert.deepEqual([...src.matchAll(/flowStep_\('(?:sim-setup-step-\w+)?','(\w+)',\d,'([^']+)'/g)].map(m=>[m[1],m[2]]),[['robot','Robot'],['mechanisms','Mechanisms'],['controller','Chassis'],['setup','Hubs'],['configure','Configure']]);
+  assert.doesNotMatch(src,/cal-panel-usb|cal-tab-usb/);
   const electronics=src.slice(src.indexOf('id="cal-panel-electronics"'),src.indexOf('id="cal-panel-mechanisms"')),debug=src.slice(src.indexOf('id="cal-panel-debug"'),src.indexOf('id="cal-panel-calibrate"'));assert.doesNotMatch(electronics,/id="cal-usb"/);assert.match(debug,/id="cal-usb"/);assert.match(src,/DeckUsbDevices\.createLive/);
-  assert.match(src,/class="flow-axon" data-flow="axon"><span class="flow-new">New<\/span><span class="flow-num" aria-hidden="true">5<\/span>Axon Programmer/);
 });
 
 // ---- What the review found.

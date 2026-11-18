@@ -40,7 +40,7 @@ const ports=(...lines)=>parseUsb([INSIDE,...lines].join('\n'));
     await soon('it is on the robot',async()=>{const c=RobotConfig.parse((await sim()).xml);return c.devices.some(d=>d.tag==='Webcam'&&d.serial==='Ucamera001')&&c.devices.some(d=>d.tag==='ControlHubImuBHI260AP'&&d.bus===0);});assert.ok(RobotConfig.parse((await sim()).xml).devices.some(d=>d.name==='arm'),'what was there stays');await soon('the robot restarted',async()=>(await sim()).restarts===before+1);
     // ---- It is already going, on this page, before anyone gets to Calibrate.
     await soon('it starts in the background',running);assert.equal((await sim()).builds,1,'no second build');
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','it opens on Debug');assert.match(await page.textContent('[data-debug-start]'),/Stop live debug/,'already going');
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'true','it opens on Electronics');assert.match(await page.textContent('[data-debug-start]'),/Stop live debug/,'already going');
     // A webcam is on the hub, so Camera has its tab beside Debug.
     await page.evaluate(()=>document.querySelector('#cal-tab-camera').click());
     const took=await soon('the picture',picture,8000);console.log(`picture ${took} ms after opening Camera`);await page.screenshot({path:path.join(out,'a-camera.png')});

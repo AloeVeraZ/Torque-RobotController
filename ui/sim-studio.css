@@ -21,8 +21,8 @@
 #sim-panel-video .studio-transport button{min-width:36px;padding:4px 8px}
 #sim-panel-video #studio-play{min-width:76px}
 .studio-time{font:600 13px var(--mono);font-variant-numeric:tabular-nums;margin-left:6px;white-space:nowrap}
-.studio-status{margin:0 0 0 8px;font-size:12px;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.studio-side{display:flex;flex-direction:column;gap:2px;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:10px 12px 12px}
+.studio-status{margin:0 0 0 8px;font-size:12px;line-height:1.25;min-width:0;flex:1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.studio-side{display:flex;flex-direction:column;gap:2px;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-y:auto;overscroll-behavior:contain;padding:10px 12px 12px}
 .studio-side-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}.studio-side-tabs [hidden]{display:none}
 .driver-station .studio-side-tabs button{min-height:30px;padding:4px 10px;font-size:12px;font-weight:600;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--muted)}
 .driver-station .studio-side-tabs button[aria-selected=true]{background:var(--text);color:var(--bg);border-color:var(--text)}
@@ -78,7 +78,7 @@
 .studio-tools{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 #sim-panel-video .studio-tools button{min-height:28px;padding:2px 9px}
 .studio-sep{width:1px;height:20px;background:var(--line-strong);margin:0 3px}
-.studio-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;border-radius:6px;background:var(--well)}
+.studio-scroll{overflow-x:auto;overflow-y:hidden;border-radius:6px;background:var(--well)}
 .studio-tracks{position:relative;min-width:100%;user-select:none;-webkit-user-select:none;touch-action:none}
 .studio-row{display:flex;height:36px;border-bottom:1px solid var(--line)}
 .studio-row:last-of-type{border-bottom:0}

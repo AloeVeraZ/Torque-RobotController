@@ -31,7 +31,7 @@
     // Odometry as mounted (Setup → Robot controller → Odometry): pod positions and directions, the Pinpoint's pod
     // offsets, directions and pod type, and the OTOS's position, rotation and scalars.
     const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(robot);
-    return {localization,imu:named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},drive:{kind:tank?'tank':'mecanum',ticksPerInch:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
+    return {localization,imu:named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},drive:{kind:tank?'tank':'mecanum',ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
       ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
@@ -396,6 +396,8 @@ public abstract class RouteActions {
         public double duration;
         /** The hive cell to aim at: 0 the cell up at the start, 1 the other cell (up after the first tip). */
         public int cell;
+        /** True while an Intake step of the same list is running: a Shoot then feeds without waiting for pieces to move up. */
+        public boolean withIntake;
     }
 
     protected HardwareMap hardwareMap;
@@ -434,20 +436,24 @@ ${seqs.length?`
     // ---- Pins and paths with several steps. At a pin they run one after another; while driving, together from the
     // start of the path. Each runs for its set time (0: until its method returns true; the whole path while driving).
 ${seqs.map((q,k)=>`    private final Steps steps${k + 1} = new Steps(${q.together}, new String[] {${q.steps.map(x=>javaString(x.action)).join(', ')}},
-        new double[] {${q.steps.map(x=>javaNumber(x.seconds||0)).join(', ')}}, new int[] {${q.steps.map(x=>x.cell?1:0).join(', ')}});`).join('\n')}
+        new double[] {${q.steps.map(x=>javaNumber(x.seconds||0)).join(', ')}}, new int[] {${q.steps.map(x=>x.cell?1:0).join(', ')}}, new boolean[] {${q.steps.map(x=>!!mech&&(globalThis.DeckMechanisms||require('./sim-mechanisms.js')).action(x.action).kind==='intake').join(', ')}});`).join('\n')}
 
     private static final class Steps {
         final boolean together;
         final String[] names;
         final double[] seconds;
         final int[] cells;
+        /** Which steps are the simulator's Intake. At a pin an Intake with no time of its own stays on for the steps after it. */
+        final boolean[] intakes;
+        boolean keepIntake;
         final double[] started;
         final boolean[] done;
         final Step step = new Step();
         int at;
 
-        Steps(boolean together, String[] names, double[] seconds, int[] cells) {
+        Steps(boolean together, String[] names, double[] seconds, int[] cells, boolean[] intakes) {
             this.together = together;
+            this.intakes = intakes;
             this.names = names;
             this.seconds = seconds;
             this.cells = cells;
@@ -462,9 +468,13 @@ ${seqs.map((q,k)=>`    private final Steps steps${k + 1} = new Steps(${q.togethe
             s.at = 0;
             java.util.Arrays.fill(s.started, -1);
             java.util.Arrays.fill(s.done, false);
+            s.keepIntake = false;
         }
         if (s.together) {
             boolean all = true;
+            // Shooting while the intake runs: the Shoot feeds at once and for the whole path.
+            s.step.withIntake = false;
+            for (int i = 0; i < s.names.length; i++) s.step.withIntake |= s.intakes[i] && !s.done[i] && !(s.seconds[i] > 0 && step.elapsed >= s.seconds[i]);
             for (int i = 0; i < s.names.length; i++) {
                 if (!s.done[i]) s.done[i] = runStep(s, i, step, step.elapsed, step.first);
                 all &= s.done[i];
@@ -474,10 +484,15 @@ ${seqs.map((q,k)=>`    private final Steps steps${k + 1} = new Steps(${q.togethe
         while (s.at < s.names.length) {
             int i = s.at;
             boolean first = s.started[i] < 0;
-            if (first) s.started[i] = step.elapsed;
+            if (first) s.started[i] = step.elapsed;${mech?`
+            // An Intake with no time of its own stays on for the steps after it ("Intake, Shoot for 2 s" shoots while intaking).
+            if (s.intakes[i] && s.seconds[i] <= 0) { s.keepIntake = true; s.at++; continue; }
+            if (s.keepIntake) mech.intake(true);`:''}
+            s.step.withIntake = s.keepIntake;
             if (!runStep(s, i, step, step.elapsed - s.started[i], first)) return false;
             s.at++;
-        }
+        }${mech?`
+        if (s.keepIntake) { mech.intake(false); s.keepIntake = false; }`:''}
         return true;
     }
 
@@ -942,7 +957,7 @@ ${C.join('\n').replace(/\n+$/,'')}
 ${fields.join('\n')}
     private final ElapsedTime clock = new ElapsedTime();
     private double feedStart = -1, spinStart = -1, lastIntake = -1e9${servoTurrets.length?`, trackedAt = 0${servoTurrets.map(x=>`, ${x.field}Degrees = 0, ${x.field}At = 0`).join('')}`:''};
-    private boolean spinning, shot;
+    private boolean spinning, shot, streamed;
 
     public void init(HardwareMap map) {
 ${init.join('\n')}
@@ -1089,15 +1104,17 @@ ${feedLines.join('\n')}
     /** One call of "Shoot N" (count 0: every storage slot). Returns true once all N shots have had time. */
     public boolean shoot(int count, RouteActions.Step step) {${shooter?`
         int want = count > 0 ? count : STORAGE;
-        if (step.first) { feedStart = -1; shot = false; }
+        if (step.first) { feedStart = -1; shot = false; streamed = false; }
+        // With the intake running alongside (step.withIntake) nothing waits for pieces to move up: each is shot as it arrives.
+        if (step.withIntake) streamed = true;
         if (shot) return true;
         spin(true);
         aim(step.pose, step.cell);
         double now = clock.seconds();
         // Start once spun up and on target, and pieces from the last intake have moved up.
-        if (feedStart < 0 && ready() && aimed() && now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS) feedStart = now;
+        if (feedStart < 0 && ready() && aimed() && (step.withIntake || now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS)) feedStart = now;
         // Shooting for a set time keeps feeding until the route's last call; otherwise long enough for N shots.
-        double window = step.duration > 0 ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
+        double window = step.duration > 0 || streamed && step.moving ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
         boolean feeding = feedStart >= 0 && now - feedStart < window;
         feeders(feeding && !step.last, feedStart >= 0 ? now - feedStart : 0);
         if (feedStart >= 0 && !feeding) shot = true;

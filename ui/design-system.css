@@ -66,7 +66,7 @@
 @media (max-width: 860px) { #theme-cycle { display: none; } }
 
 /* Polish for every screen but Drive. One focus ring, read-only numbers that do not look like boxes, tidy action rows. */
-:is(#setup-view,#calibrate-view,#simulation-view,#settings-view,#bug-dialog) :is(button,a,select,textarea,input:not(.num-slider),[tabindex]):focus-visible{outline:2px solid var(--text);outline-offset:1px;box-shadow:none}
+:is(#setup-view,#calibrate-view,#simulation-view,#settings-view,#bug-dialog,#sim-dialogs) :is(button,a,select,textarea,input:not(.num-slider),[tabindex]):focus-visible{outline:2px solid var(--text);outline-offset:1px;box-shadow:none}
 .driver-station #bug-dialog :is(input,textarea):focus{box-shadow:none}
 #rs-hubs .sim-wire-card{gap:2px;padding:var(--space-3)}#rs-hubs .sim-wire-card .hint{margin:0 0 4px}#rs-hubs .sim-wire-stepper{justify-content:flex-start;height:auto;border:0;background:none;padding:0;min-height:0}#rs-hubs .sim-wire-stepper>output{flex:none;justify-content:flex-start;font-size:26px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;background:none;border:0;padding:0;min-height:0}
 .driver-station .cal-debug-actions>button{flex:0 1 auto;padding-inline:18px}
@@ -95,7 +95,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 h1, h2, h3, dialog h2, .cal-card h2 { letter-spacing: -.02em; font-weight: 600; }
 h1 { font-weight: 700; letter-spacing: -.028em; }
 :where(.driver-station) :is(.hint, small) { line-height: 1.45; }
-html { scrollbar-width: thin; }
+html {}
 
 /* The bar is a material: what scrolls under it shows through, blurred. */
 body.driver-station > header { background: var(--bar); border-bottom: .5px solid var(--line-strong); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
@@ -113,7 +113,7 @@ body.driver-station > header { background: var(--bar); border-bottom: .5px solid
 /* Fields: rounded, quiet until used; focus is the system's soft ring. */
 .driver-station :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea) { border-radius: var(--radius-control); }
 .driver-station :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); outline: none; }
-:is(#setup-view, #calibrate-view, #simulation-view, #settings-view, #bug-dialog) :is(button, a, select, textarea, input:not(.num-slider), [tabindex]):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+:is(#setup-view, #calibrate-view, #simulation-view, #settings-view, #bug-dialog, #sim-dialogs) :is(button, a, select, textarea, input:not(.num-slider), [tabindex]):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
 .driver-station :is(input[type=checkbox], input[type=radio], input[type=range]) { accent-color: var(--accent); }
 /* A switch that is on is green, as on every Apple device. */
 .driver-station .cal-switch[aria-checked=true] .cal-switch-track, .driver-station .axon-toggle input:checked { background: var(--connected); }
@@ -159,3 +159,135 @@ dialog::backdrop { background: var(--backdrop); }
 .sim-pin-row.selected .sim-badge { background: var(--accent); color: var(--on-accent); }
 .sim-mech-cat[aria-selected=true], .sim-mech-src[aria-pressed=true], .driver-station .studio-side-tabs button[aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .driver-station .check-row input { accent-color: var(--accent); }
+
+/* ---- Refinement pass (2026-11-17) --------------------------------------------------------------------------------------
+   One geometry for the whole app: controls are 32 (compact), 36 (regular) or 44 (touch and forms) tall, corners come from
+   the radius tokens, section labels are sentence case, and every scroll area shows the same thin, rounded thumb. */
+
+/* Scrollbars: one quiet thumb everywhere, no arrow buttons. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { min-height: 32px; border: 3px solid transparent; border-radius: 999px; background: var(--scrollbar-thumb) padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* App tabs: a 32 px capsule centred in the bar, with the full bar height still clickable. */
+body.driver-station > header nav { align-items: center; gap: 2px; }
+body.driver-station > header nav .tab { position: relative; isolation: isolate; min-height: 44px; height: 44px; padding: 0 14px; border-radius: 0; background: none; }
+body.driver-station > header nav .tab::before { content: ''; position: absolute; inset: 50% 0 auto; height: 32px; translate: 0 -50%; border-radius: 9px; background: transparent; z-index: -1; transition: background-color var(--dur) var(--ease); }
+body.driver-station > header nav .tab:hover::before { background: var(--track); }
+body.driver-station > header nav .tab.active, body.driver-station > header nav .tab.active:hover { background: none; color: var(--text); }
+body.driver-station > header nav .tab.active::before { background: var(--raised); box-shadow: 0 0 0 .5px var(--line-strong); }
+:root[data-theme=light] body.driver-station > header nav .tab.active::before { background: var(--thumb); box-shadow: 0 0 0 .5px #0000001a, 0 1px 3px #0000001f; }
+@media (prefers-color-scheme: light) { :root:not([data-theme=dark]) body.driver-station > header nav .tab.active::before { background: var(--thumb); box-shadow: 0 0 0 .5px #0000001a, 0 1px 3px #0000001f; } }
+body.driver-station > header nav .tab:focus-visible { outline: 0; }
+body.driver-station > header nav .tab:focus-visible::before { box-shadow: 0 0 0 3px var(--ring); }
+body.driver-station > header .header-right > :is(.more, #theme-cycle, #bug-quick) { border-radius: var(--radius-control); }
+
+/* The robot bar: the picker, New and the file buttons share one 48 px height, one border and one corner. */
+.driver-station .sim-setup-bar { align-items: stretch; gap: var(--space-2); }
+.driver-station .sim-setup-bar > .sim-setup-label { align-self: center; }
+.driver-station .sim-setup-bar > .hint { align-self: center; }
+.driver-station .sim-setup-current { min-height: 48px; padding: 4px 12px 4px 14px; border-color: var(--line-strong); border-radius: var(--radius-control); }
+.driver-station .sim-setup-bar .sim-setup-actions { align-items: stretch; padding: 3px; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--control); }
+.driver-station .sim-setup-bar .sim-setup-actions > button { min-height: 40px; padding: 0 14px; border-radius: var(--radius-detail); }
+
+/* Buttons: one corner, no stray outlines; a secondary button is always the quiet fill. */
+.driver-station :is(#setup-view, #calibrate-view, #simulation-view, #settings-view, dialog) button.secondary:not([aria-pressed=true], [aria-selected=true], [data-state]) { border: 0; box-shadow: none; }
+.driver-station :is(#setup-view, #calibrate-view, #simulation-view) :is(.primary, .secondary) { border-radius: var(--radius-control); }
+.driver-station .sim-robot-cad .button-row > button, .driver-station .sim-robot-cad [data-assign-side] { border-radius: var(--radius-control); }
+/* A single main action in a card sits at its natural width, not stretched across the page. */
+.driver-station .cal-mech-sim .button-row { justify-content: flex-start; }
+.driver-station .cal-mech-sim .button-row > .primary { flex: none; min-width: 160px; min-height: var(--h-md); padding: 0 20px; }
+
+/* Section labels: sentence case, 12 px, muted, the same space above and below everywhere. */
+.driver-station :is(.sim-mech-label, .cal-group-title, .cal-port-group > h4, .cal-measures li.cal-group, .axon-group, .axon-side-title, .ce-heading, .ce-menu h4, .sim-run-timing h3, .sim-pop-label, .cal-elec-slots thead th, .sim-stats dt) {
+  font-size: var(--text-sm); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.driver-station :is(.sim-mech-label, .cal-group-title, .cal-port-group > h4) { margin: var(--space-4) 0 var(--space-2); }
+.driver-station .sim-run-timing h3 { margin: var(--space-3) 0 var(--space-2); }
+
+/* Segmented controls: a 3 px track, thumbs that fill it, one height per size. */
+.driver-station :is(.sim-view-controls, .segmented) > button { border-radius: var(--radius-detail); }
+.driver-station .sim-toolbar :is(#sim-hitboxes, .sim-run-buttons > button) { min-height: var(--h-md); height: var(--h-md); padding: 0 14px; }
+
+/* Lists: room between a list's note and its first section. */
+.driver-station .cal-elec-saved { margin: 2px 0 var(--space-3); }
+.driver-station .cal-elec-list > h3, .driver-station .sim-garage > h3 { margin: var(--space-3) 0 var(--space-2); }
+.driver-station .cal-elec-list > .cal-elec-saved + h3 { margin-top: var(--space-2); }
+/* Mechanism tiles: the plug state stays on one line with its text. */
+.driver-station .sim-tile .sim-tile-text small { overflow-wrap: normal; }
+.driver-station .sim-tile-sub .sim-tile-text small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Live debug's three steps: the number and its name centred on one line. */
+.driver-station .cal-debug-steps li { min-height: 52px; padding: 10px 14px; border-radius: var(--radius-control); }
+.driver-station .cal-debug-steps li > span:empty { display: none; }
+.driver-station .cal-debug-steps li:has(> span:empty)::before { grid-row: auto; }
+
+/* Real run report fills its column like the other Calibrate pages; its fields keep one rhythm. */
+.driver-station .rr { max-width: none; }
+.driver-station .rr-grid { gap: var(--space-3) var(--space-3); margin-bottom: var(--space-3); }
+.driver-station .rr-f { margin: 0; gap: 6px; color: var(--muted); font-size: var(--text-sm); font-weight: 600; }
+
+/* Run & review: the transport sits flush with the timing column and the pose reads under the field, not the page. */
+.sim-workspace #simulation-view[data-tab=run] .sim-run-buttons { justify-content: flex-start; }
+.sim-workspace #simulation-view[data-tab=run] .sim-field-footer { padding-left: var(--sim-timing-column, 262px); }
+.driver-station .sim-run-timing #sim-run { white-space: nowrap; padding-inline: 10px; }
+.driver-station .sim-tile-text small > em[data-wired] { display: block; margin: 1px 0 0; white-space: nowrap; }
+
+/* The ⋮ menu: icons and the two check marks share one 16 px column; a quiet line sets Exit apart; z-order from the tokens. */
+.driver-station .menu { z-index: var(--z-menu); width: 236px; }
+.driver-station .menu button { gap: 10px; min-height: 40px; padding: 0 10px; }
+.driver-station .menu :is(#menu-keyboard-check, #menu-competition-check) { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
+.driver-station .menu button[aria-checked=true] :is(#menu-keyboard-check, #menu-competition-check) { color: var(--accent); }
+.driver-station .menu button:hover :is(#menu-keyboard-check, #menu-competition-check) { color: inherit; }
+.driver-station .menu .menu-version { margin: 0 0 4px; padding: 6px 10px 10px; border-bottom: .5px solid var(--line-strong); font-size: var(--text-sm); line-height: 1.4; color: var(--muted); }
+.driver-station .menu #menu-quit { margin-top: 6px; position: relative; }
+.driver-station .menu #menu-quit::before { content: ''; position: absolute; inset: -4px 6px auto; height: .5px; background: var(--line-strong); }
+dialog { z-index: var(--z-dialog); }
+/* List rails keep their scrollbar's room whether or not they scroll, so tiles line up from tab to tab. */
+@media (min-width: 861px) and (min-height: 560px) { #calibrate-view .cal-elec-list { scrollbar-gutter: stable; } }
+/* Settings' two columns each keep room for their own scrollbar, so the cards stay the same width and the gutters match. */
+.driver-station #settings-view :is(.setup-left, .setup-right) { scrollbar-gutter: stable; }
+/* Notes inside a side panel read like the hints around them: 12 px on the well, the control corner. */
+.driver-station .sim-field-official { margin: var(--space-3) 0; padding: 10px 12px; border: 0; border-radius: var(--radius-control); background: var(--well); font-size: var(--text-sm); line-height: 1.45; color: var(--muted); }
+/* Simulate's toolbar: Play, Stop, Reset, Hitboxes and the 2D/3D switch all stand 36 px tall. */
+.driver-station .sim-toolbar .segmented { height: var(--h-md); padding: 3px; gap: 2px; align-items: stretch; }
+.driver-station .sim-toolbar .segmented > button { min-height: 0; height: auto; padding: 0 12px; }
+/* Narrow windows: the robot bar stays one row; "Saved automatically" gives way, a failed save still shows. */
+@media (max-width: 1180px) { .driver-station .sim-setup-bar > .hint:not(.failed) { display: none; } }
+/* The video editor's status line beside the transport needs room to be read; on a narrow window it waits for space. */
+@media (max-width: 1100px) { .driver-station .studio-status { display: none; } }
+/* Controller test: the first row starts below the heading's line, not against it. */
+.driver-station #controller-dialog .controller-scroll { padding-top: var(--space-4); }
+.driver-station #controller-dialog .dialog-heading { border-bottom-width: .5px; border-color: var(--line-strong); }
+/* The video editor's Cameras / Overlays / Export switch is one of a few, so it takes the lifted thumb like every other. */
+.driver-station .studio-side-tabs > button[aria-selected=true], .driver-station .studio-side-tabs > button[aria-selected=true]:hover:not(:disabled) { background: var(--thumb); border-color: transparent; color: var(--text); box-shadow: 0 0 0 .5px #0000000a, 0 1px 3px #0000001f; }
+
+/* Titles: three steps. 17 px for a card or tool page, 15 px for a group inside one, 20 px for the item a list-and-pane shows. */
+.driver-station :is(#settings-view .panel-title h2, .axon-top > h2, .sim-setup-page > h2, .cal-card > h2, .cal-cam-head > h2, #cal-debug-title) { font-size: var(--text-lg); font-weight: 600; letter-spacing: -.02em; }
+.driver-station :is(.sim-robot-specs > h3, .cal-hub > h3, .ce-bar > h3, .sim-results-ready > h3, .sim-data-recorded > h3) { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.driver-station .sim-hero-text > h3 { font-size: 20px; font-weight: 650; letter-spacing: -.02em; }
+
+/* Dialogs: sized to what they hold, one corner, one backdrop. */
+.driver-station #update-dialog { min-height: 0; }
+.driver-station #update-dialog h2, .driver-station #controller-dialog h2 { font-size: var(--text-xl); font-weight: 700; }
+/* The hub-dropped alert keeps its red, but its corner, backdrop and OK button are the app's own. */
+.driver-station #hub-dropped { max-width: 420px; padding: 24px; border: 0; border-radius: 18px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent), var(--shadow); background: var(--surface); }
+.driver-station #hub-dropped::backdrop { background: var(--backdrop); }
+.driver-station #hub-dropped h2 { font-size: var(--text-lg); font-weight: 600; }
+.driver-station #hub-dropped p { font-size: var(--text-base); line-height: 1.45; color: var(--muted); }
+.driver-station #hub-dropped button { min-width: 120px; min-height: var(--h-md); border: 0; border-radius: var(--radius-control); background: var(--accent-fill); color: var(--on-accent); font-weight: 600; }
+.driver-station #hub-dropped button:hover { background: var(--accent-hover); }
+/* Every dialog ends the same way as Report a bug: actions at the bottom right, the main (or destructive) one last.
+   Only the visual order changes, so Enter still presses the main action. */
+.driver-station dialog form > .button-row, .driver-station dialog > .button-row { justify-content: flex-end; margin-top: var(--space-5); }
+.driver-station dialog form > .button-row > .primary, .driver-station dialog > .button-row > .primary { order: 9; }
+.driver-station dialog form > .button-row > button, .driver-station dialog > .button-row > button { min-height: 40px; padding: 0 18px; }
+.driver-station dialog form > h2:empty { display: none; }
+/* The toast is the same material as the ⋮ menu. */
+.driver-station #toast { border: 0; border-radius: 12px; background: var(--raised); box-shadow: var(--shadow); font-weight: 500; z-index: var(--z-dialog); }
+/* Every multi-line field looks like the single-line ones beside it. */
+.driver-station textarea { min-height: 64px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--well); color: var(--text); font: inherit; font-size: var(--text-base); line-height: 1.45; }
+.driver-station textarea::placeholder { color: var(--placeholder); }
+/* Axon and SWYFT settings fit a fixed-height box: their group labels keep the old 12 px line box, only the case changes. */
+.driver-station .axon-group { font-size: var(--text-xs); line-height: 12px; }

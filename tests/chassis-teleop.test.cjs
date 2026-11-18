@@ -35,7 +35,9 @@ test('the controller is mapped the way the team picked',()=>{
 test('each kind compiles against the FTC SDK stand-ins',t=>{
   const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
   if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
-  for(const [name,o] of [['swerve',kiwi],['mecanum',mecanum],['mecanum mapped',{...mecanum,map:{drive:'right',turn:'triggers',slow:'left_bumper',reset:'dpad_up',field:'no'}}],['tank',tank]]){
+  const HM=require('../ui/sim-hub-mount.js'),tilted={code:'',...HM.javaOf({logo:'up',usb:'forward',off:30,quaternion:{w:.965926,x:.258819,y:0,z:0}})};
+  assert.ok(T.teleopOf({...kiwi,imu:{name:'imu',scale:1,mount:tilted}}).source.includes('imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(new Quaternion(0.965926f, 0.258819f, 0f, 0f, 0))));'),'a hub that is not square is given as its exact angle');
+  for(const [name,o] of [['swerve',kiwi],['swerve on a tilted hub',{...kiwi,imu:{name:'imu',scale:1,mount:tilted}}],['mecanum on a tilted hub',{...mecanum,imu:{name:'imu',scale:1,mount:tilted}}],['mecanum',mecanum],['mecanum mapped',{...mecanum,map:{drive:'right',turn:'triggers',slow:'left_bumper',reset:'dpad_up',field:'no'}}],['tank',tank]]){
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-chassis-')),file=path.join(dir,'TorqueChassis.java');fs.writeFileSync(file,T.teleopOf(o).source);
     try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
     finally{fs.rmSync(dir,{recursive:true,force:true});}}});

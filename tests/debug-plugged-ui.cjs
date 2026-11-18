@@ -20,14 +20,14 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n<Robot type
       if(action==='read-usb')return ok({serial:SERIAL,active:{name:'robot'},configurations:['robot'],files:{robot:xml}});if(action==='check')return ok([{name:'Robot Controller app',ok:true,detail:'FTC SDK 12.0'}]);
       if(action==='scan')return ok({portals:[{serial:'(embedded)',modules:[{address:173,parent:true}],servoHubs:[]}],others:[]});
       if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});if(['debug-start','debug-stop','debug-claim','debug-send'].includes(action))return ok(true);return {ok:false,error:'not in this test: '+action};});},{SERIAL:'24677c4269e7e709',xml:XML});
-    // Debug needs a robot with an active configuration. Before one answers, Calibrate says so in one line and shows nothing else.
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await soon('the gate',()=>page.locator('#cal-gate').isVisible());assert.match(await page.textContent('#cal-gate'),/^Connect to the robot first/);assert.equal(await page.locator('#cal-debug').isVisible(),false,'nothing behind the gate');
-    assert.equal(await page.getAttribute('#calibrate-view [data-flow=debug]','data-locked'),'','Debug waits for Configure');assert.equal(await page.getAttribute('#calibrate-view [data-flow=calibrate]','data-locked'),'','Calibrate waits for Debug');
+    // Debug needs a robot with an active configuration. Before one answers, it shows this robot's simulated Control Hub, and the "Simulated robot" banner says so.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#calibrate-view [data-flow=debug]');await soon('the banner',()=>page.locator('#calibrate-view [data-sample-banner]').isVisible());assert.match(await page.textContent('#calibrate-view [data-sample-banner]'),/^Simulated robot/);assert.equal(await page.locator('#cal-gate').isVisible(),false,'no gate line');assert.equal(await page.locator('#cal-debug [data-port="motor:front_left"]').isVisible(),true,'the simulated robot shows until a robot answers');
+    assert.equal(await page.getAttribute('#calibrate-view [data-flow=debug]','data-locked'),null,'Debug is open, on the simulated robot');assert.equal(await page.getAttribute('#calibrate-view [data-flow=electronics]','data-locked'),null,'and so is Electronics');
     await app.evaluate(()=>{global.__plugged=true;});
-    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);
     await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await soon('the gate opens',()=>page.locator('#cal-gate').isHidden());assert.equal(await page.getAttribute('#calibrate-view [data-flow=debug]','data-locked'),null);
-    // Debug by itself has no row of tabs: there is no camera.
-    assert.equal(await page.locator('[data-cal-top-tabs]').isHidden(),true,'a lone Debug tab is not shown');
+    // Debug stays open after the robot answers; Camera is Calibrate's step 3 whether or not a camera is plugged in.
+    assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','still on Debug');assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is a step, camera or not');
     const send=message=>app.evaluate(({BrowserWindow},m)=>{for(const w of BrowserWindow.getAllWindows())w.webContents.send('robot-link-debug',m);},message);
     // Over the cable Debug starts by itself; what the robot sends is read once it has.
     await soon('it starts by itself',async()=>/Stop live debug/.test(await page.textContent('[data-debug-start]')));await wait(1000);

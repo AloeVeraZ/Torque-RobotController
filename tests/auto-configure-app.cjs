@@ -68,7 +68,7 @@ const HUBS=[{serial:'(embedded)',modules:[{moduleAddress:173,isParent:true,imuTy
     const countOf=(xml,re)=>(xml.match(re)||[]).length;
 
     // ---- A. Over the cable. Scan shows it all, and writes nothing.
-    await toSetup();await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);
+    await toSetup();await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);
     await page.waitForFunction(()=>/Address 2/.test(document.querySelector('[data-scan-col=hubs]')?.textContent||'')&&/Address 3/.test(document.querySelector('[data-scan-col=hubs]').textContent)&&/Ucamera001/.test(document.querySelector('[data-scan-col=usb]').textContent));await page.waitForFunction(()=>/connected over USB-C/.test(document.querySelector('#rs-plug span').textContent));
     {const l=await left(),r=await right();assert.match(l,new RegExp(`Control Hub\\s+Connected\\s+Over USB-C · Serial ${SERIAL}`));assert.match(l,/Expansion Hub\s+Connected, not in the configuration\s+Address 2/);assert.match(l,/Servo Hub \d?\s*Connected, not in the configuration\s+Address 3/);assert.doesNotMatch(l,/×/,'nothing to press for them');
       assert.match(r,/Webcam \(needs its lens measured\)\s+Not in the configuration\s+Blue USB 3\.0 port · Ucamera001/);assert.doesNotMatch(r,/802\.11ac|USB2\.0 Hub|xHCI/);assert.match(await page.locator('#rs-hubs [data-auto-offer]').innerText(),/1 new USB device and 2 new hubs/);assert.match(await page.locator('#rs-plug span').innerText(),/Control Hub 24677c4269e7e709 connected over USB-C/);}

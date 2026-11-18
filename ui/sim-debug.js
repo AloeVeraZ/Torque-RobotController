@@ -34,7 +34,7 @@
     if(md.kind==='axonFeedback')return `${fix((1-v/span)*360,1)}°`;
     if(md.kind==='potentiometer'){/* REV: V = 445.5·(θ−270)/(θ²−270θ−36450), solved for θ (non-linear) */const a=v,b=-270*v-445.5,c=-36450*v+445.5*270;const d=b*b-4*a*c;if(!a||d<0)return '';return `${fix((-b-Math.sqrt(d))/(2*a),1)}° (REV curve)`;}
     if(md.degrees)return `${fix(v/span*md.degrees,1)}°`;return '';}
-  function create({host,api,native,project,link,onChange=()=>{},encoder=()=>undefined,alsoWanted=()=>false}){
+  function create({host,api,native,project,link,onChange=()=>{},onSensing=()=>{},encoder=()=>undefined,alsoWanted=()=>false,sample=()=>null}){
     // flowing: from the robot's first line until it ends, readings are on their way.
     let flowing=false;
     let manifest=null,frame=null,frames=[],running=false,starting=false,plot=new Set(),edges={},seen={},pulse=null,lastPaint=0,paintQueued=false;
@@ -79,6 +79,11 @@
         const html=c.state==='ask'?'<button type="button" class="primary" data-check-answer="yes">Yes</button><button type="button" class="secondary" data-check-answer="no">No</button>':`${c.state==='running'&&checkRun?.markName!==d.name?'':`<button type="button" class="secondary" data-check-one="${esc(d.name)}"${!running||checkRun||bad?' disabled':''}>Check</button>`}${c.state==='pass'?'':`<button type="button" class="secondary" data-check-mark="${esc(d.name)}"${!running||!answering(d)?' disabled':''} title="${answering(d)?'It is there and answering: mark it as working without the check':'It has no reading yet: it is not answering'}">Mark as working</button>`}`;if(act.dataset.drawn!==html){act.dataset.drawn=html;act.innerHTML=html;}}}
     const checkSet=(name,state,text)=>{checks.set(name,{state,text});keepChecks();checkPaint();};
     // What moved with what in a check: [{name, kind, key, dir}] (dir 0: it moved, but which way is not known). Calibrate → Electronics imports it.
+    // What Debug has seen of how the robot can know where it is, kept by device name: a motor's encoder counted (true) or
+    // its check found it does not (false), and each I2C device in the configuration with its kind and whether it answered
+    // (1, 0). read: Debug has read the robot's configuration at least once. onSensing hears of each change.
+    const SENSING='torque-debug-sensing';let sensing=(()=>{try{const s=JSON.parse(localStorage.getItem(SENSING)||'null');return s&&typeof s==='object'&&s.motors&&s.i2c?s:null;}catch{return null;}})()||{read:false,motors:{},i2c:{}};
+    function sensed(change){const next=JSON.stringify(change(JSON.parse(JSON.stringify(sensing))));if(next===JSON.stringify(sensing))return;sensing=JSON.parse(next);try{localStorage.setItem(SENSING,next);}catch{}onSensing();}
     const FOUND='torque-debug-found';let found=(()=>{try{const s=JSON.parse(localStorage.getItem(FOUND)||'[]');return Array.isArray(s)?s.filter(x=>x&&typeof x.name==='string'&&typeof x.key==='string'):[];}catch{return [];}})();
     const foundSet=(name,kind,key,dir)=>{found=[...found.filter(x=>!(x.name===name&&x.key===key)),{name,kind,key,dir}];try{localStorage.setItem(FOUND,JSON.stringify(found));}catch{}};
     const stopped=()=>!checkRun||checkRun.stop;
@@ -91,9 +96,9 @@
       function fn(_f,v){const next=step(s,v[key],performance.now());if(next===s)return;const was=prompt(s);s=next;if(prompt(s)!==was)checkSet(name,'running',prompt(s));if(finished(s))finish(true);}});
     async function checkOne({kind,name}){const c=C(),p=settingsOf(kind,name),speed=p.speed/100,v=()=>values();
       if(kind==='motor'){const key=`m:${name}:pos`,before=v()[key];checkSet(name,'running',`Running forward at ${p.speed}%…`);await holdOut('M',name,speed,1000);if(stopped())return;const went=(v()[key]??0)-(before??0),moved=Math.abs(went),cut=v()[`m:${name}:cut`];await pause(300);checkSet(name,'running',`Running backward at ${p.speed}%…`);await holdOut('M',name,-speed,1000);if(stopped())return;
-        if(cut)return checkSet(name,'fail','It drew too much current and was cut. Check nothing is jammed.');if(moved>=5){foundSet(name,'motor',key,Math.sign(went));return checkSet(name,'pass',`It works: the encoder counted ${Math.round(moved)} ticks.`);}
-        const has=encoder(name);if(has===false){const a=await checkAsk(name,'Configure says it has no encoder. Did the motor turn?');if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It turns. It has no encoder, as Configure says.':'It did not turn. Check its power cable and the port in Configure.');}
-        const a=await checkAsk(name,`${has?'Configure says its encoder cable is plugged in, but the encoder did not count.':'The encoder did not count.'} Did the motor turn?`);if(a===null)return;return checkSet(name,'fail',a?'It turned, but its encoder did not count. Is the encoder cable in this motor’s port, and does the motor have an encoder at all? If it has none, turn off “Encoder cable plugged in” in Configure.':'It did not turn. Check its power cable and the port in Configure.');}
+        if(cut)return checkSet(name,'fail','It drew too much current and was cut. Check nothing is jammed.');if(moved>=5){sensed(x=>(x.motors[name]=true,x));foundSet(name,'motor',key,Math.sign(went));return checkSet(name,'pass',`It works: the encoder counted ${Math.round(moved)} ticks.`);}
+        const has=encoder(name);if(has===false){const a=await checkAsk(name,'Configure says it has no encoder. Did the motor turn?');if(a===null)return;if(a)sensed(x=>(x.motors[name]=false,x));return checkSet(name,a?'pass':'fail',a?'It turns. It has no encoder, as Configure says.':'It did not turn. Check its power cable and the port in Configure.');}
+        const a=await checkAsk(name,`${has?'Configure says its encoder cable is plugged in, but the encoder did not count.':'The encoder did not count.'} Did the motor turn?`);if(a===null)return;if(a)sensed(x=>(x.motors[name]=false,x));return checkSet(name,'fail',a?'It turned, but its encoder did not count. Is the encoder cable in this motor’s port, and does the motor have an encoder at all? If it has none, turn off “Encoder cable plugged in” in Configure.':'It did not turn. Check its power cable and the port in Configure.');}
       if(kind==='crservo'){const w=watchAnalogs();checkSet(name,'running','Turning one way…');await holdOut('C',name,speed,1000);if(stopped())return;await pause(300);checkSet(name,'running','Turning the other way…');await holdOut('C',name,-speed,1000);await pause(200);const found=w.done(name);if(stopped())return;
         if(found.length)return checkSet(name,'pass',`It works: ${found.join(' and ')} moved with it.`);
         const a=await checkAsk(name,'Did it turn one way, then the other?');if(a===null)return;return checkSet(name,a?'pass':'fail',a?'It works.':'It did not turn. Check its cable and the port in Configure.');}
@@ -119,9 +124,10 @@
     // ---- layout: the wiring's ports, with the robot's devices on them
     function rows(){try{return W().state(project()).rows;}catch{return [];}}
     function layout(){
-      const D=H(),m=manifest;if(!m){q('[data-debug-hubs]').innerHTML=native?'':'<p class="hint">Live debug needs the installed app and a robot.</p>';q('[data-debug-tools]').hidden=true;return;}
+      // With no robot, a sample's boxes show, to look at: {manifest, readout}. Nothing reads or drives them.
+      const smp=manifest?null:sample(),D=H(),m=manifest||smp?.manifest;if(!m){q('[data-debug-hubs]').innerHTML=native?'':'<p class="hint">Live debug needs the installed app and a robot.</p>';q('[data-debug-tools]').hidden=true;return;}
       const live={motor:m.motors||[],servo:m.servos||[],crservo:m.crservos||[],digital:[...(m.digital||[]),...(m.touch||[])],analog:(m.analog||[]).map(a=>a.n),light:(m.lights||[]).map(l=>l.n),i2c:(m.i2c||[]).map(d=>d.n)};
-      const wiring=W().state(project()).wiring,read=project().calibration?.hub?.readout||[],byName=new Map(rows().filter(r=>r.name).map(r=>[r.name,r])),used=new Set();
+      const wiring=W().state(project()).wiring,read=smp?smp.readout:project().calibration?.hub?.readout||[],byName=new Map(rows().filter(r=>r.name).map(r=>[r.name,r])),used=new Set();
       const types=root.DeckRobotConfig?.DEVICE_TYPES||{},typeName=tag=>Object.values(types).flat().find(([t])=>t===tag)?.[1]||'',tagOf=new Map(read.map(d=>[d.name,d.tag]));
       const familyOf=d=>d.bus!==undefined?'i2c':d.kind==='motor'?'motor':['servo','crservo'].includes(d.kind)||d.tag==='RevBlinkinLedDriver'?'servo':d.kind==='analog'?'analog':['digital','touch'].includes(d.kind)||d.tag==='Led'?'digital':null;
       // A box: its port and name, then what fits the device. Anything that spins has a slider, a positional servo a dial that turns, a light a switch, and a sensor what it reads. Each is checked and set up from its own box.
@@ -202,9 +208,12 @@
     // ---- events from the robot link
     function event(e){
       if(e.camera){for(const fn of cameraListeners)fn(e.camera);return;}
-      if(e.manifest){manifest=e.manifest;frame=null;flowing=true;rebuilt=false;frames=[];edges={};seen={};onRobot=true;for(const [n,c] of checks)if(c.state!=='pass'&&c.state!=='fail')checks.delete(n);status('Live: reading the robot','live');steps();layout();checkPaint();onChange();return;}
+      if(e.manifest){manifest=e.manifest;sensed(x=>{x.read=true;for(const d of e.manifest.i2c||[])x.i2c[d.n]={kind:d.k||'',on:x.i2c[d.n]?.kind===(d.k||'')?x.i2c[d.n].on:undefined};for(const n of Object.keys(x.i2c))if(!(e.manifest.i2c||[]).some(d=>d.n===n))delete x.i2c[n];return x;});frame=null;flowing=true;rebuilt=false;frames=[];edges={};seen={};onRobot=true;for(const [n,c] of checks)if(c.state!=='pass'&&c.state!=='fail')checks.delete(n);status('Live: reading the robot','live');steps();layout();checkPaint();onChange();return;}
       if(e.frame){const prev=values(frame);frame=e.frame;frames.push(frame);const cut=frame.t-(SPAN+2)*1000;while(frames.length&&frames[0].t<cut)frames.shift();
         const v=values(frame);for(const [k,x] of Object.entries(v)){if(k.startsWith('d:')&&prev[k]!==undefined&&prev[k]!==x)edges[k.slice(2)]=(edges[k.slice(2)]||0)+1;if(k.startsWith('a:')&&finite(x)){const n=k.slice(2),s=seen[n]||[x,x];seen[n]=[Math.min(s[0],x),Math.max(s[1],x)];}}
+        // A motor whose encoder reads a count has one; an I2C device that answered (or did not) says so.
+        {const m=manifest,counted=(m?.motors||[]).filter(n=>Math.abs(v[`m:${n}:pos`]||0)>=5&&sensing.motors[n]!==true),told=(m?.i2c||[]).map((d,i)=>[d.n,frame.on?.[i]]).filter(([n,on])=>(on===1||on===0)&&sensing.i2c[n]&&sensing.i2c[n].on!==on);
+          if(counted.length||told.length)sensed(x=>{for(const n of counted)x.motors[n]=true;for(const [n,on] of told)x.i2c[n].on=on;return x;});}
         if(pulse)pulse.frames.push(frame);for(const fn of listeners)fn(frame,v);paint(false);return;}
       if(e.ended||e.error){checkStop();flowing=false;paint(true);running=false;starting=false;auto=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();for(const fn of endListeners)fn(e);
         if(e.error&&NOT_BUILT.test(e.error)&&!rebuilt&&!lastAuto){rebuilt=true;void buildAndStart(false);}}}
@@ -229,7 +238,7 @@
     async function recheck(){if(!native||asking||running||starting||installing)return;asking=true;try{const c=await api.robotLink('debug-current',{host:link().host,noStart:true});onRobot=!!c?.current;}catch{}finally{asking=false;buttons();}}
     // The Control Hub left the cable: what was on its way to it will only fail, in words about ports and sockets, so that is not shown.
     let unplugs=0,installing=false;function unplugged(){unplugs++;flowing=false;paint(true);if(!starting&&!installing)return;starting=false;status('Lost the robot connection','');buttons();checkPaint();onChange();}
-    const NOT_BUILT=/has no Torque Debug op mode|has no op mode/;
+    const NOT_BUILT=/has no Torque Debug op mode|has no op mode/,NOT_UP=/Robot Controller app on this Control Hub is not answering/;
     async function start(){
       if(!native)return status('Live debug needs the installed app.','error');if(running||starting)return stop();if(going||installing)return;
       const {host:to,label}=link(),was=unplugs;let opMode;going=true;starting=true;lastAuto=false;buttons();
@@ -243,12 +252,14 @@
       catch(e){if(was===unplugs)status(e.message,'error');}finally{going=false;starting=false;buttons();checkPaint();onChange();}}
     async function stop(){checkStop();zeroHolds();await api.robotLink('debug-stop').catch(()=>{});flowing=false;paint(true);running=false;auto=false;buttons();checkPaint();onChange();}
     // Calibrate → Camera's way in, with nobody pressing anything: the robot's copy is asked about first and built only if it is not this one, so it builds once and not on every visit. The same install and the same start as the buttons here.
-    // noStart: nobody pressed anything, so the Robot Controller app is not started. build: build whatever the robot's copy says. mayBuild: whether a build may happen on this try at all. still: whether it is still wanted, before a build and again once it is done.
+    // noStart: nobody pressed anything, so the Robot Controller app is not started (unless wake). build: build whatever the robot's copy says. mayBuild: whether a build may happen on this try at all. still: whether it is still wanted, before a build and again once it is done.
     // Answers {started}, {built:false, problem}, {cantBuild}, {error}, or {left}.
-    async function run({host:to=link().host,noStart=false,build=false,mayBuild=true,still=()=>true}={}){
+    async function run({host:to=link().host,noStart=false,build=false,mayBuild=true,wake=false,still=()=>true}={}){
       if(!native)return {error:'This needs the installed app.'};if(running||starting||installing)return {left:true};
       const was=unplugs,extra=noStart?{noStart:true}:{};let built=false;manifest=null;frame=null;starting=true;lastAuto=true;buttons();status('Getting ready…');
-      try{const copy=build?{current:false}:await api.robotLink('debug-current',{host:to,...extra});if(was!==unplugs)return {left:true};let opMode=copy?.opMode;if(!build)onRobot=!!copy?.current;
+      try{const ask=()=>api.robotLink('debug-current',{host:to,...extra});
+        // wake: opening the tab was the press, so a Robot Controller app that is not answering is started and asked again. Once in two minutes: an app that will not stay up is not started over and over.
+        const copy=build?{current:false}:await ask().catch(async e=>{if(!wake||!NOT_UP.test(e.message)||was!==unplugs||!still()||Date.now()-wokeAt<120000)throw e;wokeAt=Date.now();status('Starting the Robot Controller app on the robot…');await api.robotLink('rc-start',{host:to});return ask();});if(was!==unplugs)return {left:true};let opMode=copy?.opMode;if(!build)onRobot=!!copy?.current;
         if(!still()){status('Not connected');return {left:true};}
         if(!copy?.current){if(!mayBuild){status('Torque Debug is not on this robot yet');return {cantBuild:true};}
           starting=false;const ok=await install(to,{auto:true,...extra});if(was!==unplugs)return {left:true};if(!ok)return {built:false,...lastBuild};opMode=lastBuild.opMode;built=true;starting=true;buttons();}
@@ -259,7 +270,7 @@
       catch(e){if(was===unplugs)status(e.message,'error');return was===unplugs?{error:e.message}:{left:true};}
       finally{starting=false;buttons();checkPaint();onChange();}}
     // Over the cable this tab starts it by itself, the way Camera does, until someone stops it here. Leaving the tab forgets that.
-    let heldOff=false;
+    let heldOff=false,wokeAt=0;
     // warm: for a while after a Save it starts with no one looking, so it is already going when they get there.
     // warm: wanted for a while even off screen (after a Save). holdUntil: not before then, while the Robot Controller restarts with the new configuration.
     let warmUntil=0,holdUntil=0;
@@ -329,7 +340,7 @@
       return {changes};}
     // Readings over a while (for captures and ramps): the values of every frame in the next ms milliseconds.
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
-    return {found:()=>found.slice(),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    return {found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

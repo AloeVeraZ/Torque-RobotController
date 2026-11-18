@@ -255,9 +255,9 @@ async function saveEdit(){
 
 // ---- Pinout: a configuration as a wiring diagram (pinout.js), with the product photos of what is in it, to read here
 // or save as a PNG or SVG to print or share --------------------------------------------------------------------------
-// The robot's name: from its inspection report when it says (a Control Hub's does not), else the name Deck has it saved
+// The robot's name: from its inspection report (key "name"), else the name Deck has it saved
 // under, else ####-RC for a Driver Station named ####-DS.
-async function robotName(){try{const r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',4000));if(r?.deviceName)return String(r.deviceName);}catch{}
+async function robotName(){try{const r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',4000));if(r?.name)return String(r.name);}catch{}
   try{const i=await ctx.host.info?.();if(i?.name)return String(i.name);}catch{}const n=ctx.dsName();return /-DS$/.test(n)?n.replace(/-DS$/,'-RC'):'';}
 async function pinoutOf(f){
   let xml='',notes={};await run(`Reading “${f.name}”…`,async()=>{xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(f));C.parse(xml);notes=await notesFor(f.name,xml);});if(!xml)return;
@@ -322,45 +322,61 @@ function settings(){
 }
 
 // ---- Self Inspect -------------------------------------------------------------------------------------------------------
-const NAME=/^(\d{1,5})(-[A-Za-z])?-(RC|DS)$/;
+// As the Driver Hub's: two reports to pick, each a list of rows with the app's own marks (✓ green, ▲ orange: allowed, ! red:
+// fails inspection) and, under every mark that is not green, what to change and the rule behind it (ui/ftc/inspection.js).
+// The Robot Controller's comes from the robot (CMD_REQUEST_INSPECTION_REPORT, asked again every 5 s, as the app does). The
+// Driver Station's is a Driver Hub plugged into this computer, read over USB; with none, it says what Torque itself is.
+// Not here: the report's QR code (for FTC Live at events, where the Driver Station is the Driver Hub anyway).
+const I=window.DeckInspection,DS_VERSION={major:12,minor:0};let inspectTimer=null;
 function inspect(){
-  open('Self Inspect',close);actions(button('Refresh','cfg-btn',()=>void readInspection()));
-  const grid=el('div','inspect');grid.append(column('Robot Controller','inspect-rc'),column('Driver Station','inspect-ds'));$('#page-body').replaceChildren(grid);
-  void driverStation();void readInspection();
+  stopInspect();open('Self Inspect',close);
+  const list=el('div','inspect-menu');list.append(el('h3','inspect-head','Inspection reports'));
+  for(const [title,text,kind] of [['Inspect Driver Station','Creates a self-inspection report for the driver station','ds'],['Inspect Robot Controller','Creates a self-inspection report for the robot controller','rc']]){
+    const b=button('','inspect-choice',()=>report(kind));b.id='inspect-'+kind;b.append(el('strong','',title),el('span','',text));list.append(b);}
+  $('#page-body').replaceChildren(list);
 }
-function column(title,id){const c=el('section','cfg-section');c.id=id;c.append(el('h3','',title),el('p','cfg-none','Reading…'));return c;}
-// rows: [label, value, ok?] — ok true passes, false fails, undefined only informs.
-function fill(id,rows){const c=$('#'+id);if(!c)return;const t=el('dl','inspect-list');
-  for(const [label,value,ok] of rows){const v=el('dd',ok===false?'bad':ok===true?'good':'');v.textContent=value;if(ok!==undefined)v.prepend(el('i','',ok?'✓ ':'✗ '));t.append(el('dt','',label),v);}
-  c.replaceChildren(c.firstChild,t);}
-const yes=v=>v?'On':'Off',percent=f=>Number.isFinite(f)?`${Math.round(f*100)}%`:'—';
-async function readInspection(){
-  if(!connected()){fill('inspect-rc',[['Robot','Not connected',false]]);return;}
-  let r;try{r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',6000));}catch(e){fill('inspect-rc',[['Report',e.message,false]]);return;}
-  const rows=[],has=k=>r[k]!==undefined&&r[k]!==null;
-  if(has('deviceName'))rows.push(['Name',String(r.deviceName),NAME.test(r.deviceName)]);
-  if(has('manufacturer')||has('model'))rows.push(['Device',[r.manufacturer,r.model].filter(Boolean).join(' ')]);
-  if(has('osVersion'))rows.push(['Android',`${r.osVersion}${has('sdkInt')?` (API ${r.sdkInt})`:''}`]);
-  if(has('controlHubOsVersion')&&r.controlHubOsVersion)rows.push(['Control Hub OS',String(r.controlHubOsVersion)]);
-  if(has('firmwareVersion')&&r.firmwareVersion)rows.push(['Hub firmware',String(r.firmwareVersion)]);
-  if(has('robotControllerVersion'))rows.push(['Robot Controller app',String(r.robotControllerVersion||'Not installed'),!!r.robotControllerVersion]);
-  if(has('batteryFraction'))rows.push(['Battery',percent(r.batteryFraction),r.batteryFraction>=.3]);
-  if(has('wifiEnabled'))rows.push(['Wi-Fi',yes(r.wifiEnabled),!!r.wifiEnabled]);
-  if(has('wifiDirectEnabled'))rows.push(['Wi-Fi Direct',yes(r.wifiDirectEnabled)]);
-  if(has('bluetoothOn'))rows.push(['Bluetooth',yes(r.bluetoothOn),!r.bluetoothOn]);
-  if(has('airplaneModeOn'))rows.push(['Airplane mode',yes(r.airplaneModeOn)]);
-  if(has('isDefaultPassword'))rows.push(['Wi-Fi password',r.isDefaultPassword?'Still the default':'Changed',!r.isDefaultPassword]);
-  if(has('activeConfig')||ctx.session.state.activeConfig)rows.push(['Active configuration',ctx.session.state.activeConfig?.name||'None',!!ctx.session.state.activeConfig?.name]);
-  fill('inspect-rc',rows.length?rows:[['Report','The robot sent no inspection details.']]);
+function stopInspect(){clearInterval(inspectTimer);inspectTimer=null;}
+function report(kind){
+  stopInspect();open(kind==='rc'?'Robot Controller Inspection Report':'Driver Station Inspection Report',()=>{stopInspect();inspect();});
+  actions(button('Refresh','cfg-btn',()=>void readReport(kind)));
+  const box=el('div','inspect-report');box.id='inspect-report';box.append(el('p','cfg-none','Reading…'));$('#page-body').replaceChildren(box);
+  void readReport(kind);if(kind==='rc')inspectTimer=setInterval(()=>{if($('#ds-page').hidden||!$('#inspect-report'))return stopInspect();void readReport(kind,true);},5000);
 }
-async function driverStation(){
-  const s=ctx.session,name=ctx.dsName(),rows=[['Name',name,NAME.test(name)],['App',`Torque`],['Operating system',navigator.userAgentData?.platform||navigator.platform||'—'],['Robocol',String(s.identity.version)]];
-  try{const b=await navigator.getBattery?.();if(b)rows.push(['Battery',percent(b.level),b.level>=.3||b.charging]);}catch{}
-  const pads=Array.from(navigator.getGamepads?.()||[]).filter(Boolean);rows.push(['Controllers',pads.length?pads.map(p=>p.id.replace(/\s*\(.*$/,'')).join(', '):'None found',pads.length>0]);
-  rows.push(['Robot connection',s.state.connection==='connected'?`Connected · ${s.state.ping??'—'} ms`:'Not connected',s.state.connection==='connected']);
-  fill('inspect-ds',rows);
+const MARK={ok:['✓','good','Passes'],warn:['▲','warn','Allowed'],bad:['!','bad','Fails inspection']};
+function paint(rows,{note=''}={}){
+  const box=$('#inspect-report');if(!box)return;const bad=rows.filter(r=>r.mark==='bad').length,warn=rows.filter(r=>r.mark==='warn').length;
+  const top=el('div','inspect-verdict '+(bad?'bad':warn?'warn':'good'));top.append(el('strong','',bad?`${bad} ${bad===1?'thing fails':'things fail'} inspection`:warn?'Passes inspection, with warnings':'Passes inspection'),el('span','',bad?'Fix every red mark: inspectors fail a report with any.':warn?'Orange marks are allowed, but worth fixing.':'No red marks.'));
+  const t=el('dl','inspect-rows');
+  for(const r of rows){
+    if(r.head){t.append(el('dt','inspect-group',r.label));continue;}
+    const dd=el('dd',r.tone?'tone-'+r.tone:'');dd.append(el('span','',r.value));
+    if(r.mark){const m=MARK[r.mark],i=el('i','inspect-mark '+m[1],m[0]);i.title=m[2];i.setAttribute('aria-label',m[2]);dd.append(i);}
+    t.append(el('dt','',r.label),dd);
+    if(r.fix)t.append(el('dd','inspect-fix '+(r.mark==='bad'?'bad':'warn'),r.fix));
+  }
+  box.replaceChildren(top,t,...(note?[el('p','inspect-note',note)]:[]));
 }
-
+async function readReport(kind,quiet=false){
+  if(kind==='rc'){
+    if(!connected()){paint([{label:'Robot',value:'Not connected',mark:'bad',fix:'Connect to the robot first: plug in the USB cable, or join its Wi-Fi.'}]);return;}
+    try{const r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',6000));paint(I.rows(r,{kind:'rc',viewer:DS_VERSION}),{note:`Compared with this Driver Station: Torque speaks to the robot as Driver Station ${DS_VERSION.major}.${DS_VERSION.minor}. Your Driver Hub's own report compares with its app's version.`});}
+    catch(e){if(!quiet)paint([{label:'Report',value:e.message,mark:'bad'}]);}
+    return;
+  }
+  let hub=null;try{hub=await ctx.host.inspectDriverHub?.();}catch{}
+  if(hub?.found){const r=hub.report;paint(I.rows(r,{kind:'ds'}),{note:`Read from the Driver Hub plugged into this computer (${hub.serial}). Nothing on it was changed.`});return;}
+  // No Driver Hub on USB: Torque is the Driver Station here, and it is not one an event allows.
+  const name=ctx.dsName();
+  paint([{label:'Driver Station',value:'Torque on this computer'},{label:'Driver Station Name',value:name,mark:I.DS_NAME.test(name)?'ok':'bad',fix:I.DS_NAME.test(name)?undefined:'Torque takes its name from the robot: rename the robot to your team number and -RC, and Torque is ####-DS.'},
+    {label:'Allowed at events',value:'No',mark:'bad',fix:'At inspection and in matches the Driver Station must be an Android device, like a REV Driver Hub, running the FTC Driver Station app. Rule R901. Plug your Driver Hub into this computer with USB to inspect it here.'}],
+    {note:hub?.error?`Could not look for a Driver Hub: ${hub.error}`:'No Driver Hub is plugged into this computer.'});
+}
 window.DeckDsPages={init(c){ctx=c;ctx.session.on('state',()=>{if(!$('#ds-page').hidden&&!edit&&!working)refreshButtons();});},configure:()=>void configure(),settings,inspect,
-  open:()=>!$('#ds-page').hidden,back:()=>{if(closeMenu()||$('#page-ask').open)return;$('#page-back').click();}};
+  open:()=>!$('#ds-page').hidden,back:()=>{if(closeMenu()||$('#page-ask').open)return;$('#page-back').click();},
+  // Escape: out of what is open, keeping what was done. In Configure Robot it goes up a level with the changes kept, and at the
+  // top of a changed configuration it saves it (as Save does, names checked first) instead of asking to discard. A name being
+  // typed counts: the field lets go first, so its text is taken. Back still asks before discarding.
+  escape:()=>{if(closeMenu()||$('#page-ask').open)return;const typing=document.activeElement;if(typing?.matches?.('input,select,textarea')){typing.dispatchEvent(new Event('change',{bubbles:true}));typing.blur();}
+    if(edit&&!$('#ds-page').classList.contains('wide')){if(edit.view.length){editBack();return;}if(edit.dirty){void saveEdit();return;}}
+    $('#page-back').click();}};
 })();

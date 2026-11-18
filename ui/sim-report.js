@@ -48,10 +48,16 @@
     // Things that went wrong, each tied to the path where it happened.
     const issues=[];const grouped=new Map();for(const c of contacts){const key=c.kind+'|'+c.label;if(!grouped.has(key))grouped.set(key,c);}
     for(const c of grouped.values())issues.push({level:c.kind==='wall'?'warn':'bad',pin:c.pin,text:`Touched ${KIND[c.kind]} during ${c.label} at ${s1(c.time)}.`});
-    if(finite(endError)&&endError>2)issues.push({level:'warn',pin:editable&&pins.length?pins.length-1:null,text:`Stopped ${endError.toFixed(1)} in away from the last path’s end point.`});
+    // Legs the route program gave up on just short of their end: something the robot cannot push was in the way
+    // (game pieces against a wall, say), so it stopped pushing and went on from there.
+    const short=new Map();for(const f of run){const b=f.telemetry?.blocked;if(b&&!short.has(b)){const leg=legOf(f);short.set(b,{index:leg?leg.index:null,pin:editable&&leg?leg.index:null,label:leg?`${editable?'Path':'Leg'} ${leg.index+1}`:'The route'});}}
+    for(const [said,c] of short){const m=/stopped ([\d.]+) in short/.exec(said);issues.push({level:'warn',pin:c.pin,text:`${c.label} stopped ${m?m[1]+' in ':''}short of its end point: something the robot cannot push was in the way.`});}
+    const lastShort=[...short.values()].some(c=>c.index!==null&&c.index===legs.length-1);
+    if(finite(endError)&&endError>2&&!lastShort)issues.push({level:'warn',pin:editable&&pins.length?pins.length-1:null,text:`Stopped ${endError.toFixed(1)} in away from the last path’s end point.`});
     // Suggestions, most useful first. Each names what the run measured.
     const tips=[];
     if(timedOut){const at=out.at(-1);tips.push({pin:at?.pin??null,text:`The route needs more than the ${auto??'autonomous'}${auto?' s':''} period${at?` (it was on ${at.label})`:''}. Remove a path, shorten pauses or raise motor power.`});}
+    if(short.size)tips.push({pin:[...short.values()][0].pin,text:'Game pieces resting against a wall or a field part stop a robot that cannot pick them up. Move that end point further from the wall, add an intake in Setup → Mechanisms, or turn off Physical game elements in Simulate → Field.'});
     if(grouped.size&&!driven)tips.push({pin:[...grouped.values()][0].pin,text:'Move that path’s points away from what it touched, or raise “Space around obstacles” in Path planning → Route options.',setting:'clearance'});
     const slow=out.length>1?out.reduce((a,b)=>b.total>a.total?b:a):null;
     if(slow&&total>0){const parts=[slow.pause>.05&&`${s1(slow.pause)} stopped for ${slow.actions.length?slow.actions.join(', ').toLowerCase():'a pause'}`,slow.turn>.05&&`${s1(slow.turn)} turning in place`,slow.idle>.2&&`${s1(slow.idle)} stopped`].filter(Boolean);

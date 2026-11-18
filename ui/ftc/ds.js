@@ -227,7 +227,7 @@ $('#practice-play').onclick=()=>practice?stopPractice():choosePractice();
 $('#dialog-ok').onclick=()=>$('#ds-dialog').close();
 for(const slot of [1,2])$('#pad-'+slot).onclick=()=>Promise.resolve(host.controllerCapture?.(slot)).catch(e=>toast(e.message));
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){if(window.DeckDsPages?.open()&&$('#ds-menu').hidden&&!$('#ds-dialog').open)window.DeckDsPages.back();closePicker();setMenu(false);}
+  if(e.key==='Escape'){if(window.DeckDsPages?.open()&&$('#ds-menu').hidden&&!$('#ds-dialog').open)(window.DeckDsPages.escape||window.DeckDsPages.back)();closePicker();setMenu(false);}
   // Space stops an initialized or running op mode, like an emergency stop key; not while typing a name.
   if(e.code==='Space'&&session&&session.state.opModeState!=='stopped'&&!$('#ds-dialog').open&&!e.target.closest?.('input,select,textarea')){e.preventDefault();stop();}
 });

@@ -152,11 +152,14 @@ public final class DeckFollower {
         // Where the path bends (a curve, or a sharp corner at a pin it drives through) the robot cannot
         // change direction at full speed: it slows to sqrt(acceleration/2 * radius) there, and brakes in
         // time for each bend ahead, so it drives through the bend instead of sweeping wide of it.
+        // Braking is planned at .35 of the acceleration figure: a light, fast robot speeds up far harder
+        // than it can slow down, and planned at twice this it reached bends at three times the planned
+        // speed (a swerve then swung 2.6 in wide while its modules turned).
         int n=samples.size();limits=new double[n];Arrays.fill(limits,Double.POSITIVE_INFINITY);double inX=0,inY=0,inLength=0;
         for(int i=1;i<n;i++){Pose a=samples.get(i-1).pose,b=samples.get(i).pose;double dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);if(length<1e-9)continue;
             if(inLength>0){double bend=Math.abs(angle(Math.atan2(dy,dx)-Math.atan2(inY,inX)));if(bend>1e-4)limits[i-1]=Math.max(3,Math.sqrt(.5*config.acceleration*(length+inLength)/2/bend));}
             inX=dx;inY=dy;inLength=length;}
-        for(int i=n-2;i>=0;i--)limits[i]=Math.min(limits[i],Math.sqrt(limits[i+1]*limits[i+1]+2*.7*config.acceleration*(samples.get(i+1).s-samples.get(i).s)));
+        for(int i=n-2;i>=0;i--)limits[i]=Math.min(limits[i],Math.sqrt(limits[i+1]*limits[i+1]+.7*config.acceleration*(samples.get(i+1).s-samples.get(i).s)));
         target=path.endPose();total=arc;progress=reference=settled=0;speed=velocity().linSpeed();nearest=0;lastTime=-1;mode=Mode.FOLLOWING;
     }
     public void hold(Pose p) { target=p;mode=Mode.HOLDING;speed=0;settled=0; }
@@ -174,8 +177,9 @@ public final class DeckFollower {
             for(int j=Math.max(0,nearest-4);j<samples.size()&&samples.get(j).s<=progress+20;j++){double d=p.distance(samples.get(j).pose);if(d<best){best=d;index=j;}}
             nearest=Math.max(nearest,index);progress=Math.max(progress,samples.get(nearest).s);
             double remaining=total-reference,cruise=config.maxForward*config.maxPathSpeed;
-            // Leave braking headroom for wheel saturation, heading corrections and sensor delay.
-            double wanted=Math.min(cruise,Math.sqrt(Math.max(0,.7*config.acceleration*remaining)));
+            // Leave braking headroom for wheel saturation, heading corrections and sensor delay
+            // (.25 of the acceleration figure: at .35 a fast robot ran an inch past the end and came back).
+            double wanted=Math.min(cruise,Math.sqrt(Math.max(0,.5*config.acceleration*remaining)));
             Pose here=sample(reference),look=sample(Math.min(total,reference+.5));
             double angularPerInch=Math.abs(angle(look.heading-here.heading))/Math.max(.001,Math.min(.5,total-reference));
             if(angularPerInch>1e-6)wanted=Math.min(wanted,config.maxTurn*config.maxPathSpeed*.65/angularPerInch);

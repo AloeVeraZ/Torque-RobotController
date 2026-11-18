@@ -8,10 +8,10 @@
   const CRASH_HOLD=3.6,CRASH_COLOR='#e5484d';
   const VERSION=1,EPS=1e-6,MIN=1/30,finite=Number.isFinite,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   // The five run cameras (sim-cameras.js) and the top-down view of the whole field that 2D recordings film.
-  const CAMERA_IDS=['main','mech','turret','chase','intake','top'];
+  const CAMERA_IDS=['main','mech','turret','chase','intake','top','side','auto','orbit'];
   // Top to bottom as the timeline shows them; video tracks higher up cover the ones below.
   const TRACKS=[{id:'T1',kind:'text',name:'Titles'},{id:'V2',kind:'video',name:'Video 2'},{id:'V1',kind:'video',name:'Video 1'},{id:'A1',kind:'audio',name:'Audio 1'},{id:'A2',kind:'audio',name:'Audio 2'}];
-  const OVERLAYS={match:'Period, clock & points',camera:'Camera name',position:'Position & heading',velocity:'Speed',turret:'Turret angle',mechanism:'Mechanism state',shots:'Shot markers',path:'Path map',timestamp:'Run time'};
+  const OVERLAYS={match:'Period, clock & points',camera:'Camera name',position:'Position & heading',velocity:'Speed',turret:'Turret angle',mechanism:'Mechanism state',shots:'Shot markers',path:'Path map',timestamp:'Run time',guides:'Planned path, pins, aim lines and outlines'};
   const TEXT_STYLES={title:'Title (centre)',lower:'Lower third',caption:'Caption (bottom)',corner:'Corner label'};
   const TRANSITIONS={cut:'Cut',cross:'Cross dissolve',dip:'Dip to black'};
   let counter=0;const uid=p=>`${p}${Date.now().toString(36)}${(counter++).toString(36)}`;
@@ -32,7 +32,7 @@
     const duration=recording?.duration||0;
     const doc={kind:'deck-video-edit',version:VERSION,id:uid('p'),name:String(name||recording?.name||'Run video').slice(0,80),recording:recording?.id||null,duration,
       settings:{width:1920,height:1080,fps:30},tracks:clone(TRACKS).map(t=>({...t,muted:false,hidden:false,locked:false})),clips:[],markers:[],range:null,
-      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false},endCard:true,cameras:{},audio:[]};
+      overlays:{match:true,camera:false,position:false,velocity:false,turret:false,mechanism:false,shots:false,path:false,timestamp:false,guides:false},endCard:true,cameras:{},audio:[]};
     if(duration>0)doc.clips.push(videoClip({track:'V1',start:0,in:0,out:duration,camera:'main'}));
     return doc;
   }
@@ -201,13 +201,19 @@
   // camera while it drives fast or strafes. Calm, like a broadcast: no shot shorter than `min` seconds (an eighth of
   // the run, 1.6 to 3.5 s), a clear reason to change angle on a long run, long shots change angle, and each change
   // dissolves over 0.6 s instead of cutting.
-  function autoCut(frames,{min,max,duration}={}){
+  function autoCut(frames,{min,max,duration,cuts:wanted=false}={}){
     if(!frames?.length)return [];const t0=frames[0].time,D=duration??frames.at(-1).time-t0,step=.1,n=Math.max(1,Math.round(D/step)),ev=events(frames);
-    min??=Math.max(1.6,Math.min(3.5,D/8));max??=Math.max(6.5,min*3);const margin=D>=15?.8:.3;
+    // Calm by default: few cuts, each shot held for seconds, the wide camera unless something is worth a closer look,
+    // and a slow dissolve between shots instead of a jump.
+    // Left to itself the edit is one continuous shot with no cuts at all: the action camera, which walks round the
+    // robot to the side that shows what it is doing. Cuts between the robot's cameras are made when they are asked for
+    // (cuts: true, what Pick cameras for me does) or when shot lengths are given.
+    if(min==null&&max==null&&!wanted)return D>=MIN?[videoClip({start:0,in:0,out:D,camera:'auto'})]:[];
+    min??=Math.max(3.5,Math.min(6,D/5));max??=Math.max(14,min*3);const margin=D>=15?1.1:.5;
     const shots=ev.filter(e=>e.kind==='shot').map(e=>e.t),score=[];let j=0;
     for(let k=0;k<n;k++){const t=k*step;while(j<frames.length-1&&frames[j+1].time-t0<=t)j++;const f=frames[j],m=f.mechanisms,c=m?.command||{},tr=f.truth||{},h=(tr.heading||0)*Math.PI/180,speed=Math.hypot(tr.vx||0,tr.vy||0),side=Math.abs(-(tr.vx||0)*Math.sin(h)+(tr.vy||0)*Math.cos(h));
-      const s={main:1,mech:0,turret:0,chase:0,intake:0};
-      if(speed>18)s.chase=1.8+(side>12?.8:0);
+      const s={main:1.6,mech:0,turret:0,chase:0,intake:0};
+      if(speed>30)s.chase=1.4+(side>12?.4:0);
       if(c.intake)s.intake=2.6;if((m?.ramps||[]).some(v=>v>.05))s.mech=3.2;
       if(c.aim||c.spin)s.turret=Math.max(s.turret,1.6);if(c.feed||shots.some(x=>t>=x-.7&&t<=x+1.1))s.turret=3.6;
       if(t<1.5||t>D-1.5)s.main=5;score.push(s);}
@@ -219,7 +225,7 @@
       else if(held>=max){const alt=Object.keys(s).filter(c=>c!==cur).reduce((a,b)=>s[b]>s[a]?b:a);if(s[alt]>=s[cur]-1.2){cur=alt;since=t;cuts.push({t,camera:cur});}}}
     // A last shot shorter than `min` joins the one before it.
     while(cuts.length>1&&D-cuts.at(-1).t<min)cuts.pop();
-    return cuts.map((c,i)=>{const e=i+1<cuts.length?cuts[i+1].t:D;return videoClip({start:c.t,in:c.t,out:e,camera:c.camera,...(i?{transition:'cross',transitionLength:.6}:{})});}).filter(c=>len(c)>=MIN);
+    return cuts.map((c,i)=>{const e=i+1<cuts.length?cuts[i+1].t:D;return videoClip({start:c.t,in:c.t,out:e,camera:c.camera,...(i?{transition:'cross',transitionLength:Math.min(1,min/3)}:{})});}).filter(c=>len(c)>=MIN);
   }
   // ---------------------------------------------------------------- formatting
   // Edit time as the timeline shows it: m:ss.ff with ff the frame (at fps).

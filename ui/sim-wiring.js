@@ -91,7 +91,7 @@
   // read: the hub's read-out; its port is then shown as the hub reported it and cannot be changed here.
   let st_w=null;const st_wiring=()=>st_w;
   function assignBox(row,assign){const id=`wire-assign-${esc(row.key)}`,list=(assign||[]).filter(d=>d.hub&&readFamily(d)===row.family);
-    if(!assign)return `<div><span class="sim-mech-label">Plugged into</span><p class="sim-wire-fixed sim-wire-unset">Set in Setup &amp; Calibrate</p></div>`;
+    if(!assign)return `<div><span class="sim-mech-label">Plugged into</span><p class="sim-wire-fixed sim-wire-unset">Set in Setup</p></div>`;
     const now=row.wired?`${row.hub}:${row.family==='i2c'?row.bus:row.port}`:'';
     return `<div><label for="${id}">Plugged into</label><select id="${id}" data-wire-assign="${esc(row.key)}"><option value="">Not assigned</option>${list.map(d=>{const at=`${d.hub}:${d.bus??d.port}`;return `<option value="${esc(at)}|${esc(d.name)}"${at===now?' selected':''}>${esc(H().portLabel(d,readFamily(d),st_wiring(row)))}</option>`;}).join('')}</select></div>`;}
   // A gearbox added after the motor: the output is the motor's speed divided by this.
@@ -117,7 +117,7 @@
     const can=D.SENSORS.filter(m=>Object.hasOwn(allowed,m.kind)&&!(m.kind==='motorEncoder'&&(row.family!=='motor'||own.some(s=>s.model===m.id))));
     const add=can.length?`<label class="sr-only" for="wire-add-${esc(row.key)}">Add a sensor to ${esc(row.label)}</label><select id="wire-add-${esc(row.key)}" data-wire-sensor-add="${esc(row.key)}"><option value="">+ Add a sensor…</option>${can.map(m=>`<option value="${m.id}">${esc(m.short)}: tells ${esc(D.USES[allowed[m.kind]])}</option>`).join('')}</select>`:'';
     return `<div class="sim-wire-sensors"><span class="sim-mech-label">Sensors</span>${items.length?`<ul>${items.join('')}</ul>`:`<p class="hint">${row.encoder?'Its own encoder is read (no extra sensor).':'None: it runs on set positions and times.'}</p>`}${add}</div>`;}
-  // The chassis in Mechanisms: every wheel turns at one RPM and models come from Setup & Calibrate, so each motor or servo says
+  // The chassis in Mechanisms: every wheel turns at one RPM and models come from Setup, so each motor or servo says
   // only what it is plugged into, and what tells a module's angle says where that is. read: the hub's read-out, when there is one.
   const moduleEncoder=(row,st)=>row.role==='steer'||(/^diffSwerve/.test(st.project?.robot?.drivetrain||'')&&!/B$/.test(row.key)&&row.role==='drive');
   const encoderOf=(row,st)=>st.wiring.sensors.find(s=>s.for===row.key&&H().SENSOR_MODELS[s.model]?.family==='analog')||null;
@@ -164,7 +164,7 @@
     if(!choices.some(o=>o.at===now))choices.unshift({value:fromRead?`${now}|${row.name}`:now,at:now,label:H().portLabel({hub:row.hub||'control',bus:row.bus??0},'i2c',st.wiring)});
     const bus=now.split(':')[1];
     return `<div class="sim-imu-port" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>IMU</b><small><code>${esc(row.name)}</code></small></div><div class="start-xy"><div><label for="${esc(id)}">Plugged into</label><select id="${esc(id)}" ${fromRead?'data-wire-assign':'data-wire-port'}="${esc(row.key)}">${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div></div><p class="hint">${fromRead?`The robot’s configuration has “${esc(row.name)}” on I2C bus ${esc(bus)}.`:bus==='0'?`The Control Hub’s IMU is built in: its configuration names it “${esc(row.name)}” on I2C bus 0.`:`“${esc(row.name)}” on I2C bus ${esc(bus)}: the configuration must have it there too.`}</p></div>`;}
-  // A module's absolute encoder on an analog port. A model Setup & Calibrate already gave it stays.
+  // A module's absolute encoder on an analog port. A model Setup already gave it stays.
   function setChassisEncoder(wiring,row,at,name){const D=H(),w=D.wiringOf({wiring}),own=w.sensors.find(s=>s.for===row.key&&D.SENSOR_MODELS[s.model]?.family==='analog');
     if(!at)return own?removeSensor(wiring,own.id):D.sanitizeWiring(w);
     const added=own?D.sanitizeWiring(w):addSensor(w,row,'analog-absolute'),id=own?.id||added.sensors.find(s=>!w.sensors.some(x=>x.id===s.id))?.id;if(!id)return D.sanitizeWiring(w);
@@ -217,7 +217,7 @@
   function linked(row,st,read){const D=H();if(!linkedTo(row,read))return false;return st.wiring.sensors.filter(s=>s.for===row.key).every(s=>{const md=D.SENSOR_MODELS[s.model];if(!md||md.kind==='motorEncoder')return true;const r=st.rows.find(x=>x.key==='sensor.'+s.id);return !!r&&!!linkedTo({...r,family:md.family},read);});}
   // A sensor takes a configured device's port and, unless it is an encoder input, its name.
   function assignSensor(wiring,id,value){const [at,name]=String(value||'').split('|'),placed=setSensorPort(wiring,id,at||'');return name?setSensor(placed,id,s=>{s.name=name;}):placed;}
-  // Picks the device's one sensor, or none: a model chosen in Setup & Calibrate's list replaces the one it had.
+  // Picks the device's one sensor, or none: a model chosen in Setup's list replaces the one it had.
   function setMechSensor(wiring,row,model){const D=H(),w=D.wiringOf({wiring}),rest=D.sanitizeWiring({...w,sensors:(()=>{const own=w.sensors.filter(s=>s.for===row.key);return w.sensors.filter(s=>s!==own[0]);})()});return model?addSensor(rest,row,model):rest;}
   // ---- hubs -----------------------------------------------------------------------------------------------------------
   // The Control Hub is always there. How many Expansion Hubs, Servo Hubs and Servo Power Modules hang off it, each set with

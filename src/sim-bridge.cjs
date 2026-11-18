@@ -28,7 +28,7 @@ class SimulationHost{
   }
   call(method,args=[]){
     if(typeof method!=='string'||!Array.isArray(args))return Promise.reject(Error('Invalid simulator call.'));
-    const proc=this.start(),id=this.nextId++,timeout={run:60000,practice:60000,load:30000,evaluate:180000,convertStep:1200000}[method]||10000;
+    const proc=this.start(),id=this.nextId++,timeout={run:60000,practice:60000,load:30000,evaluate:180000,preview:180000,convertStep:1200000}[method]||10000;
     return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(Error('The simulator did not respond.'));},timeout);this.pending.set(id,{resolve,reject,timer});proc.postMessage({id,method,args});});
   }
   // A STEP file is read in its own utility process (sim-model-host.cjs, which reads pieces on worker threads) so a
@@ -108,6 +108,14 @@ class SimulationHost{
       const r=await dialog.showSaveDialog(win,{title:'Save robot',defaultPath:'robot.deckrobot.json',filters:[{name:'Deck robot',extensions:['json']}]});
       if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,data);return {name:path.basename(r.filePath)};
     }
+    // A robot configuration as the FTC SDK saves it (FIRST/<name>.xml): made on the sample robot or read off a robot, to put on a robot later.
+    if(action==='config-save'){
+      if(!data||typeof data.xml!=='string'||data.xml.length>1048576||!/<Robot\b/.test(data.xml))throw Error('That is not a robot configuration.');
+      const base=String(data.name||'robot').replace(/[^\w .-]/g,'').trim().slice(0,40)||'robot';
+      const r=await dialog.showSaveDialog(win,{title:'Save robot configuration',defaultPath:base+'.xml',filters:[{name:'Robot configuration',extensions:['xml']}]});
+      if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,data.xml);return {name:path.basename(r.filePath)};
+    }
+    if(action==='config-open'){const file=await open('Choose a robot configuration',[{name:'Robot configuration',extensions:['xml']}],1048576);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
     if(action==='robot-open'){const file=await open('Load a robot',[{name:'Deck robot',extensions:['json']}],PROJECT_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
     if(action==='project-open'){const file=await open('Open simulation project',[{name:'Simulation project',extensions:['json']}],PROJECT_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
     // A log from the real robot to compare with the plan: read only, never written back.
@@ -171,6 +179,13 @@ class SimulationHost{
       if(data.keep){targets[data.key]={path:r.filePath,format:data.format};save();}
       return {name:path.basename(r.filePath),created:companion(r.filePath),beside:beside(r.filePath)};
     }
+    // A real run report (Calibrate → Real run): text and JSON kept with the app's data, and beside the code too when Torque runs from its checkout.
+    if(action==='real-run-save'){if(typeof data?.text!=='string'||typeof data?.json!=='string'||data.text.length>400000||data.json.length>400000)throw Error('The report could not be read.');
+      const d=new Date(),two=n=>String(n).padStart(2,'0'),stamp=`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`,base=`${stamp}-${String(data.name||'robot').replace(/[^\w-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'robot'}`;
+      const put=dir=>{fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,base+'.md'),data.text);fs.writeFileSync(path.join(dir,base+'.json'),data.json);return path.join(dir,base+'.md');};
+      const file=put(path.join(this.dataDir,'simulation','real-runs'));let repo=null;const checkout=path.join(__dirname,'..');
+      if(!process.env.DECK_DATA_DIR&&fs.existsSync(path.join(checkout,'.git')))try{repo=put(path.join(checkout,'reports','real-runs'));}catch{}
+      return {file,repo};}
     throw Error('Unknown simulator file action.');
   }
 }

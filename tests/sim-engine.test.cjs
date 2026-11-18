@@ -26,6 +26,17 @@ test('manual driving moves through DSIM physics: acceleration limited, wall stop
     for(let i=0;i<240;i++)e.tick(e.manualCommand());const t=e.truth(),front=t.x+e.info.footprint.front;assert.ok(front<=144.5&&front>143,`stopped by the wall at ${front}`);
   }finally{e.dispose();}
 });
+test('a route that ends where game pieces are trapped against the wall stops pushing and finishes',{skip},async()=>{
+  const e=engine();try{
+    // BIOBUZZ lays a row of pollen along the right wall: a robot with no intake cannot reach a pin flush against it.
+    const start={x:100,y:40,heading:0},info=await e.load({field:'biobuzz',start,sensors:{localization:'odometry'}}),pins=[{x:info.bounds.x1-info.footprint.front-.1,y:40}];
+    const route=planner.plan({start,zones:[],pins,clearance:0},info.footprint,info.fieldZones,info.bounds);assert.ok(route.segments.length,'the planner allows the pin');
+    const r=await e.run({kind:'route',route:{heading:route.heading,segments:route.segments,stops:route.stops}});assert.equal(r.ok,true);
+    await ticks(e,60*12);const done=runEvent(e,'finished');assert.ok(done,'the run finished instead of pushing until time ran out');
+    const short=pins[0].x-done.result.truth.x;assert.ok(short>1.5&&short<4,`stopped ${short} in short`);assert.ok(done.result.time<6,`took ${done.result.time} s`);
+    assert.match(String(e.telemetry.blocked),/^Leg 1 stopped \d\.\d in short of its end point$/);
+  }finally{e.dispose();}
+});
 test('Deck follows a planned route around a no-go zone through physics',{skip},async()=>{
   const e=engine();try{
     const zones=[{id:'z',type:'rect',x:72,y:72,width:20,height:50,angle:0}],start={x:20,y:72,heading:0},pins=[{x:124,y:72}];

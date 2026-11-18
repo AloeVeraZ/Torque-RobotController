@@ -178,3 +178,56 @@ test('the rig comes from the mechanisms and the CAD parts',()=>{
   assert.deepEqual(R.ramp.point,[9,0,2]);assert.equal(R.intake.side,'front');assert.equal(R.shooters.length,1);
   const bare=K.rig({footprint:{front:9,rear:9,half:9}});assert.equal(bare.ramp,null);assert.deepEqual(bare.intake.point,[8,0,3]);assert.equal(bare.hasMechanisms,false);
 });
+
+test('the field-side camera stands still outside the field and only turns slowly, with the robot always in its picture',()=>{
+  const track=K.tripod(frames,ctx),b=ctx.bounds||{x0:0,x1:144,y0:0,y1:144},first=at(track,0);
+  assert.equal(track.length,frames.length*7);assert.ok(track.every(Number.isFinite));
+  assert.ok(first.p[0]<b.x0||first.p[0]>b.x1||first.p[1]<b.y0||first.p[1]>b.y1,'outside the field');assert.equal(first.p[2],64);
+  let turn=0;
+  for(let i=0;i<frames.length;i++){const c=at(track,i);assert.deepEqual(c.p,first.p,'never moves');assert.ok(c.fov>=32&&c.fov<=55);
+    const t=frames[i].truth;if(!t)continue;
+    // The robot is inside the picture: within the view's half angle of where the camera looks.
+    const v=[c.l[0]-c.p[0],c.l[1]-c.p[1],c.l[2]-c.p[2]],d=[t.x-c.p[0],t.y-c.p[1],6-c.p[2]],cos=(v[0]*d[0]+v[1]*d[1]+v[2]*d[2])/(Math.hypot(...v)*Math.hypot(...d));
+    assert.ok(Math.acos(Math.min(1,cos))*180/Math.PI<c.fov/2,'robot in view at '+i);
+    if(i){const p=at(track,i-1),a=Math.atan2(v[1],v[0]),w=[p.l[0]-p.p[0],p.l[1]-p.p[1]],dt=frames[i].time-frames[i-1].time;if(dt>0)turn=Math.max(turn,Math.abs(Math.atan2(Math.sin(a-Math.atan2(w[1],w[0])),Math.cos(a-Math.atan2(w[1],w[0]))))*180/Math.PI/dt);}}
+  assert.ok(turn<60,`turns at most ${turn.toFixed(0)} deg/s`);
+  assert.deepEqual([...K.tripod(frames,ctx)],[...track],'the same every time');
+});
+
+test('the action camera is one continuous move: behind the robot towards the goal while it scores, at its front while it takes pieces in',()=>{
+  const track=K.director(frames,ctx),modes=track.modes;assert.equal(track.length,frames.length*7);assert.ok(track.every(Number.isFinite));
+  assert.ok(modes.includes('score')&&modes.includes('intake'),'the run both scores and takes pieces in');
+  let jump=0,turn=0;
+  for(let i=1;i<frames.length;i++){const a=at(track,i),p=at(track,i-1),dt=frames[i].time-frames[i-1].time;if(!(dt>0))continue;
+    jump=Math.max(jump,dist(a.p,p.p)/dt);
+    const v=[a.l[0]-a.p[0],a.l[1]-a.p[1]],w=[p.l[0]-p.p[0],p.l[1]-p.p[1]],d=Math.atan2(v[1],v[0])-Math.atan2(w[1],w[0]);turn=Math.max(turn,Math.abs(Math.atan2(Math.sin(d),Math.cos(d)))*180/Math.PI/dt);}
+  assert.ok(jump<160,`the camera never jumps: at most ${jump.toFixed(0)} in/s`);assert.ok(turn<150,`and never whips round: at most ${turn.toFixed(0)} deg/s`);
+  // Well into a volley the camera is on the far side of the robot from where it looks: the goal is ahead of both.
+  const mid=k=>{const runs=[];let s=-1;modes.forEach((m,i)=>{if(m===k&&s<0)s=i;if((m!==k||i===modes.length-1)&&s>=0){runs.push([s,i]);s=-1;}});const r=runs.sort((x,y)=>(y[1]-y[0])-(x[1]-x[0]))[0];return Math.round(r[0]+(r[1]-r[0])*.7);};
+  {const i=mid('score'),c=at(track,i),t=frames[i].truth,cam=[c.p[0]-t.x,c.p[1]-t.y],look=[c.l[0]-t.x,c.l[1]-t.y];assert.ok(cam[0]*look[0]+cam[1]*look[1]<0,'scoring: the camera is behind the robot, looking past it');}
+  {const i=mid('intake'),c=at(track,i),t=frames[i].truth,h=t.heading*Math.PI/180,cam=[c.p[0]-t.x,c.p[1]-t.y];assert.ok(cam[0]*Math.cos(h)+cam[1]*Math.sin(h)>0,'taking pieces in: the camera is on the robot’s front side');}
+  for(let i=0;i<frames.length;i++){const c=at(track,i),t=frames[i].truth;if(!t)continue;const v=[c.l[0]-c.p[0],c.l[1]-c.p[1],c.l[2]-c.p[2]],d=[t.x-c.p[0],t.y-c.p[1],6-c.p[2]],cos=(v[0]*d[0]+v[1]*d[1]+v[2]*d[2])/(Math.hypot(...v)*Math.hypot(...d));assert.ok(Math.acos(Math.min(1,cos))*180/Math.PI<c.fov*.8,'robot in view at '+i);}
+  assert.deepEqual([...K.director(frames,ctx)],[...track],'the same every time');
+});
+
+test('while it scores the action camera looks up at the raised cell: lower than where it looks, and further back than when it takes pieces in',()=>{
+  const track=K.director(frames,ctx),modes=track.modes,of=k=>modes.map((m,i)=>m===k?i:-1).filter(i=>i>=0),mid=k=>of(k)[Math.floor(of(k).length*.7)];
+  const s=at(track,mid('score')),t=frames[mid('score')].truth;
+  assert.ok(s.l[2]>20,`looks well above the floor (${s.l[2].toFixed(0)} in)`);assert.ok(s.p[2]<=K.ACTION.score.high+12,'from low down');assert.ok(s.fov>=60,'with a wide view');
+  assert.ok(Math.hypot(s.p[0]-t.x,s.p[1]-t.y)>40,'standing well back from the robot');
+});
+
+test('the orbit camera sweeps half way round the outside of the field without jumping, with the robot in its picture',()=>{
+  const track=K.orbit(frames,ctx),b=ctx.bounds||{x0:0,x1:144,y0:0,y1:144},cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;
+  assert.equal(track.length,frames.length*7);assert.ok(track.every(Number.isFinite));
+  let jump=0,swept=0;
+  for(let i=0;i<frames.length;i++){const c=at(track,i),t=frames[i].truth;
+    assert.ok(c.p[0]<b.x0||c.p[0]>b.x1||c.p[1]<b.y0||c.p[1]>b.y1,'outside the field at '+i);
+    if(i){const p=at(track,i-1),dt=frames[i].time-frames[i-1].time;if(dt>0)jump=Math.max(jump,dist(c.p,p.p)/dt);
+      const a=Math.atan2(c.p[1]-cy,c.p[0]-cx),q=Math.atan2(p.p[1]-cy,p.p[0]-cx);swept+=Math.atan2(Math.sin(a-q),Math.cos(a-q));}
+    if(!t)continue;const v=[c.l[0]-c.p[0],c.l[1]-c.p[1],c.l[2]-c.p[2]],d=[t.x-c.p[0],t.y-c.p[1],6-c.p[2]],cos=(v[0]*d[0]+v[1]*d[1]+v[2]*d[2])/(Math.hypot(...v)*Math.hypot(...d));
+    assert.ok(Math.acos(Math.min(1,cos))*180/Math.PI<c.fov*.8,'robot in view at '+i);}
+  const D=frames.at(-1).time-frames[0].time,want=Math.min(Math.PI,K.ORBIT.rate*D);assert.ok(Math.abs(Math.abs(swept)-want)<.35,`half way round, or as far as a short run allows (${(swept*180/Math.PI).toFixed(0)} of ${(want*180/Math.PI).toFixed(0)} deg)`);
+  assert.ok(jump<120,`never jumps: at most ${jump.toFixed(0)} in/s`);
+  assert.deepEqual([...K.orbit(frames,ctx)],[...track],'the same every time');
+});

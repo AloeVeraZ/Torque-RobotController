@@ -85,6 +85,17 @@ body.driver-station > header { height: 60px; margin: 0; top: 0; padding: 0 16px;
 .driver-station .version { margin: 0; padding: 0; border: 0; background: none; color: var(--quiet); font-size: 12px; }
 .driver-station .settings-grid { gap: 16px; }
 .driver-station .setup-left { gap: 16px; }
+/* The right column: the robot to open, then its saved addresses under it. */
+.driver-station .setup-right { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.driver-station .setup-right > .library-panel { margin-top: 0; }
+/* Settings fits the window as the other views do: the heading stays, and each column scrolls on its own, so Open robot
+   shows without scrolling the page. A short or narrow window scrolls as one page. */
+@media (min-width: 861px) and (min-height: 560px) {
+  .driver-station #settings-view:not([hidden]) { height: calc(100vh - 60px); box-sizing: border-box; display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 12px; overflow: clip; }
+  .driver-station #settings-view > .settings-heading { flex: none; margin-bottom: 12px; }
+  .driver-station #settings-view > .settings-grid { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .driver-station #settings-view :is(.setup-left, .setup-right) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: start; }
+}
 .driver-station .panel { background: var(--surface); border: 0; border-radius: var(--radius-panel); box-shadow: none; padding: 24px; }
 .driver-station .panel-title { gap: 12px; margin-bottom: 20px; }
 .driver-station .panel-title h2 { margin-bottom: 2px; }
@@ -208,7 +219,7 @@ body.driver-station > header { height: 60px; margin: 0; top: 0; padding: 0 16px;
 .driver-station .testing-warning p { color: var(--muted); }
 .driver-station .input-notice { border-bottom-color: color-mix(in srgb, var(--warning) 35%, transparent); }
 .driver-station .input-button.pressed :is(span, output) { color: var(--text); }
-.driver-station :where(.robot-grid, .wifi-list, dialog, .controller-scroll) { scrollbar-color: var(--line-strong) transparent; }
+.driver-station :where(.robot-grid, .wifi-list, dialog, .controller-scroll) {}
 
 /* Preferences: theme switch, keep-awake and the shortcut list. */
 .driver-station .setting-label { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--text); }

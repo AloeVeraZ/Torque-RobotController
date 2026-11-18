@@ -269,14 +269,19 @@
     const first=segments[0].points[0];push({x:first.x,y:first.y,heading:[start.heading,segments[0].heading,route.heading].find(finite)??0,path:segments[0].to??0});
     segments.forEach((seg,i)=>{
       const path=seg.to??0,headingOf=t=>{const h=headingAt(seg,t);return finite(h)?h:null;},wraps=seg.tangent||!!seg.target;
-      const moving=stops[path]?.path?.kind==='action'&&stops[path].path.action?{action:stops[path].path.action,cell:stops[path].path.cell}:{};
+      // While driving, a path's steps run together: the preview acts out the one there is most to see of (an intake
+      // pulling pieces in, then a shot, aiming, spinning up), and names it.
+      const together=stops[path]?.path?.kind==='action'&&stops[path].path.action?stops[path].path:null,shown=together&&Array.isArray(together.steps)&&together.steps.length?[/^intake$/i,/^shoot\b/i,/^aim$/i,/^spin\s*up$/i].map(re=>together.steps.find(x=>re.test(String(x.action||'').trim()))).find(Boolean)||together.steps[0]:null;
+      const moving=together?{action:shown?shown.action:together.action,cell:shown?.cell||together.cell}:{};
       let length=0;for(let k=1;k<seg.points.length;k++)length+=dist(seg.points[k],seg.points[k-1]);
       const sweep=finite(seg.endHeading)&&finite(seg.heading)?Math.abs(seg.endHeading-seg.heading):0,n=Math.min(2000,Math.max(4,Math.ceil(length),Math.ceil(sweep/5)));
       let prev=headingOf(0);if(prev!==null)turnTo(prev,path);
       for(let j=1;j<=n;j++){const t=j/n,p=bezier(seg.points,t),h=headingOf(t),last=out.at(-1),step=Math.hypot(p.x-last.x,p.y-last.y);s+=step;d+=step;
         push({x:p.x,y:p.y,heading:h===null||prev===null?last.heading:last.heading+(wraps?norm(h-prev):h-prev),path,...moving});prev=h;}
       for(const stop of stops)if(stop.segment===i){if(finite(stop.turn))turnTo(stop.turn,path);if(stop.wait>0)dwell(stop.wait,'','start',path);
-        if(stop.action)dwell(stepsSeconds(stop),stop.action,stop.cell,path);}
+        // At a pin the steps run one after another, so the preview acts out each in turn (1.2 s for one with no time of its own).
+        if(stop.action){const list=Array.isArray(stop.steps)&&stop.steps.length>1?stop.steps:null;
+          if(list)for(const x of list)dwell(finite(x.seconds)?x.seconds:1.2,x.action,x.cell||stop.cell,path);else dwell(stepsSeconds(stop),Array.isArray(stop.steps)&&stop.steps.length===1?stop.steps[0].action:stop.action,stop.cell,path);}}
     });
     return out;
   }
@@ -305,6 +310,51 @@
   }
   function plan(project,rawFootprint,fieldZones=[],rawField){
     const route=annotate(effectful(project)?planEffects(project,rawFootprint,fieldZones,rawField):planBasic(project,rawFootprint,fieldZones,rawField));if(finite(project.defaultPower))route.defaultPower=Math.max(0,Math.min(1,project.defaultPower));return route;
+  }
+  // Route problems physics can show rather than the planner refuse: an end point the robot does not fit at, a turn that
+  // sweeps into something, no clear way round. The rest (the start overlapping something, a target to choose) still stop it.
+  const PHYSICS_ISSUES=['clearance','turn','path'];
+  // A route the planner cannot keep clear of every wall and obstacle still runs, on physics (the user's call of
+  // 2026-11-17): each stretch it can route is routed as usual, and each path it cannot is driven as drawn, straight or
+  // along its curve, avoiding nothing, so Run shows the robot meeting whatever is in the way. route.unclear lists those
+  // paths ({pin, code, message}) for Path planning to draw yellow. issues: analyze(project, …, true) when already known.
+  function planLoose(project,rawFootprint,fieldZones=[],rawField,issues){
+    const fp=footprintOf(rawFootprint),field=fieldOf(rawField),raw=Array.isArray(project?.pins)?project.pins:[];
+    if(!Array.isArray(issues))issues=analyze(project,fp,fieldZones,field,true);
+    const hard=issues.find(q=>!PHYSICS_ISSUES.includes(q.code));if(hard)throw Error(hard.message);
+    // An open field, the walls a robot's reach away, where nothing is in the way: a path driven as drawn is planned there.
+    const r=reach(fp)+1,open={x0:field.x0-r,y0:field.y0-r,x1:field.x1+r,y1:field.y1+r};
+    const {pins}=prepare({...project,zones:[]},fp,[],open);
+    // A path is driven as drawn when its own end point has a problem, or it starts where the robot does not fit.
+    const why=new Map(),mark=(i,q)=>{if(i<pins.length&&!why.has(i))why.set(i,q);};
+    for(const q of issues)if(Number.isInteger(q.pin)){mark(q.pin,q);if(q.code==='clearance')mark(q.pin+1,{code:'after',message:`Path to pin ${q.pin+2} starts where the robot does not fit (pin ${q.pin+1}).`});}
+    const routed=(from,list)=>plan({...project,start:from,pins:list},fp,fieldZones,field),drawn=(from,pin)=>plan({...project,zones:[],clearance:MIN_CLEARANCE,start:from,pins:[pin]},fp,[],open);
+    const endOf=(route,from)=>{const s=route.segments.at(-1),stop=route.stops?.at(-1);if(!s)return from;const p=s.points.at(-1),h=finite(stop?.turn)?stop.turn:finite(s.endHeading)?s.endHeading:finite(s.heading)?s.heading:route.heading;return {x:p.x,y:p.y,heading:finite(h)?h:from.heading};};
+    const parts=[],unclear=[];let at={x:project.start.x,y:project.start.y,heading:project.start.heading};
+    // One pin at a time: routed if it can be, else driven as drawn. A pin on the spot the robot is already at only stops there.
+    const one=i=>{const pin=raw[i];if(dist(at,pins[i])<.01){parts.push({stop:stopOf(pins[i])});return;}
+      let route=null,issue=why.get(i);if(!issue)try{route=routed(at,[pin]);}catch(e){issue={code:'path',message:e.message.replace(/pin 1\b/gi,`pin ${i+1}`)};}
+      if(!route){route=drawn(at,pin);unclear.push({pin:i,code:issue.code,message:issue.message});}
+      parts.push({route});at=endOf(route,at);};
+    // Clear stretches are routed together, so their curves flow through the pins between them.
+    for(let i=0;i<pins.length;){
+      if(why.has(i)){one(i);i++;continue;}
+      let j=i;while(j+1<pins.length&&!why.has(j+1))j++;
+      let route=null;if(j>i)try{route=routed(at,raw.slice(i,j+1));}catch{}
+      if(route){parts.push({route});at=endOf(route,at);}else for(let k=i;k<=j;k++)one(k);
+      i=j+1;}
+    const segments=[],samples=[],stops=[];let length=0,turnDegrees=0;
+    for(const part of parts){
+      if(part.stop){stops.push({...part.stop,segment:Math.max(0,segments.length-1)});continue;}
+      const route=part.route,base=segments.length;
+      for(const s of route.segments){const {to,...rest}=s;segments.push({...rest,heading:finite(s.heading)?s.heading:route.heading});}
+      for(const p of route.samples){if(samples.length&&dist(samples.at(-1),p)<1e-9)continue;samples.push({x:p.x,y:p.y});}
+      for(const s of route.stops)stops.push({...s,segment:s.segment+base});
+      length+=route.length;turnDegrees+=route.turnDegrees||0;}
+    if(!segments.length)throw Error('Place a pin away from the starting position.');
+    // Every path carries its own heading, and the simulator drives these as they are (effects: it does not re-check them).
+    const route=annotate({style:['sharp','rounded','spline'].includes(project.style)?project.style:'sharp',segments,samples,length,heading:project.start.heading,clearance:Math.max(MIN_CLEARANCE,finite(project.clearance)?project.clearance:1),footprint:fp,field,vertices:[project.start,...pins],pins:pins.length,stops,turns:true,turnDegrees,effects:true,...(project.nonholonomic?{nonholonomic:true}:{}),unclear});
+    if(finite(project.defaultPower))route.defaultPower=Math.max(0,Math.min(1,project.defaultPower));return route;
   }
   // Exhaustive for up to four unlocked paths; bounded alternatives for longer routes.
   // Manually assigned shapes stay fixed. Optimizer assignments remain eligible next time.
@@ -596,5 +646,5 @@
     const pin=raw=>{const p={...raw,...pt(raw)};if(p.target)p.target=pt(p.target);if(finite(p.turn))p.turn=p.turnMode==='relative'?turnBy(p.turn):p.turnMode==='start'||p.turnMode==='track'?p.turn:hd(p.turn);if(p.path)p.path=path(p.path);return p;};
     return {start:layout.start?{...pt(layout.start),heading:hd(layout.start.heading)}:layout.start,pins:(layout.pins||[]).map(pin),zones:(layout.zones||[]).map(zone)};
   }
-  return {allianceRoute,tangentAt,previewPoses,PREVIEW_SPEED,SIZE,FIELD,TOL,MIN_CLEARANCE,polygon,parts,zoneHits,triangulate,hull,body,overlap,contains,inside,safePose,safeSweep,sweepClear,dragPose,slidePose,segmentClear,validateZone,inflated,analyze,plan,shapeCandidates,planEffects,pinEffects,stepsOf,stepsName,MAX_STEPS,pathEffects,headingAt,pathEnd,pinHeading,pathDescription,pathAppearance,planFixed,planTurning,planTankLattice,tankRoute,dist};
+  return {allianceRoute,tangentAt,previewPoses,PREVIEW_SPEED,SIZE,FIELD,TOL,MIN_CLEARANCE,polygon,parts,zoneHits,triangulate,hull,body,overlap,contains,inside,safePose,safeSweep,sweepClear,dragPose,slidePose,segmentClear,validateZone,inflated,analyze,plan,planLoose,PHYSICS_ISSUES,shapeCandidates,planEffects,pinEffects,stepsOf,stepsName,MAX_STEPS,pathEffects,headingAt,pathEnd,pinHeading,pathDescription,pathAppearance,planFixed,planTurning,planTankLattice,tankRoute,dist};
 });

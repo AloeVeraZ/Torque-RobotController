@@ -7,7 +7,7 @@ test('practice defaults follow FTC periods; phase time is simulation time',()=>{
   for(let i=0;i<480;i++)c.advance(1/60);assert.equal(c.phase,'teleop');assert.equal(c.remaining,120);
   for(let i=0;i<7200;i++)c.advance(1/60);assert.equal(c.phase,'finished');
   const direct=new PracticeClock('match',{autoSeconds:1,transitionSeconds:0,teleopSeconds:1});direct.advance(1);assert.equal(direct.phase,'teleop');
-  assert.equal(new PracticeClock('teleop').phase,'teleop');assert.equal(new PracticeClock('autonomous').advance(30).to,'finished');
+  assert.equal(new PracticeClock('teleop').phase,'teleop');{const solo=new PracticeClock('autonomous');assert.equal(solo.advance(30).to,'transition');assert.equal(solo.advance(8).to,'finished');assert.equal(new PracticeClock('autonomous',{transitionSeconds:0}).advance(30).to,'finished');}
 });
 test('robot families, numeric intake and large custom fields retain their dimensions',()=>{
   assert.ok(C.drives.kiwi&&C.drives.tank2&&C.drives.swerve&&!C.drives.tank6&&!C.drives.hdrive);assert.equal(C.robot({drivetrain:'tank6'}).drivetrain,'tank');assert.equal(C.robot({drivetrain:'hdrive'}).drivetrain,'xdrive');assert.equal(C.robot({length:96,width:80,intakeIn:7.25}).length,96);

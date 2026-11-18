@@ -38,7 +38,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     // Still starting: no red, no "could not read".
     await page.waitForFunction(()=>/still starting/.test(document.querySelector('#setup-view').textContent),null,{timeout:15000});assert.ok(!/Could not read/.test(await page.locator('#setup-view').textContent()),'not an error');
     // Ready: read and scanned with nothing pressed.
-    await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1,null,{timeout:30000});await page.waitForTimeout(4000);
+    await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1,null,{timeout:30000});await page.waitForTimeout(4000);
     {const r=await u();assert.ok(r.reads>=3,`it kept reading: ${r.reads}`);assert.equal(r.scans,1,'it scanned by itself, once');}
     await page.waitForTimeout(4000);assert.equal((await u()).scans,1,'and not again');
     assert.deepEqual((await u()).watch,[true],'the watch was asked for once, on the tab that uses it');
@@ -62,7 +62,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     // Pulled: at once, and how long from main to the page having drawn it.
     await page.evaluate(()=>{window.__drawn=0;new MutationObserver(()=>{window.__drawn||=Date.now();}).observe(document.querySelector('#hub-dropped'),{attributes:true,attributeFilter:['open']});});
     const recovers=(await u()).recovers;await app.evaluate(()=>{global.__u.plugged=false;});const told=said(null,{drop:'unplugged'});await push(told);
-    await soon('the dialog',dropped);assert.equal((await u()).recovers,recovers,'Windows said so: nothing to try first, no second look');await soon('the plug line',()=>says(/Plug the Control Hub in by USB-C/));assert.match(await usbLink(),/Not plugged in/);assert.equal(await page.locator('#rs-configs .rs-config').count(),0,'what it read goes with it');
+    await soon('the dialog',dropped);assert.equal((await u()).recovers,recovers,'Windows said so: nothing to try first, no second look');await soon('the plug line',()=>says(/Plug the Control Hub in by USB-C/));assert.match(await usbLink(),/Not plugged in/);assert.equal(await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count(),0,'what it read goes with it');
     const drawn=await page.evaluate(()=>window.__drawn)-told.at;assert.ok(drawn<300,`from main to the page in ${drawn} ms`);console.log(`main to page: ${drawn} ms`);
 
     // Plugged in: says so before ADB has said anything, and closes the dialog by itself. Nothing is read yet.
@@ -72,7 +72,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     await push(said(hub('device')));await soon('reading',async()=>(await u()).reads===reads+1);await soon('the reading line',()=>says(/Reading what is connected/));
     await push(said(null,{drop:'unplugged'}));await soon('the dialog during a read',dropped);await soon('the plug line during a read',()=>says(/Plug the Control Hub in/));
     // The read's answer comes late, and does not bring the hub back.
-    await release('letRead');await wait(1000);assert.ok(await dropped(),'still dropped');assert.match(await plug(),/Plug the Control Hub in/);assert.equal(await page.locator('#rs-configs .rs-config').count(),0,'the late answer is dropped');
+    await release('letRead');await wait(1000);assert.ok(await dropped(),'still dropped');assert.match(await plug(),/Plug the Control Hub in/);assert.equal(await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count(),0,'the late answer is dropped');
     // A late error from a read is dropped too.
     reads=(await u()).reads;await push(said(hub('device')));await soon('a second read',async()=>(await u()).reads===reads+1);await push(said(null,{drop:'unplugged'}));await soon('the dialog',dropped);await release('letRead','adb.exe: device offline');await wait(800);assert.match(await plug(),/Plug the Control Hub in/);assert.ok(!/Could not read/.test(await setupText()),'no late error');
 
@@ -91,7 +91,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     // Allowed and Android still starting: the calm note. Then ADB says it is not there yet: only a wait. Then it reads, by itself.
     await app.evaluate(()=>{global.__u.starting=1;global.__u.notYet=1;});await push(said(hub('device')));await soon('a calm wait',()=>says(/^Control Hub plugged in\. Waiting for it to answer…/),3000);assert.ok(!/Could not read/.test(await setupText()),'no error on the way up');
     await soon('still starting',()=>says(/still starting/),8000);assert.ok(!/Could not read/.test(await setupText()),'no error on the way up');
-    await soon('read by itself',async()=>await page.locator('#rs-configs .rs-config').count()===1,20000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C|Scanning/),8000);assert.match(await usbLink(),/Control Hub hub1/);await soon('the scan is done',()=>says(/Control Hub hub1 connected over USB-C/),8000);
+    await soon('read by itself',async()=>await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count()===1,20000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C|Scanning/),8000);assert.match(await usbLink(),/Control Hub hub1/);await soon('the scan is done',()=>says(/Control Hub hub1 connected over USB-C/),8000);
 
     // Another device coming and going with the hub still there changes nothing.
     reads=(await u()).reads;await push(said(hub('device'),{devices:[{vid:'174f',pid:'2454',serial:'x'}]}));await wait(300);assert.equal(await dropped(),false);assert.equal((await u()).reads,reads);assert.match(await plug(),/connected over USB-C/);
@@ -103,10 +103,10 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     // A hub in update mode says so, is not read, and leaving it (a restart) is no drop.
     reads=(await u()).reads;await push(said(hub('update')));await soon('update mode',()=>says(/^Control Hub plugged in\. It is in update mode/));await wait(300);assert.equal((await u()).reads,reads,'nothing to read yet');await push(said(null,{drop:'restarting'}));await soon('the plug line',()=>says(/Plug the Control Hub in/));await wait(300);assert.equal(await dropped(),false,'a restart is no dropped hub');
 
-    // The Axon Programmer tab: the watch rests, and no dialog.
-    await push(said(hub('device')));await soon('read',async()=>await page.locator('#rs-configs .rs-config').count()===1,8000);await page.locator('#setup-view [data-flow="axon"]').click();await soon('the watch rests',async()=>(await u()).watch.at(-1)===false);
+    // The Axon Programmer tab (a tool of Calibrate's): the watch rests, and no dialog.
+    await push(said(hub('device')));await soon('read',async()=>await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count()===1,8000);await page.click('#calibrate-tab');await page.locator('#calibrate-view [data-flow="axon"]').click();await soon('the watch rests',async()=>(await u()).watch.at(-1)===false);
     await push(said(null,{drop:'unplugged'}));await wait(300);assert.equal(await dropped(),false,'not on the Axon tab');
-    await page.locator('#setup-view [data-flow="setup"]').click();await soon('the watch runs again',async()=>(await u()).watch.at(-1)===true);await wait(300);assert.equal(await dropped(),false,'it left while nobody was looking: no dialog, only the plain state');await soon('the plug line',()=>says(/Plug the Control Hub in/),5000);
+    await page.click('#robot-setup-tab');await page.locator('#setup-view [data-flow="setup"]').click();await soon('the watch runs again',async()=>(await u()).watch.at(-1)===true);await wait(300);assert.equal(await dropped(),false,'it left while nobody was looking: no dialog, only the plain state');await soon('the plug line',()=>says(/Plug the Control Hub in/),5000);
 
     // ---- What is on the hub's own USB ports, read by main and carried on the same pushes (src/hub-usb.cjs).
     const INSIDE=`3-1|05e3|0608|09|8538|480|3|2||USB2.0 Hub||100mA|e0|4|09/00/00/hub,\n3-1.1|0bda|c820|ef|0200|480|3|3|Realtek|802.11ac NIC|123456|500mA|a0|0|e0/01/01/rtk_btusb,e0/01/01/rtk_btusb,ff/ff/ff/rtl8821cu/p2p0/wlan0,\nusb1|1d6b|0002|09|0310|480|1|1|Linux 3.10.245 xhci-hcd|xHCI Host Controller|xhci-hcd.0.auto|0mA|e0|1|`;
@@ -118,7 +118,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     const closeDropped=()=>page.evaluate(()=>document.querySelector('#hub-dropped[open]')?.close());
 
     // Plugged in, on Setup: read, and the one scan that comes with plugging in. Its list starting the same moment is no reason for a second.
-    await app.evaluate(()=>{global.__u.plugged=true;global.__u.others=[];});scans=await scansNow();await push(said(hub('device'),{hubUsb:ports()}));await soon('read',async()=>await page.locator('#rs-configs .rs-config').count()===1,8000);await scanOnce('the first scan',scans,8000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C/),5000);
+    await app.evaluate(()=>{global.__u.plugged=true;global.__u.others=[];});scans=await scansNow();await push(said(hub('device'),{hubUsb:ports()}));await soon('read',async()=>await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count()===1,8000);await scanOnce('the first scan',scans,8000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C/),5000);
     // Its own parts never show.
     {const t=await rsHubs();assert.doesNotMatch(t,/802\.11ac|USB2\.0 Hub|xHCI|Realtek/,'the hub’s own parts stay hidden');assert.doesNotMatch(t,/press Scan/i,'nobody has to press anything');}
     const others=()=>page.$$eval('#rs-hubs [data-usb-row]',l=>String(l.length));assert.equal(await others(),'0');
@@ -130,8 +130,8 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(5)]);await soon('the camera on Configure',async()=>/Webcam · Ucamera001[\s\S]*plugged in, not in this configuration/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan on Configure',scans);
     scans=await scansNow();await setOthers([]);await listed([]);await soon('gone from Configure',async()=>!/Ucamera001/.test(await page.textContent('.ce-hubs')));await scanOnce('a scan when it left Configure',scans);
     await page.click('#setup-view .flow-steps [data-flow=setup]');
-    // Calibrate, with the hub already read on Setup. No camera is plugged in yet, so Camera opens from Debug's link, and keeps its tab while the camera comes and goes.
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.locator('#cal-tab-camera').isVisible(),false,'no camera, no tab');await page.click('#cal-sim-cam [data-sim-cam]');
+    // Calibrate, with the hub already read on Setup. No camera is plugged in yet: Camera is still Calibrate's step 3, and Debug's link opens it on the simulated webcam, where it stays while the camera comes and goes.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is a step, camera or not');await page.click('#calibrate-view [data-flow=debug]');await page.click('#cal-sim-cam [data-sim-cam]');
     scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(6)]);await soon('the camera on Calibrate',async()=>/Ucamera001/.test(await cameraList()));await scanOnce('a scan on Calibrate',scans);
     await page.click('#calibrate-view [data-flow=debug]');await soon('USB devices in Electronics',async()=>await page.locator('[data-usb-elsewhere="Ucamera001"]').count()===1);
     // Something a scan cannot see is shown at once, and is no reason to scan.
@@ -150,7 +150,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
 
     // Setup again, for what fails and what is not there. A scan that fails says nothing and tries again by itself.
     // Arriving, the hub is found by asking, with its ports not read yet, so it is read and scanned once. The list then comes, and what is new since that scan began is one more.
-    scans=await scansNow();await setOthers([]);await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await soon('read again',async()=>await page.locator('#rs-configs .rs-config').count()===1,8000);await soon('settled',async()=>{const a=await scansNow();await wait(1800);return a===await scansNow();},12000);assert.equal(await scansNow(),scans+1,'arriving scans once');
+    scans=await scansNow();await setOthers([]);await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await soon('read again',async()=>await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count()===1,8000);await soon('settled',async()=>{const a=await scansNow();await wait(1800);return a===await scansNow();},12000);assert.equal(await scansNow(),scans+1,'arriving scans once');
     scans=await scansNow();await push(said(hub('device'),{hubUsb:ports()}));await scanOnce('a scan for the list',scans,8000);await soon('connected',()=>says(/Control Hub hub1 connected over USB-C/),5000);
     await app.evaluate(()=>{global.__u.failScans=2;});scans=await scansNow();await setOthers([CAM_SCAN]);await listed([cam(11)]);await soon('a scan that fails',async()=>await scansNow()===scans+1,6000);await wait(200);assert.match(await plug(),/Control Hub hub1 connected over USB-C/);assert.doesNotMatch(await setupText(),/did not finish|did not answer|Waiting for the Robot Controller/);
     await soon('it tries again, and again',async()=>await scansNow()===scans+3,16000);await wait(800);assert.doesNotMatch(await setupText(),/did not finish|did not answer/);assert.match(await plug(),/Control Hub hub1 connected over USB-C/);assert.match(await rsHubs(),/Webcam \(needs its lens measured\)/,'the list never depended on it');await wait(3500);assert.equal(await scansNow(),scans+3,'and stops once it answers');
@@ -181,7 +181,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     await soon('settled',async()=>{const a=await scansNow();await wait(1800);return a===await scansNow();},12000);
 
     // ---- A scan nobody pressed for: it gets in nobody's way, and changes nothing unless the hubs really changed.
-    const rows=()=>page.locator('#rs-configs .rs-config').count(),setupStep=()=>page.click('#setup-view .flow-steps [data-flow=setup]'),configureStep=async()=>{await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');};
+    const rows=()=>page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count(),setupStep=()=>page.click('#setup-view .flow-steps [data-flow=setup]'),configureStep=async()=>{await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('.ce-grid');};
     const heldScan=async dev=>{const from=await scansNow();await app.evaluate(()=>{global.__u.holdScan=true;});await listed([cam(dev)]);await soon('a scan held',async()=>await scansNow()===from+1,6000);return from;},letScanGo=async fail=>{await app.evaluate(()=>{global.__u.holdScan=false;});await release('letScan',fail);};
     const matched=()=>page.textContent('#rs-matched'),mark=()=>page.evaluate(()=>{document.querySelector('#rs-matched').textContent='untouched';}),simLoads=async()=>(await u()).simLoads,setPortals=list=>app.evaluate((_,l)=>{global.__u.portals=l;},list),SECOND_HUB=[{serial:'DQ9',modules:[{address:2,parent:true}],servoHubs:[]}];
     const draft=async name=>{if(!await page.locator('[data-ce-back]').count())await page.locator('.ce-main button',{hasText:/Motors/}).first().click();await page.locator('.ce-main input[id^=ce-name-]').first().fill(name);await page.locator('.ce-main input[id^=ce-name-]').first().press('Tab');await page.waitForSelector('[data-ce-save]:not([disabled])');},saveOff=async()=>await page.locator('[data-ce-save]').getAttribute('data-draft')==='0';

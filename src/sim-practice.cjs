@@ -6,7 +6,8 @@ class PracticeClock{
   constructor(mode,options){this.mode=mode==='teleop'?'teleop':mode==='match'?'match':'autonomous';this.timing=timing(options);this.phase=this.mode==='teleop'?'teleop':'auto';this.elapsed=0;this.neutralRequired=true;}
   get duration(){return this.phase==='auto'?this.timing.autoSeconds:this.phase==='transition'?this.timing.transitionSeconds:this.phase==='teleop'?this.timing.teleopSeconds:0;}
   get remaining(){return Math.max(0,this.duration-this.elapsed);}
-  advance(dt){if(this.phase==='finished')return null;this.elapsed+=dt;if(this.remaining>1e-8)return null;const from=this.phase;this.phase=from==='auto'&&this.mode==='match'?(this.timing.transitionSeconds>0?'transition':'teleop'):from==='transition'?'teleop':'finished';this.elapsed=0;this.neutralRequired=true;return {from,to:this.phase};}
+  advance(dt){if(this.phase==='finished')return null;this.elapsed+=dt;if(this.remaining>1e-8)return null;const from=this.phase;// Autonomous is followed by the transition (when it has a length), in a full match and on its own; only a match goes on to teleop.
+    const after=this.mode==='match'?'teleop':'finished';this.phase=from==='auto'?(this.timing.transitionSeconds>0?'transition':after):from==='transition'?after:'finished';this.elapsed=0;this.neutralRequired=true;return {from,to:this.phase};}
   snapshot(){return {mode:this.mode,phase:this.phase,remaining:this.remaining,elapsed:this.elapsed,timing:this.timing,neutralRequired:this.neutralRequired};}
 }
 module.exports={PracticeClock,timing,DEFAULTS};

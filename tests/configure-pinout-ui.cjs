@@ -25,7 +25,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
         if(action==='scan')return ok({portals:[],others:[]});
         return {ok:false,error:'not in this test: '+action};});},{files:{lunala:XML},saved});
     // A. The pinout, right beside Active configuration.
-    await page.click('#robot-setup-tab');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);
+    await page.click('#robot-setup-tab');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);
     await page.click('#setup-view .flow-steps [data-flow=configure]');await page.waitForSelector('[data-ce-pinout]');
     const side=await page.evaluate(()=>{const label=document.querySelector('.ce-config').getBoundingClientRect(),b=document.querySelector('[data-ce-pinout]').getBoundingClientRect();const select=document.querySelector('.ce-config select').getBoundingClientRect();return {gap:b.left-label.right,top:b.bottom-select.bottom,next:document.querySelector('.ce-config').nextElementSibling.dataset.cePinout!==undefined};});
     assert.ok(side.next,'the button comes straight after Active configuration');assert.ok(side.gap>=0&&side.gap<20,`right beside it: ${side.gap}px`);assert.ok(Math.abs(side.top)<12,'level with the dropdown');
@@ -42,18 +42,24 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     await page.locator('.ce-hubs').getByText('Expansion Hub 2').first().click().catch(()=>{});await page.waitForTimeout(150);await page.locator('.ce-main button',{hasText:/Motors/}).first().click();await page.locator('.ce-main input[id^=ce-name-]').first().fill('elbow');await page.locator('.ce-main input[id^=ce-name-]').first().press('Tab');await page.waitForSelector('[data-ce-save]:not([disabled])');
     await page.click('[data-ce-pinout]');await page.waitForSelector('#sim-pinout[open] .pin-note');assert.match(await page.locator('#sim-pinout .pin-note').first().textContent(),/before they are saved/);
     assert.ok((await page.evaluate(async()=>await (await fetch(document.querySelector('#sim-pinout img.pin-sheet').src)).text())).includes('elbow'),'the sheet has the new name');
-    await page.keyboard.press('Escape');assert.equal(await page.locator('#sim-pinout[open]').count(),0,'Escape closes it');await page.click('[data-ce-cancel]');
-    // B. The yellow note. A team's own robot has it.
-    const note=page.locator('#sim-reliable'),setups=async()=>{await page.click('#sim-setup');const ids=await page.locator('.sim-setup-option').evaluateAll(l=>l.map(o=>[o.dataset.setupId,o.textContent]));await page.keyboard.press('Escape');return ids;};
-    const pick=async id=>{if(await page.locator('#sim-setup-list').isHidden())await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${id}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,id);await page.waitForTimeout(250);};
-    await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.waitForTimeout(400);
+    await page.keyboard.press('Escape');assert.equal(await page.locator('#sim-pinout[open]').count(),0,'Escape closes it');
+    // Escape again: out of Motors back to the hub, with the change kept (Save still puts it on the robot).
+    assert.equal(await page.locator('[data-ce-back]').count(),1,'still in Motors');await page.keyboard.press('Escape');assert.equal(await page.locator('[data-ce-back]').count(),0,'Escape leaves Motors');
+    await page.locator('.ce-main button',{hasText:/Motors/}).first().click();assert.equal(await page.locator('.ce-main input[id^=ce-name-]').first().inputValue(),'elbow','the change is kept');
+    // A name being typed is kept too.
+    await page.locator('.ce-main input[id^=ce-name-]').first().fill('wrist');await page.keyboard.press('Escape');await page.locator('.ce-main button',{hasText:/Motors/}).first().click();assert.equal(await page.locator('.ce-main input[id^=ce-name-]').first().inputValue(),'wrist','typed, then Escape: kept');
+    await page.click('[data-ce-cancel]');
+    // B. The yellow note, on Simulate. A team's own robot has it. The robot is picked in the robot bar, which heads Setup (Simulate has none), and the note is kept closed by the setup's id.
+    const toSetup=async()=>{await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');},toSimulate=async()=>{await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.waitForTimeout(400);};
+    const note=page.locator('#sim-reliable'),setups=async()=>{await toSetup();await page.click('#sim-setup');const ids=await page.locator('.sim-setup-option').evaluateAll(l=>l.map(o=>[o.dataset.setupId,o.textContent]));await page.keyboard.press('Escape');return ids;};
+    const pick=async id=>{await toSetup();if(await page.locator('#sim-setup-list').isHidden())await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${id}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,id);await page.waitForTimeout(250);await toSimulate();};
     const all=await setups(),demos=all.filter(([id])=>id.startsWith('preset:')),team=all.find(([id])=>!id.startsWith('preset:'));
     for(const name of ['A301 Swerve','Starter Mecanum'])assert.ok(demos.some(d=>d[1].includes(name)),`${name} ships with Torque`);assert.ok(team,'a team setup');
     await pick(team[0]);assert.equal(await note.isVisible(),true,'a team robot has the note');
     const close=note.locator('.sim-reliable-close'),mark=await close.evaluate(b=>{const r=document.createRange();r.selectNodeContents(b);const t=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {dx:Math.abs((t.left+t.right)-(o.left+o.right))/2,dy:Math.abs((t.top+t.bottom)-(o.top+o.bottom))/2,w:o.width,h:o.height};});
     assert.ok(mark.dx<1.5&&mark.dy<3,`the × is centered: ${JSON.stringify(mark)}`);await page.screenshot({path:path.join(out,'note.png')});
     // Holds nothing back: every part of the simulation opens with no Setup or Calibrate done.
-    const open=async()=>{for(const name of ['plan','run','video']){const b=page.locator(`.sim-tabs [data-tab=${name}]`);assert.equal(await b.isDisabled(),false,`${name} opens`);if(name==='video')continue;await b.click();assert.equal(await page.locator('[data-tab]').first().count(),1);await page.waitForFunction(n=>document.querySelector('.sim-tabs [data-tab='+n+']').getAttribute('aria-selected')==='true'||document.querySelector('.sim-tabs [data-tab='+n+']').classList.contains('active'),name);}await page.locator('.sim-tabs [data-tab=setup]').click();};
+    const open=async()=>{for(const name of ['plan','run','video']){const b=page.locator(`.sim-tabs [data-tab=${name}]`);assert.equal(await b.isDisabled(),false,`${name} opens`);if(name==='video')continue;await b.click();assert.equal(await page.locator('[data-tab]').first().count(),1);await page.waitForFunction(n=>document.querySelector('.sim-tabs [data-tab='+n+']').getAttribute('aria-selected')==='true'||document.querySelector('.sim-tabs [data-tab='+n+']').classList.contains('active'),name);}await page.locator('.sim-tabs [data-tab=field]').click();};
     await open();
     // The demos never have it.
     for(const [id,name] of demos.filter(d=>/A301|Starter Mecanum/.test(d[1]))){await pick(id);assert.equal(await note.isVisible(),false,`no note on ${name}`);await open();}

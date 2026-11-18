@@ -41,9 +41,9 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
       if(action==='scan')return ok({portals:[{serial:'(embedded)',modules:[{address:173,parent:true,imu:'BHI260'}],servoHubs:[]}],others:[]});
       if(action==='debug-send'){g.__sent.push(d.line);return ok(true);}if(action==='debug-install')return ok({opMode:'TorqueDebug-x'});if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});
       if(action==='debug-start'){g.__starts=(g.__starts||0)+1;return ok(true);}if(action==='debug-stop'||action==='debug-claim')return ok(true);return {ok:false,error:'not in this test: '+action};});},{xml:XML,SERIAL});
-    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);await wait(800);
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);await wait(800);
     // Calibrate does not wait for Debug: opened straight away over the cable, it starts Torque Debug by itself, with nothing pressed.
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#calibrate-view [data-flow=calibrate]');
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#calibrate-view [data-flow=electronics]');
     await soon('Calibrate opens',async()=>await page.locator('#cal-gate').isHidden());await soon('Torque Debug started by Calibrate',async()=>(await app.evaluate(()=>global.__starts||0))>0,20000);
     await page.click('#calibrate-view [data-flow=debug]');await soon('the gate opens',()=>page.locator('#cal-gate').isHidden());
     const send=m=>app.evaluate(({BrowserWindow},x)=>{for(const w of BrowserWindow.getAllWindows())w.webContents.send('robot-link-debug',x);},m);
@@ -59,7 +59,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await soon('frames drawn',async()=>/robot clock/.test(await page.textContent('[data-debug-stats]')));
 
     // Electronics, laid out like Simulate's robot: the chassis, then the configuration's devices as tiles, the picked one on the right.
-    await page.click('#calibrate-view [data-flow=calibrate]');await page.click('#cal-tab-electronics');await page.waitForSelector('#cal-links .cal-elec2');
+    await page.click('#cal-tab-electronics');await page.waitForSelector('#cal-links .cal-elec2');
     assert.deepEqual(await page.$$eval('#cal-links [data-elec-pick]',l=>l.map(b=>b.dataset.elecPick)),['@setup','leftFront','leftBack','rightFront','rightBack','claw','beam','imu'],'Setup, then the configuration port by port');
     assert.match(await page.textContent('[data-elec-pick="leftFront"]'),/M0/);assert.match(await page.textContent('[data-elec-pick="claw"]'),/S0/);assert.match(await page.textContent('[data-elec-pick="imu"]'),/I2C 0/);
     assert.ok(!/intake|shooter|turret|flywheel|Pinpoint|USB devices/i.test(await page.textContent('#cal-panel-electronics')),'nothing of the simulated robot, and no USB devices');
@@ -70,7 +70,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // Camera is listed under Setup, to do until a lens is measured; its tile opens Calibrate's Camera tab, and Electronics is a press back.
     assert.match(await page.textContent('[data-elec-camera]'),/Camera.*to do/);assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is in Calibrate’s row');
     await page.click('[data-elec-camera]');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true');assert.equal(await page.locator('#cal-panel-camera').isVisible(),true);assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'false');
-    await page.focus('#cal-tab-camera');await page.keyboard.press('ArrowRight');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'true','round to Electronics');assert.equal(await page.locator('#cal-links').isVisible(),true);
+    await page.focus('#cal-tab-camera');for(let i=0;i<3;i++)await page.keyboard.press('ArrowRight');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'true','round to Electronics, past Real run and Debug');assert.equal(await page.locator('#cal-links').isVisible(),true);
     assert.deepEqual(await page.$$eval('[data-elec-field=motor]',l=>l.map(s=>s.value)),['leftFront','rightFront','leftBack','rightBack']);
     assert.match(await page.textContent('.cal-elec-slots'),/No encoder/);assert.match(await page.textContent('[data-elec-device="@setup"]'),/That makes 3 links/);
     // The guess goes on the board by itself, as planned links to be checked at the end: nothing to press.
@@ -143,7 +143,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),false);
     assert.match(await page.textContent('#cal-chassis'),/Not on the robot: pinpoint/);assert.equal(await page.locator('[data-chassis=go]').count(),0,'nothing to check until Simulate and the robot agree');
     await page.evaluate(()=>{const s=document.querySelector('#sim-localization');s.value='encoders';s.dispatchEvent(new Event('change',{bubbles:true}));});
-    await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');if(await page.locator('#cal-tab-mechanisms').isHidden())await page.click('#calibrate-view [data-flow=calibrate]');await page.click('#cal-tab-mechanisms');
+    await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-mechanisms');
     await soon('the chassis follows Simulate',async()=>!/Not on the robot/.test(await page.textContent('#cal-chassis')));
     // A mecanum with drive encoders and no Pinpoint: nothing Electronics already checked is asked again. Its wheels, then
     // how far it rolls, then the field map.
@@ -151,7 +151,8 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('[data-chassis-step="2"]').isVisible(),false,'one step at a time');
     // Each drive motor spins by itself and the student says which way its wheel rolled. One that rolled backwards is reversed.
     const spin=async(key,answer)=>{await page.click(`[data-chassis=go][data-pod="${key}"]`);await page.waitForSelector(`[data-chassis=${answer}]`,{timeout:8000});await page.click(`[data-chassis=${answer}]`);};
-    const reversedBefore=await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft?.reversed);
+    // Left unset, a left-side drive motor of a mecanum counts as reversed (the SDK default the generated code uses), so that is where it starts.
+    const reversedBefore=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft;return typeof d?.reversed==='boolean'?d.reversed:true;});
     await spin('frontLeft','yes');await spin('frontRight','yes');await spin('backLeft','no');
     await soon('the motor that rolled backwards is reversed in Simulate',async()=>await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft?.reversed)===!reversedBefore);assert.match(await page.textContent('[data-chassis-step="1"]'),/leftBack is reversed now/);
     assert.equal(await page.locator('[data-chassis-step="1"]').getAttribute('data-state'),'todo','not done until it rolls forward');
@@ -177,12 +178,11 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // Simulate unfinished (no path planned): Calibrate still opens and Electronics still works; only Mechanisms waits.
     await page.evaluate(()=>document.querySelector('#sim-clear-pins').click());
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');
-    assert.equal(await page.getAttribute('#calibrate-view [data-flow=calibrate]','data-locked'),null,'Calibrate is not locked by Simulate');
-    if(await page.locator('#cal-tab-mechanisms').isHidden())await page.click('#calibrate-view [data-flow=calibrate]');
+    for(const f of ['electronics','tune'])assert.equal(await page.getAttribute(`#calibrate-view [data-flow=${f}]`,'data-locked'),null,`Calibrate's ${f} step is not locked by Simulate`);
     // Mechanisms waits only for Simulate's Setup to have nothing in red: no path is needed, so this robot gets straight in.
     await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-mech-rail [data-mech-pick=hub]',{state:'visible'});assert.equal(await page.locator('#cal-mech-sim').isVisible(),false,'nothing to finish in Simulate');await page.click('[data-mech-pick=hub]');assert.equal(await page.locator('#cal-hub-card').isVisible(),true);
     // Something in red there, and Mechanisms says only that.
-    await page.evaluate(()=>{const box=document.querySelector('#cal-mech-sim');box.hidden=false;});assert.match(await page.textContent('#cal-mech-sim'),/^Finish Simulate/);
+    await page.evaluate(()=>{const box=document.querySelector('#cal-mech-sim');box.hidden=false;});assert.match(await page.textContent('#cal-mech-sim'),/^Finish Setup/);
     await page.click('#cal-tab-electronics');assert.equal(await page.locator('#cal-gate').isVisible(),false);await pick('leftBack');await moveIt();assert.match(await seenRow('m:leftBack:pos').innerText(),/Linked/,'Electronics works with Simulate unfinished');
 
     // Kept with the setup: saved, and back after a reload.

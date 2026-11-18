@@ -52,6 +52,28 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  /* Control heights: compact toolbars, regular buttons and fields, touch-size and form fields. */
+  --h-sm: 32px;
+  --h-md: 36px;
+  --h-lg: 44px;
+  /* Type scale: captions, labels, body, lead, card titles, page titles. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --scrollbar-thumb: #ffffff33;
+  --scrollbar-thumb-hover: #ffffff59;
+  --z-bar: 5;
+  --z-popover: 40;
+  --z-menu: 60;
+  --z-dialog: 100;
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --dur-slow: 240ms;
   --bar-height: 52px;
   --page-gutter: 24px;
   --page-max: 1320px;
@@ -74,7 +96,7 @@
     --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
     --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
     --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
-    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029;
+    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029; --scrollbar-thumb: #0000002e; --scrollbar-thumb-hover: #00000052;
     --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
     --go: #16a34a; --on-go: #fff;
 }
@@ -87,13 +109,13 @@
     --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
     --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
     --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
-    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029;
+    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029; --scrollbar-thumb: #0000002e; --scrollbar-thumb-hover: #00000052;
     --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
     --go: #16a34a; --on-go: #fff;
   }
 }
 *, *::before, *::after { box-sizing: border-box; }
-html { scrollbar-color: var(--line-strong) transparent; }
+
 [hidden] { display: none !important; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }

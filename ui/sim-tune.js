@@ -148,6 +148,69 @@
   function suggest({kind,freeSpeed,tau=.08,kS}){
     if(kind==='velocity'){const f=1/Math.max(1e-6,freeSpeed);return {kF:+f.toPrecision(3),kP:+(f*2).toPrecision(3),kI:0,kD:0,kS:finite(kS)?kS:0};}
     const p=4/Math.max(1e-6,freeSpeed);return {kP:+p.toPrecision(3),kI:0,kD:+(p*Math.max(.02,tau)*.8).toPrecision(3),kS:finite(kS)?kS:.05};}
+  // ---- into the simulation --------------------------------------------------------------------------------------------
+  // The simulated robot runs on what Calibrate measured on the real one: once a gate passes, its numbers are written into
+  // the robot's mechanisms, where Setup, the 3D view and the simulator all read them. Each value is {path, value, gate}:
+  //   shooter.<key>, turret.<key>  project.mechanisms: the flywheel's encoder ticks a turn, spin-up time and at-speed
+  //                                tolerance; a turret's encoder ticks a degree, stops and turn speed
+  //   joint:<id>:lower|upper       a moving part's end stops, in its joint's units (degrees, or inches for a slide)
+  //   actuator:<id>:speed          how fast its actuator moves it, in its joint's units a second
+  // The hood, feeders, intake deploys, thresholds, zero and direction change nothing the simulation runs on.
+  // The speed at full power the ramps (G6) measured: power = kS + kV·speed, so (1 − kS) / kV.
+  const topSpeed=ff=>ff?.kV>0&&(ff.kS||0)<1?(1-(ff.kS||0))/ff.kV:null;
+  // How long a step took to get there and stay: the robot's own run (G7, kept as rec.response) or, for a step passed
+  // before runs were kept, the loop simulated on the measured feedforward and gains.
+  function settleOf(rec,{kind,free,wrap=false,gravity=false}){
+    const r=rec.response;if(finite(r?.settle)&&r.settle>0)return r.settle;const p=rec.pid;if(!p||!finite(p.target)||!(free>0))return null;
+    const s=simulate({kind,from:p.from||0,target:p.target,kP:p.kP,kI:p.kI,kD:p.kD,kF:p.kF,kS:p.kS,kG:p.kG,tolerance:p.tolerance,freeSpeed:free,gravity:gravity?rec.ff?.kG||0:0,friction:finite(rec.ff?.kS)?rec.ff.kS:.04,wrap,seconds:10});
+    return s.holds&&s.settle>0?s.settle:null;}
+  // m: {id, template, joint ({id, type}) and actuator (its id) for a moving part}; rec: its record; pass: {gate: true} for
+  // the gates it passes now (a stale gate measured something that has changed since); o: {free (units a second at full
+  // power: its motor's model through the measured ratio), rpm (the shooter's target), turret ('motor' or 'servo'), wrap}.
+  function simValues(m,rec,pass={},o={}){
+    const out=[],add=(gate,path,value)=>{if(finite(value))out.push({path,value:+(+value).toPrecision(6),gate});};
+    const id=String(m?.id||''),kind=/^shooter:\d+:(flywheel|turret)$/.exec(id)?.[1]||(id.startsWith('kin:')?'kin':null);if(!kind||!rec)return out;
+    const t=rec.transform||{},counts=!t.analog&&t.cpr>0,ratio=t.ratio>0?t.ratio:1,range=rec.range,pid=rec.pid,top=pass.G6?topSpeed(rec.ff):null;
+    // The step as the robot ran it (rec.response keeps where it went from and to), else as its gains were saved.
+    const run=finite(rec.response?.target)?rec.response:pid,span=finite(range?.lo)&&finite(range?.hi)&&range.lo<range.hi,step=run?Math.abs((run.target||0)-(run.from||0)):0,servo=m.template==='T4'||m.template==='T5';
+    if(kind==='flywheel'){
+      if(pass.G3&&counts)add('G3','shooter.ticksPerRev',clamp(t.cpr*ratio,1,1e4));
+      if(pass.G7&&pid){const target=run.target>0?run.target:o.rpm,tol=target>0&&pid.tolerance>0?clamp(pid.tolerance/target,.01,.5):null;if(tol)add('G7','shooter.tolerance',tol);
+        // The simulated flywheel comes up to speed in a straight line and fires within its tolerance of it: ready as long
+        // after starting as the robot was.
+        const settle=settleOf(rec,{kind:'velocity',free:top||topSpeed(rec.ff)||o.free});if(settle)add('G7','shooter.spinUp',clamp(settle/(1-(tol??.05)),0,10));}
+      return out;}
+    if(kind==='turret'){const deg=t.unit!=='mm'&&t.unit!=='rpm';
+      if(pass.G3&&counts&&deg&&o.turret!=='servo')add('G3','turret.ticksPerDegree',clamp(t.cpr*ratio/360,.01,1e4));
+      if(pass.G5&&span&&deg){add('G5','turret.min',clamp(range.lo,-180,0));add('G5','turret.max',clamp(range.hi,0,180));}
+      if(pass.G7&&pid&&deg&&!servo&&step>0){const settle=settleOf(rec,{kind:'position',free:o.free,wrap:!!o.wrap});if(settle)add('G7','turret.speed',clamp(step/settle,5,2000));}
+      return out;}
+    const j=m.joint;if(!j)return out;const unit=m.template==='T3'||t.unit==='rpm'?'rpm':t.unit==='mm'?'mm':'deg';
+    // Degrees on a pivot as they are, millimetres on a slide in inches, a spin's RPM in degrees a second. A measurement in
+    // other units than its joint's (a slide measured in degrees of its spool) is left out.
+    const fit=unit==='deg'&&j.type==='revolute'?1:unit==='mm'&&j.type==='prismatic'?1/25.4:unit==='rpm'&&(j.type==='continuous'||j.type==='revolute')?6:null;if(!fit)return out;
+    if(pass.G5&&span&&unit!=='rpm'){add('G5',`joint:${j.id}:lower`,range.lo*fit);add('G5',`joint:${j.id}:upper`,range.hi*fit);}
+    if(!m.actuator)return out;const speed=(gate,v)=>{if(v>0)add(gate,`actuator:${m.actuator}:speed`,clamp(v*fit,.001,1e5));};
+    if(unit==='rpm'){if(top)speed('G6',top);return out;}
+    // A measured move's distance over its time; before one, the speed at full power, less what friction and gravity take.
+    const settle=pass.G7&&pid&&!servo&&step>0?settleOf(rec,{kind:'position',free:o.free,wrap:!!o.wrap,gravity:m.template==='T1'}):null;
+    if(settle)speed('G7',step/settle);
+    else if(pass.G6&&rec.ff)speed('G6',topSpeed(rec.ff)??(o.free>0?o.free*Math.max(.05,1-(rec.ff.kS||0)-Math.abs(rec.ff.kG||0)):0));
+    return out;}
+  // Where a path is in the robot ({mechanisms, kinematics}): [object, key], or null when it is not there (a joint removed).
+  function simPlace(robot,path){
+    const p=String(path).split(':');if(p.length===1){const [section,key]=p[0].split('.'),o=robot?.mechanisms?.[section];return o&&typeof o==='object'&&key?[o,key]:null;}
+    const list=p[0]==='joint'?robot?.kinematics?.joints:p[0]==='actuator'?robot?.kinematics?.actuators:null,o=Array.isArray(list)?list.find(x=>x?.id===p[1]):null;
+    return o&&p[2]?[o,p[2]]:null;}
+  const simValueAt=(robot,path)=>{const at=simPlace(robot,path);return at?at[0][at[1]]:undefined;};
+  // The robot with the values written in, as copies for the caller to sanitize. A measured joint is the team's now
+  // ('user'), so finding joints in the CAD again keeps it.
+  function simWrite(robot,values){
+    const next={mechanisms:JSON.parse(JSON.stringify(robot?.mechanisms||{})),kinematics:JSON.parse(JSON.stringify(robot?.kinematics||{}))};
+    for(const v of values||[]){const at=simPlace(next,v.path);if(!at||!finite(v.value))continue;at[0][at[1]]=v.value;if(v.path.startsWith('joint:')&&['inferred','metadata','standin'].includes(at[0].source))at[0].source='user';}
+    return next;}
+  // Whether a setting still holds what a measurement wrote there (rec.applied: path → value), not changed in Setup since.
+  const simMeasured=(rec,robot,path)=>{const a=rec?.applied?.[path],v=simValueAt(robot,path);return finite(a)&&finite(v)&&Math.abs(v-a)<=1e-6*Math.max(1,Math.abs(a));};
   // ---- records --------------------------------------------------------------------------------------------------------
   // A short stable hash of what a gate depended on.
   function hash(value){const s=JSON.stringify(value)??'';let h=5381;for(let i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36);}
@@ -174,5 +237,5 @@
       return lines.join('\n');}).join('\n\n');
     const lenses=Object.entries(lens||{}).filter(([k])=>k!=='sim').flatMap(([k,sizes])=>Object.entries(sizes||{}).map(([size,l])=>{const p=`LENS_${id(k)}_${id(size)}`;return `    // ${k} at ${size}: a one-tag estimate. new AprilTagProcessor.Builder().setLensIntrinsics(${p}_FX, ${p}_FY, ${p}_CX, ${p}_CY)\n    public static final double ${p}_FX = ${n(l.fx)}, ${p}_FY = ${n(l.fy)}, ${p}_CX = ${n(l.cx)}, ${p}_CY = ${n(l.cy)};`;})).join('\n\n');
     return `package ${packageName};\n\n/** Calibrated in Torque${when?` (${when})`:''}. Units are each mechanism's own (degrees or mm); gains are power per unit. */\npublic final class ${className} {\n    private ${className}() {}\n\n${[body,lenses].filter(Boolean).join('\n\n')}\n}\n`;}
-  return {KINDS,GATES,TEMPLATES,TYPE_TEMPLATE,ILLEGAL,feedbackOf,templateOf,gateStates,toUnits,toRaw,perTurnOf,fitLine,holdBand,velocityFit,ratioFit,stepInfo,threshold,shortest,simulate,suggest,hash,sanitize,constants};
+  return {KINDS,GATES,TEMPLATES,TYPE_TEMPLATE,ILLEGAL,feedbackOf,templateOf,gateStates,toUnits,toRaw,perTurnOf,fitLine,holdBand,velocityFit,ratioFit,stepInfo,threshold,shortest,simulate,suggest,topSpeed,settleOf,simValues,simValueAt,simWrite,simMeasured,hash,sanitize,constants};
 });

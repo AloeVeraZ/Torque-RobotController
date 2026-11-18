@@ -23,5 +23,6 @@ contextBridge.exposeInMainWorld('ftcHost',{
   updateRobotController:(options,progress)=>{const off=progress?listen('ftc-rc-progress',progress):()=>{};return ipcRenderer.invoke('ftc-rc-update',options).finally(off);},
   onRobotName:fn=>listen('ftc-robot-name',fn),
   onLinkNote:fn=>listen('ftc-link-note',fn),
-  useConfiguration:config=>ipcRenderer.send('ftc-use-configuration',config)
+  useConfiguration:config=>ipcRenderer.send('ftc-use-configuration',config),
+  inspectDriverHub:()=>ipcRenderer.invoke('ftc-inspect-driver-hub')
 });

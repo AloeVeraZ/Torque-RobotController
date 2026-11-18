@@ -1,6 +1,6 @@
 # Programming Axon servos
 
-Setup & Calibrate → **Axon Programmer**, the tab at the far right. Torque programs Axon servos a team already owns, through Axon's own V2 programmer. It is the [Axon Bridge](#where-this-came-from) app moved into Torque. It does not replace Axon's hardware: a team still buys the servo and the programmer. Torque is not made by or affiliated with Axon Robotics.
+Calibrate → **Axon Programmer**, a tool beside Debug at the right of Calibrate’s steps. Torque programs Axon servos a team already owns, through Axon's own V2 programmer. It is the [Axon Bridge](#where-this-came-from) app moved into Torque. It does not replace Axon's hardware: a team still buys the servo and the programmer. Torque is not made by or affiliated with Axon Robotics.
 
 > **Not yet tested on real hardware.** No programmer was plugged in while this was built. Everything below has run against a simulated programmer built to the protocol in Axon's official apps. Whether the V2 programmer passes traffic to a V1 servo can only be proven by plugging one in, and Axon's documents say it does not.
 
@@ -108,7 +108,7 @@ Before anything is erased, Torque checks the file against the servo's hardware I
 | `src/axon-usb/AxonUsb.cs` and `.exe` | Raw HID, which Node cannot reach without a native module. Axon Bridge's `Hid.cs` behind a line protocol on stdin and stdout. It exits when stdin closes. Rebuild with `tools/build-axon-usb.cjs`, which uses the C# compiler that ships with Windows |
 | `src/axon-servo.cjs` | The protocol, settings maps, servo models, firmware files and flash sequence, moved from `Protocol.cs`, `Params.cs` and `Firmware.cs`. Field meanings live here, and `checkChanges` refuses anything that is not a known field with an allowed value |
 | `src/axon-programmer.cjs` | The service in the main process, moved from `Worker.cs`. One loop, one job at a time. USB runs only while the Axon guide is on screen |
-| `ui/axon-programmer.js` and `.css` | The tab, drawn in the Setup view as `#rs-step-axon`. It draws what the service reports and sends back only the changes asked for |
+| `ui/axon-programmer.js` and `.css` | The tab, drawn as `#rs-step-axon` inside Calibrate's `#cal-panel-axon`. It draws what the service reports and sends back only the changes asked for |
 
 A write reads the servo first, changes only the bytes of edited settings, writes, reads back and compares. V2 servos store bytes 0-43 only: their date and factory name are read-only.
 

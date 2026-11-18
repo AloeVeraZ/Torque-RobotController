@@ -163,5 +163,41 @@
   function testSteps(read,wiring){const D=g('DeckHardware'),w=D.wiringOf({wiring}),rank={motor:0,crservo:1,servo:2},cmd={motor:'M',crservo:'C',servo:'S'};
     return needsTest(w).flatMap(kind=>D.hubsOfKind(w.hubs,kind).map(hub=>{const d=(read||[]).filter(x=>x.hub===hub&&rank[x.kind]!==undefined).sort((a,b)=>rank[a.kind]-rank[b.kind]||a.port-b.port)[0];
       return {hub,kind,address:w.hubs[hub].address,device:d?{name:d.name,kind:d.kind,port:d.port,command:cmd[d.kind]}:null};}));}
-  return {plan,apply,summary,lines,score,hubsOf,placeOf,readout,withScan,hubSeen,needsTest,testSteps};
+  // A robot to look around with while none is connected: a mecanum chassis on a Control Hub with one of every kind of thing Configure offers.
+  // Configure, Debug and Calibrate show it view-only. It is never sent anywhere and never saved.
+  const SAMPLE_NAME='Sample robot',SAMPLE_XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<Robot type="FirstInspires-FTC">
+    <Webcam name="Webcam 1" serialNumber="SAMPLE0001" />
+    <LynxUsbDevice name="Control Hub Portal" serialNumber="(embedded)" parentModuleAddress="173">
+        <LynxModule name="Control Hub" port="173">
+            <goBILDA5202SeriesMotor name="frontLeft" port="0" />
+            <goBILDA5202SeriesMotor name="frontRight" port="1" />
+            <goBILDA5202SeriesMotor name="backLeft" port="2" />
+            <goBILDA5202SeriesMotor name="backRight" port="3" />
+            <Servo name="claw" port="0" />
+            <ServoFullRange name="wrist" port="1" />
+            <ContinuousRotationServo name="intake" port="2" />
+            <RevBlinkinLedDriver name="lights" port="3" />
+            <DigitalDevice name="beamBreak" port="0" />
+            <RevTouchSensor name="limitSwitch" port="1" />
+            <Led name="statusLed" port="2" />
+            <AnalogInput name="potentiometer" port="0" />
+            <OpticalDistanceSensor name="floorSensor" port="1" />
+            <ControlHubImuBHI260AP name="imu" port="0" bus="0" />
+            <RevColorSensorV3 name="colorSensor" port="0" bus="1" />
+            <REV_VL53L0X_RANGE_SENSOR name="distanceSensor" port="0" bus="2" />
+            <goBILDAPinpoint name="pinpoint" port="0" bus="3" />
+        </LynxModule>
+    </LynxUsbDevice>
+</Robot>
+`;
+  // What Torque Debug would report for a configuration, with no robot behind it: Debug's boxes for the sample, every reading blank.
+  function manifestOf(config){const d=(config?.devices||[]).filter(x=>x.module||x.kind==='imu'),of=k=>d.filter(x=>x.kind===k).map(x=>x.name);
+    return {deck:'debug',version:1,sample:true,motors:of('motor'),servos:of('servo'),crservos:of('crservo'),digital:of('digital'),touch:of('touch'),cameras:[],lights:d.filter(x=>x.kind==='led').map(x=>({n:x.name,k:x.tag==='RevBlinkinLedDriver'?'blinkin':'led'})),
+      analog:of('analog').map(n=>({n,max:3.3})),i2c:d.filter(x=>x.bus!==undefined).map(x=>({n:x.name,k:['imu','color','distance','pinpoint'].includes(x.kind)?x.kind:'other',h:x.module?.address??173,b:x.bus})),
+      hubs:(()=>{const h=(config?.hubs||[]).filter(x=>Number.isFinite(x.address)&&(x.tag==='LynxModule'||x.tag==='ServoHub')).map(x=>({n:x.name||`Hub ${x.address}`,address:x.address,parent:x.address===173,...(x.tag==='ServoHub'?{servoHub:true}:{})}));return h.length?h:[{n:'Control Hub',address:173,parent:true}];})()};}
+  let sampleMade=null;
+  // {name, xml, config, readout, manifest}, made once. RobotConfig is the page's (ui/ftc/robot-config.js).
+  function sample(RobotConfig=g('DeckRobotConfig')){if(!sampleMade){const config=RobotConfig.parse(SAMPLE_XML);sampleMade={name:SAMPLE_NAME,xml:SAMPLE_XML,config,readout:readout(config),manifest:manifestOf(config)};}return sampleMade;}
+  return {plan,apply,summary,lines,score,hubsOf,placeOf,readout,withScan,hubSeen,needsTest,testSteps,sample,manifestOf,SAMPLE_NAME,SAMPLE_XML};
 });

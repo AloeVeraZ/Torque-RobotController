@@ -186,6 +186,65 @@ function runCheck(host,opMode,{onUpdate=()=>{},limit=20*60e3,timeout=8000,socket
 }
 const PAD=[[0,'a'],[1,'b'],[2,'x'],[3,'y'],[12,'dpad_up'],[13,'dpad_down'],[14,'dpad_left'],[15,'dpad_right']];
 
+// ---- Servo Test (Calibrate → Servo Test): its own op mode, not Torque Debug ----------------------------------------
+// src/onbot/TorqueServoTest.java drives one Control Hub servo port with the hub's own pulse generator, from a plan Torque writes
+// over USB (SERVO_PLAN), and says where it is in ordinary telemetry. It opens no port and streams nothing.
+const SERVO_TEST_FILE='TorqueServoTest.java',SERVO_TEST_OP='TorqueServoTest',SERVO_PLAN='/sdcard/FIRST/torque-servo-test.txt';
+const servoTestSource=()=>fs.readFileSync(path.join(__dirname,'onbot',SERVO_TEST_FILE),'utf8');
+// Whether the robot has this version built: the file must match and the last build must not have failed.
+async function servoTestCurrent(host,{client}={}){if(!client)client=await onBotClient(host);const build=await webReady(client),theirs=await client.read(SERVO_TEST_FILE);
+  return theirs!==null&&theirs.replace(/\r\n/g,'\n').trim()===servoTestSource().replace(/\r\n/g,'\n').trim()&&!(build?.completed&&build.successful===false);}
+// The plan, as the op mode reads it: "port N", "enable 0|1", then either "us ms" a step, or live: "live 1", "seq N" and "us N"
+// (the pulse now, 0 for none), which the op mode reads again every 50 ms. Only numbers, checked here, go into it.
+function servoPlanText({port=0,hub=0,enable=true,steps,live=false,us=0,seq=0}={}){
+  if(!Number.isInteger(port)||port<0||port>5)throw Error('The servo port must be 0 to 5.');
+  if(!Number.isInteger(hub)||hub<0||hub>254)throw Error('Which hub?');const head=[`hub ${hub}`,`port ${port}`];
+  if(live){const pulse=Math.round(Number(us)),count=Math.round(Number(seq));if(!(pulse>=0&&pulse<=2500))throw Error('A pulse must be 0 to 2500 µs.');if(!(count>=0))throw Error('Bad count.');
+    return [...head,`enable ${enable?1:0}`,'live 1',`seq ${count}`,`us ${pulse}`].join('\n')+'\n';}
+  if(!Array.isArray(steps)||!steps.length||steps.length>12)throw Error('A servo test is 1 to 12 steps.');
+  const lines=steps.map(x=>{const us=Math.round(Number(x?.us)),ms=Math.round(Number(x?.ms));if(!(us>=500&&us<=2500))throw Error('A pulse must be 500 to 2500 µs.');if(!(ms>=20&&ms<=10000))throw Error('A step must last 0.02 to 10 s.');return `${us} ${ms}`;});
+  return [...head,`enable ${enable?1:0}`,...lines].join('\n')+'\n';
+}
+// Writes the plan onto the robot over USB: to a file beside it, then renamed over it, so the op mode (which reads it every 50 ms
+// in live mode) never sees it half written. A plain write empties the file first, which read as "no pulse" and switched the port
+// off for a moment at each keep-alive (seen on a real hub, 2026-11-13).
+async function servoPlan(plan,{run}={}){const text=servoPlanText(plan),{serial}=await usbForward({run});
+  await adb(['-s',serial,'shell',`printf '${text.replace(/\n/g,'\\n')}' > ${SERVO_PLAN}.tmp && mv -f ${SERVO_PLAN}.tmp ${SERVO_PLAN}`],{run});return text;}
+// Runs the Servo Test op mode as a Driver Station does (INIT, then START) and follows its telemetry: onUpdate gets
+// {state, step, of, pulse, hub} as it plays. It ends by itself after the last step (ended), or on stop() (stopped).
+// steps: how many the plan has. Just after a build the robot can still run the copy it had loaded, which does not find the plan:
+// INIT must report it ready with that many steps, or it is stopped and asked again (up to 4 times, 2.5 s apart).
+function runServoTest(host,{onUpdate=()=>{},limit=3*60e3,timeout=8000,socket=null,steps=0,live=false,retryMs=2500}={}){
+  let finish=()=>{},stopping=false;const done=new Promise(r=>{finish=why=>{stopping=true;r(why);};});
+  const ended=session(host,async({ds,until})=>{
+    await until(st=>st.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
+    if(!ds.state.opModes.some(m=>m.name===SERVO_TEST_OP))throw Error('The robot has no Servo Test op mode yet.');
+    if(ds.state.opModeState!=='stopped'){if(ds.state.activeOpMode!==SERVO_TEST_OP)throw Error(`“${ds.state.activeOpMode}” is running on the robot. Stop it first.`);ds.stopOpMode();await until(st=>st.opModeState==='stopped',5000,'The robot did not stop the last Servo Test.');}
+    const read=()=>{const v={};for(const line of ds.state.telemetry.lines||[]){const m=/^torque\.(\w+) : (.*)$/.exec(line);if(m)v[m[1]]=m[2];}const [step,of]=String(v.step||'').split('/').map(Number),[us,on]=String(v.hub||'').split(' ');
+      return {state:v.state||'',step:step||0,of:of||0,pulse:Number(v.pulse)||0,hub:v.hub?{us:Number(us)||null,on:on==='on'?true:on==='off'?false:null}:null,volts:Number.isFinite(Number(v.volts))?Number(v.volts):null,plan:v.plan||''};};
+    let ready=null;
+    for(let attempt=1;;attempt++){
+      ds.initOpMode(SERVO_TEST_OP);await until(st=>st.activeOpMode===SERVO_TEST_OP&&st.opModeState==='init',10000,'The robot did not INIT the Servo Test.');
+      if(stopping){ds.stopOpMode();await until(st=>st.opModeState==='stopped',3000,'').catch(()=>{});return 'stopped';}
+      await until(()=>read().state,3000,'').catch(()=>{});ready=read();
+      const planned=Number((/(\d+) steps/.exec(ready.plan)||[])[1]);
+      if(ready.state==='ready'&&(live?/live/.test(ready.plan):!steps||planned===steps))break;
+      ds.stopOpMode();await until(st=>st.opModeState==='stopped',3000,'').catch(()=>{});
+      if(attempt>=4)throw Error(ready.state&&ready.state!=='ready'?ready.state:'The Servo Test on the robot did not take the plan.');
+      await new Promise(r=>setTimeout(r,retryMs));if(stopping)return 'stopped';
+    }
+    ds.startOpMode(SERVO_TEST_OP);await until(st=>st.opModeState==='running'||st.opModeState==='stopped',10000,'The robot did not START the Servo Test.');
+    const report=()=>onUpdate(read());report();
+    const off=ds.on('state',st=>{report();if(st.connection!=='connected')finish('lost');else if(st.opModeState==='stopped')finish('ended');}),timer=setTimeout(()=>finish('time'),limit);
+    if(ds.state.opModeState==='stopped')finish('ended');
+    const why=await done;clearTimeout(timer);off();onUpdate(read());
+    if(ds.connected()&&ds.state.opModeState!=='stopped'){ds.stopOpMode();await until(st=>st.opModeState==='stopped',3000,'').catch(()=>{});}
+    return why;
+  },{timeout,socket});
+  ended.catch(()=>{});
+  return {ended,stop(why='stopped'){finish(why);}};
+}
+
 // ---- live debug (Calibrate → Electronics), run from Deck
 // Torque Debug (src/onbot/TorqueDebug.java, put on the robot with send()) uses every device in the active configuration, so it
 // fits any robot. Its name says when it went on, on a 24-hour clock: TorqueDebug-18.11-10-30-26. runDebug runs
@@ -199,7 +258,8 @@ const debugSource=(name=debugName())=>fs.readFileSync(path.join(__dirname,'onbot
 // Whether the robot's copy is this one: its name only says when it went on, so everything else in the source has to match. opMode: the name it has there, which the robot has built only if it lists it.
 const debugBody=text=>String(text).replace(/\r\n/g,'\n').replace(/@TeleOp\(name = "[^"]*"/,'@TeleOp(name = "TorqueDebug"').trim(),debugNameIn=text=>/@TeleOp\(name = "([^"]*)"/.exec(String(text))?.[1]||null;
 // The file being there is not enough: OnBot Java builds every file together, so a team file that did not compile leaves this one unbuilt and its op mode off the robot's list. A last build that failed counts as not having it, and putting it on again builds (and fixes what it can).
-async function debugCurrent(host,{client}={}){if(!client)client=await onBotClient(host);const build=await webReady(client),theirs=await client.read(DEBUG_FILE),current=theirs!==null&&debugBody(theirs)===debugBody(debugSource())&&!(build?.completed&&build.successful===false);return {current,opMode:current?debugNameIn(theirs):null};}
+// A Robot Controller app that has not built since it started says the same "not successful", with startTimestamp -1: that is no failed build, and it still has the op modes of its last one. Counting it as failed rebuilt Torque Debug, a minute, after every restart of the app.
+async function debugCurrent(host,{client}={}){if(!client)client=await onBotClient(host);const build=await webReady(client),theirs=await client.read(DEBUG_FILE),current=theirs!==null&&debugBody(theirs)===debugBody(debugSource())&&!(build?.completed&&build.successful===false&&build.startTimestamp!==-1);return {current,opMode:current?debugNameIn(theirs):null};}
 // Whether the robot is free for what nobody pressed for, seen as a Driver Station sees it. session itself refuses when another Driver Station has the robot. A Torque Debug left running is nobody's work and holds the camera, so it goes.
 const debugIdle=(host,{timeout=8000,socket=null,settle=400}={})=>session(host,async({ds,until})=>{await until(s=>s.opModes.length,timeout,'The robot did not list its op modes.').catch(()=>{});
   // The robot says what is running on its next loop after the connection, which can be just after the list.
@@ -398,6 +458,19 @@ const getLocal=(port,p,timeout=5000)=>new Promise((resolve,reject)=>{const req=h
 function blocksHardware(js){const m=/allHardwareIdentifiers\s*=\s*\[([^\]]*)\]/.exec(String(js||''));if(!m)return [];
   return [...m[1].matchAll(/'((?:\\.|[^'\\])*)'/g)].map(x=>x[1].replace(/\\(.)/g,'$1')).map(id=>{const i=id.lastIndexOf('As');return i>0?{identifier:id,name:id.slice(0,i),type:id.slice(i+2)}:null;}).filter(x=>x&&!/^(REVModule|ServoController|VoltageSensor|MotorController|LynxModule)$/.test(x.type));}
 const usbList=async(run,timeout)=>{const all=(await adb(['devices','-l'],{run,...(timeout?{timeout}:{})})).split(/\r?\n/).slice(1).map(l=>l.trim()).filter(Boolean);return all.filter(l=>!/\bmodel:Driver_Hub\b/.test(l)).map(l=>l.split(/\s+/)).filter(x=>x[0]);};
+// Self Inspect for a Driver Hub plugged into this computer: the Driver Station's own InspectionState, read over ADB (read only).
+// Keys as the FTC app's InspectionState JSON (see ui/ftc/inspection.js). The DS app's build month is not readable over ADB,
+// so it comes from its version: 12.0 was built 2026-09, 11.2 in 2026-07, 11.1 in 2025-12 (FIRST's release jars).
+const DS_PACKAGE='com.qualcomm.ftcdriverstation',DS_BUILT={'12.0':'2026-09','11.2':'2026-07','11.1':'2025-12','11.0':'2025-09','10.3':'2025-06','10.2':'2025-02','10.1':'2024-09'};
+async function inspectDriverHub({run}={}){
+  const all=(await adb(['devices','-l'],{run})).split(/\r?\n/).slice(1).map(l=>l.trim()).filter(Boolean),hub=all.find(l=>/\bmodel:Driver_Hub\b/.test(l)&&/\bdevice\b/.test(l));
+  if(!hub)return {found:false};const serial=hub.split(/\s+/)[0],sh=cmd=>adb(['-s',serial,'shell',cmd],{run}).then(s=>s.trim(),()=>'');
+  const [mfr,mdl,os,sdk,dhOs,dhOsNum,am,bt,loc,p2p,wifi,battery,pkg,rc]=await Promise.all(['getprop ro.product.manufacturer','getprop ro.product.model','getprop ro.build.version.release','getprop ro.build.version.sdk','getprop ro.driverhub.os.version','getprop ro.driverhub.os.versionnum','settings get global airplane_mode_on','settings get global bluetooth_on','settings get secure location_mode','settings get global wifi_p2p_device_name','dumpsys wifi','dumpsys battery','dumpsys package '+DS_PACKAGE,'pm list packages com.qualcomm.ftcrobotcontroller'].map(sh));
+  const level=+(/level:\s*(\d+)/.exec(battery)||[])[1],scale=+(/scale:\s*(\d+)/.exec(battery)||[])[1]||100,ver=(/versionName=(\d+)\.(\d+)(?:\.(\d+))?/.exec(pkg)||[]),ssid=(/mWifiInfo SSID: "?([^",]*)"?,[^\n]*Supplicant state: COMPLETED/.exec(wifi)||[])[1]||'';
+  return {found:true,serial,report:{mfr,mdl,os,sdk:+sdk||0,dhOs,dhOsNum:+dhOsNum||0,am:am==='1',bt:bt==='1',loc:loc!==''&&loc!=='0',wfEn:/Wi-Fi is enabled/.test(wifi),wfConn:!!ssid,connectedToName:ssid,
+    bat:Number.isFinite(level)?level/scale:undefined,name:p2p&&p2p!=='null'?p2p:'',dsIn:!!ver[1],rcIn:/package:com\.qualcomm\.ftcrobotcontroller\b/.test(rc),
+    aVmj:ver[1]?+ver[1]:undefined,aVmn:ver[2]?+ver[2]:undefined,aVpt:ver[3]?+ver[3]:0,bldTs:ver[1]?DS_BUILT[`${ver[1]}.${ver[2]}`]||'':''}};
+}
 async function readUsb({run}={}){
   const listed=await usbList(run);
   if(!listed.length)throw Error('No Control Hub on USB. Plug its USB-C port into this computer with a data cable (some cables only charge).');
@@ -503,4 +576,4 @@ async function usbRobotName(options){try{const {port}=await usbForward(options);
 // Updates the Robot Controller app on the hub plugged in (src/rc-update.cjs), then waits for it to answer again.
 async function usbUpdateController({run,...options}={}){const {serial}=await usbForward({run});
   return require('./rc-update.cjs').update({serial,adb:(args,o)=>adb(args,{run,...o}),controller:s=>usbController(s,{run,wait:90000}),...options});}
-module.exports={javaTypes,splitPublicTypes,fixBuild,fixNote,usbPriority,usbTakeOver,usbWifiClients,usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};
+module.exports={SERVO_TEST_FILE,SERVO_TEST_OP,SERVO_PLAN,servoTestSource,servoTestCurrent,servoPlanText,servoPlan,runServoTest,inspectDriverHub,javaTypes,splitPublicTypes,fixBuild,fixNote,usbPriority,usbTakeOver,usbWifiClients,usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};

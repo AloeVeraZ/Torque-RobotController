@@ -1,0 +1,44 @@
+/* Setup & Calibrate → SWYFT Programmer. Drawn with the Axon Programmer's classes (ui/axon-programmer.css), so the two
+   programmer tabs share one look; what is SWYFT's own is here: one card for the servo and its mode. */
+/* The two programmer tabs are a pair at the right of the steps, under one "New" tag on Axon: SWYFT sits close beside it. */
+.driver-station .flow-steps > .flow-swyft { gap: var(--space-2); margin-left: -8px; }
+/* The optional tools (no number) sit a little in from the right edge. */
+.driver-station .flow-steps > .flow-tool:last-child { margin-right: 32px; }
+.rs-swyft { min-width: 0; }
+
+/* Simple / Advanced, at the top right. */
+.driver-station .swyft-level { flex: none; display: grid; grid-template-columns: 1fr 1fr; width: 200px; min-width: 0; height: 36px; padding: 3px; }
+.driver-station .swyft-level > button { min-height: 0; height: 100%; padding: 0 10px; font-size: 12px; }
+.swyft-tab .axon-chips { margin-left: auto; }
+
+/* 1 Servo and 2 Mode in one card, one row. */
+.swyft-picks { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 2fr); gap: 16px; padding: 10px 12px; }
+.swyft-picks > div { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.swyft-choices { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+.driver-station .swyft-choices > .axon-card { min-height: 48px; }
+
+/* A change not applied yet: the same dot as the Axon tab. */
+.swyft-tab [data-swyft-mark] { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
+.swyft-tab [data-swyft-mark][hidden] { display: none; }
+
+#swyft-tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+#swyft-tag[data-good] { color: var(--connected); }
+#swyft-hint { flex: none; min-height: 28px; margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.25; }
+.swyft-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+#swyft-usb > summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+#swyft-ask { max-width: 520px; padding: 20px; }
+#swyft-ask h2 { margin: 0 0 8px; font-size: 18px; }
+#swyft-ask p { margin: 0 0 10px; font-size: 13px; }
+#swyft-ask .button-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+#swyft-ask .button-row > button { flex: none; min-height: 40px; padding: 0 16px; }
+
+@media (min-width: 861px) and (min-height: 560px) {
+  .rs-swyft { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .rs-swyft[hidden] { display: none; }
+}
+@media (max-width: 1100px) {
+  .swyft-picks { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .swyft-choices { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

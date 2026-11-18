@@ -108,7 +108,7 @@ robot does not have goes into a new configuration: Deck scans the hubs (`CMD_SCA
 the hub's own OnBot Java server on port 8080, and Drive selects the new autonomous the next time
 the robot is opened. It never starts the autonomous.
 
-**Calibrate** (step 3 of the Setup & Calibrate tab) has the same Send to robot panel, then the **Guided check**,
+**Calibrate** (its own header tab, after Setup) has the same Send to robot panel, then the **Guided check**,
 a list of what the check measures for the setup, the on-robot checklist, and gamepad stick
 calibration. The guided check runs the check TeleOp: INIT and START as a Driver Station,
 each question shown with buttons that press gamepad 1 on the robot (Controller 1 answers too), STOP

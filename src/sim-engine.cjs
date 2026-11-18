@@ -16,6 +16,12 @@ const Export=require('../ui/sim-export.js');
 const Mech=require('../ui/sim-mechanisms.js'),Kin=require('../ui/sim-kinematics.js'),Act=require('../ui/sim-actuators.js');
 const MotionModule=require('../ui/sim-motionmodule.js');
 const OFFSET=72,DEG=180/Math.PI,ZERO={forward:0,strafe:0,turn:0};
+// A ramp intake marked frameOnly takes pieces off the floor at the frame, where its rollers are, so the robot has to
+// drive into them: its box is shorter than its reach by the ramp blade the game physics adds beyond it (DSIM's
+// BB_RAMP_OUT). The box cannot follow the ramp up and down, because the 3D solids are built once. Known cost: pieces a
+// flower drops onto the blade stop at its lip and only about half are taken when the ramp folds, so a route should not
+// count on a flower with such an intake. Without frameOnly the box is the whole reach, as before.
+const RAMP_BLADE=3.54;
 // How long the game physics takes to swing its ramp down or up (DSIM's BB_RAMP_DEPLOY_S).
 const RAMP_SWING=.3;
 // Frames go to the page at least this far apart (ms). Windows wakes the 4 ms pump only every ~15.6 ms, so a
@@ -174,7 +180,7 @@ class SimEngine{
     if(m.enabled){const mount=Mech.engineIntakeMount(m);if(mount)r.spec.intakeMount=mount;r.spec.deckCaps={...m.capacity};r.spec.deckFixedYaw=m.shooters.map(s=>s.type==='fixed');r.spec.deckShooterPieces=m.shooters.map(s=>s.pieces);
       // Each intake's box is its hitbox: it sticks out past the frame, and a piece must touch it to be taken.
       // flower: whether it is the intake kind the physics reaches into flowers with (a ramp or side rollers).
-      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;const col=i.pickup==='rollers'&&i.column?i.column:null,reach=col?Mech.columnReach(col,e,c.robot):i.reach;boxes[e]={reach,width:i.width??edge,height:i.height,flower:i.kind===flower,...(col?{column:{a:col.a,b:col.b,r:col.d/2}}:{})};}r.spec.deckIntakeBoxes=boxes;
+      const boxes={},flower=Mech.flowerKind(m);for(const i of m.intakes)for(const e of i.sides){const edge=e==='front'||e==='back'?c.robot.width:c.robot.length;const col=i.pickup==='rollers'&&i.column?i.column:null,reach=col?Mech.columnReach(col,e,c.robot):i.kind==='ramp'&&i.frameOnly?Math.max(0,i.reach-RAMP_BLADE):i.reach;boxes[e]={reach,width:i.width??edge,height:i.height,flower:i.kind===flower,...(col?{column:{a:col.a,b:col.b,r:col.d/2}}:{})};}r.spec.deckIntakeBoxes=boxes;
       // Two shooters on one turret launch from its one spot; the game's spawn checks moved the second apart.
       if(m.shooters[1]?.sharesTurret&&r.spec.bbMech?.launcher)r.spec.bbMech={...r.spec.bbMech,launcher:{...r.spec.bbMech.launcher,mount:m.shooters[0].mount,mount2:m.shooters[0].mount}};
       this.rampDown=false;this.rampOut=false;this.rampHeld=false;}
@@ -246,10 +252,13 @@ class SimEngine{
   timedCalibration(power=this.config?.timing?.power??.45){
     const D=this.dsim,spec=this.world.robots[0].spec,p=clamp(finite(power)?power:.45,.05,1),saved=this._empty;this._empty={statics:[],bounds:{halfX:1e6,halfY:1e6}};
     const drive=(axis,seconds)=>{const w=D.SIM_GAMES.decode.createWorld('free',1,[{id:0,alliance:'blue',spec,assists:{fieldCentric:false,aimAssist:false,autoIntake:false,autoFire:false},startIndex:0}]);w.balls=[];const r=w.robots[0];Object.assign(r.spec,spec);Object.assign(r,{pos:{x:0,y:0},heading:0,vel:{x:0,y:0},angVel:0,fieldCentric:false,autoIntake:false,autoFire:false,aimAssist:false,hopper:[]});
-      for(let i=0;i<Math.round(seconds/D.SIM_DT);i++)this.physicsStep(w,{...ZERO,[axis]:p});for(let i=0;i<1200;i++){this.physicsStep(w,ZERO);if(Math.hypot(r.vel.x,r.vel.y)<1e-3)break;}return Math.hypot(r.pos.x,r.pos.y);};
+      for(let i=0;i<Math.round(seconds/D.SIM_DT);i++)this.physicsStep(w,{...ZERO,[axis]:p});let n=0;for(;n<1200;n++){this.physicsStep(w,ZERO);if(Math.hypot(r.vel.x,r.vel.y)<1e-3)break;}drive.rest=n*D.SIM_DT;return Math.hypot(r.pos.x,r.pos.y);};
     try{const fit=axis=>{const d1=drive(axis,1),d2=drive(axis,2),v=d2-d1,offset=d1-v;return {speed:v/p,startup:Math.max(0,-offset/v),stopping:Math.max(0,offset/v)};};
-      const f=fit('forward'),s=D.driveParams(spec).strafeMult>0?fit('strafe'):f;
-      return {power:p,forwardSpeed:+f.speed.toFixed(2),strafeSpeed:+s.speed.toFixed(2),startup:+f.startup.toFixed(3),stopping:+f.stopping.toFixed(3),strafeStopping:+Math.max(0,s.stopping-s.startup).toFixed(3)};}
+      const f=fit('forward'),strafes=D.driveParams(spec).strafeMult>0,s=strafes?fit('strafe'):f;
+      // Rest to rest: how far short bursts and longer runs really go, as seconds at cruise speed, for legs too short for the fit.
+      const TIMES=[.08,.15,.25,.35,.5,.7,1,1.4,2],curveOf=(axis,speed)=>{const out=[];for(const t of TIMES){const c=+(drive(axis,t)/(speed*p)).toFixed(4);if(!out.length||c>out[out.length-1][1])out.push([t,c]);}return out;};
+      const forwardCurve=curveOf('forward',f.speed),rest=(drive('forward',2),drive.rest),strafeCurve=strafes?curveOf('strafe',s.speed):forwardCurve;
+      return {power:p,forwardSpeed:+f.speed.toFixed(2),strafeSpeed:+s.speed.toFixed(2),startup:+f.startup.toFixed(3),stopping:+f.stopping.toFixed(3),strafeStopping:+Math.max(0,s.stopping-s.startup).toFixed(3),forwardCurve,strafeCurve,curvePower:p,rest:+Math.min(1.5,rest).toFixed(3)};}
     finally{this._empty=saved;}
   }
   userTuning(base={}){
@@ -550,6 +559,21 @@ class SimEngine{
       }catch(e){results.push({ok:false,error:e.message});}finally{trial.dispose();}
     }
     return results;
+  }
+
+  // Drive a whole autonomous period on a fresh, headless copy of this simulation, as fast as the CPU allows, and hand
+  // back its frames (about 30 a second, like a watched run records). Run & review fills its timeline with them before
+  // Run is pressed. Nothing here moves the visible robot.
+  async preview(raw={}){
+    if(!this.lastLoad)throw Error('Load the simulation first.');
+    let failure='';const frames=[],trial=new SimEngine({runtimeDir:this.runtimeDir,workDir:path.join(this.workDir,'preview'),now:()=>0,emit:m=>{if(m.type==='run'&&m.state==='error')failure=m.error;}});
+    try{
+      await trial.load(structuredClone(this.lastLoad));const started=await trial.run(raw.program||{});if(!started.ok)return {ok:false,error:started.error};
+      trial.practice=new PracticeClock('autonomous',raw.timing);trial.playing=true;frames.push(trial.frame());
+      for(let guard=0;trial.practice&&trial.practice.phase!=='finished'&&trial.playing&&guard<40000;guard++){await trial.practiceTick();if(trial.world.tick%2===0)frames.push(trial.frame());}
+      if(failure)return {ok:false,error:failure};
+      const last=trial.frame();if(last.time>frames.at(-1).time)frames.push(last);return {ok:true,frames};
+    }catch(e){return {ok:false,error:e.message};}finally{trial.dispose();}
   }
 
   // ---------------------------------------------------------------- frames

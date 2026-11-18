@@ -59,6 +59,27 @@ test('while driving, steps run together from the start of the path, each for its
   const after=drive(runner,model,null,.5,{t0:1}).at(-1);assert.deepEqual([after.cmd.intake,after.cmd.ramp,after.cmd.spin,after.state.ramps[0]],[false,true,true,1]);
 });
 
+test('shooting while intaking: a Shoot beside a running Intake feeds at once instead of waiting for pieces to move up',()=>{
+  const m=Mech.sanitize({enabled:true,intakes:[{kind:'sweeper',sides:['front'],motor:'intake'}],shooters:[{type:'turret',pieces:'pollen',mount:'center'}],preload:{pollen:0}});
+  const feedAt=(act,held=2)=>{const model=new Mech.Model(m,held),runner=new Mech.Runner(m);return drive(runner,model,act,4);};
+  // On a path, Intake + Shoot together: the feeders run with the intake for the whole path.
+  const path=feedAt({name:'p',leg:0,moving:true,steps:[{action:'Intake',seconds:null},{action:'Shoot',seconds:null}]}),first=path.findIndex(l=>l.cmd.feed);
+  assert.ok(first>0&&path[first].t<m.shooter.spinUp+.5,`feeds as soon as it is spun up and aimed (${path[first]?.t})`);
+  assert.ok(path.slice(first).every(l=>l.cmd.feed&&l.cmd.intake),'and keeps feeding and intaking for the whole path');
+  // A Shoot on a path after an Intake that already ended still waits for the pieces to move up.
+  const late=feedAt({name:'q',leg:1,moving:true,steps:[{action:'Intake',seconds:.5},{action:'Shoot',seconds:null}]}),lateFirst=late.findIndex(l=>l.cmd.feed&&l.t>.5);
+  assert.ok(late.filter(l=>l.t>.5&&l.t<.5+m.transfer.seconds-.05).every(l=>!l.cmd.feed||l.t<=.5),'no new feed starts before the transfer time');assert.ok(lateFirst>0);
+  // At a pin, an Intake with no time stays on for the steps after it; the pin ends when the timed Shoot does.
+  const pin=feedAt({name:'r',leg:2,moving:false,steps:[{action:'Intake',seconds:null},{action:'Shoot',seconds:2}]}),busy=pin.filter(l=>l.busy);
+  assert.ok(Math.abs(busy.length*.01-2)<.05,`the pin holds for the Shoot's 2 s (${busy.length*.01})`);assert.ok(busy.every(l=>l.cmd.intake),'with the intake on throughout');
+  assert.ok(busy.some(l=>l.cmd.feed)&&busy.findIndex(l=>l.cmd.feed)*.01<m.shooter.spinUp+.5,'and the feeders running without the transfer wait');
+  assert.equal(pin.at(-1).cmd.intake,false,'the intake stops when the pin is done');
+  // The same pin with a timed Intake first is unchanged: one after the other, and the Shoot waits.
+  const seq=feedAt({name:'s',leg:3,moving:false,steps:[{action:'Intake',seconds:.5},{action:'Shoot',seconds:null}]});
+  assert.ok(seq.filter(l=>l.cmd.feed).every(l=>!l.cmd.intake&&l.t>=.5+m.transfer.seconds-.05),'a timed Intake then Shoot still waits for the transfer');
+  assert.equal(require('../ui/sim-steps.js').describe({action:'Intake',seconds:null},'pin'),'Intake on');
+});
+
 test('Intake no longer lowers a ramp; a Turret to angle at a pin waits for the turret',()=>{
   const model=new Mech.Model(mechanisms,0),runner=new Mech.Runner(mechanisms);
   const log=drive(runner,model,{name:'Intake',leg:0,moving:false,seconds:1},1);assert.ok(log.every(l=>l.cmd.intake&&l.cmd.ramp===false&&l.state.ramps[0]===0));
@@ -129,4 +150,16 @@ test('timed routes and MotionModule run lists of steps; the .pp file keeps them'
     const back=X.fromPP(file,{field:'biobuzz',bounds:e.info.bounds});const pin1=back.pins.find(p=>p.steps),path2=back.pins.find(p=>p.path?.steps);
     assert.deepEqual(P.pinEffects(pin1).steps.map(s=>s.action),['Spin up','Ramp down','Turret to 45°']);assert.deepEqual(P.pathEffects(path2.path).steps,[{action:'Intake',seconds:null,cell:'start'},{action:'Ramp up',seconds:.4,cell:'start'}]);
   }finally{e.dispose();}
+});
+
+// Path planning offers a game action only when the robot has the part that does it (Setup → Mechanisms).
+require('node:test').test('the actions offered for a path or pin follow the robot\'s mechanisms',()=>{
+  const assert=require('node:assert/strict'),S=require('../ui/sim-steps.js'),M=require('../ui/sim-mechanisms.js');
+  const offered=m=>{const c=S.catalog({field:'biobuzz',mechanisms:M.sanitize(m)});return [...c.game,...(c.turrets.length?['Turret angle']:[])];};
+  assert.deepEqual(offered({enabled:false}),[],'no mechanisms: none of the game\'s actions');
+  assert.deepEqual(offered({enabled:true,intakes:[],shooters:[]}),[]);
+  assert.deepEqual(offered({enabled:true,intakes:[{kind:'sweeper',sides:['front']}],shooters:[]}),['Intake']);
+  assert.deepEqual(offered({enabled:true,intakes:[{kind:'ramp',sides:['front']}],shooters:[]}),['Intake','Ramp down','Ramp up']);
+  assert.deepEqual(offered({enabled:true,intakes:[],shooters:[{type:'fixed'}]}),['Spin up','Shoot']);
+  assert.deepEqual(offered({enabled:true,intakes:[{kind:'ramp',sides:['front']}],shooters:[{type:'turret'}]}),['Intake','Ramp down','Ramp up','Spin up','Aim','Shoot','Turret angle']);
 });

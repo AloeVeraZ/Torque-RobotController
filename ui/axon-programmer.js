@@ -1,5 +1,5 @@
 'use strict';
-// Setup & Calibrate → Axon Programmer: programs Axon servos through Axon's own V2 programmer, laid out like the Axon Bridge app:
+// Calibrate → Axon Programmer: programs Axon servos through Axon's own V2 programmer, laid out like the Axon Bridge app:
 // status chips on top, then the servo and its mode, its settings beside what it reports, and one line saying what happens
 // next above the Apply button. USB and every decision about what reaches a servo live in the main process
 // (src/axon-programmer.cjs); this page draws what it reports and sends back what the student asked for.
@@ -297,11 +297,12 @@ window.DeckAxon=(()=>{
     // that is not a new servo, so what the student picked stays.
     if(snap&&servo().key!==lastServoKey&&!(lastServoKey.endsWith('/boot')&&!servo().present)){lastServoKey=servo().key;pending={};formEpoch++;target=null;rewrite=false;if(!(result?.mode&&servo().present&&result.mode===servo().mode))result=null;if(servo().present&&!(servo().viaBoot&&picked&&familyOf(picked)===servo().family))picked=null;ask=null;}
     const button=$('axon-level');button.textContent=level==='advanced'?'Back to Simple':'Show Advanced';button.setAttribute('aria-pressed',String(level==='advanced'));
-    offerIdentify();renderChips();renderCards();renderSettings();renderHint();renderSide();renderBar();syncAsk();renderWait();
+    offerIdentify();renderChips();renderCards();renderSettings();renderHint();renderSide();renderBar();syncAsk();renderIdle();
   }
-  // No programmer to talk to: nothing to pick or change yet. Another app holding it keeps the page, for its Close button.
-  function renderWait(){const p=snap?.programmer,waiting=!api||!snap||!snap.busy&&(!snap.supported||!!p?.error||!p?.ready&&!p?.rivals?.length);
-    root.querySelector('.axon-tab').toggleAttribute('data-waiting',waiting);$('axon-wait').hidden=!waiting;if(!waiting)return;const g=gate();$('axon-wait-title').textContent=g.main;$('axon-wait-sub').textContent=g.sub||'';}
+  // No programmer to talk to (and no other app holding one): the page stays as a preview, out of reach, and the bar says what to plug in.
+  function renderIdle(){const p=snap?.programmer,idle=!api||!snap||!snap.busy&&(!snap.supported||!!p?.error||!p?.ready&&!p?.rivals?.length);
+    root.querySelector('.axon-tab').toggleAttribute('data-idle',idle);for(const el of root.querySelectorAll('.axon-picks,.axon-main'))el.inert=idle;
+  }
 
   // ---- what the student does
   const run=async fn=>{error='';try{await fn();}catch(e){error=e.message;}render();};
@@ -397,7 +398,6 @@ window.DeckAxon=(()=>{
     </div>
     <div class="axon-bar"><div id="axon-banner" class="axon-banner" role="status" data-tone="wait"></div><button id="axon-discard" class="secondary" type="button" data-axon="discard" hidden>Discard</button><button id="axon-apply" class="primary" type="button" data-axon="apply" disabled>Apply</button></div>
     <dialog id="axon-ask" aria-labelledby="axon-ask-title"></dialog>
-    <div id="axon-wait" class="axon-wait" role="status" hidden><h2 id="axon-wait-title"></h2><p id="axon-wait-sub" class="hint"></p></div>
   </div>`;
 
   return {

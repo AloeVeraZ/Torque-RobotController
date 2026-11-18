@@ -4,7 +4,7 @@
   // another): what the editor offers for this setup, how a step reads in words, and the editor itself.
   const finite=n=>typeof n==='number'&&Number.isFinite(n),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   const Mech=()=>globalThis.DeckMechanisms||require('./sim-mechanisms.js');
-  const INFO={Intake:'Runs the intake rollers. At a pin it runs for the time set; while driving, for the whole path or the time set. A ramp stays where it is.',
+  const INFO={Intake:'Runs the intake rollers. At a pin it runs for the time set; with no time it stays on for the steps after it, so “Intake, Shoot for 2 s” shoots while intaking. While driving it runs for the whole path or the time set, and a Shoot on the same path shoots each piece as it comes in. A ramp stays where it is.',
     'Ramp down':'Folds the ramp down, and it stays down until a Ramp up. Down, the intake reaches into a flower for its pollen.',
     'Ramp up':'Folds the ramp back up. The rollers still take pieces off the floor.',
     Shoot:'Spins up, aims and shoots: everything held, or a set number. At a pin it holds the robot until the shots are done.',
@@ -14,10 +14,12 @@
     Wait:'Waits a set time before the next step (at a pin). While driving it does nothing.',
     part:'Moves this part of your robot (Setup → Moving parts). At a pin the robot waits until it arrives.',
     own:'Your own action: the export adds a method with this name for your code, and it runs for the time set (or finishes at once).'};
-  // What can be added for this setup: the game's actions (run by the Mechanisms settings), turrets, moving parts with
-  // their named positions, the setup's saved part actions, and Wait.
+  // What can be added for this setup: only what the robot has parts for. Intake needs an intake, Ramp down and Ramp up a
+  // ramp, Spin up and Shoot a shooter, Aim and Turret angle a turret (Setup → Mechanisms); then moving parts with their
+  // named positions, the setup's saved part actions, Wait, and the team's own named actions. A robot with no
+  // mechanisms is offered none of the game's actions.
   function catalog({field='empty',mechanisms=null,kinematics=null}={}){
-    const M=Mech(),m=mechanisms?M.sanitize(mechanisms):null,on=!!m?.enabled,game=field==='biobuzz'?(on?M.actions(m):['Intake','Shoot','Spin up','Aim']):[];
+    const M=Mech(),m=mechanisms?M.sanitize(mechanisms):null,on=!!m?.enabled,game=field==='biobuzz'&&on?M.actions(m):[];
     const own=on?m.shooters.map((s,n)=>s.type==='turret'&&!s.sharesTurret?n:-1).filter(n=>n>=0):[];
     const turrets=field!=='biobuzz'||!own.length?[]:own.length===1?[{turret:null,label:'Turret'}]:[{turret:null,label:'Both turrets'},...own.map(n=>({turret:n,label:`Turret ${n+1}`}))];
     const k=kinematics||{joints:[],actions:[]},parts=(k.joints||[]).filter(j=>j.drive?.signal==='action'&&['revolute','prismatic','continuous'].includes(j.type||'revolute')).map(j=>({name:j.name,states:Object.keys(j.states||{}),unit:j.type==='prismatic'?'in':'°',lower:finite(j.lower)?j.lower:null,upper:finite(j.upper)?j.upper:null}));
@@ -40,6 +42,7 @@
   // A step in words: "Intake for 1 s", "Shoot 2 (other cell)", "Turret to 30°", "Wait 0.5 s".
   function describe(s,where='pin'){const t=finite(s.seconds),aims=/^(shoot|aim)\b/i.test(s.action);
     if(/^wait$/i.test(s.action))return `Wait${t?' '+round(s.seconds)+' s':''}`;
+    if(where==='pin'&&!t&&/^intake$/i.test(s.action))return 'Intake on';
     return `${s.action}${aims&&s.cell==='other'?' (other cell)':''}${t?` for ${round(s.seconds)} s`:''}`;}
   // A whole list in words: "Shoot → Ramp down → Intake for 1 s" (a pin) or "Intake + Ramp down" (a path).
   const summary=(steps,where='pin')=>(steps||[]).map(s=>describe(s,where)).join(where==='path'?' + ':' → ');
@@ -60,8 +63,8 @@
       else if(k.type==='shoot')what=`<span class="sim-step-name" id="${id}-${i}-what" tabindex="-1" title="${esc(INFO.Shoot)}">Shoot</span><select id="${id}-${i}-count" class="sim-step-pick" aria-label="How many shots, ${label}"><option value="0"${!k.count?' selected':''}>all</option>${[1,2,3,4].map(c=>`<option value="${c}"${k.count===c?' selected':''}>${c}</option>`).join('')}</select>`;
       else if(k.type==='own')what=`<input id="${id}-${i}-what" class="sim-step-own" maxlength="40" value="${esc(s.action)}" aria-label="Action name, ${label}" title="${esc(INFO.own)}">`;
       else what=`<span class="sim-step-name" id="${id}-${i}-what" tabindex="-1" title="${esc(INFO[k.type==='wait'?'Wait':k.label]||INFO.part)}">${esc(k.type==='wait'?'Wait':s.action)}</span>`;
-      const timed=!instant(s.action),needs=pin&&(/^intake$/i.test(s.action)||k.type==='wait');
-      const time=timed?`<span class="sim-step-time"><input id="${id}-${i}-secs" class="sim-step-num" type="number" min="0.05" max="30" step="any" value="${finite(s.seconds)?round(s.seconds):''}" placeholder="${needs?'1':pin?'done':'path'}" title="Seconds. Empty: ${pin?'until it is done':'the whole path'}" aria-label="Seconds, ${label}"${needs?' required':''}><span class="sim-step-unit">s</span></span>`:'<span class="sim-step-time hint">at once</span>';
+      const timed=!instant(s.action),needs=pin&&k.type==='wait',stays=pin&&/^intake$/i.test(s.action);
+      const time=timed?`<span class="sim-step-time"><input id="${id}-${i}-secs" class="sim-step-num" type="number" min="0.05" max="30" step="any" value="${finite(s.seconds)?round(s.seconds):''}" placeholder="${needs?'1':stays?'on':pin?'done':'path'}" title="Seconds. Empty: ${stays?'it stays on for the steps after it, so a Shoot after it shoots while intaking':pin?'until it is done':'the whole path'}" aria-label="Seconds, ${label}"${needs?' required':''}><span class="sim-step-unit">s</span></span>`:'<span class="sim-step-time hint">at once</span>';
       const cell=biobuzz&&/^(shoot|aim)\b/i.test(s.action)?`<button type="button" class="sim-chip sim-step-cell" id="${id}-${i}-cell" aria-pressed="${s.cell==='other'}" title="Aim at the hive cell up at the start, or the other cell (up after the first tip)">${s.cell==='other'?'Other cell':'Start cell'}</button>`:'';
       return `<li class="sim-step" data-i="${i}"><span class="sim-step-n" aria-hidden="true">${pin?n:'+'}</span><span class="sim-step-what">${what}</span>${time}${cell}<span class="sim-step-tools"><button type="button" class="icon-button" data-step-move="-1" aria-label="Move ${label} up"${i===0?' disabled':''}>↑</button><button type="button" class="icon-button" data-step-move="1" aria-label="Move ${label} down"${i===list.length-1?' disabled':''}>↓</button><button type="button" class="icon-button" data-step-remove aria-label="Remove ${label}">×</button></span></li>`;}
     function render(focus){

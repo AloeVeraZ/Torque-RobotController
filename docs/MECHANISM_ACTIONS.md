@@ -217,7 +217,7 @@ send** (or **Upload and build**) then does steps 5 to 7.
 | Motor directions | Depends on how each motor is mounted. | Done: the guided check turns each one and asks. "No, the other way" flips its setting. |
 | Servo positions, turret calibration, flywheel speed | Physical measurements. | Done: the guided check moves each servo with the D-pad until the person saves it. It points the turret straight ahead, then a quarter turn left, and measures the flywheel's top speed for REV's PIDF. The results come back over telemetry. |
 | IMU mounting | Depends on how the Control Hub is mounted. | Reported, not fixed: the check says when the hub reads the robot as tilted, or a left turn as a right turn. The mounting setting has to be changed by hand. |
-| Odometry pod, Pinpoint and OTOS directions and offsets | Depend on where each one is mounted and which way it faces. | Done: settings in Setup → Robot controller → Where the odometry sits. The guided check finds them on the floor. A push forward and a push left give each direction, and the Pinpoint's pod type or the OTOS's distance scalar. A turn on the spot gives the offsets and the OTOS's turn scalar. |
+| Odometry pod, Pinpoint and OTOS directions and offsets | Depend on where each one is mounted and which way it faces. | Done: settings in Setup → Mechanisms → Control Hub → Where the odometry sits. The guided check finds them on the floor. A push forward and a push left give each direction, and the Pinpoint's pod type or the OTOS's distance scalar. A turn on the spot gives the offsets and the OTOS's turn scalar. |
 | Shot speed for a distance | Needs real shots. | Test shots on the field. |
 | Firmware, Wi-Fi channel | Outside the autonomous. | The REV Hardware Client. |
 
@@ -246,7 +246,7 @@ send** (or **Upload and build**) then does steps 5 to 7.
 | Piece | Where |
 | --- | --- |
 | Hardware settings for every part, stored only when they differ from the plain setup, so older saves load unchanged | `ui/sim-mechanisms.js`, Setup → Mechanisms → Robot hardware, `deck-sim mech` flags |
-| Device names and directions for the drive motors and sensors | `ui/sim-config.js`, Setup → Robot controller → Ports → Device names and motor directions, `deck-sim robot --names --reversed` |
+| Device names and directions for the drive motors and sensors | `ui/sim-config.js`, Setup → Mechanisms → Control Hub → Ports → Device names and motor directions, `deck-sim robot --names --reversed` |
 | `Mechanisms.java` written device by device, with every direction set in `init`, PIDF when set, power control without an encoder, pushers that push once per feed cycle, gates, and servo turrets tracked to 2° | `ui/sim-ftc.js` (`mechanismDevices`, `mechanismsSource`) |
 | The check TeleOp for TeamCode, OnBot Java and Pedro (made a guided check in phase 2) | `ui/sim-ftc.js` (`checkOpMode`) |
 | `RobotActions` shows how to replace a built-in action | `ui/sim-ftc.js` (`robotActions`) |
@@ -330,7 +330,7 @@ send** (or **Upload and build**) then does steps 5 to 7.
 
 | Piece | Where |
 | --- | --- |
-| Where the odometry sits: each pod's position and direction, the Pinpoint's offsets, pod type and directions, the OTOS's position, X-axis heading and scalars. Only what differs from Deck's defaults is stored. | `ui/sim-config.js` (`odometry`, `odometryOf`), Setup → Robot controller → Where the odometry sits, `deck-sim robot --odometry` |
+| Where the odometry sits: each pod's position and direction, the Pinpoint's offsets, pod type and directions, the OTOS's position, X-axis heading and scalars. Only what differs from Deck's defaults is stored. | `ui/sim-config.js` (`odometry`, `odometryOf`), Setup → Mechanisms → Control Hub → Where the odometry sits, `deck-sim robot --odometry` |
 | The exports set the hardware up with them: `setOffsets`, `setEncoderResolution` and `setEncoderDirections` for the Pinpoint, `setOffset` and the scalars for the OTOS, a sign per pod. Pedro's starter constants use the same settings. | `ui/sim-ftc.js` (`hardware`, `robotDrive`), `ui/sim-pedro.js` |
 | The guided check's last steps, on the floor: a 48 in push forward, a push left, then one turn on the spot. A least-squares fit of each reading against the turn gives each offset. | `ui/sim-ftc.js` (`checkOpMode`, `applyCheck`) |
 | The virtual Control Hub's Pinpoint and OTOS work as the chips do. They are mounted where the setup says, and they compute the pose with what the code configured, so wrong settings put the robot off course. | `tools/simulation/java/deck/sim/hub/SimSensors.java`, `VirtualHub.java` |
@@ -373,7 +373,7 @@ port, and the sensors on each mechanism. The export is generated from it.
 | Piece | Where |
 | --- | --- |
 | **Robot → Control Hub wiring**: the drivetrain from the CAD's wheel names (or chosen), the Expansion Hub and Servo Hub with their addresses, and each drive motor, odometry pod, Pinpoint, OTOS and IMU with its model and port. A port left to Deck shows the one it planned. Four drive motors of one model set the wheel RPM. | `ui/sim-wiring.js`, `ui/simulation.js` (`wiringPanel`) |
-| **Robot controller → Ports → Everything plugged in, as a list**: every port in use, hub by hub. | `DeckWiring.summaryHtml` |
+| **Setup → Mechanisms → Control Hub → Ports → Everything plugged in, as a list**: every port in use, hub by hub. | `DeckWiring.summaryHtml` |
 | **Mechanisms → Hardware** on each card: every motor and servo with its model, its port and its sensors (motor encoder, Through Bore, Axon feedback wire, potentiometer, limit or touch switch, colour or distance), each with its port and a line on what it tells. A shooter can have a hood servo. | `DeckWiring.deviceHtml`, `sensorsHtml` |
 | Two devices on one port are kept as set and shown red; red wiring holds the next steps like a red value. | `DeckHardware.sanitizeWiring`, `conflicts`; `ui/simulation.js` (`wiringRed`) |
 | The CAD parts of the row being edited glow on the model (click, focus, open, or scroll its card to the middle). | `DeckWiring.focusRefs`, `ui/simulation.js` (`mechGlow`) |

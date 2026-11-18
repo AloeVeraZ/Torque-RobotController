@@ -52,6 +52,14 @@ the action footer stays visible when help or driver details are expanded.
 10. **Keyboard and narrow-window context was incomplete.** Escape dismisses menus
     and the network picker, active navigation exposes its state, the Wi-Fi button
     names its connection when compact, and reduced-motion settings are respected.
+11. **Pages ran past a laptop's window.** On a maximized 1280 × 718 window,
+    Settings, Calibrate's tabs and parts of Setup scrolled as one page, cutting
+    off main actions such as Open robot. Every screen now fits from 861 × 560:
+    the header rows stay, and lists, panes and columns scroll on their own. A
+    Setup step too tall for a short window scrolls inside its view instead of
+    being cut off. Tile names wrap to two lines, and the robot picker widens to
+    show its summary. `tests/window-fit-ui.cjs` checks every screen at
+    1280 × 718, 1280 × 800 and 1024 × 600.
 
 ## Boundaries
 

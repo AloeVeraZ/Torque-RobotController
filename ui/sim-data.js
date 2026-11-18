@@ -76,26 +76,30 @@
   }
 
   const swatch=color=>{const e=el('span',{class:'sim-data-swatch'});e.style.background=color;return e;};
-  function create({panelHost,graphsHost=panelHost,onScrub,settings}){
+  function create({panelHost,graphsHost=panelHost,timelineHost=null,total=null,onScrub,settings}){
     let frames=[],cursor=null,live=true;const chosen=new Set(SIGNALS.filter(s=>s.on).map(s=>s.key));
     const range=el('input',{type:'range',min:'0',max:'0',step:'0.01',value:'0','aria-label':'Run timeline'}),clock=el('output',{class:'sim-data-clock'}),liveButton=el('button',{type:'button',class:'secondary'},['Live']);
     const track=el('div',{class:'sim-data-track'},[range]),summary=el('div',{class:'sim-analysis'}),empty=el('p',{class:'sim-data-empty',text:'No run recorded yet. Press Run beside the field: speed, heading, sensor error, drive power and mechanisms are graphed here while the robot drives.'});
     const lanes=el('div',{class:'sim-data-lanes'}),picks=el('div',{class:'sim-data-series'}),boxes=new Map();
     for(const s of SIGNALS){const box=el('input',{type:'checkbox'});box.checked=chosen.has(s.key);box.onchange=()=>{box.checked?chosen.add(s.key):chosen.delete(s.key);render();};boxes.set(s.key,box);
       picks.append(el('label',{class:'check'},[box,swatch(s.color),el('span',{text:s.label})]));}
-    const recorded=el('div',{class:'sim-data-recorded'},[
-      el('div',{class:'sim-data-timeline'},[track,el('div',{class:'sim-data-row'},[clock,liveButton])]),
-      el('p',{class:'hint',text:'Drag the timeline or any graph to replay that moment on the field. Green is autonomous, blue is teleop.'})]);
+    // The timeline is one slider over the whole period (total(): seconds), not just what has been recorded so far: it
+    // starts at 0 and ends at the period's end. Given its own host it is always on screen, run or no run.
+    const timeline=el('div',{class:'sim-data-timeline'},[track,el('div',{class:'sim-data-row'},[clock,liveButton])]);
+    track.title='Drag to replay that moment on the field.';
+    const recorded=el('div',{class:'sim-data-recorded'},timelineHost?[]:[timeline,
+      el('p',{class:'hint',text:'Drag the timeline or any graph to replay that moment on the field.'})]);
+    if(timelineHost)timelineHost.append(timeline);
     const charts=el('div',{class:'sim-data-recorded'},[el('h3',{text:'Graphs'}),lanes,el('details',{class:'sim-data-pick'},[el('summary',{text:'Choose graphs'}),picks]),el('h3',{text:'Summary'}),summary]);
     panelHost.append(empty,recorded);if(graphsHost!==panelHost)graphsHost.append(charts);else panelHost.append(charts);
-    range.oninput=()=>{live=false;cursor=Number(range.value);scrub();};
+    range.oninput=()=>{if(!frames.length){range.value='0';return;}live=false;cursor=Number(range.value);scrub();};
     liveButton.onclick=()=>{live=true;cursor=null;onScrub(null);render();};
     // Dragging across a graph scrubs the timeline.
-    lanes.onpointerdown=e=>{const lane=e.target.closest('.sim-data-lane');if(!lane||!frames.length)return;try{lanes.setPointerCapture(e.pointerId);}catch{}const move=ev=>{const r=lanes.querySelector('svg')?.getBoundingClientRect();if(!r?.width)return;live=false;cursor=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width))*duration();range.value=String(cursor);scrub();};move(e);lanes.onpointermove=move;lanes.onpointerup=lanes.onpointercancel=()=>{lanes.onpointermove=null;};};
-    const t0=()=>frames[0]?.time??0,duration=()=>frames.length?frames.at(-1).time-t0():0;
+    lanes.onpointerdown=e=>{const lane=e.target.closest('.sim-data-lane');if(!lane||!frames.length)return;try{lanes.setPointerCapture(e.pointerId);}catch{}const move=ev=>{const r=lanes.querySelector('svg')?.getBoundingClientRect();if(!r?.width)return;live=false;cursor=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width))*full();scrub();};move(e);lanes.onpointermove=move;lanes.onpointerup=lanes.onpointercancel=()=>{lanes.onpointermove=null;};};
+    const t0=()=>frames[0]?.time??0,duration=()=>frames.length?frames.at(-1).time-t0():0,full=()=>Math.max(duration(),Number(total?.())||0);
     // A graph per chosen value: its name and value at the cursor above a line over the whole run.
     function graphs(f){
-      const span=duration()||1,W=1000,H=48,at=f?(f.time-t0())/span*W:W,shown=SIGNALS.filter(s=>frames.some(fr=>s.get(fr)!==null));
+      const span=full()||1,W=1000,H=48,at=f?(f.time-t0())/span*W:duration()/span*W,shown=SIGNALS.filter(s=>frames.some(fr=>s.get(fr)!==null));
       for(const s of SIGNALS)boxes.get(s.key).parentElement.hidden=!shown.includes(s);
       lanes.replaceChildren(...shown.filter(s=>chosen.has(s.key)).map(s=>{
         const pts=series(frames,s),vals=pts.map(p=>p[1]).filter(v=>v!==null);if(!vals.length)vals.push(0);let lo=Math.min(...vals),hi=Math.max(...vals);if(hi-lo<1e-6){lo-=1;hi+=1;}const pad=(hi-lo)*.1,y=v=>H-((v-lo+pad)/(hi-lo+2*pad))*H;
@@ -112,8 +116,7 @@
     function scrub(){const span=duration();if(cursor!==null)cursor=Math.max(0,Math.min(span,cursor));const f=cursor===null?frames.at(-1):at(cursor);onScrub(live?null:f);render(f);}
     function render(f=live?frames.at(-1):at(cursor??0)){
       clearTimeout(trailing);stale=false;
-      const span=duration();range.max=String(Math.max(0,span).toFixed(2));range.value=live?range.max:String(cursor??0);clock.textContent=`${(live?span:cursor||0).toFixed(2)} s of ${span.toFixed(2)} s${live?' · live':''}`;liveButton.disabled=live;
-      if(frames.length&&span){const stops=[];let phase=frames[0].practice?.phase,from=0;for(let i=1;i<=frames.length;i++){const p=frames[i]?.practice?.phase;if(i===frames.length||p!==phase){const a=(frames[from].time-t0())/span*100,b=(frames[i-1].time-t0())/span*100,c=PHASES[phase]?PHASES[phase]+'66':'transparent';stops.push(`${c} ${a}%`,`${c} ${b}%`);from=i;phase=p;}}track.style.background=`linear-gradient(90deg,${stops.join(',')})`;}else track.style.background='';
+      const span=duration(),whole=full();range.max=String(Math.max(0,whole).toFixed(2));range.value=String(live?span:cursor??0);range.disabled=!frames.length;range.style.setProperty('--at',String(whole?Math.max(0,Math.min(1,(live?span:cursor||0)/whole)):0));clock.textContent=`${(live?span:cursor||0).toFixed(2)} s of ${whole.toFixed(2)} s`;liveButton.disabled=live;
       empty.hidden=!!frames.length;recorded.hidden=charts.hidden=!frames.length;
       if(frames.length){summary.replaceChildren(list(analysis(frames)));graphs(f);}
     }
@@ -124,9 +127,13 @@
       record(f){if(!f?.truth)return;const last=frames.at(-1);still=last?.truth&&last.truth.x===f.truth.x&&last.truth.y===f.truth.y&&last.truth.heading===f.truth.heading?still+1:0;if(last&&f.time<last.time-1e-6)frames=[];if(last&&Math.abs(f.time-last.time)<1e-6)frames[frames.length-1]=f;else frames.push(f);if(frames.length>24000)frames.splice(0,4000);
         if(live){if(!onScreen){stale=true;return;}const now=performance.now(),every=still>15?1000:250;if(now-renderTimer>every){renderTimer=now;render();}else{clearTimeout(trailing);trailing=setTimeout(()=>{renderTimer=performance.now();render();},260);}}},
       reset(){frames=[];cursor=null;live=true;render();},
+      // A whole run at once (the run driven in the background before Run is pressed), shown at its end.
+      load(list){frames=list.slice();cursor=null;live=true;render();},
       // Replay the moment `seconds` after the run started, as dragging the timeline there would.
       seek(seconds){if(!frames.length)return;live=false;cursor=seconds;scrub();},
-      frames:()=>frames,analysis:()=>analysis(frames),live:()=>live,render:()=>render()};
+      frames:()=>frames,analysis:()=>analysis(frames),live:()=>live,render:()=>render(),
+      // For the Pause button: where the timeline is (seconds), how much is recorded, and going back to the live end.
+      cursor:()=>live?duration():cursor??0,duration,goLive(){live=true;cursor=null;onScrub(null);render();}};
   }
   return {analysis,rows,list,create,drawMechanisms,series,SIGNALS};
 });

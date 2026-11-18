@@ -89,7 +89,10 @@ test('a full match marks each new period as a moment',()=>{
 });
 
 test('suggested cuts follow the run and are ordinary clips, at least the minimum length',()=>{
-  const frames=videoRun(),cuts=E.autoCut(frames,{duration:8});assert.ok(cuts.length>=4,`${cuts.length} cuts`);
+  // With short holds asked for, the cuts follow each thing the robot does...
+  const frames=videoRun(),cuts=E.autoCut(frames,{duration:8,min:1.6,max:6.5});assert.ok(cuts.length>=3,`${cuts.length} cuts`);
+  // ...and left to itself the edit is calm: fewer shots, each held for seconds, joined by a dissolve.
+  {const calm=E.autoCut(frames,{duration:8});assert.equal(calm.length,1,'one moving shot, no cuts');assert.equal(E.len(calm[0]),8);assert.equal(calm[0].camera,'auto');}
   assert.equal(cuts[0].camera,'main');assert.equal(cuts[0].start,0);assert.ok(near(E.end(cuts.at(-1)),8));
   for(let i=1;i<cuts.length;i++){assert.ok(near(cuts[i].start,E.end(cuts[i-1])));assert.ok(E.len(cuts[i-1])>=1.6-1e-9);}
   const at=t=>cuts.find(c=>c.start<=t&&E.end(c)>t).camera;assert.equal(at(4.2),'mech','ramp down');assert.equal(at(6.6),'turret','shooting');

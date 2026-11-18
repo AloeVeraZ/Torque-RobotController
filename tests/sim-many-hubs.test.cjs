@@ -210,7 +210,7 @@ test('Configure edits the configuration itself: every port of every hub, legal p
 
 test('in Simulate a device takes a port from the configuration, by port and not by name, and asks for Setup without one',()=>{
   const st={wiring:W.setHubCount(null,'expansion',1),rows:[],problems:[]},row={key:'robot.frontLeft',label:'Front left drive motor',name:'front_left',family:'motor',role:'drive',kind:'dcmotor',model:'gobilda-5203-435',planned:true,wired:false};
-  const none=W.deviceHtml(row,st,{model:false,noPort:true,assign:null});assert.ok(none.includes('Set in Setup &amp; Calibrate'));assert.doesNotMatch(none,/Deck pick/);
+  const none=W.deviceHtml(row,st,{model:false,noPort:true,assign:null});assert.ok(none.includes('Set in Setup'));assert.doesNotMatch(none,/Deck pick/);
   const read=[{name:'leftRear',kind:'motor',tag:'goBILDA5202SeriesMotor',hub:'control',port:0},{name:'claw',kind:'servo',tag:'Servo',hub:'control',port:0}];
   const some=W.deviceHtml(row,st,{model:false,noPort:true,assign:read}),select=some.split('data-wire-assign')[1].split('</select>')[0];assert.ok(select.includes('value="control:0|leftRear"'));assert.ok(select.includes('Control Hub motor port 0'));assert.doesNotMatch(select,/>[^<]*leftRear/,'the name is not shown');assert.doesNotMatch(select,/claw/,'motors only');
 });

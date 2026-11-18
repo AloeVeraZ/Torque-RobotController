@@ -1,18 +1,29 @@
 # Calibrate: live hardware debug and gated mechanism calibration
 
-Calibrate (the third view in the header) turns a robot configuration into tuned mechanisms. It rests on one rule from the research behind it: **a mechanism can only be calibrated against something that measures what it did.** A motor's encoder counts its speed or position, an Axon's feedback wire or an absolute encoder tells a servo's angle, a limit switch marks zero. Where nothing measures a part, there is nothing to tune: only where its positions are.
+Calibrate (its own header tab, after Setup) turns a robot configuration into tuned mechanisms, and keeps what it measures in the robot's one file. The chassis measurements (drive ticks per inch, motor directions, the hub's mount) go on into Simulate, the autonomous exports and the TeleOp. A mechanism's measurements go into the simulated robot as its gates pass (see [Into the simulation](#into-the-simulation)), and G8 gives them as the `DeckCalibration` constants file. Code sent to a robot still drives the route and leaves each Intake, Shoot or Spin up as a method for the team to write, and the TeleOp drives only the chassis, so neither reads them. It rests on one rule from the research behind it: **a mechanism can only be calibrated against something that measures what it did.** A motor's encoder counts its speed or position, an Axon's feedback wire or an absolute encoder tells a servo's angle, a limit switch marks zero. Where nothing measures a part, there is nothing to tune: only where its positions are.
 
-The view has three tabs, left to right in the order a team works. It opens on the first:
+Its steps are **1 Electronics**, **2 Mechanisms**, **3 Camera** and **4 Real run**, left to right in the order a team works; **Debug**, the Axon Programmer, the SWYFT Programmer and Servo Test are tools beside them (Debug has no number: it is opened when something needs a look). The robot bar at the top picks the robot. What each is:
 
+- **Electronics**: Send to robot and the guided check, with **USB devices** and what the configuration lists on the right. USB devices goes port by port through what each thing is, what it does, the rule and what to do, and a camera has a button to Camera ([USB devices on a Control Hub](USB-DEVICES.md)). What the configuration lists is what it says is on each port, every motor, servo and sensor, not what is plugged in. It stays hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub. With no Control Hub connected, it shows the robot's simulated hubs, built from its Setup, under a one-line **Simulated robot** banner: they can be looked through but not driven.
+- **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read. While Setup → Mechanisms has something in red (two devices on one port, say), it shows only a **Finish Setup** card that says what is red, with **Open Setup**.
 - **Camera**: what a webcam sees, with everything that can be set right beside it. The picture shows by itself: see [Camera](#camera) below. Headed by the camera's name, with a row of names when there is more than one. A camera that is only plugged in says so and has Auto-configure, since the Robot Controller can only open cameras in its active configuration. Under the picture, one line says what needs doing or All good, and closed sections hold Details and Measure this lens. A Limelight's status takes the picture's place.
+- **Real run**: what the real robot did on the route Simulate planned, typed in by the team pin by pin, beside what the simulator did. Torque measures and guesses none of it.
 - **Debug**: **Live debug**, a box for each device on the hub: see [Live debug's boxes](#live-debugs-boxes). Under them, what is on the hub's USB ports: whether a webcam is streaming and its frame rate, a Limelight's status, and what the rules say about the rest.
-- **Calibrate**, once everything else is set up, with two tabs of its own:
-  - **Electronics**: Send to robot and the guided check, with **USB devices** and what the configuration lists on the right. USB devices goes port by port through what each thing is, what it does, the rule and what to do, and a camera has a button to Camera ([USB devices on a Control Hub](USB-DEVICES.md)). What the configuration lists is what it says is on each port, every motor, servo and sensor, not what is plugged in. It stays hidden until the hub has been read over USB-C, and ports cannot be changed here because they come from the hub.
-  - **Mechanisms**: the gated flow. It shows nothing until the Control Hub's devices are read.
 
-Axon servos have their own tab, Axon Programmer, at the far right of the same row of steps. See [Programming Axon servos](AXON.md).
+Axon servos have their own tool, Axon Programmer, after Debug in the same row; the SWYFT Programmer and Servo Test follow it. The two programmers fill the window with no robot bar or Simulated robot banner above them, since they program a servo through their own USB programmer rather than the robot. See [Programming Axon servos](AXON.md).
 
-Code: `ui/sim-tune.js` (templates, gates, unit transforms, fits; pure and unit-tested in `tests/sim-tune.test.cjs`), `ui/sim-debug.js` (the Live debug panel), the calibrate section of `ui/simulation.js` (the flow), `src/onbot/TorqueDebug.java` (the robot side), `runDebug` in `src/robot-link.cjs` (the link). `tests/robot-setup-app.cjs` part C runs the whole chain against the simulated hub's stand-in (`startDebugServer` in `tools/ftc-sim.cjs`).
+Every tab fits the window, as Setup and Simulate do (checked at 1280×718, a laptop's maximized window, at the Steam Deck's 1280×800 and at 1024×600). The robot bar, the steps and the banner stay put, and what is long scrolls in its own place, never the page:
+- **Lists**: a list scrolls beside its pane, and keeps its place when the pane redraws. A part picked from a list opens at the top of its pane.
+- **Electronics**: *Is everything at zero?* stays over the part that scrolls.
+- **Camera**: the picture is sized to the room left and stays still while the settings beside it scroll. Measure this lens scrolls the card down to its steps.
+- **Debug and Real run**: each scrolls in its own panel, under Debug's Stop bar and over Real run's Save bar.
+- **Servo Test**: its two cards share the room above its bar.
+
+A window under 861 px wide or 560 px tall scrolls as one page.
+
+With no Control Hub, only what moves around the page can be pressed: the tabs, the lists, and buttons that only go somewhere else, such as Open Setup, Electronics' Camera tile and Debug's Try the camera tools on a simulated webcam.
+
+Code: `ui/sim-tune.js` (templates, gates, unit transforms, fits, and what each measurement sets in the simulation; pure and unit-tested in `tests/sim-tune.test.cjs`), `ui/sim-debug.js` (the Live debug panel), the calibrate section of `ui/simulation.js` (the flow), `src/onbot/TorqueDebug.java` (the robot side), `runDebug` in `src/robot-link.cjs` (the link). `tests/robot-setup-app.cjs` part C runs the whole chain against the simulated hub's stand-in (`startDebugServer` in `tools/ftc-sim.cjs`).
 
 ## Live debug's boxes
 
@@ -53,7 +64,7 @@ Each gate is a test the robot passes before the next one may drive it harder; or
 | Gate | What happens | Passes when | Typical failure |
 |---|---|---|---|
 | **G0 Control Hub** | The configuration is read (Set up from the Control Hub, or Live debug's device list). | The devices are read and the configuration's names and ports have not changed since (a hash of them is kept). | Configuration changed: every gate of the affected devices goes stale. |
-| **G1 Link to the robot** | Simulate lists each mechanism with the motor or servo it runs on and its feedback sensor; nothing else can be calibrated. Here each of those is linked to the device of the robot's configuration it really is, and takes that name and port. | Its motor or servo and every sensor Simulate lists on it is on a configured port. | Wrong type, device or sensor: change it in Simulate → Setup → Mechanisms. A device the configuration lacks: add it in Configure. |
+| **G1 Link to the robot** | Setup lists each mechanism with the motor or servo it runs on and its feedback sensor; nothing else can be calibrated. Here each of those is linked to the device of the robot's configuration it really is, and takes that name and port. | Its motor or servo and every sensor Setup lists on it is on a configured port. | Wrong type, device or sensor: change it in Setup → Mechanisms. A device the configuration lacks: add it in Setup → Configure. |
 | **G2 Bind and direction** | Pulse and watch: the actuator runs briefly (0.25 power, 0.4 s; a servo moves) while every input is recorded. | Its own sensor answered, and you said which way is positive. Two signs are stored: the motor's and the encoder's ([Road Runner](https://rr.brott.dev/docs/v1-0/tuning/): they are independent). | Another port moved: the encoder is on another motor's port. Nothing moved: unplugged or inside the deadband. |
 | **G3 Units** | The stage chain: counts a sensor turn, sensor turns per mechanism turn, units a mechanism turn (360° or spool circumference × cascade stages); or two volts-to-angle points for an analog sensor. | A known move reads within 2 %. "Use the measured ratio" rescales from the check. | Wrong gearbox in a motor family; sensor on another stage; belt slip. |
 | **G4 Zero** | A home switch, a gentle stall against a stop, an absolute sensor, or the start pose. | Three zeroings agree (their spread is shown). | Spread means a loose switch, slip or backlash. |
@@ -61,9 +72,28 @@ Each gate is a test the robot passes before the next one may drive it harder; or
 | **G6 Feedforward** | Ramps on the robot, power signed so + is the positive way. Velocity: five powers, steady speed each, fit `power = kS + kV·v`. Position: power raised until it moves up, then lowered until it moves down: `kG = (up + down)/2`, `kS = (up − down)/2`. | Fit R² ≥ 0.95, or both breakaway powers found. | Poor fit: binding or rubbing. |
 | **G7 Feedback** | PID gains and a tolerance; the simulated step on the measured feedforward, then a step on the robot with Torque Debug's own loop. A servo with feedback gets an arrival check instead. | It settles within the tolerance and holds (rise 10–90 %, overshoot, settling as MATLAB's stepinfo scores them). | Overshoot: lower kP or add kD. Chatter: tolerance tighter than the sensor's step. |
 | **GT Sensor thresholds** | For mechanisms with a colour, distance, touch, limit or magnet sensor: a second of readings without and with a piece (released and pressed). | The two groups do not overlap; the threshold sits between them with a quarter of the gap as hysteresis. | Overlap: move the sensor or change its gain. |
-| **G8 Commit** | The values are kept with the setup, with the date and battery voltage, and **Show the constants file** gives a `DeckCalibration` Java class. | Saved. | — |
+| **G8 Commit** | The values are kept with the setup, with the date and battery voltage, and everything measured goes into the simulated robot again. **Show the constants file** gives a `DeckCalibration` Java class. | Saved. | — |
 
 A gate goes **stale** when what it depended on changes: a device, port or sensor model stales G1, G2 and GT; editing the units stales G3 and every gate after it. A configuration change stales G0. Swapping a Color Sensor V2 for a V3 ("will not be consistent": [REV Color Sensor V3](https://docs.revrobotics.com/rev-crossover-products/sensors/color-sensor.md)) or re-splining a servo horn should be redone the same way.
+
+## Into the simulation
+
+The simulated robot runs on what was measured on the real one. When Units, Range, Feedforward or Feedback passes, what it measured is written into the robot's mechanisms at once, where Setup, the 3D view and the simulator all read it; Commit writes all of it again. Only a gate that passes counts: a stale one measured something that has changed since.
+
+| Mechanism | Gate | What the simulation runs on |
+|---|---|---|
+| Flywheel | Units | Encoder ticks a turn: counts a sensor turn × the ratio. |
+| | Feedforward | Nothing is set, but the speed it reached at full power, (1 − kS) / kV, shows on the Shooter card, which says when the target speed is above it. |
+| | Feedback | At speed within: the step's tolerance over its target speed. Spin-up time: from the robot's own step run, so the simulated flywheel is ready as long after starting as the real one was. |
+| Turret | Units | Encoder ticks a degree, on a motor turret. |
+| | Range | Furthest right and furthest left, each kept on its own side of the front. |
+| | Feedback | Turn speed, on a motor turret: the step's distance over the time it took to settle. |
+| Moving part (a joint moved by an actuator) | Range | Low and high stops: degrees on a pivot as they are, millimetres on a slide in inches. A slide measured in degrees of its spool is left out. |
+| | Feedback, else Feedforward | Its actuator's speed: the step's distance over its settling time; before a step, the speed at full power less what friction and gravity take. A spinning part takes the top speed Feedforward measured. |
+
+The hood, feeders, intake deploys, thresholds, zero and direction change nothing the simulation runs on. A Feedback step passed before the robot's run was kept is replaced by the step simulated on the measured feedforward and gains.
+
+Setup stays editable. Each mechanism keeps what was written (`applied`, path → value), so the **Settings the simulation runs on** card tags those numbers **Measured**, and Commit lists them under **In the simulation**, saying where Setup has changed one since. An edit in Setup stands until that gate passes again. A robot measured before this was written gets its passed gates written once when it opens. A demo robot's mechanisms are the demo's own, so what is measured on one stays in Calibrate, and its gates say so.
 
 ## Seven templates: the feedback decides the gates
 

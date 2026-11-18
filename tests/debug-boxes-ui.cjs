@@ -40,9 +40,9 @@ const MAN={deck:'debug',version:1,motors:['arm','lift'],servos:['claw'],crservos
       if(action==='scan')return ok({portals:[{serial:'(embedded)',modules:[{address:173,parent:true,imu:'BHI260'}],servoHubs:[]}],others:[]});
       if(action==='debug-send'){g.__sent.push(d.line);return ok(true);}if(action==='debug-install'){g.__installs++;return ok({opMode:'TorqueDebug-x'});}if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});
       if(action==='debug-start'||action==='debug-stop'||action==='debug-claim')return ok(true);return {ok:false,error:'not in this test: '+action};});},{xml:XML,SERIAL});
-    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config').length===1);await wait(800);
-    // With no camera on the hub, Debug has no row of tabs: its step is the way in.
-    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#calibrate-view [data-flow=debug]');await soon('the gate opens',()=>page.locator('#cal-gate').isHidden());assert.equal(await page.locator('[data-cal-top-tabs]').isHidden(),true,'no lone Debug tab');
+    await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);await wait(800);
+    // Debug is a tool in Calibrate's row, beside its steps: its button is the way in.
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#calibrate-view [data-flow=debug]');await soon('the gate opens',()=>page.locator('#cal-gate').isHidden());assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','on Debug');
     const send=m=>app.evaluate(({BrowserWindow},x)=>{for(const w of BrowserWindow.getAllWindows())w.webContents.send('robot-link-debug',x);},m),sent=()=>app.evaluate(()=>global.__sent.filter(l=>l!=='P')),clear=()=>app.evaluate(()=>{global.__sent.length=0;});
     const box=name=>page.locator(`#cal-debug [data-port$=":${name}"]`);
     // Over the cable the tab starts it by itself.

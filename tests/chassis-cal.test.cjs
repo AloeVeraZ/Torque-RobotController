@@ -4,7 +4,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const K=require('../ui/sim-chassis-cal.js'),C=require('../ui/sim-config.js'),L=require('../ui/sim-links.js');
 const near=(a,b,tol=.05,what='')=>assert.ok(Math.abs(a-b)<=tol,`${what} ${a} ≈ ${b}`);
-const robot=(more={})=>({robot:{drivetrain:'mecanum',wheelDiameterMm:104,devices:{frontLeft:{name:'leftFront'},backLeft:{name:'leftBack'},frontRight:{name:'rightFront',reversed:true},backRight:{name:'rightBack',reversed:true}},...more.robot},sensors:{localization:'encoders',...more.sensors}});
+const robot=(more={})=>({robot:{drivetrain:'mecanum',wheelDiameterMm:104,devices:{frontLeft:{name:'leftFront',reversed:false},backLeft:{name:'leftBack',reversed:false},frontRight:{name:'rightFront',reversed:true},backRight:{name:'rightBack',reversed:true}},...more.robot},sensors:{localization:'encoders',...more.sensors}});
 
 test('the chassis is what Simulate says, named as the configuration names it',()=>{
   const ch=K.chassisOf(robot(),C);assert.equal(ch.name,'Mecanum · 4 DC motors');assert.deepEqual(ch.motors.map(m=>m.name),['leftFront','rightFront','leftBack','rightBack']);assert.equal(K.measures(ch),'position');
@@ -40,7 +40,7 @@ test('mecanum drive encoders: forward and strafe, with the right side reversed',
   assert.equal(K.tracker(ch).update(v(1,1,1,1)),null,'nothing before a zero');});
 
 test('tank: no strafe; a robot with only an IMU gives its heading',()=>{
-  const ch=K.chassisOf({robot:{drivetrain:'tank2',devices:{left:{name:'l'},right:{name:'r'}}},sensors:{localization:'encoders'}},C),t=K.tracker(ch),k=ch.driveTicksPerIn;
+  const ch=K.chassisOf({robot:{drivetrain:'tank2',devices:{left:{name:'l',reversed:false},right:{name:'r'}}},sensors:{localization:'encoders'}},C),t=K.tracker(ch),k=ch.driveTicksPerIn;
   t.zero({'m:l:pos':0,'m:r:pos':0,'i:imu:yaw':0});near(t.update({'m:l:pos':6*k,'m:r:pos':6*k,'i:imu:yaw':0}).x,6,.01);
   const g=K.tracker(K.chassisOf({robot:{drivetrain:'tank2'},sensors:{localization:'gyro'}},C));g.zero({'i:imu:yaw':5});const p=g.update({'i:imu:yaw':35});near(p.h,30,.01);assert.ok(Number.isNaN(p.x));});
 
@@ -161,3 +161,12 @@ test('a turn that hunts after it arrives is caught as oscillating, even inside t
   // Watched for too short a time to say: not steady for a longer hold.
   assert.equal(K.steady({settle:.4,held:.3,overshoot:0,crossings:0,hunt:0,swing:0},1.8),false);assert.equal(K.steady({settle:.4,held:.3,overshoot:0,crossings:0,hunt:0,swing:0}),true);});
 
+
+test('a drive motor with no direction set turns as the exports turn it: a mecanum or tank robot\u2019s left side reversed, a swerve\u2019s forward',()=>{
+  const ch=d=>K.chassisOf({robot:{drivetrain:d,wheelDiameterMm:104,devices:{}},sensors:{localization:'encoders'}},C);
+  assert.deepEqual(ch('mecanum').motors.map(m=>[m.key,m.reversed]),[['frontLeft',true],['frontRight',false],['backLeft',true],['backRight',false]]);
+  assert.ok(ch('tank').motors.filter(m=>/left/i.test(m.key)).every(m=>m.reversed)&&ch('tank').motors.filter(m=>!/left/i.test(m.key)).every(m=>!m.reversed));
+  assert.ok(ch('kiwiSwerve').motors.every(m=>m.reversed===false),'a swerve keeps forward: its pods are checked one by one');
+  // Said in Setup or by Calibrate, a direction is kept as said.
+  assert.equal(K.chassisOf({robot:{drivetrain:'mecanum',devices:{frontLeft:{reversed:false}}},sensors:{localization:'encoders'}},C).motors[0].reversed,false);
+});

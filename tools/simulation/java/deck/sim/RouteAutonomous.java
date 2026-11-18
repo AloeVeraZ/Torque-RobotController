@@ -11,7 +11,8 @@ import java.util.ArrayDeque;
  * and turn in place before a leg whose heading differs. A pin can also turn the robot in place
  * after it arrives (before its pause), and an action path reports its action while it is driven.
  * If the robot stalls against something mid-leg it backs out to where it recently drove,
- * straightens up and resumes the leg.
+ * straightens up and resumes the leg. If it is stopped just short of a leg's end (game pieces trapped
+ * against a wall, say), it stops pushing, reports it and carries on from where it is.
  */
 public final class RouteAutonomous implements DeckAutonomous {
     private int leg, movingPath;
@@ -31,6 +32,10 @@ public final class RouteAutonomous implements DeckAutonomous {
     private double legStarted, slowSince = -1, backoffStarted = -1;
     private Pose backoff;
     private int recoveries;
+    // Stopped short: within this distance of the leg's end and not moving for this long.
+    private static final double SHORT_DISTANCE = 3, SHORT_SECONDS = 1;
+    private double shortSince = -1;
+    private boolean stoppedShort;
     public RouteAutonomous() { this(false); }
     public RouteAutonomous(boolean turning) { this.turning = turning; }
     private void beginLeg(SimRobot robot) {
@@ -41,6 +46,7 @@ public final class RouteAutonomous implements DeckAutonomous {
         double target = robot.legHeading(leg);
         recoveries = 0;
         turnedAfter = false;
+        stoppedShort = false;
         double previousHeading=leg==0?robot.startPose().heading():!Double.isNaN(robot.turnAfter(leg-1))?robot.turnAfter(leg-1):robot.routeLegs().get(leg-1).endPose().heading();
         if (turning && Math.abs(Math.atan2(Math.sin(target - previousHeading), Math.cos(target - previousHeading))) > Math.toRadians(.5)) startTurn(robot, target, true);
         else startFollowing(robot);
@@ -57,7 +63,7 @@ public final class RouteAutonomous implements DeckAutonomous {
     private void startFollowing(SimRobot robot) {
         robot.follower().follow(robot.routeLegs().get(leg));
         legStarted = robot.time();
-        slowSince = -1;
+        slowSince = shortSince = -1;
         history.clear();
     }
 
@@ -112,10 +118,18 @@ public final class RouteAutonomous implements DeckAutonomous {
             leg++;arrived=pathEnded=-1;beginLeg(robot);return;
         }
         if (follower.following()) {
+            if (stoppedShort(robot, follower)) {
+                // Pushing harder will not move what is in the way: hold here and let the route go on.
+                Pose p = follower.pose(), end = robot.routeLegs().get(leg).endPose();
+                stoppedShort = true;
+                robot.telemetry("blocked", String.format("Leg %d stopped %.1f in short of its end point", leg + 1, p.distance(end)));
+                follower.hold(new Pose(p.x(), p.y(), end.heading()));
+                return;
+            }
             if (stalled(robot, follower)) {
                 if (++recoveries > MAX_RECOVERIES) {
                     Pose p = follower.pose();
-                    throw new IllegalStateException(String.format("The robot is stuck near (%.0f, %.0f) in and backing out did not free it. Increase Space around zones or move the pins.", p.x(), p.y()));
+                    throw new IllegalStateException(String.format("The robot is stuck near (%.0f, %.0f) in and backing out did not free it. A wall, a field part or game pieces against them are in the way: move the pins away from there or increase Space around zones.", p.x(), p.y()));
                 }
                 Pose p = follower.pose(), end = robot.routeLegs().get(leg).endPose();
                 double[] back = history.peekFirst();
@@ -134,7 +148,9 @@ public final class RouteAutonomous implements DeckAutonomous {
         if (turnedAfter) end = new Pose(end.x(), end.y(), robot.turnAfter(leg));
         // The controller finishing a leg does not guarantee a stationary chassis. Wait until the estimate
         // has actually settled (bounded at 3 s), then count the pause from the moment it stopped.
-        boolean settled = robot.near(end, 0.75, 3) && follower.velocity().linSpeed() < .5;
+        // The follower ends a leg within 0.8 in of its end, so settling must not ask for less: at 0.75 a robot that
+        // stopped 0.76 to 0.8 in away waited out both 3 s limits (6 s standing still) before going on.
+        boolean settled = stoppedShort || robot.near(end, 0.9, 3) && follower.velocity().linSpeed() < .5;
         if (pathEnded < 0) pathEnded = robot.time();
         if (arrived < 0 && (settled || robot.time() - pathEnded > 3)) {
             double turnAfter = robot.turnAfter(leg);
@@ -169,6 +185,15 @@ public final class RouteAutonomous implements DeckAutonomous {
         arrived = -1;
         pathEnded = -1;
         beginLeg(robot);
+    }
+
+    // Stopped short: barely moving for a while with the leg's end close but out of reach. (Farther from the
+    // end it is a stall, which backs out and tries again.)
+    private boolean stoppedShort(SimRobot robot, DeckFollower follower) {
+        double now = robot.time();
+        if (now - legStarted < .5 || follower.remainingDistance() >= SHORT_DISTANCE || follower.velocity().linSpeed() > STALL_SPEED) { shortSince = -1; return false; }
+        if (shortSince < 0) shortSince = now;
+        return now - shortSince > SHORT_SECONDS;
     }
 
     // Stalled: barely moving for a while with the leg's end still well ahead. History keeps the last

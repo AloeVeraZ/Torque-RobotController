@@ -433,20 +433,111 @@
     if(!amount(keep.q))return inView(pose,...robotBall(t,R));const P=placeIn(now,pose.p,...keep.q);return inView({...pose,p:P,l:aimIn(now,pose.p,P)},...robotBall(t,R));
   }
   // ---------------------------------------------------------------- whole-run paths
+  // Calm: a camera that copies every small move of the robot reads as shake, and a run of quick pans makes people
+  // queasy. Each camera's position and aim are smoothed over time (seconds, by camera), forwards and then backwards so
+  // the picture never lags what it is following. A jump of the camera itself (a new piece to ride, a reset) is kept.
+  const CALM={main:.75,chase:.65,mech:.55,intake:.55,turret:.2};
+  function calm(out,frames,tau){
+    const n=frames.length;if(!(tau>0)||n<3)return out;
+    for(const dir of [1,-1])for(let i=dir>0?1:n-2;i>=0&&i<n;i+=dir){
+      const a=i*7,b=(i-dir)*7,dt=Math.abs(frames[i].time-frames[i-dir].time);
+      if(!(dt>0)||dt>.5||Math.hypot(out[a]-out[b],out[a+1]-out[b+1],out[a+2]-out[b+2])>30)continue;
+      const k=1-Math.exp(-dt/tau);for(let c=0;c<7;c++)out[a+c]=out[b+c]+(out[a+c]-out[b+c])*k;}
+    return out;
+  }
   // The path of one camera through a recording: seven numbers per frame (camera x, y, z, look x, y, z, fov). The
   // camera inside the turret is not moved by clear(): it sits on the robot, over its top. Camera 1 then keeps all of
   // the robot in its picture (inView).
-  function path(id,frames,ctx,cfg){
+  // opts.calm (the Video editor asks for it) smooths the camera's motion; a camera fixed to the robot stays rigid.
+  function path(id,frames,ctx,cfg,opts={}){
     cfg=cfg||DEFAULTS[id];const s={},R=ctx.rig||rig(ctx),poses=[];let last=null;if(id==='turret')s.which=busiest(frames,R);
     frames.forEach((frame,i)=>{const dt=i?Math.max(0,frame.time-frames[i-1].time):0;let p=step(id,s,{...ctx,rig:R,frame},cfg,dt);
       if(p&&id==='main'&&frame.truth)p.watch={at:[frame.truth.x,frame.truth.y,R.height*.55],spread:R.footprint.half,edge:false};
       p=p||last||{p:[72,-40,80],l:[72,72,0],fov:50};last=p;poses.push(p);});
     const out=new Float32Array(frames.length*7),done=id==='turret'&&cfg.mode==='pov'?poses:clear(poses,frames,{...ctx,rig:R});
-    done.forEach((p,i)=>{if(id==='main'&&frames[i].truth)p=inView(p,...robotBall(frames[i].truth,R));out.set([...p.p,...p.l,p.fov],i*7);});
+    done.forEach((p,i)=>out.set([...p.p,...p.l,p.fov],i*7));
+    if(opts.calm&&!['fixed','pov','tight'].includes(cfg.mode))calm(out,frames,CALM[id]??.5);
+    // Camera 1 keeps all of the robot in its picture, checked again after smoothing.
+    if(id==='main')frames.forEach((fr,i)=>{if(!fr.truth)return;const a=i*7,p=inView({p:[out[a],out[a+1],out[a+2]],l:[out[a+3],out[a+4],out[a+5]],fov:out[a+6]},...robotBall(fr.truth,R));out.set([...p.p,...p.l,p.fov],a);});
     return out;
   }
   // Every camera's path: {main: Float32Array, ...}. `cfg` from settings().
-  function paths(frames,ctx,cfg){const c=settings(cfg),out={};for(const id of IDS)out[id]=path(id,frames,ctx,c[id]);return out;}
+  function paths(frames,ctx,cfg,opts){const c=settings(cfg),out={};for(const id of IDS)out[id]=path(id,frames,ctx,c[id],opts);return out;}
+  // The field-side camera: how teams film a real autonomous. One camera on a tripod just outside the field, at head
+  // height, that never moves: it only turns slowly to keep the robot in the picture and zooms a little when the robot
+  // is far away. It stands at the side or corner of the field the robot spends the run nearest to, so nothing teleports
+  // and the field itself stays still in the picture. Seven numbers per frame, like path().
+  const TRIPOD={out:30,height:64,turn:1.2,fov:[32,55]};
+  function tripod(frames,ctx){
+    const n=frames.length,out=new Float32Array(n*7),b=ctx.bounds||{x0:0,x1:144,y0:0,y1:144},cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2,o=TRIPOD.out,c=o*.6;
+    let last=ctx.start||{x:cx,y:cy};const at=frames.map(fr=>{if(fr.truth)last=fr.truth;return [last.x,last.y];});
+    const spots=[[cx,b.y0-o],[cx,b.y1+o],[b.x0-o,cy],[b.x1+o,cy],[b.x0-c,b.y0-c],[b.x1+c,b.y0-c],[b.x0-c,b.y1+c],[b.x1+c,b.y1+c]];
+    let P=spots[0],best=Infinity;for(const sp of spots){let sum=0;for(const a of at)sum+=Math.hypot(a[0]-sp[0],a[1]-sp[1]);if(sum<best){best=sum;P=sp;}}
+    at.forEach((a,i)=>{const lx=a[0]*.8+cx*.2,ly=a[1]*.8+cy*.2,d=Math.hypot(a[0]-P[0],a[1]-P[1],TRIPOD.height);
+      out.set([P[0],P[1],TRIPOD.height,lx,ly,6,clamp(2*Math.atan(46/d)/DEG,...TRIPOD.fov)],i*7);});
+    calm(out,frames,TRIPOD.turn);
+    // A robot that outruns the slow turn is still kept whole in the picture.
+    const R=ctx.rig||rig(ctx);frames.forEach((fr,i)=>{if(!fr.truth)return;const a=i*7,p=inView({p:[out[a],out[a+1],out[a+2]],l:[out[a+3],out[a+4],out[a+5]],fov:out[a+6]},...robotBall(fr.truth,R));out.set([...p.p,...p.l,p.fov],a);});
+    return out;
+  }
+  // The orbit camera: one slow sweep round the outside of the field, high enough to see over the walls, for the whole
+  // run. It starts on the side the robot starts on and goes half way round, always looking at a point between the
+  // robot and the middle of the field, so the whole field turns slowly and nothing jumps. A short run sweeps less far
+  // rather than faster (ORBIT.rate, radians a second, at most).
+  const ORBIT={out:60,height:80,sweep:Math.PI,rate:.25,fov:60};
+  function orbit(frames,ctx){
+    const n=frames.length,out=new Float32Array(n*7);if(!n)return out;
+    const b=ctx.bounds||{x0:0,x1:144,y0:0,y1:144},cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2,rad=Math.max(b.x1-b.x0,b.y1-b.y0)/2+ORBIT.out;
+    let last=ctx.start||{x:cx,y:cy};const first=frames.find(fr=>fr.truth)?.truth||last,a0=Math.hypot(first.x-cx,first.y-cy)>1?Math.atan2(first.y-cy,first.x-cx):-Math.PI/2;
+    const t0=frames[0].time,D=Math.max(1e-6,frames[n-1].time-t0);
+    frames.forEach((fr,i)=>{if(fr.truth)last=fr.truth;const a=a0+Math.min(ORBIT.sweep/D,ORBIT.rate)*(fr.time-t0);
+      out.set([cx+Math.cos(a)*rad,cy+Math.sin(a)*rad,ORBIT.height,last.x*.35+cx*.65,last.y*.35+cy*.65,16,ORBIT.fov],i*7);});
+    calm(out,frames,.8);
+    const R=ctx.rig||rig(ctx);frames.forEach((fr,i)=>{if(!fr.truth)return;const o=i*7,p=inView({p:[out[o],out[o+1],out[o+2]],l:[out[o+3],out[o+4],out[o+5]],fov:out[o+6]},...robotBall(fr.truth,R));out.set([...p.p,...p.l,p.fov],o);});
+    return out;
+  }
+  // The action camera: one camera operator walking round the robot for the whole run, never cutting. What the robot is
+  // doing decides which side of it the camera stands on:
+  //   scoring (spinning up at a goal, shooting, and until the last piece lands): well behind the robot and a little to
+  //     one side, low and looking up past it at the goal, so the robot, the pieces in the air and the raised cell they
+  //     land in (the tipped-up side of the hive stands far above the robot) are all in view;
+  //   taking pieces in (intake running or a ramp down): low at the front quarter, looking at where the pieces come in;
+  //   driving: further back and higher, on whichever side it already was, on its way round to the next action.
+  // The whole run is known, so the camera sets off before each action and is already there when it starts. Where it
+  // stands (the bearing round the robot, how far, how high), what it looks at and its zoom are each smoothed over about
+  // a second forwards and backwards, so it orbits and never jumps. It then keeps clear of the field like the others.
+  const ACTION={score:{side:28,dist:84,high:30,fov:68,look:.6,lookHigh:36},intake:{side:50,dist:46,high:25,fov:50},drive:{dist:80,high:54,fov:50},lead:1,after:1.2,tau:.9};
+  function smooth(v,frames,tau){const n=v.length;for(const dir of [1,-1])for(let i=dir>0?1:n-2;i>=0&&i<n;i+=dir){const dt=Math.abs(frames[i].time-frames[i-dir].time);if(dt>0)v[i]=v[i-dir]+(v[i]-v[i-dir])*(1-Math.exp(-dt/tau));}return v;}
+  function director(frames,ctx){
+    const n=frames.length,out=new Float32Array(n*7);if(!n)return out;
+    const R=ctx.rig||rig(ctx),b=ctx.bounds||{x0:0,x1:144,y0:0,y1:144},A=ACTION,col=()=>new Float64Array(n);
+    const shots=[];let launched=null;for(const fr of frames){const l=fr.mechanisms?.launched;if(launched!==null&&l>launched)shots.push(fr.time);if(l!=null)launched=l;}
+    const rx=col(),ry=col(),bear=col(),dist=col(),high=col(),lx=col(),ly=col(),lz=col(),fov=col(),set=new Uint8Array(n),modes=[];
+    let last=ctx.start||{x:(b.x0+b.x1)/2,y:(b.y0+b.y1)/2,heading:0},goal=null,prev=null,si=0;
+    // The side to stand on: of the two that suit the action, the one nearer where the camera already is.
+    const pick=(mid,side)=>{const opts=[mid+side*DEG,mid-side*DEG];if(prev===null)return opts[0];const turn=o=>Math.abs(wrap(o-prev));return prev+wrap((turn(opts[0])<=turn(opts[1])?opts[0]:opts[1])-prev);};
+    frames.forEach((fr,i)=>{const t=fr.truth||last;last=t;const m=fr.mechanisms,c=m?.command||{},h=t.heading*DEG;rx[i]=t.x;ry[i]=t.y;
+      const g=aims(fr,ctx.aim).find(a=>a.goal)?.goal;if(g)goal=g;
+      while(si<shots.length&&shots[si]<fr.time-A.after)si++;
+      const scoring=!!goal&&(!!c.feed||(si<shots.length&&shots[si]<=fr.time+A.lead)||(!!g&&!!(c.spin||c.aim)));
+      const taking=!!c.intake||(m?.ramps||[]).some(v=>v>.5);
+      const k=scoring?A.score:taking?A.intake:A.drive;modes.push(scoring?'score':taking?'intake':'drive');dist[i]=k.dist;high[i]=k.high;fov[i]=k.fov;
+      if(scoring){bear[i]=prev=pick(Math.atan2(t.y-goal.y,t.x-goal.x),k.side);set[i]=1;lx[i]=t.x+(goal.x-t.x)*k.look;ly[i]=t.y+(goal.y-t.y)*k.look;lz[i]=k.lookHigh;}
+      else if(taking){bear[i]=prev=pick(h,k.side);set[i]=1;lx[i]=t.x+Math.cos(h)*8;ly[i]=t.y+Math.sin(h)*8;lz[i]=4;}
+      else{lx[i]=t.x;ly[i]=t.y;lz[i]=6;}});
+    // While it only drives, the camera is on its way from the last action's side to the next one's.
+    let a=-1;for(let i=0;i<=n;i++){if(i<n&&!set[i])continue;
+      for(let j=a+1;j<i;j++)bear[j]=a<0?(i<n?bear[i]:(last.heading+155)*DEG):i>=n?bear[a]:bear[a]+(bear[i]-bear[a])*(frames[j].time-frames[a].time)/Math.max(1e-6,frames[i].time-frames[a].time);
+      a=i;}
+    smooth(rx,frames,.25);smooth(ry,frames,.25);for(const v of [bear,dist,high,fov])smooth(v,frames,A.tau);for(const v of [lx,ly,lz])smooth(v,frames,A.tau*.7);
+    const poses=frames.map((fr,i)=>{const t=fr.truth;
+      const p=[clamp(rx[i]+Math.cos(bear[i])*dist[i],b.x0-24,b.x1+24),clamp(ry[i]+Math.sin(bear[i])*dist[i],b.y0-24,b.y1+24),high[i]];
+      return {p,l:[lx[i],ly[i],lz[i]],fov:fov[i],watch:{at:[t?t.x:rx[i],t?t.y:ry[i],R.height*.55],spread:R.footprint.half,edge:false}};});
+    clear(poses,frames,{...ctx,rig:R}).forEach((p,i)=>out.set([...p.p,...p.l,p.fov],i*7));
+    calm(out,frames,.3);
+    frames.forEach((fr,i)=>{if(!fr.truth)return;const o=i*7,p=inView({p:[out[o],out[o+1],out[o+2]],l:[out[o+3],out[o+4],out[o+5]],fov:out[o+6]},...robotBall(fr.truth,R));out.set([...p.p,...p.l,p.fov],o);});
+    out.modes=modes;return out;
+  }
   // The frame index at or before `time` (seconds of the recording), by halving.
   function indexAt(frames,time){let lo=0,hi=frames.length-1;if(hi<0)return -1;if(time<=frames[0].time)return 0;if(time>=frames[hi].time)return hi;
     while(hi-lo>1){const mid=(lo+hi)>>1;if(frames[mid].time<=time)lo=mid;else hi=mid;}return lo;}
@@ -455,5 +546,5 @@
     const i=indexAt(frames,time);if(i<0)return null;const j=Math.min(frames.length-1,i+1),span=frames[j].time-frames[i].time,k=span>0?clamp((time-frames[i].time)/span,0,1):0;
     const a=i*7,b=j*7,v=n=>track[a+n]+(track[b+n]-track[a+n])*k;return {p:[v(0),v(1),v(2)],l:[v(3),v(4),v(5)],fov:v(6)};
   }
-  return {CAMERAS,IDS,DEFAULTS,settings,rig,field,aims,mainStep,mainLive,step,clear,path,paths,indexAt,poseAt};
+  return {CAMERAS,IDS,DEFAULTS,CALM,calm,settings,rig,field,aims,mainStep,mainLive,step,clear,path,paths,tripod,director,orbit,ACTION,ORBIT,indexAt,poseAt};
 });

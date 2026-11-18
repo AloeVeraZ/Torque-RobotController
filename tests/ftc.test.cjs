@@ -99,5 +99,5 @@ test('Configure Robot and Self Inspect from the Driver Station: delete a configu
   ds.command('CMD_DELETE_CONFIGURATION',JSON.stringify({name:'competition',resourceId:0,location:'LOCAL_STORAGE',isDirty:false}));
   await until(()=>ds.state.activeConfig?.name==='No Config Set');assert.equal(sim.configurations.length,0);
   ds.command('CMD_REQUEST_INSPECTION_REPORT');await until(()=>answers.some(c=>c.name==='CMD_REQUEST_INSPECTION_REPORT_RESP'));
-  const report=JSON.parse(answers.find(c=>c.name==='CMD_REQUEST_INSPECTION_REPORT_RESP').extra);assert.equal(report.deviceName,'9999-C-RC');assert.equal(report.bluetoothOn,false);
+  const report=JSON.parse(answers.find(c=>c.name==='CMD_REQUEST_INSPECTION_REPORT_RESP').extra);assert.equal(report.name,'9999-C-RC');assert.equal(report.bt,false);assert.equal(report.chOs,'1.1.6');
 });

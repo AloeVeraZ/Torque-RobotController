@@ -143,7 +143,7 @@ body[data-robot-state=emergency] #status-line { color: var(--danger); background
 .system-action { flex-shrink: 0; min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); background: currentColor; font-weight: 650; font-size: 12px; white-space: nowrap; }
 .system-action > * , .system-action { color: inherit; } .system.warning .system-action { background: var(--warning); color: var(--warning-bg); } .system.error .system-action { background: var(--danger); color: var(--danger-bg); }
 .system-action:hover:not(:disabled) { filter: brightness(1.1); } .system-action:disabled { opacity: .6; }
-.lines { flex: 1; min-height: 0; overflow: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; scrollbar-color: var(--line-strong) transparent; }
+.lines { flex: 1; min-height: 0; overflow: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; }
 .lines > div { padding-block: 2px; }
 .lines.monospace { font-family: var(--mono); font-size: 12px; }
 .lines:empty { display: none; }
@@ -171,7 +171,7 @@ kbd { font: 600 11px var(--font); border: 1px solid var(--line-strong); border-b
 .picker-card { width: min(520px, 100%); max-height: min(560px, calc(100% - 20px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); box-shadow: var(--shadow); }
 .picker-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 12px 12px 20px; border-bottom: 1px solid var(--line); }
 .picker-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-.picker-list { overflow: auto; padding: 6px; scrollbar-color: var(--line-strong) transparent; }
+.picker-list { overflow: auto; padding: 6px; }
 .picker-list h3 { margin: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--quiet); }
 .picker-list button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; text-align: left; min-height: 44px; padding: 8px 12px; font-size: 13px; font-weight: 500; border-radius: var(--radius-detail); }
 .picker-list button:hover { background: var(--raised); } .picker-list button.selected { background: var(--raised); box-shadow: inset 2px 0 0 var(--text); }
@@ -206,7 +206,7 @@ dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap;
 .page-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .page-status { margin: 0; padding: 10px var(--page-gutter); font-size: 13px; background: var(--raised); border-bottom: 1px solid var(--line); }
 .page-status.error { background: var(--danger-bg); color: var(--danger); } .page-status.warning { background: var(--warning-bg); color: var(--warning); }
-.page-body { flex: 1; overflow: auto; padding: 16px var(--page-gutter); display: flex; flex-direction: column; gap: 8px; max-width: 968px; width: 100%; margin: 0 auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; scrollbar-color: var(--line-strong) transparent; }
+.page-body { flex: 1; overflow: auto; padding: 16px var(--page-gutter); display: flex; flex-direction: column; gap: 8px; max-width: 968px; width: 100%; margin: 0 auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 .cfg-btn { min-height: 44px; padding: 10px 18px; border-radius: var(--radius-control); background: var(--raised); font-weight: 600; font-size: 13px; }
 .cfg-btn:hover:not(:disabled) { background: var(--hover); } .cfg-btn.danger { color: var(--danger); }
 .ds-page button:disabled, #page-ask button:disabled { opacity: .45; cursor: default; }
@@ -241,12 +241,6 @@ dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap;
 .set-group { margin: 12px 0 0; font-size: 12px; font-weight: 600; color: var(--quiet); }
 .set-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; min-height: 48px; border-radius: var(--radius-panel); background: var(--surface); }
 .set-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .set-text b { font-size: 13px; font-weight: 600; } .set-text small { color: var(--muted); font-size: 12px; }
-.inspect { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.inspect .cfg-section { padding: 16px 20px; border-radius: var(--radius-panel); background: var(--surface); }
-.inspect h3 { margin: 0 0 8px; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-.inspect-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
-.inspect-list dt { color: var(--muted); } .inspect-list dd { margin: 0; overflow-wrap: anywhere; }
-.inspect-list dd.good { color: var(--connected); } .inspect-list dd.bad { color: var(--danger); } .inspect-list i { font-style: normal; }
 /* Device pictures: the product photo sits on white, a drawing on the card's well. */
 /* The picture fills the box itself, so a tall or wide photo is letterboxed, never cropped. */
 .dev-fig { position: relative; display: block; flex-shrink: 0; border-radius: var(--radius-detail); background: #eef1f5; overflow: hidden; }
@@ -279,9 +273,31 @@ dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap;
 .pin-view { flex: 1; min-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-panel); background: #fff; } .pin-view:focus-visible { outline: 2px solid var(--accent); }
 .pin-sheet { display: block; max-width: none; height: auto; }
 @media (max-width: 720px) {
-  .page-body { padding: 12px; } .inspect { grid-template-columns: 1fr; }
+  .page-body { padding: 12px; }
   .dev-panes { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .dev-view { order: -1; flex-direction: row; flex-wrap: wrap; border-bottom: 1px solid var(--line); max-height: 40vh; }
   .dev-view .dev-fig.big { width: 140px; } .cfg-motor-details { padding-left: 0; }
   .cfg-port { grid-template-columns: 56px minmax(0, 1fr); } .cfg-port > :nth-child(n+3) { grid-column: 1 / -1; }
   .set-row { flex-wrap: wrap; }
 }
+
+/* Self Inspect, laid out as the Driver Hub's: the two reports to pick, then a report's rows with the app's marks. */
+.inspect-menu { display: grid; max-width: 760px; }
+.inspect-head { margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.inspect-choice { display: grid; gap: 2px; justify-items: start; padding: 14px 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.inspect-choice:hover { background: var(--hover); }
+.inspect-choice strong { font-size: 18px; font-weight: 500; }
+.inspect-choice span { font-size: 13px; color: var(--muted); }
+.inspect-report { display: grid; gap: 12px; max-width: 760px; }
+.inspect-verdict { display: grid; gap: 2px; padding: 12px 16px; border-left: 4px solid var(--connected); border-radius: var(--radius-control); background: var(--surface); }
+.inspect-verdict.warn { border-left-color: var(--warning); } .inspect-verdict.bad { border-left-color: var(--danger); }
+.inspect-verdict strong { font-size: 15px; } .inspect-verdict span { font-size: 13px; color: var(--muted); }
+.inspect-rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; margin: 0; padding: 14px 16px; border-radius: var(--radius-panel); background: var(--surface); align-items: center; }
+.inspect-rows dt { font-size: 14px; color: var(--muted); }
+.inspect-rows dd { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 0; font-size: 14px; text-align: right; white-space: pre-line; overflow-wrap: anywhere; }
+.inspect-rows dd.tone-good span { color: var(--connected); } .inspect-rows dd.tone-warn span { color: var(--warning); }
+.inspect-rows .inspect-group { grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 650; color: var(--text); }
+.inspect-mark { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-style: normal; font-weight: 800; color: #fff; }
+.inspect-mark.good { background: var(--connected); } .inspect-mark.warn { background: var(--warning); } .inspect-mark.bad { background: var(--danger); }
+.inspect-rows .inspect-fix { grid-column: 1 / -1; justify-content: flex-start; margin: -4px 0 2px; padding: 8px 10px; border-radius: var(--radius-control); font-size: 12px; line-height: 1.35; text-align: left; white-space: normal; }
+.inspect-rows .inspect-fix.bad { background: var(--danger-bg); } .inspect-rows .inspect-fix.warn { background: var(--warning-bg); }
+.inspect-note { margin: 0; font-size: 12px; color: var(--muted); }

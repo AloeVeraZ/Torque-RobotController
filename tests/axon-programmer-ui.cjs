@@ -19,16 +19,17 @@ const root=path.resolve(__dirname,'..');
     const keys=()=>page.$$eval('[data-axon-field]',r=>r.map(x=>x.dataset.axonField));
     const asked=async text=>{await page.waitForSelector('#axon-ask[open]');assert.match(await page.locator('#axon-ask').textContent(),text);};
 
-    await page.click('#robot-setup-tab');await page.waitForSelector('#setup-view:not([hidden])');
-    // A fifth tab, all the way to the right and apart from the four steps, and nothing of it left in Calibrate.
-    {const tabs=await page.$$eval('#setup-view .flow-steps [data-flow]',b=>b.map(x=>x.dataset.flow));assert.deepEqual(tabs,['setup','configure','debug','calibrate','axon']);
-      const geo=await page.evaluate(()=>{const rail=document.querySelector('#setup-view .flow-steps'),t=rail.querySelector('[data-flow=axon]'),c=rail.querySelector('[data-flow=calibrate]');return {gap:t.getBoundingClientRect().left-c.getBoundingClientRect().right,edge:rail.getBoundingClientRect().right-t.getBoundingClientRect().right,arrows:rail.querySelectorAll('.flow-arrow').length,number:t.querySelector('.flow-num')?.textContent,isNew:t.querySelector('.flow-new')?.textContent,same:getComputedStyle(t.querySelector('.flow-num')).width===getComputedStyle(c.querySelector('.flow-num')).width,fits:rail.scrollWidth<=rail.clientWidth,before:t.previousElementSibling.tagName};});
-      assert.ok(geo.gap>300,`it sits apart from the four steps: ${geo.gap}`);assert.ok(geo.edge<=1,'it is all the way to the right');assert.equal(geo.arrows,3,'no arrow joins it');assert.equal(geo.number,'5','a circled 5');assert.equal(geo.same,true,'like the other steps’ circles');assert.equal(geo.isNew,'New');assert.equal(geo.fits,true,'tidy at this size');assert.equal(geo.before,'BUTTON');}
-    assert.equal(await page.locator('#cal-tab-axon').count(),0);assert.deepEqual(await page.$$eval('[data-cal-tab]',b=>b.map(x=>x.dataset.calTab)),['electronics','mechanisms']);
+    await page.click('#calibrate-tab');await page.waitForSelector('#calibrate-view:not([hidden])');
+    // A tool of Calibrate's: after Debug, apart from Calibrate's four numbered steps, with the SWYFT Programmer and Servo Test after it at the far end, and nothing of it left in Setup.
+    {const tabs=await page.$$eval('#calibrate-view .flow-steps [data-flow]',b=>b.map(x=>x.dataset.flow));assert.deepEqual(tabs,['electronics','tune','camera','realrun','debug','axon','swyft','servotest']);
+      const geo=await page.evaluate(()=>{const rail=document.querySelector('#calibrate-view .flow-steps'),t=rail.querySelector('[data-flow=axon]'),c=rail.querySelector('[data-flow=realrun]'),d=rail.querySelector('[data-flow=debug]');return {gap:d.getBoundingClientRect().left-c.getBoundingClientRect().right,step:rail.querySelector('[data-flow=tune]').getBoundingClientRect().left-rail.querySelector('[data-flow=electronics]').getBoundingClientRect().right,edge:rail.getBoundingClientRect().right-rail.querySelector('[data-flow=servotest]').getBoundingClientRect().right,prev:t.previousElementSibling?.dataset.flow,next:t.nextElementSibling?.dataset.flow,arrows:rail.querySelectorAll('.flow-arrow').length,number:t.querySelector('.flow-num')?.textContent??null,isNew:t.querySelector('.flow-new')?.textContent,fits:rail.scrollWidth<=rail.clientWidth};});
+      // Calibrate's row holds four tools where Setup's held three, so "apart" is measured against the steps' own spacing (arrow included).
+      assert.ok(geo.gap>4*geo.step,`the tools sit apart from the four steps: ${geo.gap} px, against ${geo.step} px between two steps`);assert.ok(geo.edge>=16&&geo.edge<=60,`the optional tools end a little in from the right: ${geo.edge}`);assert.equal(geo.prev,'debug','it follows Debug');assert.equal(geo.next,'swyft','SWYFT Programmer follows it');assert.equal(geo.arrows,3,'no arrow joins it');assert.equal(geo.number,null,'an optional tool, not a numbered step');assert.equal(geo.isNew,'New');assert.equal(geo.fits,true,'tidy at this size');}
+    assert.equal(await page.locator('#setup-view [data-flow=axon]').count(),0,'nothing of it in Setup');assert.equal(await page.locator('#cal-tab-axon').count(),0);assert.deepEqual(await page.$$eval('[data-cal-tab]',b=>b.map(x=>x.dataset.calTab)),['electronics','mechanisms','realrun']);
     assert.equal(await sim(()=>global.__axon.transport.opened),0,'nothing touches USB before it opens');
-    // It opens directly, from either view's row of steps, and says up front what is needed.
-    await page.click('#setup-view [data-flow=calibrate]');await page.waitForSelector('#calibrate-view:not([hidden])');await page.click('#calibrate-view [data-flow=axon]');await page.waitForSelector('#setup-view:not([hidden]) #rs-step-axon:not([hidden])');
-    assert.equal(await page.getAttribute('#setup-view [data-flow=axon]','data-here'),'');assert.equal(await page.locator('#axon-open').count(),0,'no button in front of it');
+    // It opens directly from Calibrate's row, in Calibrate's own panel, and says up front what is needed.
+    await page.click('#calibrate-view [data-flow=axon]');await page.waitForSelector('#calibrate-view:not([hidden]) #cal-panel-axon:not([hidden]) #rs-step-axon:not([hidden])');
+    assert.equal(await page.getAttribute('#calibrate-view [data-flow=axon]','data-here'),'');assert.equal(await page.locator('#axon-open').count(),0,'no button in front of it');
     await page.waitForFunction(()=>/Simple is what every student needs/.test(document.querySelector('#axon-hint').textContent));
     // Test with nothing plugged in: a preview of one move from the factory values, and it cannot start.
     // A V1 servo has settings only: the V1 programmer cannot drive a servo, so there is no Test.
@@ -38,7 +39,7 @@ const root=path.resolve(__dirname,'..');
       const was=await page.locator('#axon-test-graph').innerHTML();await page.click('#axon-test-add');assert.equal(await page.locator('.axon-test-step:not(.axon-test-headrow)').count(),3);assert.notEqual(await page.locator('#axon-test-graph').innerHTML(),was,'the preview follows the plan');
       await page.selectOption('#axon-test-load','3');assert.match(await page.locator('#axon-test-facts').textContent(),/Move 1/);await page.click('[data-axon-test=remove][data-step="2"]');assert.equal(await page.locator('.axon-test-step:not(.axon-test-headrow)').count(),2);await page.selectOption('#axon-test-load','2');
       assert.equal(await page.isDisabled('#axon-apply'),true,'nothing to apply');
-      const m=await page.evaluate(()=>{const v=document.querySelector('#setup-view'),b=document.querySelector('.axon-settings-body');return [document.scrollingElement.scrollHeight-innerHeight,v.scrollHeight-v.clientHeight,b.scrollHeight-b.clientHeight];});assert.deepEqual(m.map(x=>x<=0),[true,true,true],`it all fits at 1280x800: ${m}`);
+      const m=await page.evaluate(()=>{const v=document.querySelector('#calibrate-view'),b=document.querySelector('.axon-settings-body');return [document.scrollingElement.scrollHeight-innerHeight,v.scrollHeight-v.clientHeight,b.scrollHeight-b.clientHeight];});assert.deepEqual(m.map(x=>x<=0),[true,true,true],`it all fits at 1280x800: ${m}`);
       await page.click('[data-view=settings]');await page.waitForSelector('[data-axon-field=pwm] .axon-slider');await page.click('#axon-model-max1');await page.waitForSelector('#axon-f-angle');await page.mouse.move(2,2);}
     // Axon's own program is never needed: with neither on this computer, the settings are all there and nothing is locked.
     {await app.evaluate(({shell})=>{shell.openPath=async f=>{global.__axon.ran=f;return '';};});const had=await sim(()=>global.__axon.software);await sim(()=>{global.__axon.software={v1:{found:false},v2:{found:false}};});await page.waitForTimeout(3500);
@@ -52,13 +53,14 @@ const root=path.resolve(__dirname,'..');
     {const a=await sim(()=>global.__axon.detects);await page.waitForTimeout(3500);assert.equal(await sim(()=>global.__axon.detects),a);}
     // A rival app: it waits, says so and can ask it to close.
     await until(/Axon Bridge is open/);assert.equal(await sim(()=>global.__axon.transport.opened),0,'it leaves the programmer to the other app');await page.click('#axon-close-rivals');
-    // No programmer, and no other app holding it: the tab is one line saying to plug it in, and nothing else.
-    await page.waitForFunction(()=>document.querySelector('#axon-wait-title').textContent==='Plug in an Axon programmer to continue');await page.waitForSelector('#axon-wait',{state:'visible'});
-    assert.equal(await page.getAttribute('.axon-tab','data-waiting'),'');assert.match(await page.locator('#axon-wait-sub').textContent(),/^The V2 programmer \(MK2\) or the V1 one\./);assert.match(await page.locator('#axon-chips').textContent(),/No programmer/);
-    for(const s of ['#axon-models','#axon-modes','#axon-settings','#axon-apply','#axon-level','#axon-banner'])assert.equal(await page.locator(s).isVisible(),false,s+' waits for the programmer');
+    // No programmer, and no other app holding it: the whole tab stays, as a preview to look around in, and the bar says to plug it in.
+    await until(/^Plug in an Axon programmer to continue/);assert.match(await banner(),/The V2 programmer \(MK2\) or the V1 one\./);assert.match(await page.locator('#axon-chips').textContent(),/No programmer/);
+    for(const s of ['#axon-models','#axon-modes','#axon-settings','#axon-apply','#axon-level','#axon-banner'])assert.equal(await page.locator(s).isVisible(),true,s+' is there to preview');
+    assert.equal(await page.isDisabled('#axon-apply'),true);assert.equal(await page.isDisabled('#axon-read'),true);
+    assert.deepEqual(await page.$$eval('#rs-step-axon .axon-picks, #rs-step-axon .axon-main',e=>e.map(x=>x.inert)),[true,true],'out of reach until a programmer is plugged in');
     // Plug in the programmer: the tab comes back, reports it, and asks for a servo.
     await sim(()=>{global.__axon.transport.plugged=true;});
-    await until(/Plug a servo into the V2 programmer/);await page.waitForSelector('#axon-wait',{state:'hidden'});assert.equal(await page.getAttribute('.axon-tab','data-waiting'),null);
+    await until(/Plug a servo into the V2 programmer/);assert.deepEqual(await page.$$eval('#rs-step-axon .axon-picks, #rs-step-axon .axon-main',e=>e.map(x=>x.inert)),[false,false]);
     // No servo yet: factory values of the model picked, greyed out, as Axon Bridge shows them.
     await page.waitForSelector('#axon-f-angle');assert.match(await page.locator('#axon-tag').textContent(),/Factory values/);assert.equal(await page.isDisabled('#axon-f-pwm'),true);
     await page.click('#axon-model-max2');await page.waitForSelector('#axon-f-left');assert.equal(await page.inputValue('#axon-f-left'),'250');await page.click('#axon-mode-cr');await page.waitForFunction(()=>/V2 continuous rotation/.test(document.querySelector('#axon-settings-title').textContent));assert.equal(await page.locator('[data-view=graph]').count(),0,'the graph is for servo mode');await page.click('#axon-mode-servo');assert.match(await page.locator('#axon-chips').textContent(),/V2 programmer/);await page.waitForFunction(()=>/5\.0 V/.test(document.querySelector('#axon-chips').textContent));
@@ -69,7 +71,7 @@ const root=path.resolve(__dirname,'..');
     {const t=await page.locator('#axon-report').textContent();assert.match(t,/MAXMK2/);assert.match(t,/Servo mode/i);assert.doesNotMatch(t,/AISV112205|2025\/03\/12|V2 servo through V2 programmer|Simulated V2 programmer/,'Advanced has the rest');}
     assert.match(await page.locator('#axon-model-max2').textContent(),/Plugged in/);assert.equal(await page.isDisabled('#axon-model-max1'),true,'the wrong model cannot be picked');assert.match(await page.locator('#axon-mode-servo').textContent(),/Now/);assert.match(await page.locator('#axon-tag').textContent(),/Live values/);
     // Laid out like Axon Bridge, all at once: the whole tab fits 1280x800 without the page or its panels scrolling.
-    {const m=await page.evaluate(()=>{const r=q=>document.querySelector(q).getBoundingClientRect(),v=document.querySelector('#setup-view'),s=document.querySelector('.axon-settings-body');return {page:document.scrollingElement.scrollHeight-innerHeight,view:v.scrollHeight-v.clientHeight,settings:s.scrollHeight-s.clientHeight,top:r('.axon-top'),cards:r('#axon-models'),modes:r('#axon-modes'),panel:r('.axon-settings'),side:r('.axon-side'),actions:r('.axon-actions'),bar:r('.axon-bar'),apply:r('#axon-apply')};});
+    {const m=await page.evaluate(()=>{const r=q=>document.querySelector(q).getBoundingClientRect(),v=document.querySelector('#calibrate-view'),s=document.querySelector('.axon-settings-body');return {page:document.scrollingElement.scrollHeight-innerHeight,view:v.scrollHeight-v.clientHeight,settings:s.scrollHeight-s.clientHeight,top:r('.axon-top'),cards:r('#axon-models'),modes:r('#axon-modes'),panel:r('.axon-settings'),side:r('.axon-side'),actions:r('.axon-actions'),bar:r('.axon-bar'),apply:r('#axon-apply')};});
       assert.ok(m.page<=0&&m.view<=0,`the page does not scroll: ${m.page} ${m.view}`);assert.ok(m.settings<=0,`every setting shows at once: ${m.settings}`);
       assert.ok(m.top.bottom<=m.cards.top&&m.cards.bottom<=m.panel.top&&m.panel.bottom<=m.bar.top&&m.bar.bottom<=800,'top, cards, settings, then the bar');assert.ok(m.cards.right<=m.modes.left,'mode sits beside the servo');assert.ok(m.panel.right<=m.side.left,'what it reports sits beside the settings');assert.ok(m.apply.right>m.bar.right-2,'Apply is at the bottom right');}
     // Simple: the basics every student knows. Every setting has a short note, and a fuller one when pointed at.
@@ -104,7 +106,7 @@ const root=path.resolve(__dirname,'..');
     {const more=await page.locator('#axon-more').textContent();assert.match(more,/SysAmp: 40/);assert.match(more,/MinPower: 20/);assert.match(more,/Every settings byte/);assert.match(more,/Different from Axon's factory values/);assert.match(await page.locator('#axon-report').textContent(),/Handshake reply/);assert.match(await page.locator('#axon-advanced').textContent(),/What Advanced will not change/);
       assert.match(await page.locator('[data-axon-field=pwm] small').textContent(),/Factory: 100%/);assert.ok(!(await keys()).includes('sysamp'));assert.equal(await page.locator('#axon-recover-go').isVisible(),true);assert.equal(await page.isDisabled('#axon-recover-go'),true,'not with a servo showing');}
     await page.click('#axon-usb summary');await page.waitForFunction(()=>/TX 04 CB/.test(document.querySelector('#axon-usb-log').textContent));
-    {const m=await page.evaluate(()=>[document.scrollingElement.scrollHeight-innerHeight,document.querySelector('#setup-view').scrollHeight-document.querySelector('#setup-view').clientHeight]);assert.deepEqual(m.map(x=>x<=0),[true,true],'all of that scrolls in its own panel, not the page');}
+    {const m=await page.evaluate(()=>[document.scrollingElement.scrollHeight-innerHeight,document.querySelector('#calibrate-view').scrollHeight-document.querySelector('#calibrate-view').clientHeight]);assert.deepEqual(m.map(x=>x<=0),[true,true],'all of that scrolls in its own panel, not the page');}
     await page.click('#axon-level');
     // With a servo, Test moves it: the pulses go out, nothing is written, the graph and facts come back, and the pulse is off at the end.
     {await page.click('[data-view=test]');await page.waitForSelector('#axon-test-graph svg');const frames=await sim(()=>global.__axon.link.writeFrames);await sim(()=>{global.__axon.link.pulses=[];});
@@ -154,11 +156,11 @@ const root=path.resolve(__dirname,'..');
     // With only the V2 programmer plugged in, the V1 servos are greyed out: only the V1 programmer talks to them (the service refuses it too).
     for(const code of ['max1','mini1'])assert.equal(await page.isDisabled('#axon-model-'+code),true,code+' is greyed out on the V2 programmer');assert.equal(await page.isDisabled('#axon-model-mini2'),false);
     await sim(()=>{global.__axon.link.attached=true;global.__axon.link.bootSilent=false;});
-    // Leaving the tab stops USB, and coming back starts it again.
-    await page.click('#setup-view [data-flow=setup]');await page.waitForTimeout(1500);
+    // Leaving the tab (for Setup's Hubs) stops USB, and coming back starts it again.
+    await page.click('#robot-setup-tab');await page.click('#setup-view [data-flow=setup]');await page.waitForTimeout(1500);
     await sim(()=>{global.__axon.polls=0;const l=global.__axon.link,w=l.write.bind(l);l.write=async(...a)=>{global.__axon.polls++;return w(...a);};});await page.waitForTimeout(1200);assert.equal(await sim(()=>global.__axon.polls),0,'no USB while the tab is not showing');
     {const a=await sim(()=>global.__axon.detects);await page.waitForTimeout(3500);assert.ok(await sim(()=>global.__axon.detects)>a,'the Control Hub watch is back');}
-    await page.click('#setup-view [data-flow=axon]');await until(/V1 MAX is ready/);assert.ok(await sim(()=>global.__axon.polls)>0,'USB runs again when it comes back');
+    await page.click('#calibrate-tab');await page.click('#calibrate-view [data-flow=axon]');await until(/V1 MAX is ready/);assert.ok(await sim(()=>global.__axon.polls)>0,'USB runs again when it comes back');
     // Steam Deck and a narrow window: it still works, and nothing scrolls the page sideways.
     await page.setViewportSize({width:420,height:800});await page.waitForTimeout(300);assert.ok(await page.evaluate(()=>document.scrollingElement.scrollWidth<=innerWidth),'no sideways scroll when narrow');assert.equal(await page.locator('#axon-apply').isVisible(),true);await page.setViewportSize({width:1280,height:800});
     assert.deepEqual(errors,[]);console.log('Axon programmer: all passed');

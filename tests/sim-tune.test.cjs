@@ -64,3 +64,71 @@ test('thresholds sit between the two groups, and records keep only plain values'
   const java=T.constants([{name:'lift',template:'T1',rec:{transform:{cpr:537.7,perTurn:240},range:{lo:0,hi:600},ff:{kS:.1,kG:.2,kV:.001},pid:{kP:.01,kI:0,kD:.0005,tolerance:2}}}]);
   assert.match(java,/public final class DeckCalibration/);assert.match(java,/LIFT_KG = 0\.2/);assert.match(java,/LIFT_MAX = 600/);
 });
+
+// ---- what a passed gate puts into the simulated robot ----
+const Mech=require('../ui/sim-mechanisms.js'),Kin=require('../ui/sim-kinematics.js');
+const byPath=values=>Object.fromEntries(values.map(v=>[v.path,v]));
+const all={G0:true,G1:true,G2:true,G3:true,G4:true,G5:true,G6:true,G7:true,G8:true};
+
+test('a flywheel: its encoder ticks a turn, the robot\'s spin-up and its at-speed tolerance; its top speed from the ramps',()=>{
+  // A 6000 RPM motor 1:1 (28 counts a turn) measured to top out at (1 − 0.05) / 0.00019 = 5000 RPM, stepped 0 → 3000 RPM.
+  const rec={transform:{cpr:28,ratio:1,perTurn:60,unit:'rpm'},ff:{kS:.05,kG:0,kV:.00019},pid:{kP:.0006,kI:0,kD:0,kF:.0002,kS:.05,tolerance:60,from:0,target:3000},response:{settle:.9,rise:.5,overshoot:0}};
+  close(T.topSpeed(rec.ff),5000,1e-6,'top speed');
+  const v=byPath(T.simValues({id:'shooter:0:flywheel',template:'T3'},rec,all,{rpm:3000}));
+  assert.equal(v['shooter.ticksPerRev'].value,28);assert.equal(v['shooter.ticksPerRev'].gate,'G3');
+  close(v['shooter.tolerance'].value,.02,1e-9,'60 RPM of 3000');assert.equal(v['shooter.tolerance'].gate,'G7');
+  // Ready (within 2 %) 0.9 s after starting, as on the robot: the straight-line spin-up takes 0.9 / 0.98 s to full speed.
+  close(v['shooter.spinUp'].value,.9/.98,1e-5,'spin-up from the robot\'s run');
+  // A gate passed before runs were kept: the loop simulated on the measured gains gives a settle time instead.
+  const old=byPath(T.simValues({id:'shooter:0:flywheel',template:'T3'},{...rec,response:undefined},all,{rpm:3000}));
+  assert.ok(old['shooter.spinUp'].value>0&&old['shooter.spinUp'].value<10,'simulated spin-up');
+  // Only what passes now counts: before G7 there is no tolerance or spin-up, before G3 no ticks.
+  assert.deepEqual(T.simValues({id:'shooter:0:flywheel',template:'T3'},rec,{G3:true,G6:true},{}).map(x=>x.path),['shooter.ticksPerRev']);
+  assert.deepEqual(T.simValues({id:'shooter:0:flywheel',template:'T3'},rec,{},{}),[]);
+});
+
+test('a motor turret: ticks a degree, its stops on each side of the front, and its speed from the measured step',()=>{
+  const rec={transform:{cpr:8192,ratio:109/62,perTurn:360,unit:'deg'},range:{lo:-80,hi:95},ff:{kS:.08,kG:0,kV:0},pid:{kP:.02,kI:0,kD:.001,kS:.08,tolerance:1,from:-40,target:40},response:{settle:.5}};
+  const v=byPath(T.simValues({id:'shooter:1:turret',template:'T2'},rec,all,{turret:'motor',free:400}));
+  close(v['turret.ticksPerDegree'].value,8192*109/62/360,1e-3,'ticks a degree');
+  assert.equal(v['turret.min'].value,-80);assert.equal(v['turret.max'].value,95);assert.equal(v['turret.min'].gate,'G5');
+  close(v['turret.speed'].value,160,1e-9,'80° in 0.5 s');assert.equal(v['turret.speed'].gate,'G7');
+  // Stops always straddle the front, as the simulation keeps them; a servo turret has no encoder ticks to give.
+  const off=byPath(T.simValues({id:'shooter:0:turret',template:'T2'},{...rec,range:{lo:10,hi:200}},all,{turret:'motor'}));assert.equal(off['turret.min'].value,0);assert.equal(off['turret.max'].value,180);
+  assert.equal(byPath(T.simValues({id:'shooter:0:turret',template:'T4'},rec,all,{turret:'servo'}))['turret.ticksPerDegree'],undefined);
+  // The hood, feeders and intakes change nothing the simulation runs on.
+  for(const id of ['shooter:0:hood','shooter:0:feeder','intake:0:roller','intake:0:deploy'])assert.deepEqual(T.simValues({id,template:'T4'},rec,all,{}),[],id);
+});
+
+test('a moving part: stops in its joint\'s units and its actuator\'s speed, from the step or else the ramps',()=>{
+  const arm={id:'kin:armMotor',template:'T1',joint:{id:'arm',type:'revolute'},actuator:'armMotor'};
+  const rec={transform:{cpr:537.7,ratio:4,perTurn:360,unit:'deg'},range:{lo:-5,hi:120},ff:{kS:.06,kG:.12,kV:0},pid:{kP:.03,kI:0,kD:.002,kG:.12,kS:.06,tolerance:2,from:10,target:100},response:{settle:1}};
+  const v=byPath(T.simValues(arm,rec,all,{free:180}));
+  assert.equal(v['joint:arm:lower'].value,-5);assert.equal(v['joint:arm:upper'].value,120);close(v['actuator:armMotor:speed'].value,90,1e-9,'90° in 1 s');
+  // Before G7, the speed at full power less what friction and gravity take: 180 × (1 − 0.06 − 0.12).
+  const g6=byPath(T.simValues(arm,{...rec,pid:undefined,response:undefined},{...all,G7:false},{free:180}));close(g6['actuator:armMotor:speed'].value,180*.82,1e-6,'from the ramps');assert.equal(g6['actuator:armMotor:speed'].gate,'G6');
+  // A slide measured in millimetres goes in inches; one measured in degrees of its spool does not fit its joint.
+  const slide={id:'kin:lift',template:'T1',joint:{id:'liftSlide',type:'prismatic'},actuator:'lift'},mm={transform:{cpr:537.7,ratio:1,perTurn:240,unit:'mm'},range:{lo:0,hi:762}};
+  const s=byPath(T.simValues(slide,mm,all,{}));close(s['joint:liftSlide:upper'].value,30,1e-9,'762 mm');assert.equal(s['joint:liftSlide:lower'].value,0);
+  assert.deepEqual(T.simValues(slide,{...mm,transform:{...mm.transform,unit:'deg'}},all,{}),[]);
+  // A stale range is not used; a spinning part's measured top speed is its actuator's, in degrees a second.
+  assert.equal(byPath(T.simValues(arm,rec,{...all,G5:false},{free:180}))['joint:arm:lower'],undefined);
+  const spin=byPath(T.simValues({id:'kin:spinner',template:'T3',joint:{id:'wheel',type:'continuous'},actuator:'spinner'},{transform:{cpr:28,ratio:1,perTurn:60,unit:'rpm'},ff:{kS:.05,kV:.00095}},all,{}));
+  close(spin['actuator:spinner:speed'].value,6000,1e-6,'1000 RPM is 6000°/s');
+});
+
+test('measured values go into the robot, survive its sanitizers, and stop counting as measured once Setup changes them',()=>{
+  const robot={mechanisms:Mech.sanitize({}),kinematics:Kin.sanitize({joints:[{id:'arm',type:'revolute',source:'inferred'}],actuators:[{id:'armMotor',joint:'arm',kind:'dcmotor'}]})};
+  const values=[{path:'turret.min',value:-80},{path:'turret.max',value:95},{path:'shooter.spinUp',value:.92},{path:'joint:arm:lower',value:-5},{path:'joint:arm:upper',value:120},{path:'actuator:armMotor:speed',value:90},{path:'joint:gone:lower',value:1}];
+  const raw=T.simWrite(robot,values),next={mechanisms:Mech.sanitize(raw.mechanisms),kinematics:Kin.sanitize(raw.kinematics)};
+  assert.notEqual(raw.mechanisms,robot.mechanisms,'written into copies');assert.equal(robot.mechanisms.turret.min,Mech.DEFAULTS.turret.min,'the original is untouched');
+  for(const v of values.slice(0,6))assert.equal(T.simValueAt(next,v.path),v.value,v.path);
+  assert.equal(T.simValueAt(next,'joint:gone:lower'),undefined,'a removed joint is skipped');
+  assert.equal(next.kinematics.joints[0].source,'user','a measured joint is the team\'s now');
+  const rec={applied:Object.fromEntries(values.slice(0,6).map(v=>[v.path,v.value]))};
+  assert.ok(T.simMeasured(rec,next,'turret.max'));next.mechanisms.turret.max=120;assert.equal(T.simMeasured(rec,next,'turret.max'),false,'changed in Setup');
+  assert.equal(T.simMeasured({},next,'turret.min'),false,'nothing measured');
+  // The record keeps what it wrote and the robot's run, as plain values.
+  const kept=T.sanitize({mechs:{'kin:armMotor':{gates:{G5:{dep:'a'}},applied:rec.applied,response:{settle:1,rise:.4,overshoot:.02}}}}).mechs['kin:armMotor'];
+  assert.deepEqual(kept.applied,rec.applied);assert.equal(kept.response.settle,1);
+});

@@ -171,20 +171,20 @@ function describe(setup,l,route){
 
 // ------------------------------------------------------------------ exports
 const layoutFor=l=>({name:l.name,field:l.field,fieldName:GAMES[l.field],width:l.width,height:l.height,start:l.start,zones:l.zones||[]});
-const javaNames=setup=>({className:setup.export?.className||'PlannedRoute',packageName:setup.export?.packageName||'org.firstinspires.ftc.teamcode'});
+const javaNames=(setup,l)=>({className:l?.className||setup.export?.className||'PlannedRoute',packageName:setup.export?.packageName||'org.firstinspires.ftc.teamcode'});
 // The Control Hub code the app exports: one OnBot Java file, or the TeamCode file set.
 function teamCode(setup,l,route,info,onbot){
-  const lay=layoutFor(l),names=javaNames(setup);
+  const lay=layoutFor(l),names=javaNames(setup,l);
   return F[onbot?'onBotJava':'files']({route,layout:lay,mechanisms:info.mechanisms,kinematics:require('../ui/sim-kinematics.js').sanitize(setup.kinematics),target:info.target,tuning:info.tuning,robot:info.robot,localization:setup.sensors?.localization,setupName:setup.setupName,...names,routeJava:X.java(route,lay,{...names,polygon:P.polygon})});
 }
 // The Pedro export plus a pedro/Constants.java that builds the Follower from DeckStarterConstants, as a team would.
 function pedroForSim(setup,l,route,info){
-  const names=javaNames(setup),out=Pedro.files({route,layout:layoutFor(l),mechanisms:info.mechanisms,target:info.target,robot:info.robot,setupName:setup.setupName,defaultPower:power(setup),...names,exporter:X,ftc:F,hardware:F.hardware(info.robot,setup.sensors?.localization),tuning:info.tuning});
+  const names=javaNames(setup,l),out=Pedro.files({route,layout:layoutFor(l),mechanisms:info.mechanisms,target:info.target,robot:info.robot,setupName:setup.setupName,defaultPower:power(setup),...names,exporter:X,ftc:F,hardware:F.hardware(info.robot,setup.sensors?.localization),tuning:info.tuning});
   if(!out.files['org/firstinspires/ftc/teamcode/pedro/DeckStarterConstants.java'])throw Error('Pedro starter constants need a mecanum robot with goBILDA Pinpoint, SparkFun OTOS or two/three odometry pods.');
   return {...out,files:{...out.files,'org/firstinspires/ftc/teamcode/pedro/Constants.java':Pedro.QUICKSTART_USING_STARTER}};
 }
 function exported(setup,l,route,info,format){
-  const lay=layoutFor(l),names=javaNames(setup),routeJava=()=>X.java(route,lay,{...names,polygon:P.polygon}),team=onbot=>teamCode(setup,l,route,info,onbot);
+  const lay=layoutFor(l),names=javaNames(setup,l),routeJava=()=>X.java(route,lay,{...names,polygon:P.polygon}),team=onbot=>teamCode(setup,l,route,info,onbot);
   const timing={...info.timing,power:power(setup)};
   // OnBot Java: the autonomous and its check TeleOp (which tests each device on the robot first).
   if(format==='onbot'){const out=team(true);return {files:{[out.name]:out.source,[out.check.name]:out.check.source},note:`Upload both files to OnBot Java. Run ${out.check.name.replace(/\.java$/,'')} (TeleOp) first to test each device.`};}
