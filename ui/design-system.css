@@ -236,7 +236,7 @@ body.driver-station > header .header-right > :is(.more, #theme-cycle, #bug-quick
 
 /* The ⋮ menu: icons and the two check marks share one 16 px column; a quiet line sets Exit apart; z-order from the tokens. */
 .driver-station .menu { z-index: var(--z-menu); width: 236px; }
-.driver-station .menu button { gap: 10px; min-height: 40px; padding: 0 10px; }
+.driver-station .menu button { gap: 10px; min-height: var(--h-lg); padding: 0 10px; }
 .driver-station .menu :is(#menu-keyboard-check, #menu-competition-check) { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
 .driver-station .menu button[aria-checked=true] :is(#menu-keyboard-check, #menu-competition-check) { color: var(--accent); }
 .driver-station .menu button:hover :is(#menu-keyboard-check, #menu-competition-check) { color: inherit; }
@@ -282,7 +282,7 @@ dialog { z-index: var(--z-dialog); }
    Only the visual order changes, so Enter still presses the main action. */
 .driver-station dialog form > .button-row, .driver-station dialog > .button-row { justify-content: flex-end; margin-top: var(--space-5); }
 .driver-station dialog form > .button-row > .primary, .driver-station dialog > .button-row > .primary { order: 9; }
-.driver-station dialog form > .button-row > button, .driver-station dialog > .button-row > button { min-height: 40px; padding: 0 18px; }
+.driver-station dialog form > .button-row > button, .driver-station dialog > .button-row > button { min-height: var(--h-lg); padding: 0 18px; }
 .driver-station dialog form > h2:empty { display: none; }
 /* The toast is the same material as the ⋮ menu. */
 .driver-station #toast { border: 0; border-radius: 12px; background: var(--raised); box-shadow: var(--shadow); font-weight: 500; z-index: var(--z-dialog); }
