@@ -63,7 +63,8 @@
 #theme-cycle[data-mode=system] [data-for=system], #theme-cycle[data-mode=light] [data-for=light], #theme-cycle[data-mode=dark] [data-for=dark] { display: block; }
 #theme-cycle { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; }
 #theme-cycle svg [data-fill] { fill: currentColor; stroke: none; }
-@media (max-width: 860px) { #theme-cycle { display: none; } }
+/* Narrow windows (1024 wide, Steam Deck at 125%): the update icon keeps its place and the theme button, also in Settings, goes. */
+@media (max-width: 1100px) { #theme-cycle { display: none; } }
 
 /* Polish for every screen but Drive. One focus ring, read-only numbers that do not look like boxes, tidy action rows. */
 :is(#setup-view,#calibrate-view,#simulation-view,#settings-view,#bug-dialog,#sim-dialogs) :is(button,a,select,textarea,input:not(.num-slider),[tabindex]):focus-visible{outline:2px solid var(--text);outline-offset:1px;box-shadow:none}

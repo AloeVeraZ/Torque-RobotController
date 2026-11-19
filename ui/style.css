@@ -270,3 +270,19 @@ dialog p { font-size: 13px; overflow-wrap: anywhere; }
 }
 .bug-images{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:6px 0;padding:0}.bug-images:empty{display:none}.bug-images li{position:relative}.bug-images img{display:block;width:96px;height:72px;object-fit:cover;border:1px solid var(--line);border-radius:8px}.bug-images .icon-button{position:absolute;top:-6px;right:-6px;min-width:28px;min-height:28px;padding:0;border-radius:50%}
 #bug-dialog textarea,#bug-dialog input:not([type=file]){width:100%;box-sizing:border-box}#bug-dialog textarea{font:inherit;padding:10px 12px}
+
+
+/* The update icon beside the bug report (ui/app.js offerUpdate): neutral until hovered, then green when up to date and
+   yellow when an update is published, with the installed version in its tip. A yellow dot marks a new version until
+   it is dismissed. */
+.update-icon{position:relative;--update-yellow:#e2b100;--update-green:#1f9d55}
+@media (prefers-color-scheme:dark){.update-icon{--update-yellow:#facc15;--update-green:#34d399}}
+:root[data-theme=dark] .update-icon{--update-yellow:#facc15;--update-green:#34d399}:root[data-theme=light] .update-icon{--update-yellow:#e2b100;--update-green:#1f9d55}
+.update-icon:hover,.update-icon:focus-visible{color:var(--quiet)}
+.update-icon[data-state=current]:hover,.update-icon[data-state=current]:focus-visible{color:var(--update-green)}
+.update-icon[data-state=available]:hover,.update-icon[data-state=available]:focus-visible{color:var(--update-yellow)}
+.update-dot{position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--update-yellow);box-shadow:0 0 0 2px var(--bg);display:none}
+.update-icon.has-update .update-dot{display:block}
+.update-icon::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:50;width:max-content;max-width:280px;padding:6px 10px;border-radius:8px;background:var(--surface,#222);color:var(--text,#fff);border:1px solid var(--line,transparent);box-shadow:0 6px 18px rgba(0,0,0,.18);font-size:12px;font-weight:500;line-height:1.35;white-space:normal;text-align:left;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s,transform .12s}
+.update-icon:hover::after,.update-icon:focus-visible::after{opacity:1;transform:none}
+body:has(dialog[open]) .update-icon::after{opacity:0}

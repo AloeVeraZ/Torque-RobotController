@@ -61,12 +61,34 @@ void task(async()=>{const data=await api.bootstrap();hardware=data.hardware;$('.
 function syncOverlay(){void api.overlay(!$('#menu').hidden||[...document.querySelectorAll('dialog')].some(d=>d.open)).catch(()=>{});}
 let updateBusy=false;
 function updateButtons(busy){updateBusy=busy;for(const id of ['update-check','update-download','update-close','update-main','update-testing','testing-confirm','testing-cancel'])$('#'+id).disabled=busy;}
-function resetUpdateResult(){$('#update-download').hidden=true;$('#update-changelog').hidden=true;$('#update-progress').hidden=true;}
+function resetUpdateResult(){$('#update-download').hidden=true;$('#update-dismiss').hidden=true;$('#update-changelog').hidden=true;$('#update-progress').hidden=true;}
 async function showUpdates(){setMenu(false);$('#update-dialog').showModal();syncOverlay();resetUpdateResult();$('#testing-warning').hidden=true;$('#update-status').textContent='Loading update settings…';updateButtons(true);try{renderUpdateInfo(await api.updateInfo());$('#update-status').textContent='Check for a published update.';}catch(e){$('#update-status').textContent=e.message;}finally{updateButtons(false);}}
 $('#update-close').onclick=()=>{$('#update-dialog').close();syncOverlay();};
 $('#update-dialog').addEventListener('cancel',e=>{if(updateBusy){e.preventDefault();return;}setTimeout(syncOverlay,0);});
 $('#update-check').onclick=()=>void(async()=>{updateButtons(true);resetUpdateResult();$('#update-status').textContent='Checking GitHub…';try{const result=await api.updateCheck();$('#update-status').textContent=result.message;if(result.status==='available'){const size=result.asset?.size;$('#update-download').textContent=size?`Download update · ${megabytes(size)}`:'Download update';if(size)$('#update-status').textContent=`${result.message} ${result.asset.kind==='app'?'App code only':'Full app and runtime'}: ${megabytes(size)} from GitHub.`;$('#update-download').hidden=false;$('#update-notes').textContent=result.notes||'';$('#update-changelog').hidden=!result.notes;}}catch(e){$('#update-status').textContent='Could not check for updates: '+e.message;}finally{updateButtons(false);}})();
 $('#update-download').onclick=()=>void(async()=>{updateButtons(true);$('#update-status').textContent='Downloading and verifying update…';$('#update-progress').hidden=false;$('#update-progress').removeAttribute('value');try{await api.updateDownload();$('#update-download').hidden=true;$('#update-status').textContent='Update ready. Restarting the app…';}catch(e){$('#update-status').textContent='Update could not finish: '+e.message;$('#update-progress').hidden=true;updateButtons(false);}})();
+// The update icon beside the bug report (Windows, Mac and Steam Deck alike). Torque checks GitHub when it starts and every
+// few hours on the channel this install follows. The icon stays neutral; hovering turns it green (up to date) or yellow
+// (an update is published) and says which version is installed. A yellow dot marks a new version until it is dismissed
+// (Not now); a later version brings it back. Clicking opens App updates with Main / Testing, checked at once.
+let updateOffer=null,updateInfoNow=null;
+const DISMISSED='torque-update-dismissed',dismissed=()=>{try{return localStorage.getItem(DISMISSED)||'';}catch{return '';}};
+function paintUpdateIcon(state,tip){const b=$('#update-ready');b.dataset.state=state;b.dataset.tip=tip;b.setAttribute('aria-label',tip);
+  b.classList.toggle('has-update',state==='available'&&dismissed()!==updateOffer?.latest);}
+async function offerUpdate(){if(updateBusy)return;try{updateInfoNow=await api.updateInfo();}catch{}
+  const here=updateInfoNow?`Torque ${updateInfoNow.version} · ${updateInfoNow.channel==='testing'?'Testing':'Main'}`:'Torque';
+  try{const r=await api.updateCheck();updateOffer=r.status==='available'?r:null;
+    if(updateOffer)paintUpdateIcon('available',`${here}. Update ${updateOffer.latest} is available: click to install.`);
+    else paintUpdateIcon(r.status==='current'?'current':'unknown',r.status==='current'?`${here}. Up to date.`:`${here}. ${r.message}`);}
+  catch(e){paintUpdateIcon('unknown',`${here}. Could not check for updates: ${e.message}`);}}
+async function checkInDialog(){updateButtons(true);resetUpdateResult();$('#update-status').textContent='Checking GitHub…';
+  try{const result=await api.updateCheck();$('#update-status').textContent=result.message;
+    if(result.status==='available'){const size=result.asset?.size;$('#update-download').textContent=size?`Download and install · ${megabytes(size)}`:'Download and install';$('#update-download').hidden=false;$('#update-dismiss').hidden=dismissed()===result.latest;
+      if(result.notes){$('#update-notes').textContent=result.notes;$('#update-changelog').hidden=false;}}}
+  catch(e){$('#update-status').textContent='Could not check for updates: '+e.message;}finally{updateButtons(false);}}
+$('#update-ready').onclick=()=>void(async()=>{await showUpdates();if(!updateBusy)await checkInDialog();})();
+$('#update-dismiss').onclick=()=>{if(updateOffer){try{localStorage.setItem(DISMISSED,updateOffer.latest);}catch{}}$('#update-dismiss').hidden=true;paintUpdateIcon($('#update-ready').dataset.state,$('#update-ready').dataset.tip);};
+setTimeout(()=>void offerUpdate(),4000);setInterval(()=>void offerUpdate(),4*3600*1000);
 api.onUpdateProgress?.(p=>{if(p.phase==='installing'){$('#update-progress').removeAttribute('value');$('#update-status').textContent='Download verified. Installing update and restarting…';return;}if(p.total){$('#update-progress').max=p.total;$('#update-progress').value=p.bytes;}$('#update-status').textContent=p.total?`Downloading ${megabytes(p.bytes)} of ${megabytes(p.total)}…`:`Downloading ${megabytes(p.bytes)}…`;});
 
 // Asset sizes come from the GitHub release; small code-only updates read in kilobytes.
@@ -75,7 +97,9 @@ let selectedChannel='testing';
 // The three-dot menu says which build this is: Testing builds are GitHub pre-releases, Main builds the stable releases.
 function menuVersion(app){if(!app)return '';return app.channel==='testing'?`App version ${app.version} · Testing (pre-release, experimental)`:`App version ${app.version} · Main (stable release)`;}
 function renderUpdateInfo(info){selectedChannel=info.channel;for(const channel of ['main','testing'])$('#update-'+channel).setAttribute('aria-pressed',String(channel===info.channel));$('#update-version').textContent=`Installed ${info.version} · ${info.installedChannel||info.channel}`;$('#channel-note').textContent=info.channel==='testing'?'Following experimental Testing releases.':'Following stable Main releases.';}
-async function switchChannel(channel,confirmed=false){updateButtons(true);resetUpdateResult();try{renderUpdateInfo(await api.updateChannel(channel,confirmed));$('#testing-warning').hidden=true;$('#update-status').textContent='Channel saved. Check for a published '+channel+' release.';}catch(e){$('#update-status').textContent=e.message;}finally{updateButtons(false);}}
+async function switchChannel(channel,confirmed=false){updateButtons(true);resetUpdateResult();try{renderUpdateInfo(await api.updateChannel(channel,confirmed));$('#testing-warning').hidden=true;$('#update-status').textContent='Channel saved.';}catch(e){$('#update-status').textContent=e.message;updateButtons(false);return;}updateButtons(false);
+  // The branch just chosen is checked at once, in the dialog and for the icon.
+  await checkInDialog();void offerUpdate();}
 $('#update-main').onclick=()=>{if(selectedChannel!=='main')void switchChannel('main');else{$('#testing-warning').hidden=true;$('#update-check').disabled=false;}};
 $('#update-testing').onclick=()=>{if(selectedChannel==='testing')return;resetUpdateResult();$('#testing-warning').hidden=false;$('#update-check').disabled=true;$('#testing-confirm').focus();};
 $('#testing-confirm').onclick=()=>void switchChannel('testing',true);$('#testing-cancel').onclick=()=>{$('#testing-warning').hidden=true;$('#update-check').disabled=false;$('#update-main').focus();};

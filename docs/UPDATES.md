@@ -1,5 +1,9 @@
 # App updates and branches
 
+The **update icon** beside the bug report checks GitHub when Torque starts (and every few hours) on the channel this
+install follows. It stays neutral; hovering turns it **green** (up to date) or **yellow** (an update is published) and
+shows the installed version and channel. A yellow dot marks a new version until **Not now** dismisses it. Clicking it,
+or **⋮ → Updates**, opens App updates, checked at once: **Download and install** updates and restarts Torque.
 Open **⋮ → Updates**. The larger popup shows the installed version, saved channel, and two channel
 buttons: Main (stable) and Testing (experimental). The update source is fixed to
 this project; there is no editable repository field. Older saved repository
