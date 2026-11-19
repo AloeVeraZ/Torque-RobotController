@@ -998,3 +998,7 @@
   #cal-camera .cal-cam-side{contain:size;align-self:stretch}
   #cal-panel-debug{--debug-bar-top:0px}
 }
+/* + Add mechanism glows when Calibrate → Mechanisms sends someone here to add one (ui/simulation.js nudgeMechAdd). */
+@keyframes mech-add-nudge{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--accent) 0%,transparent)}}
+#mech-add.nudge{animation:mech-add-nudge 1.2s ease-out infinite;outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){#mech-add.nudge{animation:none}}

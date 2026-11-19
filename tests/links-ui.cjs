@@ -68,8 +68,9 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     assert.equal(await page.getAttribute('[data-elec-pick="@setup"]','aria-pressed'),'true','Setup comes first');assert.match(await page.textContent('[data-elec-device="@setup"]'),/Ctrl\+Z undoes/);assert.equal(await page.locator('.cal-board-meter').count(),0,'no count bar');
     assert.equal(await page.inputValue('[data-elec-drive]'),'mecanum');
     // Camera is listed under Setup, to do until a lens is measured; its tile opens Calibrate's Camera tab, and Electronics is a press back.
-    assert.match(await page.textContent('[data-elec-camera]'),/Camera.*to do/);assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is in Calibrate’s row');
-    await page.click('[data-elec-camera]');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true');assert.equal(await page.locator('#cal-panel-camera').isVisible(),true);assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'false');
+    // The camera is set up in its own tab only: Electronics lists no Camera tile.
+    assert.equal(await page.locator('[data-elec-camera]').count(),0,'no Camera tile in Electronics');assert.equal(await page.locator('#cal-tab-camera').isVisible(),true,'Camera is in Calibrate’s row');
+    await page.click('#cal-tab-camera');assert.equal(await page.getAttribute('#cal-tab-camera','aria-selected'),'true');assert.equal(await page.locator('#cal-panel-camera').isVisible(),true);assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'false');
     await page.focus('#cal-tab-camera');for(let i=0;i<3;i++)await page.keyboard.press('ArrowRight');assert.equal(await page.getAttribute('#cal-tab-electronics','aria-selected'),'true','round to Electronics, past Real run and Debug');assert.equal(await page.locator('#cal-links').isVisible(),true);
     assert.deepEqual(await page.$$eval('[data-elec-field=motor]',l=>l.map(s=>s.value)),['leftFront','rightFront','leftBack','rightBack']);
     assert.match(await page.textContent('.cal-elec-slots'),/No encoder/);assert.match(await page.textContent('[data-elec-device="@setup"]'),/That makes 3 links/);

@@ -3595,7 +3595,9 @@ public class MyAuto implements DeckAutonomous {
   $('[data-setup-page=mechanisms]').addEventListener('click',e=>{const b=e.target.closest('[data-fold]');if(!b)return;const c=b.closest('[data-folded],.sim-mech-sub,.sim-mech-part'),key=foldKey(c);if(folded.has(key))folded.delete(key);else folded.add(key);try{localStorage.setItem(FOLDED,JSON.stringify([...folded]));}catch{}foldCards();});
   {let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;foldCards();});}).observe($('[data-setup-page=mechanisms]'),{childList:true,subtree:true});foldCards();}
   helpFields();
-  $('#mech-add').onclick=()=>{mechList.open();garagePick='picker';garage();};
+  $('#mech-add').onclick=()=>{$('#mech-add').classList.remove('nudge');mechList.open();garagePick='picker';garage();};
+  // Calibrate → Mechanisms with none in Setup sends here: + Add mechanism glows until it is pressed (or a while passes).
+  function nudgeMechAdd(){setTimeout(()=>{const b=$('#mech-add');if(!b)return;b.classList.add('nudge');b.scrollIntoView({block:'center',behavior:'smooth'});b.focus({preventScroll:true});clearTimeout(nudgeMechAdd.t);nudgeMechAdd.t=setTimeout(()=>b.classList.remove('nudge'),10000);},350);}
   // What Simulate's mechanisms say moves what, as Electronics' planned links: a motor with its encoder counts on it, and each
   // sensor a mechanism's motor or servo carries (Mechanisms → its card) changes when it moves. Names are the configuration's.
   function simLinks(){let st;try{st=window.DeckWiring.state(project);}catch{return [];}const out=[];
@@ -4210,7 +4212,14 @@ public class MyAuto implements DeckAutonomous {
   { const g=$('#cal-gate-run');if(g)g.onclick=()=>{calSelect('realrun');calGate();calRender();}; }
   // Both tabs follow the setup (another one picked, a device changed in Simulate), only while Calibrate shows.
   let calLayout='';
-  function calRender(){if(!calRoot||calRoot.hidden)return;if(calTab==='realrun')realRun?.refresh();calMechSim();calElectronics();calMechanisms();chassisCal?.refresh();calGates();mechRail();const h=calHubHash();if(liveDebug&&h!==calLayout){calLayout=h;liveDebug.layout();}}
+  // The chassis Calibrate → Electronics linked (which motor, steering servo and encoder each module is) is what Setup names
+// its drive devices: copied over whenever they differ, not only the first time, so a module linked or relinked later
+// (or a setup saved before) never leaves Setup on a name the Control Hub does not have.
+function syncChassisNames(){if(sampleOn?.())return false;const c=project.calibration?.electronics?.chassis,L=window.DeckLinks;if(!c?.slots||c.type!==project.robot?.drivetrain||!L?.simDevices)return false;
+  const diff=Object.entries(L.simDevices(c)).filter(([k,n])=>n&&project.robot.devices?.[k]?.name!==n);if(!diff.length)return false;
+  // Taking the hub's own names changes nothing on the hub: a hub read that matched before still matches.
+  const before=calHubHash();chassisToSimulate(Object.fromEntries(diff));if(project.calibration?.hub?.hash===before)project.calibration.hub.hash=calHubHash();save();return true;}
+function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(calTab==='realrun')realRun?.refresh();calMechSim();calElectronics();calMechanisms();chassisCal?.refresh();calGates();mechRail();const h=calHubHash();if(liveDebug&&h!==calLayout){calLayout=h;liveDebug.layout();}}
   // Mechanisms' physical calibration measures the robot Simulate describes, so it waits for Simulate's Setup to have nothing in red, and shows only that until then; Electronics never waits.
   // The card says what is red, not only that something is: Setup marks it on the Mechanisms step.
   function calMechSim(){const box=$('#cal-mech-sim'),body=$('.cal-mech-body'),hub=$('#cal-hub-card');if(!box||!body)return;let reds=[];try{reds=window.DeckWiring.state(project).problems.filter(x=>x.level==='red');}catch{}const red=reds.length>0;
@@ -4319,7 +4328,7 @@ public class MyAuto implements DeckAutonomous {
     const hint=pane.querySelector('.cal-gates-hint'),bare=pane.querySelector('[data-cal-bare]'),none=pane.querySelector('[data-cal-none]');
     for(const sec of pane.querySelectorAll('.cal-mech')){const chips=[...sec.querySelectorAll('.cal-chip')],ok=chips.filter(c=>c.dataset.state==='pass').length;
       out.push({key:'mech:'+sec.dataset.calMechRow,group:'Mechanisms',badge:`${ok}/${chips.length}`,title:txt(sec.querySelector('h3')?.firstChild),sub:txt(sec.querySelector('.cal-mech-head small')).split(' · ')[0],done:sec.classList.contains('done'),counts:true,els:[sec,...(hint?[hint]:[]),...(bare?[bare]:[])]});}
-    if(none)out.push({key:'none',group:'Mechanisms',badge:'+',title:'Add mechanisms',sub:'None in Simulate yet',els:[none,...(bare?[bare]:[])]});
+    if(none)out.push({key:'none',group:'Mechanisms',badge:'+',title:'Mechanisms',sub:'None in Setup yet',els:[none,...(bare?[bare]:[])]});
     if($('#cal-mechs .cal-mech-grid'))out.push({key:'sim',group:'Simulation',badge:'⛭',title:'Simulation settings',sub:'Speeds, times and positions',els:[pane.querySelector('.cal-sim-settings')]});
     // What it all comes to, after everything is calibrated: the robot's numbers as code, and a TeleOp to drive it.
     for(const k of ['chassis-code','chassis-drive']){const i=out.findIndex(x=>x.key===k);if(i>=0)out.push({...out.splice(i,1)[0],group:'Use it'});}
@@ -4478,7 +4487,7 @@ public class MyAuto implements DeckAutonomous {
       const done=Object.values(states).every(s=>s==='pass'||s==='na');
       return `<section class="cal-mech${done?' done':''}" data-cal-mech-row="${calEsc(m.id)}"><div class="cal-mech-head"><div><h3>${calEsc(m.name)}${TU.ILLEGAL.has(m.type)?' <span class="cal-badge danger">Not FTC-legal: simulation only</span>':''}</h3>
         <small>${calEsc(m.label)} · ${m.row.family==='servo'?'Servo':'Motor'} ${W.linked(m.row,st,read)?`<code>${calEsc(m.row.name)}</code> ${calEsc(m.row.portLabel||'')}`:'<span class="cal-unlinked">not linked to its port yet</span>'} · Feedback: ${calEsc((m.row.sensors||[]).map(x=>H.SENSOR_MODELS[x.model]?.short).filter(Boolean).join(', ')||'none')} · ${calEsc(m.feedback?TU.KINDS[m.feedback.kind].name:'Sensors only')}</small></div><div class="cal-chips">${chips}</div></div>${panel}</section>`;}).join('');
-    calHtml(box,g0+(list.length?`<p class="hint cal-gates-hint">These are the mechanisms Simulate lists. Each starts with Link: which real motor, servo and sensor it is. The steps after follow what measures it. A step unlocks once the one before it passes, and goes back to redo when something it depended on changes.</p>${rows}${missing}`:'<div class="cal-card" data-cal-none><h2>No mechanisms in Simulate yet</h2><p class="hint">Only what Simulate lists can be calibrated. Add each intake, shooter and moving part in Setup → Mechanisms with the motor or servo it runs on and the sensor that measures it; it then shows here to be linked to its real ports.</p><div class="button-row"><button type="button" class="primary" data-cal-act="to-setup">Open Simulate</button></div></div>')+missing);
+    calHtml(box,g0+(list.length?`<p class="hint cal-gates-hint">These are the mechanisms Simulate lists. Each starts with Link: which real motor, servo and sensor it is. The steps after follow what measures it. A step unlocks once the one before it passes, and goes back to redo when something it depended on changes.</p>${rows}${missing}`:'<div class="cal-card" data-cal-none><h2>No mechanisms in Setup yet</h2><p class="hint">Mechanisms are added in Setup → Mechanisms (an intake, a shooter, a lift…), each with the motor or servo it runs on and the sensor that measures it. Every one you add there shows here, under Mechanisms, to calibrate.</p><div class="button-row"><button type="button" class="primary" data-cal-act="to-setup">Add one in Setup</button></div></div>')+missing);
     calPlots();}
   // One gate's panel: what it does, what passes it, and its controls.
   function calPanel(m,g,rec,state,live){
@@ -4578,7 +4587,7 @@ public class MyAuto implements DeckAutonomous {
     if(act==='to-configure'){toConfigure();return;}
     if(act==='to-hub'){calSelect('mechanisms');mechGo('hub');$('#cal-hub-setup').scrollIntoView({block:'center'});$('#cal-hub-setup').focus();return;}
     if(act==='to-live'){calSelect('debug');$('#cal-debug').scrollIntoView({block:'start'});$('[data-debug-start]')?.focus();return;}
-    if(act==='to-setup'){void api.page?.('simulation');return;}
+    if(act==='to-setup'){showSetupStep('mechanisms');nudgeMechAdd();return;}
     if(act==='g8-java'){const list=calMechList().filter(x=>project.calibration.mechs[x.id]?.gates?.G8);calTemp.java=TU.constants(list.map(x=>({name:x.name,template:x.template,rec:project.calibration.mechs[x.id]})),{when:new Date().toLocaleDateString(),lens:project.calibration.lens});calGates();return;}
     if(act==='g8-copy'){void navigator.clipboard?.writeText(calTemp.java||'');return;}
     if(!m)return;
