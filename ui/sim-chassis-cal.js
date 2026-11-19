@@ -91,7 +91,7 @@
   // Torque Debug's own loop (Q) holds the pod there: power per volt of error, the short way round the turn.
   // g: +1 when positive servo power raises the reading (Electronics' link says), -1 when it lowers it.
   const TOL_DEG=1.5,STEER={kP:.3,kD:.01,kS:.03};
-  const steerLoop=(st,target,g,span,pid=STEER,tolDeg=TOL_DEG)=>['Q',st.servo,'ana:'+st.name,'pos',target.toFixed(4),(pid.kP*g).toFixed(3),((pid.kI||0)*g).toFixed(3),(pid.kD*g).toFixed(4),0,(pid.kS*g).toFixed(3),0,(tolDeg*.6/360*span).toFixed(4),span].join('\t');
+  const steerLoop=(st,target,g,span,pid=STEER,tolDeg=TOL_DEG)=>['Q',st.servo,'ana:'+st.name,'pos',target.toFixed(4),(pid.kP*g).toFixed(3),((pid.kI||0)*g).toFixed(3),(pid.kD*g).toFixed(4),0,(pid.kS*g).toFixed(3),0,(tolDeg*.6/360*span).toFixed(4),span,(IZONE_DEG/360*span).toFixed(4)].join('\t');
   // How far off a turn may stop, set by the team: plus is past the target, minus short of it, the way the wheel was turning.
   const TOLS=[.5,1,1.5,2,3,5],tolOf=rec=>{const t=rec?.tol||{},ok=v=>TOLS.includes(v)?v:TOL_DEG;return {plus:ok(t.plus),minus:ok(t.minus)};},bandOf=rec=>{const t=tolOf(rec);return Math.min(t.plus,t.minus);};
   // ---- tuning a pod's steering by itself ----
@@ -104,9 +104,14 @@
     return {g:Math.sign(v*power)||1,Kv:Math.abs(v/power),L:Math.min(.3,Math.max(.02,end[0]-end[1]/v))};}
   // Gains for that servo: proportional as high as its wait allows without swinging past (a third of the 1/(Kv·L) where it
   // would), never more than 60% power for a quarter turn; a little derivative; and most of the power it took to start
-  // moving, added whenever it is outside the tolerance, so it does not stop short: 40% of it, because the breakaway is read
-  // from a short burst (high) and a larger kick flicks the wheel back and forth at the target. A pod that stops short gets more (nextTry).
-  function gainsOf({Kv,L,breakaway=0,span=3.3}){const kP=Math.max(.1,Math.min(.6/(span/4),.3/(Kv*L)));return {kP:+kP.toFixed(3),kD:+(kP*L*.25).toFixed(4),kS:+Math.max(0,breakaway*.4).toFixed(3)};}
+  // keeping it moving (kS, measured both ways), added in full whenever it is outside the tolerance; and an integral that, 3° off,
+  // adds the rest it takes to start (static friction) within 0.3 s. The robot's loop only builds the integral within IZONE_DEG of the target and
+  // clears it inside the tolerance or when the wheel crosses the target, so a long turn does not wind it up. Together they
+  // close the last few degrees that proportional alone leaves, where friction holds the pod.
+  const IZONE_DEG=15;
+  // breakaway: the power that starts it turning; keep: the least that keeps it turning (0.8 of breakaway when not measured).
+  function gainsOf({Kv,L,breakaway=0,keep,span=3.3}){const kP=Math.max(.1,Math.min(.6/(span/4),.3/(Kv*L))),kS=Math.max(0,Number.isFinite(keep)&&keep>0?Math.min(keep,breakaway):breakaway*.8),stick=Math.max(.02,breakaway-kS);
+    return {kP:+kP.toFixed(3),kI:+(stick/((3/360*span)*.3)).toFixed(3),kD:+(kP*L*.25).toFixed(4),kS:+kS.toFixed(3)};}
   // One test turn: how far past the target it swung, how many times it crossed it, and when it stayed inside the tolerance.
   // trace: [[seconds, degrees from the target]].
   // noise: how far the reading wanders with the wheel still (degrees, peak to peak). A Control Hub's analog port reads an
@@ -293,14 +298,25 @@
       // Volts travelled, the short way round each reading, with when each reading came.
       const watch=()=>{const out=[],t0=performance.now();let last=debug.values()[key],sum=0;tap=v=>{const now=v[key];if(!Number.isFinite(now))return;if(Number.isFinite(last))sum+=short(last,now);last=now;out.push([(performance.now()-t0)/1000,sum,now]);};return out;};
       const drive=async(power,ms)=>{for(const end=performance.now()+ms;alive()&&performance.now()<end;){send(`C\t${st.servo}\t${power.toFixed(3)}`);await sleep(40);}};
-      let breakaway=0;for(let u=.04;u<=.5&&alive();u+=.04){const seen=watch();await drive(u,140);if(seen.length&&Math.abs(seen.at(-1)[1])>.03){breakaway=u;break;}}
-      send(`C\t${st.servo}\t0`);if(!alive())return;if(!breakaway)return fail(`${st.servo} did not move ${st.name} at half power. Check them in Electronics.`);
-      // How much the reading wanders with the servo off: wiggles that small are the encoder, not the wheel.
-      await sleep(250);say('Reading the encoder at rest…');const still=[];tap=v=>{if(Number.isFinite(v[key]))still.push(v[key]);};await sleep(700);tap=null;if(!alive())return;
+      // First the encoder at rest (servo off): wiggles that small are the encoder, not the wheel.
+      say('Reading the encoder at rest…');const still=[];tap=v=>{if(Number.isFinite(v[key]))still.push(v[key]);};await sleep(700);tap=null;if(!alive())return;
       const noise=still.length>3?Math.min(3,(Math.max(...still.map(x=>short(still[0],x)))-Math.min(...still.map(x=>short(still[0],x))))*360/span):0;
+      // Then friction, both kinds, once each way. Starting: power raised 1% at a time (80 ms each) until the wheel turns
+      // clearly more than the noise. Keeping it going: then lowered 1% at a time until it stops. A pod takes more to start
+      // (static friction) than to keep turning (kinetic): a kick (kS) the size of the first coasts it past the target, one
+      // smaller than the second leaves it short. So kS is what keeps it turning, and the integral, built only near the
+      // target, supplies the rest when friction holds it short.
+      const moveV=Math.max(1.2,noise*2)/360*span;
+      const friction=async sign=>{const seen=watch();let start=0;for(let u=.01;u<=.5&&alive();u+=.01){await drive(sign*u,80);if(seen.length&&Math.abs(seen.at(-1)[1])>moveV){start=+u.toFixed(2);break;}}
+        if(!start){send(`C\t${st.servo}\t0`);return null;}let keep=start;for(let u=start;u>0&&alive();u-=.01){const from=seen.at(-1)?.[1]??0;await drive(sign*u,120);const moved=Math.abs((seen.at(-1)?.[1]??0)-from);if(moved<moveV/3)break;keep=+u.toFixed(2);}
+        send(`C\t${st.servo}\t0`);return {start,keep};};
+      say('Finding the power that starts it turning…');const up=await friction(1);if(!alive())return;await sleep(300);const down=await friction(-1);if(!alive())return;
+      const both=[up,down].filter(Boolean),breakaway=both.length?both.reduce((a,x)=>a+x.start,0)/both.length:0,keepGoing=both.length?both.reduce((a,x)=>a+x.keep,0)/both.length:0;
+      if(!breakaway)return fail(`${st.servo} did not move ${st.name} at half power. Check them in Electronics.`);
+      await sleep(250);
       say('Measuring how fast it turns…');const power=Math.min(.5,breakaway+.2),seen=watch();await drive(power,400);send(`C\t${st.servo}\t0`);tap=null;if(!alive())return;
       const plant=plantOf(seen.map(x=>[x[0],x[1]]),power);if(!plant)return fail('Its encoder gave too few readings to tune from. Try it again.');
-      const base={...gainsOf({...plant,breakaway,span}),g:plant.g},band=bandOf(rec()),tries=[];
+      const base={...gainsOf({...plant,breakaway,keep:keepGoing,span}),g:plant.g},band=bandOf(rec()),tries=[];
       // Quarter turns, 45° right of straight to 45° left and back, each quicker than the last, until one swings past or hunts.
       hold(q,-45,base);await sleep(900);let n=0;
       // One quarter turn with these gains, 45° one side of straight to 45° the other: over once it has stayed inside the band for 0.3 s, 1.6 s at most.
@@ -323,11 +339,11 @@
       // Backing off: first the integral goes and the start-up kick (kS, which flicks the wheel each time it drifts out of the
       // band and is the usual cause of chatter at the target) comes down; after that the gains and kS come down together.
       // The robot takes the derivative of the raw encoder reading, so its noise becomes power jitter: kD comes down faster.
-      const ease=(pid,i)=>i===0?{...pid,kI:0,kD:+(pid.kD*.7).toFixed(5),kS:+((pid.kS||0)*.6).toFixed(3)}:{...pid,kP:+(pid.kP*.8).toFixed(4),kD:+(pid.kD*.7).toFixed(5),kS:+((pid.kS||0)*.7).toFixed(3)};
+      const kSfloor=+(keepGoing*.8).toFixed(3),ease=(pid,i)=>({...pid,kP:+(pid.kP*(i?.8:1)).toFixed(4),kI:+((pid.kI||0)*.5).toFixed(4),kD:+(pid.kD*.7).toFixed(5),kS:+Math.max(kSfloor,(pid.kS||0)*.85).toFixed(3)});
       let calm=null,backed=0,worst=null;for(let pid=best.pid;alive()&&backed<=5;pid=ease(pid,backed),backed++){
         say(`Checking it holds still${backed?`, gains down ${backed} time${backed>1?'s':''}`:''}…`);const a=await turn(pid,2),b=alive()?await turn(pid,2):null;if(!alive())return;
-        if(steady(a,1.8)&&steady(b,1.8)){calm={pid,stats:a.settle>b.settle?a:b};break;}worst=oscillates(a)?a:b;}
-      if(!alive())return;if(!calm){hold(q,0,base);return fail(`It would not hold still after it arrived${worst?`: it moved ${f(worst.swing,1)}° back and forth there (the encoder alone wanders ${f(noise,1)}°)`:''}, even with the gains and the start-up kick brought down. Turn the wheel by hand: if it has play (a loose encoder, a slipping gear or belt), fix that; if not, tune it again, or allow more above.`);}
+        if(steady(a,1.8)&&steady(b,1.8)){calm={pid,stats:a.settle>b.settle?a:b};break;}worst=oscillates(a)?a:oscillates(b)?b:worst;}
+      if(!alive())return;if(!calm){hold(q,0,base);return fail(`It would not ${worst?'hold still':'settle and stay inside the band'} after it arrived${worst?`: it moved ${f(worst.swing,1)}° back and forth there (the encoder alone wanders ${f(noise,1)}°)`:''}, even with the gains and the start-up kick brought down. Turn the wheel by hand: if it has play (a loose encoder, a slipping gear or belt), fix that; if not, tune it again, or allow more above.`);}
       best=calm;
       const x=podRec(q.key);x.pid={...best.pid,settle:best.stats.settle,overshoot:best.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,hunt:best.stats.hunt,swing:best.stats.swing,noise:+noise.toFixed(2),...(backed?{backed}:{}),...(long?{long:true}:{})};delete x.left;delete x.right;hold(q,0);run=null;save();}
     const stop=()=>{clearInterval(timer);timer=null;run=null;tap=null;send('X');};

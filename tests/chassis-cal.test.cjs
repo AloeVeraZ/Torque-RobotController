@@ -105,7 +105,9 @@ test('a pod’s steering is tuned from how its own servo answers',()=>{
   assert.equal(K.plantOf(run(5,.08,.3,-1),.3).g,-1,'which way it moves the reading comes from the run itself');assert.equal(K.plantOf(run(0,.08,.3),.3),null,'it never moved');assert.equal(K.plantOf([[0,0]],.3),null);
   // A quick servo with a long wait gets less proportional than a slow one; never more than 60% power for a quarter turn.
   const quick=K.gainsOf({Kv:8,L:.12,breakaway:.07}),slow=K.gainsOf({Kv:1,L:.03,breakaway:.1});
-  near(quick.kP,.3/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,.6/(3.3/4),.002,'capped');near(quick.kS,.028,.001,'part of what it took to start moving');assert.ok(quick.kD>0);
+  near(quick.kP,.3/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,.6/(3.3/4),.002,'capped');near(quick.kS,.056,.001,'without a measured keep-going power, 0.8 of the start-up power');assert.ok(quick.kI>0,'an integral to close the last degrees');
+  // Static above kinetic friction: the kick is what keeps it turning; the integral supplies the rest it takes to start.
+  const sticky=K.gainsOf({Kv:4,L:.04,breakaway:.2,keep:.14});near(sticky.kS,.14,.001);assert.ok(sticky.kI>K.gainsOf({Kv:4,L:.04,breakaway:.15,keep:.14}).kI,'more stiction, more integral');assert.ok(quick.kD>0);
   // A test turn that swings past and hunts is not steady; one that arrives and stays is.
   const hunting=Array.from({length:60},(_,i)=>[i*.04,45*Math.cos(i*.5)*Math.exp(-i*.01)]),good=Array.from({length:60},(_,i)=>[i*.04,45*Math.exp(-i*.25)]);
   const h=K.stepStats(hunting),ok=K.stepStats(good);assert.ok(h.crossings>3&&h.overshoot>20&&!K.steady(h));assert.equal(ok.crossings,0);assert.equal(ok.overshoot,0);assert.ok(ok.settle>0&&ok.settle<1.2);assert.ok(K.steady(ok));

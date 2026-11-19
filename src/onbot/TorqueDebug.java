@@ -267,7 +267,7 @@ public class TorqueDebug extends LinearOpMode {
     //   E name 0|1                servo pulses off or on
     //   L name 0|1                latch: the servo keeps its position when the watchdog fires
     //   R name                    reset the motor's encoder to 0
-    //   Q actuator sensor mode target kP kI kD kF kS kG tolerance wrap
+    //   Q actuator sensor mode target kP kI kD kF kS kG tolerance wrap [izone]
     //                             run a loop here: actuator a motor or CR servo; sensor "enc:<motor>" or "ana:<analog>";
     //                             mode pos (target in ticks or volts) or vel (ticks a second); wrap > 0 takes the
     //                             shortest way round a circle of that many units; gains in power per raw unit
@@ -311,6 +311,7 @@ public class TorqueDebug extends LinearOpMode {
         if (l.sensorIndex < 0) return;
         l.target = Double.parseDouble(f[4]); l.kP = Double.parseDouble(f[5]); l.kI = Double.parseDouble(f[6]); l.kD = Double.parseDouble(f[7]);
         l.kF = Double.parseDouble(f[8]); l.kS = Double.parseDouble(f[9]); l.kG = Double.parseDouble(f[10]); l.tol = Math.abs(Double.parseDouble(f[11])); l.wrap = Double.parseDouble(f[12]);
+        l.izone = f.length > 13 ? Math.abs(Double.parseDouble(f[13])) : 0;
         if (l.cr) crTold[l.index] = true; else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
         loop = l;
     }
@@ -325,7 +326,13 @@ public class TorqueDebug extends LinearOpMode {
         if (l.wrap > 0) { e %= l.wrap; if (e > l.wrap / 2) e -= l.wrap; if (e < -l.wrap / 2) e += l.wrap; }
         double dt = FRAME_MS / 1000.0, d = Double.isNaN(l.last) ? 0 : (e - l.last) / dt;
         l.last = e;
-        l.integral = clamp(l.integral + e * dt, -1e6, 1e6);
+        // With an integral zone (izone > 0, a position loop): the integral only builds within it, so a long turn does not wind it
+        // up, and it starts again from 0 inside the tolerance or once the reading crosses the target. Without one, as before.
+        if (l.izone > 0 && !vel) {
+            if (Math.abs(e) <= l.tol || (!Double.isNaN(l.lastE) && Math.signum(e) != Math.signum(l.lastE))) l.integral = 0;
+            else if (Math.abs(e) < l.izone) l.integral = clamp(l.integral + e * dt, -1e6, 1e6);
+        } else l.integral = clamp(l.integral + e * dt, -1e6, 1e6);
+        l.lastE = e;
         double out = l.kP * e + l.kI * l.integral + l.kD * d + l.kG;
         if (vel) out += l.kF * l.target + l.kS * Math.signum(l.target);
         else if (Math.abs(e) > l.tol) out += l.kS * Math.signum(e);
@@ -801,5 +808,5 @@ public class TorqueDebug extends LinearOpMode {
 /** A closed loop on one actuator (the Q command). */
 final class TorqueDebugLoop {
     String actuator, sensor, mode; boolean cr; int index, sensorIndex; boolean analog;
-    double target, kP, kI, kD, kF, kS, kG, tol, wrap, integral, last = Double.NaN, out, error;
+    double target, kP, kI, kD, kF, kS, kG, tol, wrap, izone, integral, last = Double.NaN, lastE = Double.NaN, out, error;
 }

@@ -14,7 +14,7 @@ test('a swerve’s TeleOp carries each pod as calibrated, with no package so eve
   assert.match(s,/DRIVE = \{"frontPod", "leftPod", "rightPod"\}, STEER = \{"frontPodS", "leftPodS", "rightPodS"\}, ENCODER = \{"frontPodE", "leftPodE", "rightPodE"\};/);
   assert.match(s,/DRIVE_REVERSED = \{false, true, false\};/);assert.match(s,/POD_X = \{8\.5, -8\.5, -8\.5\}, POD_Y = \{0\.0, 8\.5, -8\.5\};/);assert.match(s,/ZERO_VOLTS = \{3\.214, 1\.2, 1\.2\};/);
   assert.match(s,/ENCODER_SIGN = \{1, 1, -1\}, SERVO_SIGN = \{-1, -1, -1\};/);assert.match(s,/KP = \{0\.004, 0\.004, 0\.004\}, KI = \{0\.0, 0\.0, 0\.0\}, KD = \{0\.0001, 0\.0001, 0\.0001\}, KS = \{0\.05, 0\.05, 0\.05\};/);
-  assert.match(s,/TOLERANCE_DEGREES = 0\.9, IMU_SCALE = 1\.00123;/);assert.match(s,/LogoFacingDirection\.UP, RevHubOrientationOnRobot\.UsbFacingDirection\.FORWARD/);
+  assert.match(s,/TOLERANCE_DEGREES = 0\.9, INTEGRAL_ZONE_DEGREES = 15\.0, IMU_SCALE = 1\.00123;/);assert.match(s,/LogoFacingDirection\.UP, RevHubOrientationOnRobot\.UsbFacingDirection\.FORWARD/);
   // The short way round: past a quarter turn the wheel runs backwards instead.
   assert.match(s,/if \(Math\.abs\(error\) > 90\) \{ error -= Math\.signum\(error\) \* 180; wheel = -wheel; \}/);
   assert.equal(s.split('{').length,s.split('}').length,'braces balance');
