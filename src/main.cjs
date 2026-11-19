@@ -631,7 +631,9 @@ handle('controller-calibration',({slot,zone})=>{if(![1,2].includes(slot))throw E
 handle('auth',({id,username,password,cancel})=>{if(!auth||auth.id!==id)throw Error('This sign-in prompt expired.');const pending=auth;auth=null;if(cancel)pending.callback();else pending.callback(String(username||'').slice(0,256),String(password||'').slice(0,1024));fitView();});
 handle('fullscreen',()=>win.setFullScreen(!win.isFullScreen()));handle('quit',()=>app.quit());
 handle('update-info',async()=>{auto.dismissed=true;finding?.abort();await closeRobot();return updater.info();});
-handle('update-check',()=>updater.check());
+// The update icon's background check reads the version and channel without closing the robot page (update-info is the
+// Updates popup opening, which does close it).
+handle('update-state',()=>updater.info());handle('update-check',()=>updater.check());
 handle('update-channel',(channel,confirmed)=>updater.setChannel(channel,confirmed));
 handle('update-download',()=>updater.downloadAndInstall(async download=>{await closeRobot();const prepared=await prepareInstall(download,{appPath:app.getAppPath(),executable:process.execPath});await launchInstall(prepared);setTimeout(()=>app.quit(),200);return {restarting:true};}));
 app.on('login',(event,contents,details,info,callback)=>{

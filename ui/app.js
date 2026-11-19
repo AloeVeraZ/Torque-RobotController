@@ -75,7 +75,8 @@ let updateOffer=null,updateInfoNow=null;
 const DISMISSED='torque-update-dismissed',dismissed=()=>{try{return localStorage.getItem(DISMISSED)||'';}catch{return '';}};
 function paintUpdateIcon(state,tip){const b=$('#update-ready');b.dataset.state=state;b.dataset.tip=tip;b.setAttribute('aria-label',tip);
   b.classList.toggle('has-update',state==='available'&&dismissed()!==updateOffer?.latest);}
-async function offerUpdate(){if(updateBusy)return;try{updateInfoNow=await api.updateInfo();}catch{}
+// Read-only: never api.updateInfo() here, which closes an open robot page (a robot being driven) as the popup opens.
+async function offerUpdate(){if(updateBusy)return;try{updateInfoNow=await api.updateState();}catch{}
   const here=updateInfoNow?`Torque ${updateInfoNow.version} · ${updateInfoNow.channel==='testing'?'Testing':'Main'}`:'Torque';
   try{const r=await api.updateCheck();updateOffer=r.status==='available'?r:null;
     if(updateOffer)paintUpdateIcon('available',`${here}. Update ${updateOffer.latest} is available: click to install.`);

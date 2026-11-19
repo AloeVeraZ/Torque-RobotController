@@ -56,3 +56,11 @@ test('a Windows update hands the installer to the helper with the version it mus
   // The helper runs the installer silently into this install, checks the version and restores the old copy on failure.
   const helper=fs.readFileSync(prepared.script,'utf8');assert.match(helper,/if \(\$plan\.setup\)/);assert.match(helper,/'\/S', \('\/D='\+\$destination\)/);assert.match(helper,/\$installed -ne \$plan\.version/);assert.match(helper,/Move-Item -LiteralPath \(Join-Path \$backup \$item\) -Destination \$destination/);
 });
+
+test('the update icon\'s background check never closes the robot page being driven',()=>{
+  const app=fs.readFileSync(path.join(__dirname,'../ui/app.js'),'utf8'),main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
+  const offer=app.slice(app.indexOf('async function offerUpdate('),app.indexOf('\n',app.indexOf('async function offerUpdate(')+200)+400);
+  assert.match(offer,/api\.updateState\(\)/);assert.doesNotMatch(offer,/api\.updateInfo\(/,'update-info closes the robot page: only the Updates popup may call it');
+  const state=main.match(/handle\('update-state',[^;]*;/)?.[0];assert.ok(state,'update-state is handled');assert.doesNotMatch(state,/closeRobot|dismissed|finding/);
+  assert.match(main,/handle\('update-info',async\(\)=>\{auto\.dismissed=true;finding\?\.abort\(\);await closeRobot\(\);/,'opening the Updates popup still closes the robot page');
+});
