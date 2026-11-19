@@ -357,7 +357,7 @@
     q('[data-cam-add]').onclick=()=>{const now=current(),press=autoConfigure||globalThis.DeckAutoConfigure||globalThis.autoConfigure;if(now.state==='spare'&&typeof press==='function')void press();else toConfigure?.(now.serial);};
     q('[data-cam-again]').onclick=pressAgain;q('[data-cam-install]').onclick=()=>{needBuild=true;pressAgain();};
     paint();timer=setInterval(tick,500);
-    return {ran(r,{usb=true}={}){if(r&&(r.cantBuild||r.problem||r.error)){took(r,usb);tick();}},replugged(){failure=null;tryAt=0;ends=0;fails=0;rebuilds=0;paint();},refresh:()=>{paint();tick();},settings:()=>settings,
+    return {reloadStored(){try{settings=sanitize(JSON.parse(localStorage.getItem(STORE)||'{}'));}catch{settings=sanitize({});}paint();},ran(r,{usb=true}={}){if(r&&(r.cantBuild||r.problem||r.error)){took(r,usb);tick();}},replugged(){failure=null;tryAt=0;ends=0;fails=0;rebuilds=0;paint();},refresh:()=>{paint();tick();},settings:()=>settings,
       // From the USB devices tab: this camera or Limelight, by its Scan key.
       select(serial){const o=offered().find(x=>sameCamera(serialOf(x),serial));if(o){source=o.value;tags=[];pictureUp=false;camSent=null;limeReset();}paint();syncCamera();tick();},
       stop(){clearInterval(timer);clearTimeout(camTimer);unlisten?.();unend?.();stream(false);}};}

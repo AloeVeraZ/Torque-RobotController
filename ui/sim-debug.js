@@ -340,7 +340,15 @@
       return {changes};}
     // Readings over a while (for captures and ramps): the values of every frame in the next ms milliseconds.
     function record(ms){return new Promise(resolve=>{const got=[],off=(listeners.add(fn),()=>listeners.delete(fn));function fn(f,v){got.push({t:f.t/1000,v});}setTimeout(()=>{off();resolve(got);},ms);});}
-    return {found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    // A robot file opened from Setup wrote its device settings, checks and sensing into storage: take them up and redraw.
+    function reloadStored(){
+      try{const s=JSON.parse(localStorage.getItem(SETTINGS)||'null');settings=s&&typeof s==='object'?s:{};}catch{settings={};}
+      checks.clear();try{const s=JSON.parse(localStorage.getItem(CHECKS)||'[]');if(Array.isArray(s))for(const [n,c] of s)if(typeof n==='string'&&['pass','fail'].includes(c?.state))checks.set(n,c);}catch{}
+      try{const s=JSON.parse(localStorage.getItem(SENSING)||'null');sensing=s&&typeof s==='object'&&s.motors&&s.i2c?s:{read:false,motors:{},i2c:{}};}catch{sensing={read:false,motors:{},i2c:{}};}
+      try{const s=JSON.parse(localStorage.getItem(FOUND)||'[]');found=Array.isArray(s)?s.filter(x=>x&&typeof x.name==='string'&&typeof x.key==='string'):[];}catch{found=[];}
+      for(const d of devices()){const box=host.querySelector(`[data-set-box="${CSS.escape(d.name)}"]`);if(box)box.innerHTML=setHtml(d.kind,d.name);}
+      checkPaint();onSensing();}
+    return {reloadStored,found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

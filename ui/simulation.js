@@ -1865,7 +1865,7 @@ public class MyAuto implements DeckAutonomous {
   async function loadRobotFile(file,raw){
       const next=sanitize({...snapshot(),controller:raw.controller,robot:raw.robot,sensors:raw.sensors,imuSource:raw.imuSource,timing:raw.timing,mechanisms:raw.mechanisms,kinematics:raw.kinematics,model:raw.model,robotPreset:null});
       for(const k of ['controller','robot','sensors','imuSource','timing','mechanisms','kinematics'])project[k]=next[k];project.robotPreset=null;project.model=null;model=null;
-      if(raw.modelData&&raw.model){const bin=atob(raw.modelData),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);const stored=await api.simFile('model-save',{name:raw.model.name||'robot.glb',bytes});project.model=modelMeta({...raw.model,id:stored.id});if(project.kinematics.model===raw.model.id)project.kinematics={...project.kinematics,model:stored.id};}
+      await unpackCad(raw,project);unpackDevices(raw);
       save();refreshAll();await placeModel();reload();status('#start-status',`Loaded the robot from ${file.name} into this setup.`);}
   function robotPanel(committed=false){
     const r=project.robot;for(const [id,value] of Object.entries({'#sim-drivetrain':r.drivetrain,'#sim-length':r.length,'#sim-width':r.width,'#sim-height':r.heightIn,'#sim-mass':r.massLb,'#sim-rpm':r.driveRpm,'#sim-wheel':r.wheelDiameterMm,'#sim-drive-style':r.driveStyle,'#sim-appearance':r.appearance,'#sim-localization':project.sensors.localization,'#sim-maxspeed':project.tuning.maxPathSpeed??.8}))inputValue(id,value,committed);
@@ -2816,9 +2816,34 @@ public class MyAuto implements DeckAutonomous {
   $('#sim-field').onchange=e=>{const game=e.target.value,l=L();if(!Object.hasOwn(GAMES,game)||game===l.field)return;
     const next=cleanLayout({...layout(game,GAMES[game]),id:l.id,start:l.start,pins:l.pins,alliance:l.alliance});project.layouts=project.layouts.map(x=>x===l?next:x);info=null;fieldArtKey='';changed('field');void switchLayout(next.id);};
   for(const [id,key] of [['#sim-field-width','width'],['#sim-field-height','height']])$(id).onchange=e=>{const n=e.target.valueAsNumber;if(L().field!=='empty'||!finite(n)||n<1){e.target.value=L()[key];return layoutPanel();}L()[key]=n;info=null;fieldArtKey='';L().start=null;start=field.constrain(start,geometry());preview={...start};changed('field');layoutPanel();reload();};
+  // A setup file carries everything that shows the robot the same on another computer: the setup itself (fields and
+  // routes, robot, mechanisms, wiring, calibration, program, run settings), the robot's CAD (an imported model's stored
+  // GLB as it is, so its id and rig stay the same, or a kit chassis that another build may not include) and the device
+  // calibration kept beside the setup (camera settings, device checks and what Debug found).
+  const DEVICE_KEYS=['torque-camera','torque-debug-devices','torque-debug-checks','torque-debug-sensing','torque-debug-found'],kitId=id=>typeof id==='string'&&/^[a-z]{1,32}$/.test(id);
+  const toBase64=bytes=>{let s='';for(let i=0;i<bytes.length;i+=32768)s+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(s);};
+  const fromBase64=text=>{const bin=atob(text),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return bytes;};
+  async function packCad(data){
+    if(project.model){let bytes=(await api.simFile('model-read',project.model.id).catch(()=>null))?.bytes;
+      if(!bytes&&model?.id===project.model.id&&!model.builtin){await three();bytes=await M().toGlb(model.geometry);}
+      if(!bytes)throw Error('This robot’s CAD file is missing on this computer, so it cannot go in the file. Import the CAD again, then save.');
+      data.modelData=toBase64(bytes);return bytes.length;}
+    const kit=builtins.has(project.robot.appearance)?project.robot.appearance:null;
+    if(kit){const k=await api.simFile('builtin-model',kit);data.kitCad={id:kit,meta:k.meta||{id:kit},data:toBase64(k.bytes)};return k.bytes.length;}
+    return 0;}
+  function packDevices(){const out={};for(const k of DEVICE_KEYS){try{const v=localStorage.getItem(k);if(v!==null)out[k]=v;}catch{}}return out;}
+  // Opening: the CAD is stored on this computer (an older file's re-encoded model gets a new id, so the rig follows it),
+  // a kit chassis this build lacks is kept for it, and the device calibration replaces this computer's.
+  async function unpackCad(raw,next){
+    if(typeof raw.modelData==='string'&&raw.model){const stored=await api.simFile('model-save',{name:raw.model.name||'robot.glb',bytes:fromBase64(raw.modelData)});
+      next.model=modelMeta({...raw.model,id:stored.id});if(next.kinematics?.model===raw.model.id)next.kinematics={...next.kinematics,model:stored.id};}
+    const kit=raw.kitCad;if(kit&&typeof kit.data==='string'&&kitId(kit.id)&&!builtins.has(kit.id)){await api.simFile('kit-cache',{id:kit.id,bytes:fromBase64(kit.data),meta:kit.meta});builtins.add(kit.id);appearanceOptions();}}
+  function unpackDevices(raw){const d=raw.deviceSettings;if(!d||typeof d!=='object')return;
+    for(const k of DEVICE_KEYS)if(typeof d[k]==='string'&&d[k].length<4e6){try{JSON.parse(d[k]);localStorage.setItem(k,d[k]);}catch{}}
+    try{liveDebug?.reloadStored?.();}catch{}try{liveCamera?.reloadStored?.();}catch{}}
   $('#sim-save').onclick=async()=>{
-    try{save();const data=snapshot();if(project.model&&model){const glb=await M().toGlb(model.geometry);let s='';for(let i=0;i<glb.length;i+=32768)s+=String.fromCharCode(...glb.subarray(i,i+32768));data.modelData=btoa(s);}
-      const r=await api.simFile('project-save',JSON.stringify({deckSimulation:2,...data}));if(r)status('#start-status',`Saved ${r.name}.`);}catch(e){status('#start-status',e.message);}
+    try{save();const data=snapshot(),cad=await packCad(data);data.deviceSettings=packDevices();
+      const r=await api.simFile('project-save',JSON.stringify({deckSimulation:2,...data}));if(r)status('#start-status',`Saved ${r.name}${cad?` with the robot’s CAD (${(cad/1048576).toFixed(1)} MB)`:''}, setup, calibration and every path.`);}catch(e){status('#start-status',e.message);}
   };
   $('#sim-open').onclick=async()=>{try{const file=await api.simFile('project-open');if(file)await openProject(file);}catch(e){status('#start-status',e.message);}};
   // A setup sent from the terminal (tools/deck-sim.cjs show): open it as a new saved setup, attach
@@ -2833,7 +2858,7 @@ public class MyAuto implements DeckAutonomous {
   }
   async function openProject(file){if(!keepVirtualDraft())return;
     const raw=JSON.parse(file.text);if(raw?.deckRobot===1)return loadRobotFile(file,raw);if(raw?.deckSimulation!==2&&raw?.deckSimulation!==1)throw Error('That file is not a Deck setup.');
-      const next=sanitize(oneField(raw));if(raw.modelData&&typeof raw.modelData==='string'&&raw.model){const bin=atob(raw.modelData),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);const stored=await api.simFile('model-save',{name:raw.model.name||'robot.glb',bytes});next.model=modelMeta({...raw.model,id:stored.id});}
+      const next=sanitize(oneField(raw));await unpackCad(raw,next);unpackDevices(raw);
       clearRun();save();const bank=project.setups,active=next.active;for(const l of next.layouts){const old=l.id;l.id=newId();if(old===active)next.active=l.id;}next.export.keep=false;next.setupId=newId();next.setupName=file.name.replace(/\.json$/i,'').slice(0,40);next.setups=bank;project=next;model=null;save();refreshAll();await switchLayout(project.active);await placeModel();status('#start-status',`Opened ${file.name}.`);
   }
   // Saved setups. Each one holds its fields (with their planned routes), robot, mechanisms, controller,

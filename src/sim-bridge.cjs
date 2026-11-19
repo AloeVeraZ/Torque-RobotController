@@ -6,6 +6,8 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const MESH_TYPES={'.glb':'glb','.gltf':'gltf','.stl':'stl','.obj':'obj'},STEP_TYPES=['.step','.stp'];
 const MODEL_LIMIT=200*1024*1024,STORED_LIMIT=150*1024*1024,SOURCE_LIMIT=200*1024,PROJECT_LIMIT=150*1024*1024,EXPORT_LIMIT=4*1024*1024;
+// A saved setup file carries its robot's CAD (base64 inside the JSON), so it may be larger than a setup alone.
+const PROJECT_FILE_LIMIT=400*1024*1024,KIT_ROBOTS=['strafer','swechanum'];
 const EXPORTS={onbot:{name:'OnBot Java autonomous',extensions:['java']},java:{name:'Route Java',extensions:['java']},pp:{name:'Deck path file',extensions:['pp']},timed:{name:'Timed drive commands',extensions:['json']},motionmodule:{name:'MotionModule autonomous',extensions:['py']},config:{name:'Robot configuration',extensions:['xml']}};
 const validKey=key=>typeof key==='string'&&/^[\w-]{1,64}$/.test(key);
 
@@ -87,18 +89,26 @@ class SimulationHost{
   async file(dialog,win,action,data){
     // Licensed CAD (FIRST field models, vendor chassis) is only present in personal local builds;
     // public releases leave it out and the window falls back to drawings and plain shapes.
+    // A kit robot's CAD that came inside an opened setup file is kept in the data folder, so a build without it
+    // (a public release on another computer) shows the robot as it was saved.
+    const kitCache=path.join(this.dataDir,'simulation','kit-robots'),cachedKit=id=>fs.existsSync(path.join(kitCache,id+'.glb'))&&fs.existsSync(path.join(kitCache,id+'.json'));
     if(action==='assets'){const ui=path.join(__dirname,'../ui'),has=rel=>fs.existsSync(path.join(ui,rel));
-      return {robots:['strafer','swechanum'].filter(id=>has(`assets/robots/${id}.glb.gz`)),fields:{decode:has('vendor/models/decode/field.glb'),biobuzz:has('vendor/models/biobuzz/field.glb')&&has('vendor/models/biobuzz/elements.glb')}};}
-    if(action==='builtin-model'){if(!['strafer','swechanum'].includes(data))throw Error('Unknown bundled robot.');const dir=path.join(__dirname,'../ui/assets/robots'),catalog=JSON.parse(fs.readFileSync(path.join(dir,'catalog.json'),'utf8'));return {bytes:new Uint8Array(require('node:zlib').gunzipSync(fs.readFileSync(path.join(dir,data+'.glb.gz')))),meta:catalog[data]};}
+      return {robots:KIT_ROBOTS.filter(id=>has(`assets/robots/${id}.glb.gz`)||cachedKit(id)),fields:{decode:has('vendor/models/decode/field.glb'),biobuzz:has('vendor/models/biobuzz/field.glb')&&has('vendor/models/biobuzz/elements.glb')}};}
+    if(action==='builtin-model'){if(!KIT_ROBOTS.includes(data))throw Error('Unknown bundled robot.');const dir=path.join(__dirname,'../ui/assets/robots');
+      if(!fs.existsSync(path.join(dir,data+'.glb.gz'))){if(!cachedKit(data))throw Error('This robot’s CAD is not in this build. Open a setup file saved with it.');return {bytes:new Uint8Array(fs.readFileSync(path.join(kitCache,data+'.glb'))),meta:JSON.parse(fs.readFileSync(path.join(kitCache,data+'.json'),'utf8'))};}
+      const catalog=JSON.parse(fs.readFileSync(path.join(dir,'catalog.json'),'utf8'));return {bytes:new Uint8Array(require('node:zlib').gunzipSync(fs.readFileSync(path.join(dir,data+'.glb.gz')))),meta:catalog[data]};}
     // The Test setup's robot, generated from FTC parts (ui/sim-test-robot.js, original geometry, in every build) and shaped
     // like a STEP import by the import's own functions, so the window stores, discovers and rigs it as a team's own CAD.
     if(action==='test-robot')return require('../ui/sim-test-robot.js').result(require('./sim-model.cjs'));
     // A preset robot's CAD (ui/sim-preset-robots.js), made the same way.
     if(action==='preset-robot'){const P=require('../ui/sim-preset-robots.js'),SM=require('./sim-model.cjs'),id=typeof data==='string'?data:data?.id;if(!P.has(id))throw Error('Unknown preset robot.');return P.result(id,SM);}
+    if(action==='kit-cache'){const id=data?.id;if(!KIT_ROBOTS.includes(id)||!(data.bytes instanceof Uint8Array)||data.bytes.length<12||data.bytes.length>STORED_LIMIT||Buffer.from(data.bytes.subarray(0,4)).toString('latin1')!=='glTF')throw Error('The robot CAD in that file could not be read.');
+      const meta=data.meta&&typeof data.meta==='object'?data.meta:{};fs.mkdirSync(kitCache,{recursive:true});fs.writeFileSync(path.join(kitCache,id+'.glb'),Buffer.from(data.bytes));
+      fs.writeFileSync(path.join(kitCache,id+'.json'),JSON.stringify(Object.fromEntries(Object.entries(meta).filter(([k,v])=>k.length<40&&['string','number','boolean'].includes(typeof v)&&String(v).length<2000))));return {id};}
     const models=path.join(this.dataDir,'simulation','models');
     const open=async(title,filters,limit)=>{const r=await dialog.showOpenDialog(win,{title,properties:['openFile'],filters});if(r.canceled||!r.filePaths[0])return null;const file=r.filePaths[0];if(fs.statSync(file).size>limit)throw Error(`${path.basename(file)} is larger than ${Math.round(limit/1048576)} MB.`);return file;};
     if(action==='project-save'){
-      if(typeof data!=='string'||data.length>PROJECT_LIMIT)throw Error('Project is too large to save.');
+      if(typeof data!=='string'||data.length>PROJECT_FILE_LIMIT)throw Error('Project is too large to save.');
       const r=await dialog.showSaveDialog(win,{title:'Save simulation project',defaultPath:'deck-simulation.json',filters:[{name:'Simulation project',extensions:['json']}]});
       if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,data);return {name:path.basename(r.filePath)};
     }
@@ -116,8 +126,8 @@ class SimulationHost{
       if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,data.xml);return {name:path.basename(r.filePath)};
     }
     if(action==='config-open'){const file=await open('Choose a robot configuration',[{name:'Robot configuration',extensions:['xml']}],1048576);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
-    if(action==='robot-open'){const file=await open('Load a robot',[{name:'Deck robot',extensions:['json']}],PROJECT_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
-    if(action==='project-open'){const file=await open('Open simulation project',[{name:'Simulation project',extensions:['json']}],PROJECT_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
+    if(action==='robot-open'){const file=await open('Load a robot',[{name:'Deck robot',extensions:['json']}],PROJECT_FILE_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
+    if(action==='project-open'){const file=await open('Open simulation project',[{name:'Simulation project',extensions:['json']}],PROJECT_FILE_LIMIT);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
     // A log from the real robot to compare with the plan: read only, never written back.
     if(action==='pp-open'){const file=await open('Import a path file',[{name:'Path file',extensions:['pp','json']}],8*1024*1024);return file&&{name:path.basename(file),text:fs.readFileSync(file,'utf8')};}
     if(action==='robot-log-open'){const file=await open('Compare with a robot log',[{name:'Robot log',extensions:['wpilog','csv','txt']}],64*1024*1024);return file&&{name:path.basename(file),bytes:new Uint8Array(fs.readFileSync(file))};}
