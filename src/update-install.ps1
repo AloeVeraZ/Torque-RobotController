@@ -2,6 +2,63 @@ param([string]$PlanPath)
 $ErrorActionPreference = 'Stop'
 Write-Output 'Starting update installer'
 $plan = Get-Content -LiteralPath $PlanPath -Raw | ConvertFrom-Json
+function Restart-App([string]$Root) {
+    Start-Process -FilePath (Join-Path $Root 'runtime/electron.exe') -ArgumentList ('"'+(Join-Path $Root 'app')+'"') -WorkingDirectory $Root -WindowStyle Hidden
+}
+# An update from the release's Windows installer: app and runtime move aside, the installer runs silently into the same
+# folder, and the old copy comes back if it fails or installs anything but the expected version.
+if ($plan.setup) {
+    $setup = [IO.Path]::GetFullPath($plan.setup)
+    $destination = [IO.Path]::GetFullPath($plan.destination).TrimEnd('\')
+    $stage = [IO.Path]::GetFullPath($plan.stage).TrimEnd('\') + '\'
+    if (!$setup.StartsWith($stage, [StringComparison]::OrdinalIgnoreCase) -or !$setup.EndsWith('-Windows-Setup.exe')) { throw 'Update installer is outside staging' }
+    if (!(Test-Path -LiteralPath (Join-Path $destination 'app/package.json'))) { throw 'Installed app is missing' }
+    Wait-Process -Id $plan.pid -Timeout 60 -ErrorAction SilentlyContinue
+    if (Get-Process -Id $plan.pid -ErrorAction SilentlyContinue) { throw 'App did not exit; update cancelled' }
+    Write-Output 'App exited; running the installer'
+    $backup = Join-Path $stage 'previous'
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    $moved = @()
+    try {
+        foreach ($item in @('app','runtime')) {
+            $done = $false
+            for ($attempt=0; $attempt -lt 20; $attempt++) {
+                try { Move-Item -LiteralPath (Join-Path $destination $item) -Destination $backup; $done=$true; break } catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (!$done) { throw "Could not replace $item" }
+            $moved += $item
+        }
+        # NSIS: /S is silent and /D (last, unquoted) is the install folder.
+        $run = Start-Process -FilePath $setup -ArgumentList @('/S', ('/D='+$destination)) -Wait -PassThru -WindowStyle Hidden
+        if ($run.ExitCode -ne 0) { throw ('The installer failed with exit code '+$run.ExitCode) }
+        $installed = (Get-Content -LiteralPath (Join-Path $destination 'app/package.json') -Raw | ConvertFrom-Json).version
+        if ($installed -ne $plan.version) { throw ('The installer put version '+$installed+' in place, not '+$plan.version) }
+        if (!(Test-Path -LiteralPath (Join-Path $destination 'runtime/electron.exe'))) { throw 'The update runtime is missing' }
+    } catch {
+        Write-Output ('Update failed, restoring the previous version: '+$_.Exception.Message)
+        foreach ($item in $moved) {
+            $target = Join-Path $destination $item
+            if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination (Join-Path $stage ('failed-'+$item)) }
+            Move-Item -LiteralPath (Join-Path $backup $item) -Destination $destination
+        }
+        Restart-App $destination
+        throw
+    }
+    # Field and robot CAD prepared on this computer is never in a release; keep it (as updater.cjs keepLocalCad does).
+    $oldUi = Join-Path $backup 'app/ui'
+    if (Test-Path -LiteralPath $oldUi) {
+        foreach ($file in Get-ChildItem -LiteralPath $oldUi -Recurse -File) {
+            $rel = $file.FullName.Substring($oldUi.Length + 1)
+            if ($rel -match '^vendor\\models\\' -or $rel -match '^assets\\(fields|robots)\\[^\\]+\.glb\.gz$') {
+                $to = Join-Path (Join-Path $destination 'app/ui') $rel
+                if (!(Test-Path -LiteralPath $to)) { New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null; Copy-Item -LiteralPath $file.FullName -Destination $to }
+            }
+        }
+    }
+    Restart-App $destination
+    Write-Output ('Update installed ('+$plan.version+'); restarted application')
+    exit 0
+}
 $source = [IO.Path]::GetFullPath($plan.source)
 $destination = [IO.Path]::GetFullPath($plan.destination)
 $stage = [IO.Path]::GetFullPath($plan.stage).TrimEnd('\') + '\'

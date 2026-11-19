@@ -1,9 +1,10 @@
-name: Publish app update (manual)
+name: Publish app update
 on:
   workflow_dispatch:
-  # Pushing v<version> (from main) or testing-v<version> (from testing) publishes that commit.
+  # A push to main or testing publishes that commit when package.json's version has no release on that branch yet:
+  # main as v<version>, testing as the pre-release testing-v<version>. Installed copies find it in the app (src/updater.cjs).
   push:
-    tags: ['v[0-9]*.[0-9]*.[0-9]*', 'testing-v[0-9]*.[0-9]*.[0-9]*']
+    branches: [main, testing]
 permissions:
   contents: read
 # One publish per tag or branch; a duplicate trigger cancels the earlier run.
@@ -16,6 +17,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
+      publish: ${{ steps.meta.outputs.publish }}
       branch: ${{ steps.meta.outputs.branch }}
       targets: ${{ steps.meta.outputs.targets }}
     steps:
@@ -38,26 +40,18 @@ jobs:
       - run: pwsh -NoProfile -File tests/install-bootstrap.ps1
       - id: meta
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           branch=$GITHUB_REF_NAME
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            if [[ "$GITHUB_REF_NAME" == testing-v* ]]; then branch=testing; else branch=main; fi
-            git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch" || { echo "$GITHUB_REF_NAME is not on $branch"; exit 1; }
-          fi
-          [[ "$branch" == testing || "$branch" == main ]] || exit 1
+          [[ "$branch" == testing || "$branch" == main ]] || { echo "Releases come from main or testing, not $branch."; exit 1; }
           version=$(node -p 'require("./package.json").version')
-          channel=$(node -p 'require("./package.json").updateChannel')
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          if [[ "$branch" == testing ]]; then
-            [[ "$channel" == testing ]] || exit 1
-            tag="testing-v$version"
-          else
-            [[ "$channel" == main ]] || exit 1
-            tag="v$version"
-          fi
+          if [[ "$branch" == testing ]]; then tag="testing-v$version"; else tag="v$version"; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          [[ "$GITHUB_REF_TYPE" != tag || "$GITHUB_REF_NAME" == "$tag" ]] || { echo "tag $GITHUB_REF_NAME does not match package.json ($tag)"; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # The same version is published once per branch: a push that does not raise it builds nothing.
+          if gh release view "$tag" >/dev/null 2>&1; then echo "publish=false" >> "$GITHUB_OUTPUT"; echo "::notice::$tag is already released; raise package.json's version to publish this push."; else echo "publish=true" >> "$GITHUB_OUTPUT"; fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           # Each branch builds package.json's mainReleaseTargets / testingReleaseTargets (all when missing).
           targets=$(node tools/release-targets.cjs targets "$branch")
@@ -65,6 +59,7 @@ jobs:
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
   desktop:
     needs: validate
+    if: needs.validate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -85,7 +80,8 @@ jobs:
           case "${{ matrix.target }}" in steamdeck) t=linux-x64;; windows) t=win32-x64;; macos-arm64) t=darwin-arm64;; esac
           node tools/simulation/fetch.cjs --targets "$t"
           node tools/simulation/build.cjs --public
-      - run: python3 tools/package.py --target ${{ matrix.target }}
+      # Built for the branch's update channel, so a testing build keeps checking testing and a main build main.
+      - run: python3 tools/package.py --target ${{ matrix.target }} --channel ${{ needs.validate.outputs.branch }}
         env:
           PYTHONUTF8: '1'
       - run: bash tests/installer-linux.sh
@@ -96,6 +92,7 @@ jobs:
           path: dist/*
   publish:
     needs: [validate, desktop]
+    if: needs.validate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -131,22 +128,25 @@ jobs:
           if [[ -n "$notes" ]]; then args+=(--notes "$notes"); fi
           if [[ "$BRANCH" == testing ]]; then args+=(--prerelease); fi
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes "${args[@]}"
-      # No channel manifest is written: the Releases page holds only the versioned releases, and the
-      # in-app updater asks GitHub's API for them instead.
-      # One time only, for V2 (v2.4.34): once it is published with its three downloads, every other
-      # release is deleted with its tag, so V2 is the only release. Any other version skips this.
-      - name: Make V2 the only release
-        if: needs.validate.outputs.tag == 'v2.4.34'
+      # The Releases page keeps one release per channel at most: a testing build replaces earlier testing builds, and a
+      # main release replaces every release with a lower version (main and testing). Installed copies only ever need
+      # the newest one. A release whose tag is already gone is deleted without it.
+      - name: Remove the releases this one replaces
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.validate.outputs.tag }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          BRANCH: ${{ needs.validate.outputs.branch }}
         run: |
-          names=$(gh release view "$TAG" --json assets --jq '[.assets[].name]|sort|join(",")')
-          want="DeckDriverStation-2.4.34-SteamDeck.run,DeckDriverStation-2.4.34-Windows-Setup.exe,DeckDriverStation-2.4.34-macOS-arm64.zip"
-          [[ "$names" == "$want" ]] || { echo "V2 has $names, not $want: nothing deleted."; exit 1; }
           gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
             [[ "$old" == "$TAG" ]] && continue
-            echo "Deleting $old"; gh release delete "$old" --cleanup-tag --yes
+            [[ "$old" =~ ^(testing-)?v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || continue
+            testing=${BASH_REMATCH[1]} v=${BASH_REMATCH[2]}
+            newest=$(printf '%s\n%s\n' "$v" "$VERSION" | sort -V | tail -1)
+            if [[ "$BRANCH" == testing ]]; then [[ -n "$testing" ]] || continue
+            else [[ -n "$testing" && "$newest" == "$VERSION" ]] || [[ -z "$testing" && "$newest" == "$VERSION" && "$v" != "$VERSION" ]] || continue; fi
+            echo "Removing $old"
+            gh release delete "$old" --cleanup-tag --yes || gh release delete "$old" --yes || echo "::warning::Could not remove $old"
           done
           gh release list --limit 100

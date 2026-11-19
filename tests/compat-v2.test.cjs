@@ -38,15 +38,18 @@ test('this version is one V2 understands and counts as newer',()=>{
   for(const v of FUTURE)assert.ok(Old.compare(v,'2.4.28')>0&&Now.compare(v,'2.4.28')>0,v);assert.ok(Old.compare('2.10.0','2.9.0')>0,'numbers compare as numbers');
 });
 
-test('the publish job keeps the tags and flags V2 reads',()=>{
-  assert.match(workflow,/tags: \['v\[0-9\]\*\.\[0-9\]\*\.\[0-9\]\*', 'testing-v\[0-9\]\*\.\[0-9\]\*\.\[0-9\]\*'\]/,'tags v1.2.3 and testing-v1.2.3 publish');
+test('a push to main or testing publishes, testing as a pre-release, and only the step after publishing removes older releases',()=>{
+  assert.match(workflow,/push:\n {4}branches: \[main, testing\]/,'pushes to main and testing publish');
+  assert.match(workflow,/if gh release view "\$tag" >\/dev\/null 2>&1; then echo "publish=false"/,'a version is published once per branch');
   assert.match(workflow,/if \[\[ "\$BRANCH" == testing \]\]; then args\+=\(--prerelease\); fi/,'testing releases are pre-releases, main ones are not');
-  // The only deleting is the one-time step that made V2 (v2.4.34) the only release, after checking its three downloads.
-  // It deletes each release with its tag (never a tag alone: that leaves its release hidden but still counted).
+  assert.match(workflow,/--channel \$\{\{ needs\.validate\.outputs\.branch \}\}/,'each build checks its own branch\'s channel');
+  // Deleting happens in one step, after the new release is created, and never takes a release with a higher version
+  // or a main release from a testing build.
   const steps=workflow.split(/\n {6}- name: /),deleting=steps.filter(s=>/gh release delete|cleanup-tag|git tag -d|git push[^\n]*--delete/.test(s));
-  assert.equal(deleting.length,1);assert.match(deleting[0],/^Make V2 the only release\n {8}if: needs\.validate\.outputs\.tag == 'v2\.4\.34'\n/);
-  assert.match(deleting[0],/\[\[ "\$names" == "\$want" \]\] \|\| \{[^}]*exit 1; \}/,'nothing is deleted unless V2 has its three downloads');
-  assert.match(deleting[0],/gh release delete "\$old" --cleanup-tag --yes/);assert.doesNotMatch(deleting[0],/git tag -d|git push/);
+  assert.equal(deleting.length,1);assert.match(deleting[0],/^Remove the releases this one replaces\n/);
+  assert.ok(workflow.indexOf('gh release create')<workflow.indexOf('- name: Remove the releases this one replaces'),'the new release is published first');
+  assert.match(deleting[0],/if \[\[ "\$BRANCH" == testing \]\]; then \[\[ -n "\$testing" \]\] \|\| continue/,'a testing build only replaces testing builds');
+  assert.match(deleting[0],/"\$newest" == "\$VERSION"/,'never a release with a higher version');assert.doesNotMatch(deleting[0],/git tag -d|git push/);
 });
 
 test('V2 reads the channel manifest today\'s publishing writes, and falls back to GitHub when it is missing',async()=>{

@@ -5,8 +5,9 @@ buttons: Main (stable) and Testing (experimental). The update source is fixed to
 this project; there is no editable repository field. Older saved repository
 overrides are ignored.
 Entering Testing requires accepting an experimental-features warning. The choice
-is saved outside the installation and survives restarts and updates. **Check for updates** reads GitHub Releases over HTTPS. Testing builds
-use prereleases such as `testing-v2.4.3`; stable builds use tags such as `v2.4.2` and channel `main`.
+is saved outside the installation and survives restarts and updates. **Check for updates** reads GitHub Releases over HTTPS.
+**Main** installs take main releases (tags such as `v2.4.35`). **Testing** installs take the newest of testing
+pre-releases (`testing-v2.4.36`) and main releases, so whatever was pushed last to either branch reaches them.
 The app can return to an older Main version.
 
 **Releases for some devices only.** A testing release can be built for only some platforms
@@ -25,26 +26,22 @@ been published yet**. Errors and unpublished releases never say “up to date.�
 Private repositories need a distribution solution with authentication; this
 personal app uses public release downloads and stores no GitHub access tokens.
 
-**Checking without GitHub's API limit.** Unauthenticated GitHub API calls are limited to 60
-per hour for each network, shared by every device and tool on it. Each publish therefore also
-uploads `channel.json` to a fixed `testing-channel` / `main-channel` prerelease, with the
-new release's assets, sizes and SHA-256 digests first, followed by up to five earlier releases
-of the channel (so a device a partial release skips can still find its newest download). **Check for updates** reads that file as
-an ordinary download, which the API limit does not apply to. Only if it is missing does the app
-call the API, sending the saved ETag so an unchanged list costs nothing. If GitHub still refuses,
-the app uses the last saved list, or says when the limit resets.
+**Checking and GitHub's API limit.** The check asks GitHub's releases API. Unauthenticated calls are limited to 60
+per hour for each network, so the app sends the ETag of its last answer (an unchanged list costs nothing). If GitHub
+still refuses, the app uses the last saved list, or says when the limit resets. There is no channel manifest any more:
+the Releases page holds only real releases.
 
-**Update size.** Each release built for every platform also publishes a small
-`DeckDriverStation-<version>-App-<base>.tar.gz` holding only the app code (about 7 MB).
-It fits every platform, so a release built for only some platforms leaves it out: updaters up
-to 2.4.22 would otherwise install it on the devices the release skips. Newer updaters use an
-App package only beside their own platform's full download.
-`<base>` fingerprints what an installed copy keeps when only the code changes: the Electron
-version and the launchers. An install whose `app/build.json` base matches downloads just
-that package; anything else (an Electron upgrade, installs from before 2.4.18) downloads the
-full package for its platform. The dialog shows the exact size GitHub lists for the chosen
-asset before you download, and the progress counts against that size. A code-only update is
-rebuilt locally from this install's own runtime and then installed exactly like a full one.
+**One download per platform is also the update.** Each release publishes exactly three files, and the updater
+installs from the same one a person would download:
+
+| System | File | How the app installs it |
+|---|---|---|
+| Windows x64 | `DeckDriverStation-<version>-Windows-Setup.exe` | Once the app exits, the helper moves `app` and `runtime` aside, runs the installer silently (`/S /D=<install folder>`) into the same folder, checks it installed `<version>`, keeps locally prepared CAD, and restarts. Any failure puts the old copy back. |
+| Apple Silicon | `DeckDriverStation-<version>-macOS-arm64.zip` | Unzipped, signed ad hoc and swapped in place of the installed bundle, then reopened. |
+| Steam Deck / Linux | `DeckDriverStation-<version>-SteamDeck.run` | The package inside the installer is checked against the SHA-256 written in the installer itself, unpacked, and swapped in like before. |
+
+Releases from before V2 (2.4.34) had separate update packages (`Windows.zip`, `SteamDeck.tar.gz`, App packages); the
+updater still uses them if a release has them.
 
 **Icons.** Windows shortcuts point at a versioned `icons\deck-<version>.ico`, and the update
 helper repoints Desktop, Start menu and pinned taskbar shortcuts and refreshes the shell icon
@@ -57,10 +54,9 @@ refresh notification.
 
 **Download update** checks the GitHub asset SHA-256 digest (or its exact matching
 `.sha256` file), size, and repository/release URL. Failed downloads are discarded.
-After verification, the same action automatically extracts a new copy, validates its app name/version/runtime,
-and starts a helper that waits for this app to exit. The helper keeps the previous
-app under the update's staging folder, replaces the installed files, and restarts.
-Saved robots, browser sessions, and operating-system Wi-Fi profiles remain outside
+After verification, the same action prepares the update for this system (see the table above) and starts a helper
+that waits for this app to exit. The helper keeps the previous app under the update's staging folder, installs the
+new one, and restarts. Saved robots, browser sessions, and operating-system Wi-Fi profiles remain outside
 the replaced installation. Helpers write `install.log` in the staging folder.
 Opening Updates closes the active robot page and transport.
 
@@ -82,27 +78,18 @@ so users can reuse the same command for future versions. No separate download
 website or laptop server is involved. After installation, users can choose Testing
 from **⋮ → Updates**, accept its warning, and return to Main whenever needed.
 
-After the user authorizes publication:
+Publishing is a push. **A push to `testing` or `main` publishes that commit when `package.json`'s version has no
+release on that branch yet** (`.github/workflows/release.yml`):
 
-1. Push the approved branches. Set GitHub's default branch to testing while work
-   continues there. Do not merge into main without explicit instruction.
-2. Bump the `package.json` version. Testing packages keep `updateChannel: "testing"`.
-3. Run the **Publish app update (manual)** workflow on testing. It tests, builds the
-   platforms for that branch, and publishes their assets plus checksums (as a prerelease
-   on testing) only after every build succeeds. Testing builds only the platforms in
-   `package.json` `testingReleaseTargets` and main those in `mainReleaseTargets`
-   (`steamdeck`, `windows`, `macos-arm64`; every platform when the key is missing, which is how
-   both branches are set now). A partial release is titled, for example,
-   *Torque testing-v2.4.23 (Windows x64 only)*, its notes say which devices it
-   is for, and it has no App package. Before publishing, `tools/release-targets.cjs` checks
-   that each built platform has its download and checksum and that no other platform's files
-   are there. It never runs on a normal branch push; pushing the tag `testing-v<version>`
-   (on testing) or `v<version>` (on main) also starts it, so no GitHub sign-in is needed.
-   The tag must point at a commit already on that branch, and the workflow and
-   `package.json` are read from the tagged commit.
-   An already published version/tag must not be reused.
-4. Main publication requires an explicitly approved promotion and changing the
-   packaged update channel to main. Testing builds keep their testing channel.
+1. Raise `version` in `package.json` (a push that does not raise it builds nothing and says so).
+2. Push to `testing`: it tests, builds all three systems for the testing channel and publishes the pre-release
+   `testing-v<version>`, replacing earlier testing pre-releases. Testing installs offer it in the app.
+3. Push (or fast-forward) to `main`: it publishes `v<version>` for the main channel as the release, and removes every
+   release with a lower version, testing ones included. Every install, Main and Testing, offers it in the app.
+
+Each build gets its branch's update channel (`tools/package.py --channel`), whatever `package.json` says.
+`tools/release-targets.cjs` checks every system built and keeps one file per system. Nothing is deleted before the new
+release is published, and never a release with a higher version.
 
 GitHub branch changes alone are not installable releases. The updater never runs
 `git pull` against an installed app or pretends an unpublished commit is an update.

@@ -1,7 +1,7 @@
 'use strict';
 // End-to-end check on the CI runner's own OS with real packages from tools/package.py:
 // install version A with the shipped installer, launch it, update to B with the small App
-// package, launch again, update with the full package, check icons, then uninstall (Windows).
+// package, launch again, update from the release's one download for this system (installer or zip), check icons, then uninstall (Windows).
 // Usage: node tests/install-e2e.cjs <dist> <versionA> <versionB>
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict'),{execFileSync,spawn}=require('node:child_process'),{createHash}=require('node:crypto');
 const [dist,versionA,versionB]=process.argv.slice(2).map((v,i)=>i===0?path.resolve(v):v);
@@ -11,7 +11,7 @@ async function until(check,label,ms=120000){const end=Date.now()+ms;for(;;){cons
 const home=fs.mkdtempSync(path.join(os.tmpdir(),'deck-e2e-')),data=path.join(home,'user-data');
 const env={...process.env,ADB:process.env.ADB||(process.platform==='win32'?'C:\\Windows\\System32\\where.exe':process.platform==='darwin'?'/usr/bin/true':'/bin/true'),DECK_HEADLESS:'1',DECK_DATA_DIR:data,DECK_NO_LAUNCH:'1'};delete env.ELECTRON_RUN_AS_NODE;
 if(platform!=='win32')Object.assign(env,{HOME:home,XDG_DATA_HOME:path.join(home,'share')});
-const install=platform==='win32'?{root:path.join(process.env.LOCALAPPDATA,'DeckDriverStation'),bin:'runtime/electron.exe',app:'app'}:platform==='darwin'?{root:path.join(home,'Applications','Deck Driver Station.app'),bin:'Contents/MacOS/Electron',app:'Contents/Resources/app'}:{root:path.join(home,'share','deck-driver-station'),bin:'runtime/electron',app:'app'};
+const install=platform==='win32'?{root:path.join(process.env.LOCALAPPDATA,'DeckDriverStation'),bin:'runtime/electron.exe',app:'app'}:platform==='darwin'?{root:path.join(home,'Applications','Torque.app'),bin:'Contents/MacOS/Electron',app:'Contents/Resources/app'}:{root:path.join(home,'share','deck-driver-station'),bin:'runtime/electron',app:'app'};
 const at=p=>path.join(install.root,p),installedVersion=()=>{try{return JSON.parse(fs.readFileSync(at(install.app+'/package.json'),'utf8')).version;}catch{return '';}};
 const file=name=>{const f=path.join(dist,name);assert.ok(fs.existsSync(f),'missing package '+name);return f;};
 
@@ -34,7 +34,7 @@ function release(version,assets){
 async function update(label,{version,base,assets,expect}){
   const {Updater,prepareInstall,launchInstall}=require(at(install.app+'/src/updater.cjs'));
   const releases=release(versionB,assets),served=[];
-  const updater=new Updater({directory:path.join(home,'updates-'+label),version,repo:'AloeVeraZ/Torque-RobotController',channel:'testing',base,fetcher:async url=>{served.push(url);if(url.endsWith('/testing-channel/channel.json'))return new Response(JSON.stringify({schema:1,channel:'testing',releases}));if(url.includes('api.github.com'))throw Error('the channel manifest should make API calls unnecessary');return new Response(fs.readFileSync(file(decodeURIComponent(url.split('/').pop()))));}});
+  const updater=new Updater({directory:path.join(home,'updates-'+label),version,repo:'AloeVeraZ/Torque-RobotController',channel:'testing',base,fetcher:async url=>{served.push(url);if(url.includes('api.github.com'))return new Response(JSON.stringify(releases));return new Response(fs.readFileSync(file(decodeURIComponent(url.split('/').pop()))));}});
   const check=await updater.check();assert.equal(check.status,'available');assert.equal(check.asset.kind,expect,label+' picked '+check.asset.kind);
   // The helper waits for "the app" to exit; a short-lived stand-in plays that part here.
   const standIn=spawn(process.execPath,['-e','setTimeout(()=>{},1500)']);const restartSmoke=path.join(home,`restart-${label}.json`);process.env.DECK_SMOKE_FILE=restartSmoke;Object.assign(process.env,{DECK_HEADLESS:'1',DECK_DATA_DIR:data});
@@ -55,14 +55,15 @@ async function update(label,{version,base,assets,expect}){
     await until(()=>!processes().some(p=>p.pid===restarted.pid&&!p.status.startsWith('Z')),label+' restarted app exit',30000);
   }
   delete process.env.DECK_SMOKE_FILE;
-  return {check,downloaded:served.filter(u=>!u.includes('api.github.com')&&!u.endsWith('/channel.json')).map(u=>u.split('/').pop())};
+  return {check,downloaded:served.filter(u=>!u.includes('api.github.com')).map(u=>u.split('/').pop())};
 }
 (async()=>{
   console.log(`== ${kind}: install ${versionA}, App update and full update to ${versionB}`);
   installFirst();
   const first=await launch('installed');assert.equal(first.version,versionA);assert.match(first.base,/^[a-f0-9]{12}$/);console.log('PASS: installer and first launch',first);
   const base=JSON.parse(fs.readFileSync(at(install.app+'/build.json'),'utf8')).base;assert.equal(base,first.base);
-  const appName=`DeckDriverStation-${versionB}-App-${base}.tar.gz`,fullName=platform==='linux'?`DeckDriverStation-${versionB}-SteamDeck.tar.gz`:platform==='win32'?`DeckDriverStation-${versionB}-Windows.zip`:`DeckDriverStation-${versionB}-macOS-arm64.zip`;
+  // The full update is the one download each release publishes: the Steam Deck installer, the Windows installer, the Mac zip.
+  const appName=`DeckDriverStation-${versionB}-App-${base}.tar.gz`,fullName=platform==='linux'?`DeckDriverStation-${versionB}-SteamDeck.run`:platform==='win32'?`DeckDriverStation-${versionB}-Windows-Setup.exe`:`DeckDriverStation-${versionB}-macOS-arm64.zip`;
   const small=await update('app',{version:versionA,base,assets:[fullName,appName],expect:'app'});
   // About 7 MB with the simulator bundle (DSIM physics and the OCCT CAD reader), against 115+ MB full packages.
   assert.deepEqual(small.downloaded,[appName],'App update downloaded '+small.downloaded);assert.ok(small.check.asset.size<10*1024*1024,'App package too large: '+small.check.asset.size);
@@ -70,7 +71,7 @@ async function update(label,{version,base,assets,expect}){
   console.log(`PASS: ${Math.round(small.check.asset.size/1024)} KB App update (full package is ${Math.round(small.check.fullSize/1048576)} MB), restart and relaunch`);
   // A runtime base that does not match must take the full package.
   const big=await update('full',{version:versionA,base:'',assets:[fullName,appName],expect:'full'});assert.deepEqual(big.downloaded,[fullName]);
-  const third=await launch('after-full-update');assert.equal(third.version,versionB);console.log('PASS: full-package update, restart and relaunch');
+  const third=await launch('after-full-update');assert.equal(third.version,versionB);console.log(`PASS: update from the release download (${fullName}), restart and relaunch`);
   if(platform==='win32'){
     assert.ok(fs.existsSync(at(`icons/deck-${versionB}.ico`)),'versioned icon missing');
     const desktop=path.join(os.homedir(),'Desktop','Deck Driver Station.lnk');
