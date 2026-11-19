@@ -17,7 +17,10 @@
   const DRIVE_KEYS=['frontLeft','frontRight','backLeft','backRight','left','right'];
   // What the drivetrain runs on, by its kind: the keys of robot.devices it uses.
   const DRIVE_OF={tank2:['left','right'],tank:['frontLeft','backLeft','frontRight','backRight'],kiwi:['frontLeft','frontRight','backLeft'],kiwiSwerve:['front','backLeft','backRight']};
-  const driveKeys=type=>DRIVE_OF[type]||['frontLeft','frontRight','backLeft','backRight'];
+  // Setup's slots for the drivetrain (DeckHardware.DRIVE_SLOTS, what Setup names and the exports use), steering left out:
+  // a kiwi's front, back left and back right, a differential swerve's two motors a module. DRIVE_OF only without it.
+  const HW=()=>globalThis.DeckHardware||(typeof require==='function'?require('./sim-hardware.js'):null);
+  const driveKeys=type=>{const s=HW()?.DRIVE_SLOTS?.[type];return s?s.map(x=>x[0]).filter(k=>!/^steer/.test(k)):DRIVE_OF[type]||['frontLeft','frontRight','backLeft','backRight'];};
   // Everything the chassis needs, from the setup: names as the robot's configuration calls them.
   // project: the setup; C: DeckSimConfig; cpr: drive encoder counts a motor turn.
   function chassisOf(project,C,{cpr=537.7}={}){
@@ -101,20 +104,24 @@
     return {g:Math.sign(v*power)||1,Kv:Math.abs(v/power),L:Math.min(.3,Math.max(.02,end[0]-end[1]/v))};}
   // Gains for that servo: proportional as high as its wait allows without swinging past (a third of the 1/(Kv·L) where it
   // would), never more than 60% power for a quarter turn; a little derivative; and most of the power it took to start
-  // moving, added whenever it is outside the tolerance, so it does not stop short.
-  function gainsOf({Kv,L,breakaway=0,span=3.3}){const kP=Math.max(.1,Math.min(.6/(span/4),.3/(Kv*L)));return {kP:+kP.toFixed(3),kD:+(kP*L*.25).toFixed(4),kS:+Math.max(0,breakaway*.6).toFixed(3)};}
+  // moving, added whenever it is outside the tolerance, so it does not stop short: 40% of it, because the breakaway is read
+  // from a short burst (high) and a larger kick flicks the wheel back and forth at the target. A pod that stops short gets more (nextTry).
+  function gainsOf({Kv,L,breakaway=0,span=3.3}){const kP=Math.max(.1,Math.min(.6/(span/4),.3/(Kv*L)));return {kP:+kP.toFixed(3),kD:+(kP*L*.25).toFixed(4),kS:+Math.max(0,breakaway*.4).toFixed(3)};}
   // One test turn: how far past the target it swung, how many times it crossed it, and when it stayed inside the tolerance.
   // trace: [[seconds, degrees from the target]].
-  function stepStats(trace,tol=TOL_DEG){if(!trace?.length)return null;const from=Math.sign(trace[0][1])||1;let over=0,crossings=0,side=from,settle=null;
-    for(const [t,e] of trace){if(-from*e>over)over=-from*e;const now=Math.abs(e)>tol/3?Math.sign(e):side;if(now!==side){crossings++;side=now;}if(Math.abs(e)<=tol){if(settle===null)settle=t;}else settle=null;}
+  // noise: how far the reading wanders with the wheel still (degrees, peak to peak). A Control Hub's analog port reads an
+  // absolute encoder a few tenths of a degree either way at rest, so smaller wiggles are not the wheel moving: crossing
+  // the target and turning back only count beyond it.
+  function stepStats(trace,tol=TOL_DEG,noise=0){if(!trace?.length)return null;const hyst=Math.max(tol/3,noise);const from=Math.sign(trace[0][1])||1;let over=0,crossings=0,side=from,settle=null;
+    for(const [t,e] of trace){if(-from*e>over)over=-from*e;const now=Math.abs(e)>hyst?Math.sign(e):side;if(now!==side){crossings++;side=now;}if(Math.abs(e)<=tol){if(settle===null)settle=t;}else settle=null;}
     // After it arrived: how long it stayed inside the tolerance (held), how far it still moved there (swing), and how many
     // times it turned back on itself (hunt). A wheel that keeps reversing by a quarter of a degree or more is hunting, even
     // inside the tolerance: gains like that buzz the servo and wear the pod.
-    let hunt=0,swing=0,held=0;if(settle!==null){const after=trace.filter(([t])=>t>=settle).map(x=>x[1]),step=Math.max(.25,tol*.2);held=trace.at(-1)[0]-settle;
+    let hunt=0,swing=0,held=0;if(settle!==null){const after=trace.filter(([t])=>t>=settle).map(x=>x[1]),step=Math.max(.25,tol*.2,noise*1.5);held=trace.at(-1)[0]-settle;
       if(after.length>2){const late=after.slice(Math.floor(after.length/2));swing=Math.max(...late)-Math.min(...late);let dir=0,ref=after[0];for(const e of after){const d=e-ref;if(Math.abs(d)>=step){const now=Math.sign(d);if(dir&&now!==dir)hunt++;dir=now;ref=e;}}}}
-    return {overshoot:+over.toFixed(2),crossings,settle:settle===null?null:+settle.toFixed(2),held:+held.toFixed(2),hunt,swing:+swing.toFixed(2)};}
+    return {overshoot:+over.toFixed(2),crossings,settle:settle===null?null:+settle.toFixed(2),held:+held.toFixed(2),hunt,swing:+swing.toFixed(2),...(noise?{noise:+noise.toFixed(2)}:{})};}
   // Oscillating: it crossed the target more than twice on the way in, or it is hunting where it stopped.
-  const oscillates=x=>!!x&&(x.crossings>2||(x.hunt||0)>=3&&(x.swing||0)>.6);
+  const oscillates=x=>!!x&&(x.crossings>2||(x.hunt||0)>=3&&(x.swing||0)>Math.max(.6,2*(x.noise||0)));
   // Steady: it arrived, stayed there for as long as it was watched (hold seconds), did not swing far past, and is not oscillating.
   const steady=(x,hold=.25)=>!!x&&x.settle!==null&&(x.held??hold)>=hold&&x.overshoot<=3&&!oscillates(x);
   // The search for the quickest gains that stay accurate. tries: [{pid, stats}] of quarter turns so far, each steady or
@@ -209,12 +216,12 @@
           :on&&kind==='drive'?`<p>${Number.isFinite(run.ticks)?`Its encoder counted ${run.ticks>=0?'up':'down'}. `:''}Did the wheel roll forward?</p><div class="button-row"><button type="button" class="primary" data-chassis="yes">Yes, forward</button><button type="button" class="secondary" data-chassis="no">No, backwards</button></div>`
           :on&&run.reached?`<p><span class="rs-pill ok">${f(Math.abs(run.off),1)}° off</span> Its encoder says a quarter turn. Is the wheel pointing to the robot’s ${kind}?</p><div class="button-row"><button type="button" class="primary" data-chassis="yes">Yes, ${kind}</button><button type="button" class="secondary" data-chassis="no">No, it went ${other}</button></div>`
           :on?`<p class="cal-sense-note bad">It stopped ${f(Math.abs(run.off),1)}° ${run.off>0?'past':'short of'} a quarter turn; ${f(run.off>0?tolOf(r).plus:tolOf(r).minus,1)}° is allowed that way. Try it again, tune this pod again, or allow more above.</p><div class="button-row"><button type="button" class="primary" data-chassis="go" data-pod="${esc(q.key)}" data-kind="${kind}">Try again</button><button type="button" class="secondary" data-chassis="stop">Stop</button></div>`
-          :`<div class="button-row"><button type="button" class="${done?'secondary':'primary'}" data-chassis="go" data-pod="${esc(q.key)}" data-kind="${kind}"${can?'':' disabled'}>${done?'Again':go}</button>${kind==='tune'?`<button type="button" class="secondary" data-chassis="go" data-pod="${esc(q.key)}" data-kind="deep"${can?'':' disabled'}>Tune it hard · 2 min</button>`:''}</div>`;
+          :`<div class="button-row"><button type="button" class="${done?'secondary':'primary'}" data-chassis="go" data-pod="${esc(q.key)}" data-kind="${kind==='tune'?'deep':kind}"${can?'':' disabled'}>${kind==='tune'?(done?'Tune it again · 2 min':'Tune it · 2 min'):done?'Again':go}</button></div>`;
         return `<li class="cal-pod-check" data-state="${done?'pass':'todo'}"><b>${done?'<i class="cal-elec-tick" aria-label="done">✓</i> ':''}${esc(title)}</b><p class="hint">${esc(how)}</p>${body}</li>`;};
       const tl=tolOf(r),tolPick=(which,label)=>`<div class="cal-field"><label for="cal-tol-${which}">${label}</label><select id="cal-tol-${which}" data-chassis-tol="${which}">${TOLS.map(v=>`<option value="${v}"${v===tl[which]?' selected':''}>${v}°</option>`).join('')}</select></div>`;
       const allowed=`<div class="cal-fields cal-pod-tol">${tolPick('plus','Allowed past the target')}${tolPick('minus','Allowed short of it')}</div>`;
       const blocks=`<p class="cal-note">Put the robot on blocks, wheels off the floor: these checks move it.</p>${live()?'':'<div class="button-row"><button type="button" class="primary" data-chassis="live">Start live readings</button></div>'}${told?`<p class="hint" role="status">${esc(told)}</p>`:''}`;
-      const bPod=q=>{const x=(r.pods||{})[q.key]||{};return `${blocks}${q.steer?allowed:''}<ul class="cal-pod-checks">${q.steer?check(q,'tune','Tune the steering',x.pid?`As fast as this pod stays accurate: a quarter turn in ${f(x.pid.settle,2)} s, ${f(x.pid.overshoot,1)}° past${x.pid.long?', tuned hard':''}. Held still for 2 s with no oscillation${x.pid.backed?` after the gains came down ${x.pid.backed} time${x.pid.backed>1?'s':''}`:''}. Tune it hard spends two minutes trying all three gains up and down for a quicker one.`:'Start with the wheel straight. Torque measures this pod’s servo, then makes quarter turns faster and faster until one swings past or hunts, and keeps the quickest that stays accurate.','Tune it',true)+check(q,'left','Turn left','Torque turns this wheel a quarter turn to the robot’s left and holds it there.','Turn it left',!!x.pid)+check(q,'right','Turn right','Then a quarter turn to the right of straight.','Turn it right',!!x.pid&&!!x.left):'<li class="cal-pod-check"><p class="hint">This pod has no absolute encoder in Simulate, so its steering cannot be checked.</p></li>'}${check(q,'drive','Drive forward','The wheel goes back to straight and spins for a second.','Spin the wheel',!q.steer||!!x.right)}</ul>`;};
+      const bPod=q=>{const x=(r.pods||{})[q.key]||{};return `${blocks}${q.steer?allowed:''}<ul class="cal-pod-checks">${q.steer?check(q,'tune','Tune the steering',x.pid?`As fast as this pod stays accurate: a quarter turn in ${f(x.pid.settle,2)} s, ${f(x.pid.overshoot,1)}° past. Held still for 2 s with no oscillation${x.pid.backed?` after the gains came down ${x.pid.backed} time${x.pid.backed>1?'s':''}`:''}.`:'Start with the wheel straight. For about two minutes Torque measures this pod’s servo, then tries all three steering gains up and down, making quarter turns faster and faster until one swings past or hunts, and keeps the quickest that stays accurate.','Tune it',true)+check(q,'left','Turn left','Torque turns this wheel a quarter turn to the robot’s left and holds it there.','Turn it left',!!x.pid)+check(q,'right','Turn right','Then a quarter turn to the right of straight.','Turn it right',!!x.pid&&!!x.left):'<li class="cal-pod-check"><p class="hint">This pod has no absolute encoder in Simulate, so its steering cannot be checked.</p></li>'}${check(q,'drive','Drive forward','The wheel goes back to straight and spins for a second.','Spin the wheel',!q.steer||!!x.right)}</ul>`;};
       const bWheels=`<p class="hint">Each drive motor spins for a second. A wheel that rolls backwards is reversed here, so forward means forward on every wheel.</p>${blocks}<ul class="cal-pod-checks">${pods.map(q=>check(q,'drive',`${q.label} · ${q.motor.name}`,q.motor.reversed?'Reversed.':'','Spin it',true)).join('')}</ul>`;
       const spots=r.spots||[],lastSpot=spots.at(-1);
       const b3=what==='nothing'?'<p class="hint">Nothing on this robot measures where it is: add odometry pods, a Pinpoint or an OTOS in Setup → Mechanisms.</p>':
@@ -282,15 +289,18 @@
       const drive=async(power,ms)=>{for(const end=performance.now()+ms;alive()&&performance.now()<end;){send(`C\t${st.servo}\t${power.toFixed(3)}`);await sleep(40);}};
       let breakaway=0;for(let u=.04;u<=.5&&alive();u+=.04){const seen=watch();await drive(u,140);if(seen.length&&Math.abs(seen.at(-1)[1])>.03){breakaway=u;break;}}
       send(`C\t${st.servo}\t0`);if(!alive())return;if(!breakaway)return fail(`${st.servo} did not move ${st.name} at half power. Check them in Electronics.`);
-      await sleep(200);say('Measuring how fast it turns…');const power=Math.min(.5,breakaway+.2),seen=watch();await drive(power,400);send(`C\t${st.servo}\t0`);tap=null;if(!alive())return;
+      // How much the reading wanders with the servo off: wiggles that small are the encoder, not the wheel.
+      await sleep(250);say('Reading the encoder at rest…');const still=[];tap=v=>{if(Number.isFinite(v[key]))still.push(v[key]);};await sleep(700);tap=null;if(!alive())return;
+      const noise=still.length>3?Math.min(3,(Math.max(...still.map(x=>short(still[0],x)))-Math.min(...still.map(x=>short(still[0],x))))*360/span):0;
+      say('Measuring how fast it turns…');const power=Math.min(.5,breakaway+.2),seen=watch();await drive(power,400);send(`C\t${st.servo}\t0`);tap=null;if(!alive())return;
       const plant=plantOf(seen.map(x=>[x[0],x[1]]),power);if(!plant)return fail('Its encoder gave too few readings to tune from. Try it again.');
       const base={...gainsOf({...plant,breakaway,span}),g:plant.g},band=bandOf(rec()),tries=[];
       // Quarter turns, 45° right of straight to 45° left and back, each quicker than the last, until one swings past or hunts.
       hold(q,-45,base);await sleep(900);let n=0;
       // One quarter turn with these gains, 45° one side of straight to 45° the other: over once it has stayed inside the band for 0.3 s, 1.6 s at most.
       const turn=async(pid,watch=.3)=>{const h=hold(q,n++%2?-45:45,pid),trace=[],t0=performance.now();tap=v=>{if(Number.isFinite(v[key]))trace.push([(performance.now()-t0)/1000,steerAngle(v[key],h.target,span)]);};
-        for(;alive()&&performance.now()-t0<1600+watch*1000;await sleep(40)){const now=stepStats(trace,band);if(now&&now.settle!==null&&now.held>watch)break;}
-        tap=null;return stepStats(trace,band);};
+        for(;alive()&&performance.now()-t0<1600+watch*1000;await sleep(40)){const now=stepStats(trace,band,noise);if(now&&now.settle!==null&&now.held>watch)break;}
+        tap=null;return stepStats(trace,band,noise);};
       for(let pid=base;pid&&alive();pid=nextTry(tries)){const sofar=bestTry(tries);say(`Quarter turn ${tries.length+1}${sofar?`: quickest so far ${f(sofar.stats.settle,2)} s`:''}…`);const stats=await turn(pid);if(!alive())return;tries.push({pid,stats});}
       if(!alive())return;let best=bestTry(tries);const last=tries.at(-1)?.stats;
       if(!best){hold(q,0,base);return fail(`It would not settle within ${band}°: the last turn swung ${f(last?.overshoot,1)}° past and crossed ${last?.crossings??0} times. Check that this pod turns freely and its encoder is tight on the shaft, or allow more above, then tune it again.`);}
@@ -303,12 +313,15 @@
         if(!alive())return;if(Number.isFinite(top.cost))best={pid:top.pid,stats:top.stats};}
       // The last word: a quarter turn each way with the chosen gains, each watched for two seconds after it arrives. If it
       // hunts or drifts out, the gains come down a fifth and it is checked again; gains that never hold still are not kept.
-      let calm=null,backed=0;for(let pid=best.pid;alive()&&backed<=4;backed++,pid={...pid,kP:+(pid.kP*.8).toFixed(4),kI:+((pid.kI||0)*.5).toFixed(4),kD:+(pid.kD*.9).toFixed(5)}){
+      // Backing off: first the integral goes and the start-up kick (kS, which flicks the wheel each time it drifts out of the
+      // band and is the usual cause of chatter at the target) comes down; after that the gains and kS come down together.
+      const ease=(pid,i)=>i===0?{...pid,kI:0,kS:+((pid.kS||0)*.6).toFixed(3)}:{...pid,kP:+(pid.kP*.8).toFixed(4),kD:+(pid.kD*.9).toFixed(5),kS:+((pid.kS||0)*.7).toFixed(3)};
+      let calm=null,backed=0,worst=null;for(let pid=best.pid;alive()&&backed<=5;pid=ease(pid,backed),backed++){
         say(`Checking it holds still${backed?`, gains down ${backed} time${backed>1?'s':''}`:''}…`);const a=await turn(pid,2),b=alive()?await turn(pid,2):null;if(!alive())return;
-        if(steady(a,1.8)&&steady(b,1.8)){calm={pid,stats:a.settle>b.settle?a:b};break;}}
-      if(!alive())return;if(!calm){hold(q,0,base);return fail('It kept oscillating after it arrived, even with the gains brought down. Check for play in this pod (a loose encoder, a slipping gear or belt), then tune it again.');}
+        if(steady(a,1.8)&&steady(b,1.8)){calm={pid,stats:a.settle>b.settle?a:b};break;}worst=oscillates(a)?a:b;}
+      if(!alive())return;if(!calm){hold(q,0,base);return fail(`It would not hold still after it arrived${worst?`: it moved ${f(worst.swing,1)}° back and forth there (the encoder alone wanders ${f(noise,1)}°)`:''}, even with the gains and the start-up kick brought down. Turn the wheel by hand: if it has play (a loose encoder, a slipping gear or belt), fix that; if not, tune it again, or allow more above.`);}
       best=calm;
-      const x=podRec(q.key);x.pid={...best.pid,settle:best.stats.settle,overshoot:best.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,hunt:best.stats.hunt,swing:best.stats.swing,...(backed?{backed}:{}),...(long?{long:true}:{})};delete x.left;delete x.right;hold(q,0);run=null;save();}
+      const x=podRec(q.key);x.pid={...best.pid,settle:best.stats.settle,overshoot:best.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,hunt:best.stats.hunt,swing:best.stats.swing,noise:+noise.toFixed(2),...(backed?{backed}:{}),...(long?{long:true}:{})};delete x.left;delete x.right;hold(q,0);run=null;save();}
     const stop=()=>{clearInterval(timer);timer=null;run=null;tap=null;send('X');};
     function go(q,kind){told='';clearInterval(timer);if(kind==='tune'||kind==='deep')return void tune(q,kind==='deep');
       if(kind!=='drive'){const h=hold(q,kind==='left'?90:-90);if(!h)return;run={pod:q.key,kind,phase:'moving',hits:0,at:performance.now(),...h};follow();return paint();}

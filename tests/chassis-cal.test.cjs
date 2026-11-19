@@ -105,11 +105,16 @@ test('a pod’s steering is tuned from how its own servo answers',()=>{
   assert.equal(K.plantOf(run(5,.08,.3,-1),.3).g,-1,'which way it moves the reading comes from the run itself');assert.equal(K.plantOf(run(0,.08,.3),.3),null,'it never moved');assert.equal(K.plantOf([[0,0]],.3),null);
   // A quick servo with a long wait gets less proportional than a slow one; never more than 60% power for a quarter turn.
   const quick=K.gainsOf({Kv:8,L:.12,breakaway:.07}),slow=K.gainsOf({Kv:1,L:.03,breakaway:.1});
-  near(quick.kP,.3/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,.6/(3.3/4),.002,'capped');near(quick.kS,.042,.001,'most of what it took to start moving');assert.ok(quick.kD>0);
+  near(quick.kP,.3/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,.6/(3.3/4),.002,'capped');near(quick.kS,.028,.001,'part of what it took to start moving');assert.ok(quick.kD>0);
   // A test turn that swings past and hunts is not steady; one that arrives and stays is.
   const hunting=Array.from({length:60},(_,i)=>[i*.04,45*Math.cos(i*.5)*Math.exp(-i*.01)]),good=Array.from({length:60},(_,i)=>[i*.04,45*Math.exp(-i*.25)]);
   const h=K.stepStats(hunting),ok=K.stepStats(good);assert.ok(h.crossings>3&&h.overshoot>20&&!K.steady(h));assert.equal(ok.crossings,0);assert.equal(ok.overshoot,0);assert.ok(ok.settle>0&&ok.settle<1.2);assert.ok(K.steady(ok));
   assert.equal(K.steady(K.stepStats(Array.from({length:40},(_,i)=>[i*.04,10]))),false,'stopped short is not there');
+  // Arrived and held still, but the Control Hub's analog reading wanders ±0.4° (0.8° peak to peak): with that noise measured,
+  // it is steady; the same trace read as if the encoder were silent looks like hunting.
+  const still=[...Array.from({length:15},(_,i)=>[i*.04,45*Math.exp(-i*.4)]),...Array.from({length:60},(_,i)=>[.6+i*.04,i%2?.4:-.4])];
+  assert.ok(K.oscillates(K.stepStats(still,1.5)),'without the noise it reads as hunting');assert.ok(K.steady(K.stepStats(still,1.5,.8),1.8),'with it, a pod holding still passes');
+  const real=[...still.slice(0,15),...Array.from({length:60},(_,i)=>[.6+i*.04,i%6<3?1.4:-1.4])];assert.ok(K.oscillates(K.stepStats(real,1.5,.8)),'a real swing well past the noise still fails');
   // The loop Torque Debug runs takes those gains, turned round for a servo that lowers the reading.
   const q=K.steerLoop({servo:'leftPodS',name:'leftPodE'},1.568,-1,3.3,{kP:.25,kD:.01,kS:.04}).split('\t');assert.deepEqual([q[5],q[7],q[9]],['-0.250','-0.0100','-0.040']);
   // And they go to the team's code a degree at a time.

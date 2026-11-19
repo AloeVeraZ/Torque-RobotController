@@ -4324,7 +4324,7 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     const need=pane.querySelector('.cal-sense-live');
     [...pane.querySelectorAll('#cal-sensors>section:not(.cal-sense-live)')].forEach((sec,i)=>{const steps=sec.querySelectorAll('.cal-sense-step').length,got=sec.querySelectorAll('.cal-sense-result,.cal-sense-step .cal-sense-rows').length,[title,what]=txt(sec.querySelector('h2')).split(' · ');
       if(!steps){if(!sec.hidden)sec.hidden=true;return;}out.push({key:'sense-'+i,group:'Chassis',badge:title==='Heading'?'IMU':'XY',title,sub:steps?(got?`${got} of ${steps} measured`:`${steps} checks`):'Nothing to calibrate',done:steps>0&&got>=steps,els:[sec,...(need&&steps?[need]:[])]});});
-    {const imu=out.findIndex(x=>x.badge==='IMU'),map=out.findIndex(x=>x.key==='chassis-3');if(imu>map&&map>=0)out.splice(map,0,...out.splice(imu,1));}
+    // The IMU's heading (and position) checks close the chassis: after every pod, wheel and field step.
     const hint=pane.querySelector('.cal-gates-hint'),bare=pane.querySelector('[data-cal-bare]'),none=pane.querySelector('[data-cal-none]');
     for(const sec of pane.querySelectorAll('.cal-mech')){const chips=[...sec.querySelectorAll('.cal-chip')],ok=chips.filter(c=>c.dataset.state==='pass').length;
       out.push({key:'mech:'+sec.dataset.calMechRow,group:'Mechanisms',badge:`${ok}/${chips.length}`,title:txt(sec.querySelector('h3')?.firstChild),sub:txt(sec.querySelector('.cal-mech-head small')).split(' · ')[0],done:sec.classList.contains('done'),counts:true,els:[sec,...(hint?[hint]:[]),...(bare?[bare]:[])]});}
