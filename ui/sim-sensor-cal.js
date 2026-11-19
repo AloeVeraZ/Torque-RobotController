@@ -35,7 +35,8 @@
   const f=(v,d=2)=>Number.isFinite(v)?(+v).toFixed(d):'—';
   // opts: box, debug (DeckLiveDebug), project(), save(), odometry() (DeckSimConfig.odometryOf the robot), podTicks (per inch), podTypes (ticks per mm by Pinpoint pod).
   function create(opts){
-    const {box,debug}=opts;let test=null,results={},mounting=null,mountOff=null,mountSaid='',mountTried=false;const C=()=>globalThis.DeckSimConfig;
+    const {box,debug}=opts;let test=null,results={},mounting=null,mountOff=null,mountSaid='',mountTried=false,driftOff=null,driftAt=0,driftTurn=null,driftFor=null;const C=()=>globalThis.DeckSimConfig;
+    const saved=()=>{const c=p().calibration||(p().calibration={}),ch=c.chassis||(c.chassis={});return ch;};
     const p=()=>opts.project(),loc=()=>p().sensors?.localization,dev=k=>p().robot?.devices?.[k]?.name;
     // The heading the robot's own code steers by: the Pinpoint's or the OTOS's own IMU, or the Control Hub's.
     const headingSource=()=>loc()==='fused'?{key:`i:${dev('pinpoint')||'pinpoint'}:h`,what:'the Pinpoint’s IMU',kind:'pinpoint'}:loc()==='optical'?{key:`i:${dev('otos')||'sensor_otos'}:h`,what:'the OTOS’s IMU',kind:'otos'}:C()?.sensors?.[loc()]?.imu===false?null:{key:`i:${dev('imu')||'imu'}:yaw`,what:'the Control Hub’s IMU',kind:'hub'};
@@ -53,6 +54,15 @@
         // The turn check ends itself once the robot has turned and is still again, flat against the wall.
         if(kind==='turns'){const now=performance.now();seen.push([now,u.total]);while(seen.length>2&&now-seen[0][0]>2500)seen.shift();if(atRest(seen))return finish();}
         if(kind==='still'&&performance.now()-test.at>=30000)finish();else paintTest();})};paint();}
+    // Drift, in the background: whenever live readings come, the heading is followed; 30 s in which it moved less than 3°
+    // (the robot was not turned; pods spinning on blocks do not turn it) is the result, kept with the setup. A real turn
+    // starts the 30 s again. It runs alongside every other check, and nothing is pressed.
+    const DRIFT_MS=30000,DRIFT_TURNED=3;
+    function driftWatch(){const h=headingSource();if(!h||!live()||!debug?.listen||driftOff||saved().drift?.key===h.key)return;driftFor=h.key;
+      const restart=()=>{driftTurn=unwrapper();driftAt=performance.now();};restart();
+      driftOff=debug.listen((_f,vals)=>{const y=vals[h.key];if(!Number.isFinite(y))return;driftTurn.add(y);if(Math.abs(driftTurn.total)>DRIFT_TURNED)return restart();
+        const ms=performance.now()-driftAt;if(ms>=DRIFT_MS){saved().drift={key:h.key,perMin:drift(driftTurn.total,ms),what:h.what,at:new Date().toISOString()};driftOff?.();driftOff=null;opts.save();return paint();}
+        const el=box?.querySelector('[data-sense-drift]');if(el)el.textContent=`Measuring in the background: ${Math.floor(ms/1000)} of 30 s`;});}
     function cancel(){test?.off?.();test=null;paint();}
     function finish(){if(!test)return;const t=test;t.off?.();test=null;const ms=performance.now()-t.at,end=snapshot(),turned=t.turn.total,rad=turned*Math.PI/180,d=k=>(end[k]??NaN)-(t.start[k]??NaN),h=headingSource();
       if(t.kind==='still')results.still={perMin:drift(turned,ms),what:h?.what};
@@ -80,7 +90,7 @@
       p().robot.odometry=o;opts.save();results[kind]={...r,used:true};paint();}
     // ---- drawing
     const pass=ok=>`<span class="rs-pill ${ok?'ok':'warn'}">${ok?'Good':'Correct it'}</span>`;
-    function resultHtml(kind){const r=results[kind];if(!r)return '';if(r.problem)return `<p class="cal-sense-note bad">${esc(r.problem)}</p>`;
+    function resultHtml(kind){const r=kind==='still'?saved().drift||results.still:results[kind];if(!r)return '';if(r.problem)return `<p class="cal-sense-note bad">${esc(r.problem)}</p>`;
       const used=r.used?'<p class="hint">Used: saved to this setup. Send the code to the robot again to put it on.</p>':'';
       if(kind==='still')return `<p class="cal-sense-result">${pass(Math.abs(r.perMin)<=PASS.driftPerMin)} Drifts <b>${f(Math.abs(r.perMin))}°</b> a minute while still. ${Math.abs(r.perMin)<=PASS.driftPerMin?'Over a 30 s autonomous that is nothing to correct.':'Keep the robot completely still while the op mode initializes; if it stays above 0.5° a minute, the hub may be mounted where it vibrates.'}</p>`;
       if(kind==='turns'){const ok=Math.abs(r.errorPct)<=(r.tolerancePct??PASS.headingPct),n=r.turns||TURNS;const fix=r.kind==='pinpoint'?(r.scale<.95||r.scale>1.05?'goBILDA tunes every Pinpoint at the factory; this far off, contact goBILDA.':'goBILDA tunes the Pinpoint at the factory, so Torque leaves it.'):r.kind==='otos'?`Use sets the OTOS’s angular scalar to ${f(clamp((opts.odometry().otos.angularScalar||1)*r.scale,.872,1.127),4)}.`:`Use makes the robot’s code multiply the IMU’s heading by ${f((opts.odometry().imu?.scale||1)*r.scale,5)}.`;
@@ -97,7 +107,9 @@
       forward:['Push it forward',`Line the back of the robot up with a tile seam, press Start, push it straight forward ${PUSH_IN} in (two tiles), then press Done.`,'Start'],
       left:['Push it left',`Line a side up with a tile seam, press Start, push it straight left ${PUSH_IN} in (two tiles) without turning, then press Done.`,'Start'],
       spin:['Spin it in place','Press Start, turn it on the spot counterclockwise a few whole turns (5 is plenty), keeping its centre where it was, then press Done.','Start']};
-    function stepHtml(kind){const [title,how,go]=STEPS[kind],on=test?.kind===kind;
+    function stepHtml(kind){if(kind==='still'){const d=saved().drift,h=headingSource(),have=d&&d.key===h?.key;
+        return `<li class="cal-sense-step" data-sense-step="still"><div><h4>Drift</h4><p class="hint">How far the heading wanders on its own. Measured in the background whenever live readings run, alongside the other checks: 30 s in which the robot is not turned.</p>${have?resultHtml('still'):`<p class="cal-live" role="status" data-sense-drift>${live()?'Measuring in the background…':'Starts with live readings.'}</p>`}</div></li>`;}
+      const [title,how,go]=STEPS[kind],on=test?.kind===kind;
       return `<li class="cal-sense-step" data-sense-step="${kind}"><div><h4>${esc(title)}</h4><p class="hint">${esc(how)}</p><div class="button-row">${on?`${kind==='still'?'':`<button type="button" class="primary" data-sense-done>Done</button>`}<button type="button" class="secondary" data-sense-cancel>Cancel</button><span class="hint" data-sense-live></span>`:`<button type="button" class="secondary" data-sense-go="${kind}"${!live()||test?' disabled':''}>${go}</button>`}</div>${on?'':resultHtml(kind)}</div></li>`;}
     // ---- how each hub is mounted, from its own IMU, with no button: level and still, then the front lifted and held.
     // Every IMU in the robot's configuration is read at once (the Control Hub's, an Expansion Hub's). It runs by itself
@@ -106,28 +118,42 @@
     const mounts=()=>{const c=p().calibration||(p().calibration={}),ch=c.chassis||(c.chassis={});return ch.mount||(ch.mount={});};
     const mountLine=()=>{const el=box?.querySelector('[data-sense-mount-live]');if(el&&el.textContent!==mountSaid)el.textContent=mountSaid;};
     function mountStop(){mountOff?.();mountOff=null;mounting=null;}
-    function mountStart(){if(mounting||!HM()||!live()||!debug?.listen)return;const names=imus(),t0=performance.now();mounting=Object.fromEntries(names.map(n=>[n,HM().start()]));mountSaid='Set the robot down level and leave it a second…';
-      mountOff=debug.listen((_f,vals)=>{if(!mounting)return;if(!box.offsetParent)return mountStop();const ms=performance.now()-t0;let read=0;
-        for(const n of names){const up=HM().upOf(vals[`i:${n}:pitch`],vals[`i:${n}:roll`]);if(!up)continue;read++;mounting[n]=HM().step(mounting[n],{ms,up});}
-        const live=names.filter(n=>mounting[n].flat||mounting[n].hold.length),done=live.filter(n=>mounting[n].phase==='done');
+    // Gravity alone, with the robot sitting still: which way is up through each hub. That fixes where its logo (and USB
+    // end) points up or down, and Setup's mounting is checked against it; it cannot tell which way round the hub faces about
+    // the vertical, so where gravity and Setup disagree, the mountings that fit gravity are offered to pick from.
+    // Nothing is lifted or moved. choices: {imu: [{logo, usb, off}]} waiting for a pick.
+    let choices={};
+    const SQUARE=['up','down','forward','backward','left','right'],axisOf=d=>Math.floor(SQUARE.indexOf(d)/2),FIT_DEG=12;
+    const squares=()=>SQUARE.flatMap(logo=>SQUARE.filter(usb=>axisOf(usb)!==axisOf(logo)).map(usb=>({logo,usb})));
+    const upIn=(logo,usb)=>{const m=HM().squareMatrix(logo,usb);return [m[2][0],m[2][1],m[2][2]];};
+    const keep=(n,logo,usb,off)=>{const m=mounts();m[n]={logo,usb,off:+off.toFixed(1),quaternion:HM().quat(HM().squareMatrix(logo,usb)),how:'gravity',at:new Date().toISOString()};if(n===(dev('imu')||'imu'))opts.setMount?.(n,m[n]);};
+    function mountStart(){if(mounting||!HM()||!live()||!debug?.listen)return;const names=imus(),t0=performance.now();mounting=Object.fromEntries(names.map(n=>[n,HM().start()]));choices={};mountSaid='Reading which way is up through the hub: leave the robot still a second…';
+      mountOff=debug.listen((_f,vals)=>{if(!mounting)return;const ms=performance.now()-t0;let read=0;
+        for(const n of names){const up=HM().upOf(vals[`i:${n}:pitch`],vals[`i:${n}:roll`]);if(!up)continue;read++;if(mounting[n].phase==='flat')mounting[n]=HM().step(mounting[n],{ms,up});}
         if(!read){mountSaid='This IMU is not giving its pitch and roll yet…';return mountLine();}
-        if(live.length&&done.length===live.length){const m=mounts(),found=[];for(const n of done){const r=HM().mountOf(mounting[n].flat,mounting[n].nose);if(r.problem){mountSaid=r.problem;mounting[n]=HM().start();mountLine();return;}m[n]={...r,at:new Date().toISOString()};found.push(n);}
-          mountStop();mountSaid='';opts.setMount?.(dev('imu')||'imu',m[dev('imu')||'imu']);opts.save();return paint();}
-        mountSaid=live.some(n=>mounting[n].phase==='lift')?'Level read. Now lift the front of the robot a hand’s height and hold it still…':'Set the robot down level and leave it a second…';mountLine();});}
-    function mountHtml(){if(!HM())return '';const m=mounts(),names=imus(),have=names.filter(n=>m[n]),main=dev('imu')||'imu';
-      const rows=have.map(n=>`<li><span class="rs-pill ok">Read</span> <b>${esc(n)}</b>: ${esc(HM().words(m[n]))}${m[n].off>HM().SQUARE_DEG?'. The robot’s code is given the exact angle.':''}</li>`).join('');
-      const how=mounting?'':have.length?'Read from the IMU itself. If the hub is moved on the robot, read it again.':'Torque reads which way each hub faces from its own IMU, at any angle: set the robot down level, then lift its front a hand’s height and hold it. Nothing to press.';
-      return `<li class="cal-sense-step" data-sense-step="mount"><div><h4>How the hub is mounted</h4><p class="hint">${esc(how)}</p>${mounting?`<p class="cal-live" role="status" data-sense-mount-live>${esc(mountSaid)}</p><div class="button-row"><button type="button" class="secondary" data-sense-mount-stop>Stop</button></div>`:`${rows?`<ul class="cal-sense-rows">${rows}</ul>`:''}<div class="button-row"><button type="button" class="secondary" data-sense-mount${live()?'':' disabled'}>${have.length?'Read it again':'Read it'}</button></div>`}</div></li>`;}
+        const reading=names.filter(n=>mounting[n].flat||mounting[n].hold.length);if(!reading.length||reading.some(n=>!mounting[n].flat)){mountSaid='Reading which way is up through the hub: leave the robot still a second…';return mountLine();}
+        const setup=globalThis.DeckSimConfig?.hubMounting?.(p().robot||{})||{hubLogo:'up',hubUsb:'forward'},main=dev('imu')||'imu';
+        for(const n of reading){const flat=mounting[n].flat,fits=squares().map(x=>({...x,off:HM().angle(upIn(x.logo,x.usb),flat)})).filter(x=>x.off<FIT_DEG).sort((x,y)=>x.off-y.off);
+          const said=n===main?fits.find(x=>x.logo===setup.hubLogo&&x.usb===setup.hubUsb):null,known=mounts()[n],same=known&&fits.find(x=>x.logo===known.logo&&x.usb===known.usb);
+          if(said)keep(n,said.logo,said.usb,said.off);else if(same)keep(n,same.logo,same.usb,same.off);else if(fits.length===1)keep(n,fits[0].logo,fits[0].usb,fits[0].off);
+          else choices[n]=fits.length?fits:[{problem:`No square mounting matches gravity: this hub is tilted ${f(Math.min(...squares().map(x=>HM().angle(upIn(x.logo,x.usb),flat))),0)}° from square. Set its mounting in Setup → Robot.`}];}
+        mountStop();mountSaid='';opts.save();return paint();});}
+    function mountHtml(){if(!HM())return '';const m=mounts(),names=imus(),have=names.filter(n=>m[n]&&!choices[n]),setup=globalThis.DeckSimConfig?.hubMounting?.(p().robot||{});
+      const rows=have.map(n=>`<li><span class="rs-pill ok">${m[n].how==='gravity'?'Checked':'Read'}</span> <b>${esc(n)}</b>: ${esc(HM().words(m[n]))}${m[n].how==='gravity'?(setup&&m[n].logo===setup.hubLogo&&m[n].usb===setup.hubUsb?' · matches Setup':' · picked'):''}</li>`).join('');
+      const pick=Object.entries(choices).map(([n,list])=>list[0]?.problem?`<p class="cal-sense-note bad">${esc(list[0].problem)}</p>`:`<p class="cal-sense-note bad"><b>${esc(n)}</b>: gravity says the hub’s logo faces ${esc(list[0].logo)}, which ${setup?`is not Setup’s “Logo ${esc(setup.hubLogo)}, USB ${esc(setup.hubUsb)}”`:'Setup does not say'}. Which way does its USB end point?</p><div class="button-row">${list.map(x=>`<button type="button" class="secondary" data-sense-mount-pick="${esc(n)}|${x.logo}|${x.usb}">Logo ${esc(x.logo)}, USB ${esc(x.usb)}</button>`).join('')}</div>`).join('');
+      const how=mounting?'':'Read from gravity with the robot sitting still, and checked against the mounting in Setup → Robot. Nothing to lift or move.';
+      return `<li class="cal-sense-step" data-sense-step="mount"><div><h4>How the hub is mounted</h4><p class="hint">${esc(how)}</p>${mounting?`<p class="cal-live" role="status" data-sense-mount-live>${esc(mountSaid)}</p>`:`${rows?`<ul class="cal-sense-rows">${rows}</ul>`:''}${pick}<div class="button-row"><button type="button" class="secondary" data-sense-mount${live()?'':' disabled'}>${have.length?'Check it again':'Check it'}</button></div>`}</div></li>`;}
     function paint(){if(!box)return;const h=headingSource(),odo=!!PODS[loc()]||loc()==='fused'||loc()==='optical';
       const need=!live()?`<section class="cal-card cal-sense-live"><div><h2>Live readings</h2><p class="hint">Every step below reads the robot as you move it, through Torque Debug.</p></div><button type="button" class="primary" data-sense-start>Start live readings</button></section>`:'';
-      const heading=h?`<section class="cal-card"><h2>Heading · ${esc(h.what)}</h2><p class="hint">Every turn and position the robot works out goes through its heading. ${h.kind==='hub'?'The Control Hub’s IMU has no calibration of its own, so its error is measured here and the robot’s code corrects it.':h.kind==='pinpoint'?'goBILDA tunes the Pinpoint’s at the factory; this checks it.':'Its angular scalar corrects it.'}</p><ol class="cal-sense-steps">${h.kind==='hub'?mountHtml():''}${stepHtml('still')}${stepHtml('turns')}</ol></section>`:'';
-      if(h?.kind==='hub'&&HM()&&live()&&!mounting&&!test&&box.offsetParent&&!mounts()[dev('imu')||'imu']&&!mountTried){mountTried=true;mountStart();return paint();}
+      const heading=h?`<section class="cal-card"><h2>Heading · ${esc(h.what)}</h2><p class="hint">Every turn and position the robot works out goes through its heading. ${h.kind==='hub'?'Torque checks how the hub is mounted and how much the heading drifts, with the robot sitting still.':h.kind==='pinpoint'?'goBILDA tunes the Pinpoint’s at the factory; this checks it.':'Its angular scalar corrects it.'}</p><ol class="cal-sense-steps">${h.kind==='hub'?mountHtml():''}${stepHtml('still')}</ol><p class="hint">Its turn scale is taken as 1.0: the IMU is calibrated at the factory, and the FTC SDK takes it the same way. Nothing to spin.</p></section>`:'';
+      if(h?.kind==='hub'&&HM()&&live()&&!mounting&&!test&&!mounts()[dev('imu')||'imu']&&!mountTried){mountTried=true;mountStart();return paint();}
+      if(live())driftWatch();else if(driftOff){driftOff();driftOff=null;}
       const position=odo?`<section class="cal-card"><h2>Position · ${esc(loc()==='fused'?'Pinpoint pods':loc()==='optical'?'OTOS':`${pods().length} odometry pods`)}</h2><p class="hint">Direction and distance from straight pushes, then ${loc()==='optical'?'nothing more: the OTOS’s place comes from Setup':'where each pod sits, from a spin in place'}. Do Heading first: the spin uses it.</p><ol class="cal-sense-steps">${stepHtml('forward')}${stepHtml('left')}${loc()==='optical'?'':stepHtml('spin')}</ol></section>`:
         `<section class="cal-card"><h2>Position</h2><p class="hint">${loc()==='encoders'?'This robot counts its position with its drive motors’ encoders: they need no calibration beyond the heading.':'This robot has nothing measuring its position to calibrate.'}</p></section>`;
       const html=need+heading+position;if(box.dataset.html!==html){box.dataset.html=html;box.innerHTML=html;}paintTest();}
     function paintTest(){const s=box?.querySelector('[data-sense-live]');if(!s||!test)return;const secs=(performance.now()-test.at)/1000;s.textContent=test.kind==='still'?`${Math.max(0,30-secs).toFixed(0)} s left · ${f(test.turn.total)}°`:test.kind==='turns'?`Turned ${f(test.turn.total,0)}° · push it flat against the wall and leave it; it finishes by itself`:`Turned ${f(test.turn.total,1)}°`;}
     box?.addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
-      if(t.hasAttribute('data-sense-mount')){mountStop();mountStart();return paint();}if(t.hasAttribute('data-sense-mount-stop')){mountStop();return paint();}
+      if(t.hasAttribute('data-sense-mount')){mountStop();mountStart();return paint();}if(t.dataset.senseMountPick){const [n,logo,usb]=t.dataset.senseMountPick.split('|');delete choices[n];keep(n,logo,usb,0);opts.save();return paint();}
       if(t.dataset.senseGo){mountStop();begin(t.dataset.senseGo);}else if(t.hasAttribute('data-sense-done'))finish();else if(t.hasAttribute('data-sense-cancel'))cancel();else if(t.dataset.senseUse)use(t.dataset.senseUse);else if(t.hasAttribute('data-sense-start'))void debug?.start?.();});
     return {refresh:paint,stop:cancel};}
   root.DeckSensorCal={...api,create};

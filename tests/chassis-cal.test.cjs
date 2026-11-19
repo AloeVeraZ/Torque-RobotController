@@ -103,9 +103,9 @@ test('a pod’s steering is tuned from how its own servo answers',()=>{
   const run=(kv,L,u,sign=1)=>Array.from({length:12},(_,i)=>{const t=(i+1)*.04;return [t,sign*Math.max(0,t-L)*kv*u];});
   const p=K.plantOf(run(5,.08,.3),.3);near(p.Kv,5,.01,'speed at full power');near(p.L,.08,.005,'the wait');assert.equal(p.g,1);
   assert.equal(K.plantOf(run(5,.08,.3,-1),.3).g,-1,'which way it moves the reading comes from the run itself');assert.equal(K.plantOf(run(0,.08,.3),.3),null,'it never moved');assert.equal(K.plantOf([[0,0]],.3),null);
-  // A quick servo with a long wait gets less proportional than a slow one; never more than 60% power for a quarter turn.
+  // A quick servo with a long wait gets less proportional than a slow one; at most full power from 30° out to start (the search may go further).
   const quick=K.gainsOf({Kv:8,L:.12,breakaway:.07}),slow=K.gainsOf({Kv:1,L:.03,breakaway:.1});
-  near(quick.kP,.3/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,.6/(3.3/4),.002,'capped');near(quick.kS,.056,.001,'without a measured keep-going power, 0.8 of the start-up power');assert.ok(quick.kI>0,'an integral to close the last degrees');
+  near(quick.kP,.5/(8*.12),.002);assert.ok(quick.kP<slow.kP);near(slow.kP,1/(30/360*3.3),.002,'full power from 30° out, no more to start with');near(quick.kS,.056,.001,'without a measured keep-going power, 0.8 of the start-up power');assert.ok(quick.kI>0,'an integral to close the last degrees');
   // Static above kinetic friction: the kick is what keeps it turning; the integral supplies the rest it takes to start.
   const sticky=K.gainsOf({Kv:4,L:.04,breakaway:.2,keep:.14});near(sticky.kS,.14,.001);assert.ok(sticky.kI>K.gainsOf({Kv:4,L:.04,breakaway:.15,keep:.14}).kI,'more stiction, more integral');assert.ok(quick.kD>0);
   // A test turn that swings past and hunts is not steady; one that arrives and stays is.
@@ -138,7 +138,7 @@ test('the tune looks for the quickest quarter turn that stays accurate, and the 
   near(K.nextTry([{pid:base,stats:hot}]).kP,.12,1e-9);assert.equal(K.nextTry([{pid:base,stats:hot},{pid:{...base,kP:.12},stats:good(.8)}]),null);assert.equal(K.bestTry([{pid:base,stats:hot}]),null);
   // Stopped short without swinging: more push against friction, not less gain.
   assert.deepEqual(K.nextTry([{pid:base,stats:short}]),{...base,kS:.07});
-  assert.equal(K.nextTry(Array.from({length:9},()=>({pid:base,stats:good(.5)}))),null,'nine turns at most');assert.equal(K.nextTry([{pid:{...base,kP:4},stats:good(.3)}]),null,'no point past full power');
+  assert.equal(K.nextTry(Array.from({length:9},()=>({pid:base,stats:good(.5)}))),null,'nine turns at most');assert.equal(K.nextTry([{pid:{...base,kP:15},stats:good(.3)}]),null,'no point past the highest gain');assert.ok(K.nextTry([{pid:{...base,kP:4},stats:good(.3)}]),'still steady at 4: it keeps going, for a snappier pod');
   // What is allowed: a degree and a half each way unless the team picks otherwise, and only from the list.
   assert.deepEqual(K.tolOf({}),{plus:1.5,minus:1.5});assert.deepEqual(K.tolOf({tol:{plus:3,minus:.5}}),{plus:3,minus:.5});assert.deepEqual(K.tolOf({tol:{plus:40,minus:'x'}}),{plus:1.5,minus:1.5});
   const kiwi={robot:{drivetrain:'kiwiSwerve',devices:{front:{name:'frontPod'}}},sensors:{localization:'encoders'}};

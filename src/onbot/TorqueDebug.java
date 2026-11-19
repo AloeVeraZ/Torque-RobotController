@@ -130,6 +130,10 @@ public class TorqueDebug extends LinearOpMode {
     volatile String hubWatch = "";
     /** A loop Deck runs on the robot (a step test): one actuator, one sensor, gains in the sensor's raw units. */
     TorqueDebugLoop loop;
+    /** Every loop running, one an actuator: several swerve pods are held (and tuned) at once. loop is the newest, for T and q. */
+    final java.util.concurrent.CopyOnWriteArrayList<TorqueDebugLoop> loops = new java.util.concurrent.CopyOnWriteArrayList<>();
+    TorqueDebugLoop loopOn(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) return l; return null; }
+    void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) loops.remove(l); loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
 
     // ---- one webcam of the configuration's at a time, the first until told otherwise (W): its picture goes to the Driver Station's Camera Stream
     final List<WebcamName> webcams = new ArrayList<>();
@@ -223,13 +227,13 @@ public class TorqueDebug extends LinearOpMode {
                 // The watchdog: Deck went quiet or hung up.
                 if (!connected || now - heard > WATCHDOG_MS) stopOutputs(false);
                 // A power Deck stopped repeating has expired (a slider let go without its 0 arriving).
-                for (int i = 0; i < motors.size(); i++) if (now - motorAt[i] > WATCHDOG_MS && !(loop != null && !loop.cr && loop.index == i)) motorPower[i] = 0;
-                for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && !(loop != null && loop.cr && loop.index == i)) crPower[i] = 0;
+                for (int i = 0; i < motors.size(); i++) if (now - motorAt[i] > WATCHDOG_MS && loopOn(false, i) == null) motorPower[i] = 0;
+                for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && loopOn(true, i) == null) crPower[i] = 0;
                 runLoop();
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
                 for (int i = 0; i < crservos.size(); i++) {
                     CRServo c = crservos.get(i);
-                    boolean driven = crPower[i] != 0 || (loop != null && loop.cr && loop.index == i);
+                    boolean driven = crPower[i] != 0 || loopOn(true, i) != null;
                     if (c instanceof PwmControl) { PwmControl p = (PwmControl) c; if (driven && !p.isPwmEnabled()) p.setPwmEnable(); else if (!driven && p.isPwmEnabled()) p.setPwmDisable(); }
                     if (crTold[i] && driven) c.setPower(crPower[i]);
                 }
@@ -284,8 +288,8 @@ public class TorqueDebug extends LinearOpMode {
         try {
             switch (f[0]) {
                 case "P": break;
-                case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { if (loop != null && !loop.cr && loop.index == i) loop = null; motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
-                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { if (loop != null && loop.cr && loop.index == i) loop = null; crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
+                case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { endLoop(false, i); motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
+                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { endLoop(true, i); crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
                 case "S": { int i = servoNames.indexOf(f[1]); if (i >= 0) { servoPos[i] = clamp(Double.parseDouble(f[2]), 0, 1); servoOn[i] = true; } break; }
                 case "E": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoOn[i] = "1".equals(f[2]) && !Double.isNaN(servoPos[i]); break; }
                 case "L": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoLatched[i] = "1".equals(f[2]); break; }
@@ -313,13 +317,12 @@ public class TorqueDebug extends LinearOpMode {
         l.kF = Double.parseDouble(f[8]); l.kS = Double.parseDouble(f[9]); l.kG = Double.parseDouble(f[10]); l.tol = Math.abs(Double.parseDouble(f[11])); l.wrap = Double.parseDouble(f[12]);
         l.izone = f.length > 13 ? Math.abs(Double.parseDouble(f[13])) : 0;
         if (l.cr) crTold[l.index] = true; else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
-        loop = l;
+        endLoop(l.cr, l.index); loops.add(l); loop = l;
     }
 
     /** The loop Deck asked for, one step: PID on the sensor's raw reading, plus feedforward (kF for speed, kS against friction, kG against gravity). */
-    void runLoop() {
-        TorqueDebugLoop l = loop;
-        if (l == null) return;
+    void runLoop() { for (TorqueDebugLoop l : loops) stepLoop(l); }
+    void stepLoop(TorqueDebugLoop l) {
         boolean vel = "vel".equals(l.mode);
         double measured = l.analog ? analogs.get(l.sensorIndex).getVoltage() : vel ? motors.get(l.sensorIndex).getVelocity() : motors.get(l.sensorIndex).getCurrentPosition();
         double e = l.target - measured;
@@ -341,12 +344,12 @@ public class TorqueDebug extends LinearOpMode {
     }
 
     void stall(int m, long now) {
-        if (Math.abs(motorPower[m]) > 0.05 && motorAmps[m] > STALL_AMPS) { if (motorOverSince[m] == 0) motorOverSince[m] = now; else if (now - motorOverSince[m] > STALL_MS) { motorCut[m] = true; if (loop != null && !loop.cr && loop.index == m) loop = null; } }
+        if (Math.abs(motorPower[m]) > 0.05 && motorAmps[m] > STALL_AMPS) { if (motorOverSince[m] == 0) motorOverSince[m] = now; else if (now - motorOverSince[m] > STALL_MS) { motorCut[m] = true; endLoop(false, m); } }
         else motorOverSince[m] = 0;
     }
 
     void stopOutputs(boolean all) {
-        loop = null;
+        loop = null; loops.clear();
         java.util.Arrays.fill(motorPower, 0);
         java.util.Arrays.fill(crPower, 0);
         java.util.Arrays.fill(lightOn, false);

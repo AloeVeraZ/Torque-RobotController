@@ -348,7 +348,9 @@
       try{const s=JSON.parse(localStorage.getItem(FOUND)||'[]');found=Array.isArray(s)?s.filter(x=>x&&typeof x.name==='string'&&typeof x.key==='string'):[];}catch{found=[];}
       for(const d of devices()){const box=host.querySelector(`[data-set-box="${CSS.escape(d.name)}"]`);if(box)box.innerHTML=setHtml(d.kind,d.name);}
       checkPaint();onSensing();}
-    return {reloadStored,found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    // Start only (Calibrate's steps): a press while it is already starting or putting Torque Debug on the robot never stops it.
+    function begin(){if(running||starting||going||installing)return;return start();}
+    return {reloadStored,begin,found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting:starting||going,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);
