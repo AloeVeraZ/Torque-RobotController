@@ -30,7 +30,9 @@ test('each platform updates from the one file its release publishes',()=>{
   for(const [platform,arch] of [['win32','x64'],['linux','x64'],['darwin','arm64']]){const r=selectRelease([{tag_name:'v2.4.35',prerelease:false,draft:false,assets:files}],{version:'2.4.34',channel:'main',platform,arch});assert.equal(r.status,'available',platform);assert.equal(r.asset.name,assetNames('2.4.35',platform,arch)[0]);}
 });
 
-test('the Steam Deck installer\'s package is checked against its own checksum and unpacked for the swap',async t=>{
+// The Steam Deck package is made and unpacked with tar, as on a Steam Deck; Windows' tar cannot take C:\ paths.
+const linuxTools={skip:process.platform==='win32'&&'Steam Deck updates run on Linux'};
+test('the Steam Deck installer\'s package is checked against its own checksum and unpacked for the swap',linuxTools,async t=>{
   const dir=temp(t),run=makeRun(dir,'2.4.35'),folder=path.join(dir,'download');fs.mkdirSync(folder);
   const out=runPayload(run,path.join(folder,'check.tar.gz'));assert.ok(fs.statSync(out).size>0);
   const {appPath,executable,root}=installed(dir,'linux');
@@ -39,7 +41,7 @@ test('the Steam Deck installer\'s package is checked against its own checksum an
   assert.equal(JSON.parse(fs.readFileSync(path.join(prepared.plan.source,'app/package.json'))).version,'2.4.35');assert.ok(prepared.script.endsWith('install.sh'));
 });
 
-test('a Steam Deck installer whose package does not match its checksum is refused',t=>{
+test('a Steam Deck installer whose package does not match its checksum is refused',linuxTools,t=>{
   const dir=temp(t),run=makeRun(dir,'2.4.35',{tamper:true});
   assert.throws(()=>runPayload(run,path.join(dir,'out.tar.gz')),/does not match its checksum/);
   const plain=path.join(dir,'plain.run');fs.writeFileSync(plain,'#!/bin/sh\necho hi\n');assert.throws(()=>runPayload(plain,path.join(dir,'x')),/no package inside/);

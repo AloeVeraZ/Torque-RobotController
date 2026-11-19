@@ -22,7 +22,8 @@ if [[ "$shell_os" == Linux ]]; then [[ -x "$installed/runtime/electron" && -x "$
 [[ -f "$installed/app/ui/icon.png" && -f "$fixture/desktop/Deck Driver Station.desktop" ]]
 grep -q 'Deck Driver Station' "$fixture/data/applications/deck-driver-station.desktop"
 grep -q 'Icon=.*icon.png' "$fixture/data/applications/deck-driver-station.desktop"
-cmp "$repo/package.json" "$installed/app/package.json"
+# The package carries its branch's update channel (tools/package.py --channel), so name and version are compared.
+node -e 'const [a,b]=process.argv.slice(1).map(f=>require(f));if(a.name!==b.name||a.version!==b.version)process.exit(1)' "$repo/package.json" "$installed/app/package.json"
 [[ "$(cat "$fixture/config/robots.json")" == 'saved robot library' ]]
 printf 'PASS: real Steam Deck installer, branded desktop/application shortcuts, source version, and saved-data preservation. Runtime execution requires SteamOS.\n'
 [[ "$fixture" == "$repo/test-results/steamdeck-installer."* ]] && rm -rf -- "$fixture"
