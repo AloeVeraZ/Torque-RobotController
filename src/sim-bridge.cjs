@@ -7,7 +7,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const MESH_TYPES={'.glb':'glb','.gltf':'gltf','.stl':'stl','.obj':'obj'},STEP_TYPES=['.step','.stp'];
 const MODEL_LIMIT=200*1024*1024,STORED_LIMIT=150*1024*1024,SOURCE_LIMIT=200*1024,PROJECT_LIMIT=150*1024*1024,EXPORT_LIMIT=4*1024*1024;
 // A saved setup file carries its robot's CAD (base64 inside the JSON), so it may be larger than a setup alone.
-const PROJECT_FILE_LIMIT=400*1024*1024,KIT_ROBOTS=['strafer','swechanum'];
+const PROJECT_FILE_LIMIT=400*1024*1024,KIT_ROBOTS=['strafer'];
 const EXPORTS={onbot:{name:'OnBot Java autonomous',extensions:['java']},java:{name:'Route Java',extensions:['java']},pp:{name:'Deck path file',extensions:['pp']},timed:{name:'Timed drive commands',extensions:['json']},motionmodule:{name:'MotionModule autonomous',extensions:['py']},config:{name:'Robot configuration',extensions:['xml']}};
 const validKey=key=>typeof key==='string'&&/^[\w-]{1,64}$/.test(key);
 

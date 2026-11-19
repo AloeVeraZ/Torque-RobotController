@@ -10,7 +10,7 @@ const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/configure-pinout');fs.mkdirSync(out,{recursive:true});
 const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="FirstInspires-FTC"><Webcam name="Webcam 1" serialNumber="ABC123" /><LynxUsbDevice name="Control Hub Portal" serialNumber="(embedded)" parentModuleAddress="173"><LynxModule name="Expansion Hub 2" port="2"><goBILDA5202SeriesMotor name="arm" port="1" /></LynxModule><LynxModule name="Control Hub" port="173"><goBILDA5202SeriesMotor name="leftFront" port="0" /><Servo name="claw" port="2" /></LynxModule></LynxUsbDevice></Robot>`;
 (async()=>{
-  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-pinout-')),env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-pinout-')),env={...process.env,DECK_HEADLESS:'1',DECK_TEST_SETUP:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root],env});
   try{
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
@@ -54,7 +54,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     const note=page.locator('#sim-reliable'),setups=async()=>{await toSetup();await page.click('#sim-setup');const ids=await page.locator('.sim-setup-option').evaluateAll(l=>l.map(o=>[o.dataset.setupId,o.textContent]));await page.keyboard.press('Escape');return ids;};
     const pick=async id=>{await toSetup();if(await page.locator('#sim-setup-list').isHidden())await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${id}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,id);await page.waitForTimeout(250);await toSimulate();};
     const all=await setups(),demos=all.filter(([id])=>id.startsWith('preset:')),team=all.find(([id])=>!id.startsWith('preset:'));
-    for(const name of ['A301 Swerve','Starter Mecanum'])assert.ok(demos.some(d=>d[1].includes(name)),`${name} ships with Torque`);assert.ok(team,'a team setup');
+    for(const name of ['Starter Mecanum'])assert.ok(demos.some(d=>d[1].includes(name)),`${name} ships with Torque`);assert.ok(team,'a team setup');
     await pick(team[0]);assert.equal(await note.isVisible(),true,'a team robot has the note');
     const close=note.locator('.sim-reliable-close'),mark=await close.evaluate(b=>{const r=document.createRange();r.selectNodeContents(b);const t=r.getBoundingClientRect(),o=b.getBoundingClientRect();return {dx:Math.abs((t.left+t.right)-(o.left+o.right))/2,dy:Math.abs((t.top+t.bottom)-(o.top+o.bottom))/2,w:o.width,h:o.height};});
     assert.ok(mark.dx<1.5&&mark.dy<3,`the × is centered: ${JSON.stringify(mark)}`);await page.screenshot({path:path.join(out,'note.png')});
@@ -62,7 +62,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     const open=async()=>{for(const name of ['plan','run','video']){const b=page.locator(`.sim-tabs [data-tab=${name}]`);assert.equal(await b.isDisabled(),false,`${name} opens`);if(name==='video')continue;await b.click();assert.equal(await page.locator('[data-tab]').first().count(),1);await page.waitForFunction(n=>document.querySelector('.sim-tabs [data-tab='+n+']').getAttribute('aria-selected')==='true'||document.querySelector('.sim-tabs [data-tab='+n+']').classList.contains('active'),name);}await page.locator('.sim-tabs [data-tab=field]').click();};
     await open();
     // The demos never have it.
-    for(const [id,name] of demos.filter(d=>/A301|Starter Mecanum/.test(d[1]))){await pick(id);assert.equal(await note.isVisible(),false,`no note on ${name}`);await open();}
+    for(const [id,name] of demos.filter(d=>/Starter Mecanum/.test(d[1]))){await pick(id);assert.equal(await note.isVisible(),false,`no note on ${name}`);await open();}
     await page.screenshot({path:path.join(out,'demo.png')});
     // Closing it holds for that setup, through a restart of the page, and for no other.
     await pick(team[0]);assert.equal(await note.isVisible(),true,'back on the team robot');await close.click();assert.equal(await note.isVisible(),false,'closes');

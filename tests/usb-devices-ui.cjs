@@ -23,7 +23,7 @@ const NET=parseUsb(`1-1|1d6b|0104|00|0100|480|1|5|Some|Gadget||100mA|80|0|02/06/
 const LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'EthernetOverUsb:eth0:172.29.0.23',status:{name:'limelight-front',temp:48.5,cpu:31,ram:40,fps:90,pipelineIndex:2,hwType:'unknown-model'}};
 
 (async()=>{
-  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-usb-devices-')),env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-usb-devices-')),env={...process.env,DECK_HEADLESS:'1',DECK_TEST_SETUP:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root],env});
   try{
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));

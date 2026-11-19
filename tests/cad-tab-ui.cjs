@@ -9,7 +9,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab');fs.mkdirSync(out,{recursive:true});
 (async()=>{
-  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-cad-')),env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-cad-')),env={...process.env,DECK_HEADLESS:'1',DECK_TEST_SETUP:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root],env});
   try{
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));
@@ -109,14 +109,13 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     {const r=await page.evaluate(()=>({doc:document.documentElement.scrollHeight,win:innerHeight,remove:document.querySelector('#sim-model-remove').hidden,drop:document.querySelector('#sim-model-drop').getBoundingClientRect().height,parts:document.querySelector('#sim-parts').hidden}));assert.equal(r.remove,true,'nothing to remove');assert.ok(r.doc<=r.win,'one screen');assert.ok(r.drop>200,`the drop zone fills it: ${r.drop}`);assert.equal(r.parts,true);}
     await page.screenshot({path:path.join(out,'cad-empty.png')});
     // C. The kit: no CAD and no Mechanisms step, so wheels and power stay beside its size.
-    await page.click('#sim-setup');const all=await page.locator('.sim-setup-option').evaluateAll(l=>l.map(o=>[o.dataset.setupId,o.textContent]));const kit=all.find(o=>/Starter Mecanum/.test(o[1]));const fixed=all.find(o=>/A301/.test(o[1]));
+    await page.click('#sim-setup');const all=await page.locator('.sim-setup-option').evaluateAll(l=>l.map(o=>[o.dataset.setupId,o.textContent]));const kit=all.find(o=>/Starter Mecanum/.test(o[1]));
     await page.locator(`.sim-setup-option[data-setup-id="${kit[0]}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,kit[0]);await page.waitForTimeout(300);
     assert.equal(await page.locator('#sim-setup-step-robot').textContent(),'1Robot');await page.click('#sim-setup-step-robot');await page.waitForTimeout(300);
     for(const id of ['sim-length','sim-mass','sim-rpm','sim-wheel','sim-maxspeed','sim-drive-style'])assert.equal(await page.locator(`[data-setup-page=robot] #${id}`).isVisible(),true,`${id} on the kit`);
     await page.screenshot({path:path.join(out,'kit.png')});
     // Its Mechanisms step is closed too, so its ports are on a Chassis step of its own, and they work there.
     assert.equal(await page.locator('#sim-setup-step-controller').textContent(),'2Chassis');await page.click('#sim-setup-step-controller');await page.waitForTimeout(300);assert.equal(await page.locator('[data-setup-page=controller] #mech-drive-ports').isVisible(),true,'the kit sets its ports');const kitRow=page.locator('#mech-drive-ports select').first(),kitPort=await kitRow.locator('option').nth(2).getAttribute('value');await kitRow.selectOption(kitPort);await page.waitForTimeout(250);assert.equal(await kitRow.inputValue(),kitPort);await page.screenshot({path:path.join(out,'kit-controller.png')});
-    await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${fixed[0]}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,fixed[0]);await page.waitForTimeout(300);await page.click('#sim-setup-step-robot');await page.waitForTimeout(200);assert.equal(await page.locator('#sim-rpm').isVisible(),false,'the fixed demo keeps its card');assert.equal(await page.locator('#sim-preset-lock').isVisible(),true);
     // Back on a team's robot they return to the chassis.
     const team=all.find(o=>!o[0].startsWith('preset:'));await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${team[0]}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,team[0]);await page.waitForTimeout(300);assert.equal(await page.locator('#mech-drive #sim-rpm').count(),1);assert.equal(await page.locator('#mech-drive #mech-drive-ports').count(),1,'the ports come back too');
     assert.deepEqual(errors,[]);console.log('CAD tab: all passed');

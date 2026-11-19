@@ -7,7 +7,7 @@ window.DeckSimulation={create(root,views){
   const calRoot=views?.calibrate||null,setupRoot=views?.setup||null;
   const field=window.DeckField,planner=window.DeckPlanner,exporter=window.DeckSimExport,api=window.deck||{},native=typeof api.sim==='function';
   // Bundled chassis CAD present in this build (personal local builds only); see appearanceOptions().
-  let builtins=new Set(['strafer','swechanum']);
+  let builtins=new Set(['strafer']);
   // The view's own elements, then Calibrate's (the guided check and, while Calibrate shows, the Send to robot panel).
   const roots=[root,calRoot,setupRoot].filter(Boolean),$=selector=>{for(const r of roots){const n=r.querySelector(selector);if(n)return n;}return null;},$$=selector=>roots.flatMap(r=>[...r.querySelectorAll(selector)]),ns='http://www.w3.org/2000/svg';
   const KEY='deck-simulation-project-v2',OLD_KEY='deck-simulation-project-v1',finite=n=>typeof n==='number'&&Number.isFinite(n);
@@ -103,7 +103,7 @@ public class MyAuto implements DeckAutonomous {
     if(raw.version!==2&&raw.field){const old=cleanLayout({...raw,name:raw.field==='empty'?'Empty field 1':GAMES[raw.field],style:raw.smooth===false?'sharp':'spline'});p.layouts=p.layouts.map(l=>l.field===old.field?{...old,id:l.id}:l);}
     else if(Array.isArray(raw.layouts)&&raw.layouts.length)p.layouts=raw.layouts.slice(0,20).map(cleanLayout);
     p.active=p.layouts.some(l=>l.id===raw.active)?raw.active:p.layouts[0].id;if(raw.view==='3d')p.view='3d';
-    p.robot=C.robot(raw.robot,raw.controller==='motionmodule'?'motionmodule':'ftc');if(raw.model)p.robot.appearance='custom';else if(p.robot.appearance==='swechanum'&&p.robot.drivetrain==='mecanum')p.robot.drivetrain='swerve';
+    p.robot=C.robot(raw.robot,raw.controller==='motionmodule'?'motionmodule':'ftc');if(raw.model)p.robot.appearance='custom';
     const s=raw.sensors||{},legacy={none:'gyro',encodersOnly:'encoders',ideal:'odometry',vision:'odometry'};if(Object.hasOwn(C.sensors,s.localization))p.sensors.localization=legacy[s.localization]||s.localization;
     p.controller=raw.controller==='motionmodule'?'motionmodule':'ftc';p.imuSource=['hub','external','module','device'].includes(raw.imuSource)?raw.imuSource:p.controller==='motionmodule'?'module':'hub';p.timing=window.DeckTimed.settings(raw.timing);p.ftcSensors=raw.ftcSensors&&typeof raw.ftcSensors==='object'?raw.ftcSensors:null;p.motionSensors=raw.motionSensors&&typeof raw.motionSensors==='object'?raw.motionSensors:null;p.sensors.localization=C.localization(p.controller,p.sensors.localization);
     const t=raw.tuning||{};for(const k of ['maxPathSpeed','translationalP','headingP'])if(finite(t[k]))p.tuning[k]=t[k];
@@ -133,21 +133,29 @@ public class MyAuto implements DeckAutonomous {
       .map(p=>JSON.parse(JSON.stringify({name:String(p.name||'').slice(0,80),role:pick(p.role,['chassis','intake','shooter','indexer'])||'other',pieces:pick(p.pieces,['pollen','nectar','both']),type:pick(p.type,['turret','fixed']),kind:pick(p.kind,['sweeper','siderollers','ramp']),key:typeof p.key==='string'?p.key.slice(0,400):undefined,chosen:p.chosen===true||undefined,box:p.box.slice()}))):[];
     return {id:raw.id,name:String(raw.name||'Robot model').slice(0,120),units:['in','mm','cm','m'].includes(raw.units)?raw.units:'in',front,top:front[1]===top[1]?(front[1]==='z'?'+x':'+z'):top,source:raw.source==='step'?'step':'mesh',...(parts.length?{parts}:{}),...(raw.autoSize===true?{autoSize:true}:{}),...(raw.bodyChassis===true?{bodyChassis:true}:{}),...(typeof raw.drivetrain==='string'&&Object.hasOwn(C.drives,raw.drivetrain)?{drivetrain:raw.drivetrain}:{}),...(Array.isArray(raw.entered)?{entered:raw.entered.filter(k=>['mass','wheel','rpm'].includes(k))}:{})};
   }
-  // A first run opens the Test setup: a BIOBUZZ red robot built from FTC parts, on a Control Hub, with a long autonomous.
   const storedProject=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);
   // Each setup has one field, BIOBUZZ or an empty field; everything else is a setup of its own. A setup saved with more
   // fields keeps the one it had open; each other field with a route becomes a setup of its own ("Setup 2 · Practice room"),
   // and the preset robots' old demo fields go (each preset is a built-in setup now).
+  // The Test setup (the generated "Deck test robot" on BIOBUZZ) is no longer offered: one still on its own robot goes.
+  const fixtureRun=window.deck?.testSetup===true,testSetup=(name,data)=>!fixtureRun&&name==='Test setup'&&!!data&&(data.model?.name==='Deck test robot'||(data.kinematics?.joints||[]).some(j=>(j.parts||[]).some(p=>String(p).startsWith('Deck test robot/'))));
+  // A first run, or a project left with no setup, opens the Starter Mecanum demo (the built-in setup ensurePresetSetups keeps).
+  function starterDemo(){const P=window.DeckPresetRobots,id='startermecanum';if(!P?.has(id)||!MECH.PRESETS[id])return null;
+    const d=defaults(),demo=cleanLayout({...P.layout(id),id:'preset-'+id}),name=`${MECH.PRESETS[id].name} demo`;Object.assign(d,P.apply(id,d,C));
+    d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};d.model=null;d.layouts=[demo];d.active=demo.id;d.setupDone=true;d.setupName=name;
+    const {setups,...data}=JSON.parse(JSON.stringify(d));return {...data,setups:[{id:'preset:'+id,name,data}],setupId:'preset:'+id,setupName:name};}
   function oneField(raw){if(!raw||typeof raw!=='object')return raw;
-    // A built-in setup of a preset robot that no longer exists goes; a project open on it opens on its next setup.
-    const gone=id=>String(id||'').startsWith('preset:')&&!Object.hasOwn(window.DeckMechanisms.PRESETS,String(id).slice(7));
-    if(Array.isArray(raw.setups)&&raw.setups.some(s=>gone(s?.id))||gone(raw.setupId)){const setups=(Array.isArray(raw.setups)?raw.setups:[]).filter(s=>!gone(s?.id));raw={...raw,setups};
-      if(gone(raw.setupId)){const next=setups[0];raw=next?{...raw,...next.data,setups,setupId:next.id,setupName:next.name}:{...raw,setupId:newId()};}}
+    // A built-in setup of a preset robot that no longer exists goes, and so does the Test setup; a project open on one
+    // opens on its next setup (the Starter Mecanum demo when none is left).
+    const gone=s=>{const id=String(s?.id||'');return id.startsWith('preset:')&&!Object.hasOwn(window.DeckMechanisms.PRESETS,id.slice(7))||testSetup(s?.name,s?.data);};
+    const activeGone=gone({id:raw.setupId,name:raw.setupName,data:raw});
+    if(Array.isArray(raw.setups)&&raw.setups.some(gone)||activeGone){const setups=(Array.isArray(raw.setups)?raw.setups:[]).filter(s=>s?.id===raw.setupId?!activeGone:!gone(s));raw={...raw,setups};
+      if(activeGone){const next=setups[0];if(!next)return starterDemo()||{...defaults(),setupId:newId()};raw={...raw,...next.data,setups,setupId:next.id,setupName:next.name};}}
     // A robot keeps every route it has. (Versions before routes split a setup's fields into setups of their own.)
     if(!Array.isArray(raw.setups)||!raw.setups.length)return raw;
     const bank=raw.setups.filter(s=>s&&typeof s==='object'),mine=bank.find(s=>s.id===raw.setupId);
     return {...(mine?mine.data:raw),setups:bank.slice(0,20),setupId:raw.setupId,setupName:raw.setupName};}
-  let project;try{project=sanitize(storedProject?oneField(JSON.parse(storedProject)):window.DeckTestRobot?.setup()??null);}catch{project=defaults();}
+  let project;try{project=sanitize(storedProject?oneField(JSON.parse(storedProject)):fixtureRun?window.DeckTestRobot?.setup()??null:starterDemo());}catch{project=defaults();}
   // The autonomous driven in the background so the timeline is whole before Run is pressed: the route it drove and its
   // frames (kept, so coming back to the tab is instant), which route is being driven now, and whether it is on screen.
   let bgRunCache=null,bgRunBusy=null,bgRunShown=false,bgRunWait=null,watchedRun=false;// watchedRun: the timeline holds a run that was started with Run and driven live
@@ -225,7 +233,7 @@ public class MyAuto implements DeckAutonomous {
         <div id="sim-robot-custom">
         <div class="sim-robot-layout"><div class="sim-robot-cad"><div class="sim-cad-head"><div class="button-row"><button id="sim-model-open" class="primary" type="button">Import CAD…</button><button id="sim-model-remove" class="secondary" type="button" hidden>Remove model</button></div></div>
         <div id="sim-model-drop" class="sim-drop"><p>Or drop your robot’s STEP file here (also URDF, SDFormat, MuJoCo, USD, GLB, STL or OBJ). Size, drivetrain, intakes and shooters fill in from it. No CAD? Skip this and type its size.</p><p id="sim-model-import-status" class="sim-import-status" role="status"></p></div>
-        <div hidden><label for="sim-appearance">Robot model</label><select id="sim-appearance">${options({strafer:'goBILDA Strafer · mecanum',swechanum:'NYC FIRST A301 Swechanum · swerve',plain:'Simple footprint',custom:'Your imported model'},project.robot.appearance)}</select><p id="sim-model-credit" class="hint"></p></div>
+        <div hidden><label for="sim-appearance">Robot model</label><select id="sim-appearance">${options({strafer:'goBILDA Strafer · mecanum',plain:'Simple footprint',custom:'Your imported model'},project.robot.appearance)}</select><p id="sim-model-credit" class="hint"></p></div>
         <div id="sim-model-box" hidden><div id="sim-model-preview" class="sim-model-preview"></div><p id="sim-model-lost" class="sim-model-lost" role="status" hidden></p>
           <p id="sim-model-help" class="hint" role="status"></p>
           <div class="sim-side-assignments">${['front','back','left','right','top','bottom'].map(side=>`<button id="sim-model-${side}" data-assign-side="${side}" class="secondary" type="button" disabled>It’s the ${side}</button>`).join('')}</div>
@@ -1889,8 +1897,8 @@ public class MyAuto implements DeckAutonomous {
   const num=(id,set)=>{$(id).onchange=e=>{const v=e.target.valueAsNumber,min=parseFloat(e.target.min),max=parseFloat(e.target.max);e.target.setCustomValidity('');if(!finite(v)||finite(min)&&v<min||finite(max)&&v>max){e.target.setCustomValidity(`Enter a finite value${finite(min)?` at least ${min}`:''}${finite(max)?` and no more than ${max}`:''}.`);e.target.reportValidity();return;}set(v);settle();robotPanel(true);};$(id).oninput=e=>e.target.setCustomValidity('');};
   // Bundled chassis CAD is only in personal local builds; public releases show the plain footprint.
 
-  const chassisFor=drive=>{const id=C.drives[drive].engine==='swerve'?'swechanum':drive==='mecanum'?'strafer':'plain';return builtins.has(id)?id:'plain';};
-  function appearanceOptions(){for(const o of $('#sim-appearance').options)if(['strafer','swechanum'].includes(o.value)){o.disabled=!builtins.has(o.value);o.textContent=o.textContent.replace(/ \(not included in this build\)$/,'')+(o.disabled?' (not included in this build)':'');}}
+  const chassisFor=drive=>{const id=drive==='mecanum'?'strafer':'plain';return builtins.has(id)?id:'plain';};
+  function appearanceOptions(){for(const o of $('#sim-appearance').options)if(o.value==='strafer'){o.disabled=!builtins.has(o.value);o.textContent=o.textContent.replace(/ \(not included in this build\)$/,'')+(o.disabled?' (not included in this build)':'');}}
   if(native&&typeof api.simFile==='function')void api.simFile('assets').then(a=>{builtins=new Set(a.robots);Object.assign(window.DeckFieldArt.available,a.fields);appearanceOptions();void placeModel();}).catch(()=>{});
   $('#sim-drivetrain').onchange=e=>{project.robot.drivetrain=e.target.value;if(!project.model)project.robot.appearance=chassisFor(e.target.value);settle();robotPanel();void placeModel();drivePicker();};
   // ---- the chassis picker ----
@@ -2561,7 +2569,7 @@ public class MyAuto implements DeckAutonomous {
   }
   // Switching to measured numbers starts from the worked-out ones.
   $('#sim-timed-measured').onchange=e=>{if(e.target.checked){Object.assign(project.timing,info?.timing?{forwardSpeed:info.timing.forwardSpeed,strafeSpeed:info.timing.strafeSpeed,startup:info.timing.startup,stopping:info.timing.stopping,strafeStopping:info.timing.strafeStopping}:{});project.timing.source='measured';}else project.timing.source='robot';save();robotPanel();reload();};
-  $('#sim-appearance').onchange=e=>{project.robot.appearance=e.target.value;project.needsCad=false;if(e.target.value!=='custom')project.model=null;if(e.target.value==='swechanum')project.robot.drivetrain='swerve';if(e.target.value==='strafer')project.robot.drivetrain='mecanum';settle();robotPanel();void placeModel();};
+  $('#sim-appearance').onchange=e=>{project.robot.appearance=e.target.value;project.needsCad=false;if(e.target.value!=='custom')project.model=null;if(e.target.value==='strafer')project.robot.drivetrain='mecanum';settle();robotPanel();void placeModel();};
   const M=()=>window.DeckRobotModel,modelCache=new Map(),LIGHT_TRIANGLES=400000;
   async function three(){await script('vendor/three-view.js');await script('sim-robot-model.js');}
   // The Test setup's robot (ui/sim-test-robot.js): generated from FTC parts and stored like a CAD import, with its joints.

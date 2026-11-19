@@ -3,6 +3,8 @@ const {contextBridge,ipcRenderer,webUtils}=require('electron');
 const call=(name,...args)=>ipcRenderer.invoke(name,...args).then(r=>{if(!r.ok){const e=Error(r.error);e.code=r.code;throw e;}return r.value;});
 const listen=(name,fn)=>{const cb=(_e,value)=>fn(value);ipcRenderer.on(name,cb);return()=>ipcRenderer.removeListener(name,cb);};
 contextBridge.exposeInMainWorld('deck',{
+  // The automated UI tests (DECK_TEST_SETUP=1) start on the generated Test setup; people start on the Starter Mecanum demo.
+  testSetup:process.argv.includes('--deck-test-setup'),
   setTheme:theme=>ipcRenderer.send('app-theme',theme),
   robotFocus:()=>call('robot-focus'),
   devicePhoto:tag=>call('device-photo',tag),openExternal:url=>call('open-reference',url),savePinout:file=>call('save-pinout',file),

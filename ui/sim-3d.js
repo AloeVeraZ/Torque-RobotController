@@ -17,7 +17,18 @@ window.DeckSim3D={create(host,options){
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(40,1,1,3000);camera.up.set(0,0,1);camera.position.set(72,-95,150);
   const top=new THREE.OrthographicCamera(-1,1,1,-1,1,3000);top.up.set(0,1,0);if(video){camera.fov=50;camera.aspect=W/H;camera.updateProjectionMatrix();}
   const controls=video?null:new L.OrbitControls(camera,renderer.domElement);if(controls){controls.target.set(72,72,0);controls.minPolarAngle=.001;controls.maxPolarAngle=Math.PI-.001;controls.enablePan=false;controls.update();}
-  const navigator=video?null:window.DeckRobotModel.viewCube(host.querySelector('.sim-field-cube'),direction=>{const d=[...direction];if(!d[0]&&!d[1])d[0]=-.0001;const distance=Math.min(controls.maxDistance,Math.max(controls.minDistance,camera.position.distanceTo(controls.target)));camera.position.copy(new THREE.Vector3(...d).normalize().multiplyScalar(distance)).add(controls.target);controls.update();schedule();},{controls,orbit:(dx,dy)=>{window.DeckRobotModel.orbitCamera(camera,controls,dx,dy);schedule();}});
+  // The whole field in view from a direction, whatever the box's shape: the camera backs off along it until every corner of
+  // the field (walls included) projects inside the picture. A fixed distance cropped the near corners on narrower boxes
+  // (a 16:10 Mac window, a docked side panel). framed: the camera is still where it was put, so a resize refits it.
+  let fieldBox=null,framed=true;
+  function fitCamera(direction){if(!controls||!fieldBox)return false;const t=controls.target,d=new THREE.Vector3(...direction).normalize(),probe=camera.clone(),corners=[];
+    for(const x of [fieldBox.x0,fieldBox.x1])for(const y of [fieldBox.y0,fieldBox.y1])for(const z of [0,fieldBox.z])corners.push(new THREE.Vector3(x,y,z));
+    const fits=dist=>{probe.position.copy(d).multiplyScalar(dist).add(t);probe.lookAt(t);probe.updateMatrixWorld();probe.updateProjectionMatrix();return corners.every(c=>{const v=c.clone().project(probe);return Math.abs(v.x)<=.94&&Math.abs(v.y)<=.92&&v.z<1;});};
+    let lo=controls.minDistance||10,hi=Math.max(lo*2,controls.maxDistance||600);if(!fits(hi))lo=hi;else for(let i=0;i<24;i++){const mid=(lo+hi)/2;if(fits(mid))hi=mid;else lo=mid;}
+    camera.position.copy(d).multiplyScalar(Math.max(lo,hi)).add(t);controls.update();framed=true;return true;}
+  const HOME=[0,-1.1,1.05];
+  controls?.addEventListener('start',()=>{framed=false;});
+  const navigator=video?null:window.DeckRobotModel.viewCube(host.querySelector('.sim-field-cube'),direction=>{const d=[...direction];if(!d[0]&&!d[1])d[0]=-.0001;const distance=Math.min(controls.maxDistance,Math.max(controls.minDistance,camera.position.distanceTo(controls.target)));if(!fitCamera(d)){camera.position.copy(new THREE.Vector3(...d).normalize().multiplyScalar(distance)).add(controls.target);controls.update();}schedule();},{controls,orbit:(dx,dy)=>{window.DeckRobotModel.orbitCamera(camera,controls,dx,dy);schedule();}});
   scene.add(new THREE.HemisphereLight(0xffffff,0x8b96a5,2.8),new THREE.AmbientLight(0xffffff,.5));const sun=new THREE.DirectionalLight(0xffffff,1.8);sun.position.set(130,-40,220);scene.add(sun);
   sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-180;sun.shadow.camera.right=180;sun.shadow.camera.top=180;sun.shadow.camera.bottom=-180;sun.shadow.bias=-.0005;
   const fieldGroup=new THREE.Group(),overlay=new THREE.Group(),trailGroup=new THREE.Group(),robotGroup=new THREE.Group(),estimateLine=new THREE.LineLoop(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({dashSize:1.5,gapSize:1}));estimateLine.visible=false;estimateLine.frustumCulled=false;scene.add(fieldGroup,overlay,trailGroup,robotGroup,estimateLine);
@@ -36,7 +47,7 @@ window.DeckSim3D={create(host,options){
     const cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2,span=Math.max(w,h);if(controls){controls.minDistance=span*.25;controls.maxDistance=span*2.15;}camera.near=Math.max(.25,span/200);camera.far=Math.max(3000,span*5);camera.updateProjectionMatrix();
     clear(markersHost);markers=window.DeckFieldArt.hitboxes(info,THREE,L);markersHost.add(markers.group);
     if(key!==fieldKey){fieldKey=key;const sequence=++fieldSequence,temporary=new THREE.Group();clear(fieldGroup);visual=null;clear(ballsHost);ballMeshes.clear();clear(elementMarkers);ballWires.clear();host.dataset.fieldReady='';host.setAttribute('aria-busy','true');
-      controls?.target.set(cx,cy,4);camera.position.set(cx,cy-span*1.1,span*1.05);sun.target.position.set(cx,cy,0);scene.add(sun.target);controls?.update();
+      controls?.target.set(cx,cy,4);camera.position.set(cx,cy-span*1.1,span*1.05);fieldBox={x0:b.x0-4,x1:b.x1+4,y0:b.y0-4,y1:b.y1+4,z:Math.min(24,span*.15)};if(controls)controls.maxDistance=span*3;fitCamera(HOME);sun.target.position.set(cx,cy,0);scene.add(sun.target);controls?.update();
       try{const next=await window.DeckFieldArt.build3d(temporary,info,THREE,L,{surface:color('--surface').lerp(color('--muted'),.18),line:color('--line-strong')},{own:!!video});if(disposed||sequence!==fieldSequence)return;fieldGroup.add(...temporary.children);visual=next;host.dataset.fieldReady=info.field;host.setAttribute('aria-busy','false');}
       catch(e){if(sequence===fieldSequence){fieldKey='';note.textContent='Field model could not load: '+e.message;host.setAttribute('aria-busy','false');}return;}}
     note.textContent=!info?'':info.physics==='3d'?'3D physics':'Flat (2D) physics, shown in 3D';
@@ -257,7 +268,7 @@ window.DeckSim3D={create(host,options){
   }
   // A video camera's picture size.
   function size(w,h){if(!video||(w===W&&h===H))return;W=w;H=h;renderer.setSize(W,H,false);}
-  function resize(){shown();const w=Math.max(1,boxSize.w),h=Math.max(1,boxSize.h),size=renderer.getSize(new THREE.Vector2());if(size.x!==w||size.y!==h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}}
+  function resize(){shown();const w=Math.max(1,boxSize.w),h=Math.max(1,boxSize.h),size=renderer.getSize(new THREE.Vector2());if(size.x!==w||size.y!==h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();if(framed&&controls)fitCamera(camera.position.clone().sub(controls.target).toArray());}}
   controls?.addEventListener('change',schedule);
   const themeObserver=new MutationObserver(()=>{if(info)setField(info);});themeObserver.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});const scheme=matchMedia('(prefers-color-scheme: dark)'),themeChanged=()=>{if(info)setField(info);};scheme.addEventListener('change',themeChanged);
   return {setField,setModel,update,draw:drawNow,shoot,picture,size,canvas:()=>renderer.domElement,resize:()=>{boxSize=null;schedule();},dispose(){disposed=true;fieldSequence++;cancelAnimationFrame(raf);watch?.disconnect();themeObserver.disconnect();scheme.removeEventListener('change',themeChanged);navigator?.dispose();controls?.dispose();clear(scene);renderer.dispose();renderer.forceContextLoss();host.replaceChildren();}};

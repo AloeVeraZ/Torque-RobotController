@@ -1,6 +1,8 @@
 # Agent handoff
 
 - Branch: `testing`. Commits are local only and nothing was pushed. `git log --oneline 4c1c039..HEAD` lists this session's work.
+- **Apple Silicon Mac (local, with CAD):** `node tools/simulation/fetch.cjs && node tools/simulation/build.cjs`, then the Strafer CAD as in `ui/assets/robots/NOTICES.md` (a Python 3.12 venv in `.cache/cad-venv` has `cadquery-ocp-novtk`), then `tools/simulation/install-local-mac.sh` installs `~/Applications/Torque.app` (old bundle moved to `~/Applications/Torque-backups`). Open CASCADE meshes the STEP slightly differently per OS, so `catalog.json` lists the Windows and Mac hashes.
+- The Test setup and the A301 Swerve preset are gone from the app; UI tests still start on the Test setup with `DECK_TEST_SETUP=1`.
 - Node is not on PATH. Use `ELECTRON_RUN_AS_NODE=1 .cache/runtime-win32-x64-44.8.0/electron.exe` for tests, `deck-sim`, `build.cjs` and checks.
   - Its Node 24 strips TypeScript types, which is how the Pedro Visualizer's own `.ts` modules were run against Deck's `.pp` output.
 - Playwright for probes and the E2E: `C:/Users/angel/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright`.

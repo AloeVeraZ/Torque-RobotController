@@ -80,48 +80,6 @@
   function mecanumJoints(name){const HX=MECANUM.L/2,HY=MECANUM.W/2,WX=HX-2.9,wy=HY-MECANUM_HALF;
     return CORNERS.map(([k,sx,sy])=>({id:'wheel'+k,name:'Mecanum wheel '+k,kind:'drive-wheel',type:'continuous',parts:[`${name}/${CHASSIS}/Mecanum wheel ${k}`],
       origin:[sx*WX,sy*wy,WHEEL_R],axis:[0,1,0],radius:+WHEEL_R.toFixed(4),roll:'mecanum',drive:{signal:'wheel'},source:src}));}
-  // ---- A301 Swerve: NYC FIRST A301's square swerve base ---------------------------------------------------------------
-  // A 1 in box-tube frame with a module under each corner: a fixed module plate and bearing, and below it the steering
-  // yoke (ring gear, forks, axle) that turns about the module's centre with its 3 in wheel. The drive motor stands on the
-  // plate above the wheel (coaxial) and an Axon steering servo's pinion turns the ring gear. Belly pan, Control Hub,
-  // battery and a SparkFun OTOS in the middle.
-  const SWERVE={id:'a301swerve',name:'A301 Swerve',L:17,W:17,module:5.9,r:1.5,width:.5};
-  const PLATE={z0:4.45,z1:4.6},TUBE={z0:4.6,z1:5.6};
-  function a301Swerve(){
-    const H=SWERVE.L/2,M=SWERVE.module,R=SWERVE.r,w=SWERVE.width;
-    // Frame: side tubes along x, front and back tubes between them.
-    const tubeAlong=(path,lo,hi)=>{part(path,'Box tube 1x1',K.tube,g=>box(g,lo,hi));
-      part(path,'Hole pattern',C.hole,g=>{const along=hi[0]-lo[0]>hi[1]-lo[1],n=Math.floor((along?hi[0]-lo[0]:hi[1]-lo[1])-.5);for(let k=0;k<n;k++){const t=(k-(n-1)/2);disc(g,frame(along?[t,(lo[1]+hi[1])/2,hi[2]+EPS]:[(lo[0]+hi[0])/2,t,hi[2]+EPS],Z,X),.1,8);}});};
-    for(const s of [1,-1])tubeAlong([CHASSIS,`Frame tube ${s>0?'left':'right'}`],[-H,s>0?H-1:-H,TUBE.z0],[H,s>0?H:-H+1,TUBE.z1]);
-    for(const s of [1,-1])tubeAlong([CHASSIS,`Frame tube ${s>0?'front':'back'}`],[s>0?H-1:-H,-H+1,TUBE.z0],[s>0?H:-H+1,H-1,TUBE.z1]);
-    // Belly pan between the modules.
-    part([CHASSIS,'Belly pan'],'Belly pan',K.poly,g=>{box(g,[-3.4,-H+1,PLATE.z1],[3.4,H-1,PLATE.z1+.1]);for(const s of [1,-1])box(g,s>0?[3.4,-3.4,PLATE.z1]:[-H+1,-3.4,PLATE.z1],s>0?[H-1,3.4,PLATE.z1+.1]:[-3.4,3.4,PLATE.z1+.1]);});
-    for(const [k,sx,sy] of CORNERS){
-      const c=[sx*M,sy*M],mod=[CHASSIS,'Swerve module '+k],up=frame([c[0],c[1],0],Z,X),steer=[...mod,'Steering'],in2=[-sx*Math.SQRT1_2,-sy*Math.SQRT1_2];
-      part([...mod,'Module plate'],'Module plate',C.alu,g=>box(g,[c[0]-2.4,c[1]-2.4,PLATE.z0],[c[0]+2.4,c[1]+2.4,PLATE.z1]));
-      part([...mod,'Module plate'],'Hole pattern',C.hole,g=>{for(const [dx,dy] of [[1.9,1.9],[1.9,-1.9],[-1.9,1.9],[-1.9,-1.9]])disc(g,frame([c[0]+dx,c[1]+dy,PLATE.z1+EPS],Z,X),.14,10);});
-      part([...mod,'Module bearing'],'Module bearing',C.aluDark,g=>tube(g,up,1.55,1.85,3.9,PLATE.z0,40));
-      // Steering: ring gear, yoke plate, two forks and the axle; the wheel in it.
-      part(steer,'Ring gear 60T',C.gear,g=>gear(g,up,1.0,1.7,1.85,60,3.55,3.85));
-      part(steer,'Yoke plate',K.black,g=>tube(g,up,.3,1.6,3.3,3.55,36));
-      part(steer,'Forks',K.black,g=>{for(const s of [1,-1])prism(g,frame([c[0],c[1],0],Z,X),[[-1.05,s*(w+.12)],[1.05,s*(w+.12)],[1.05,s*(w+.24)],[-1.05,s*(w+.24)]],.7,3.3);});
-      part(steer,'Axle',C.steel,g=>cylinder(g,frame([c[0],c[1],R],Y,X),.16,-w-.3,w+.3,6));
-      wheel([...steer,'Wheel'],[c[0],c[1],R],R,w,{hub:K.blue,spokes:6,label:'Swerve wheel tire'});
-      // Drive motor on the plate over the wheel, its belt down through the module (coaxial); steering servo inboard.
-      motor([...mod,'Drive motor'],[c[0],c[1],PLATE.z1],Z,{label:'goBILDA 5203 Yellow Jacket 1150 rpm',shaft:.5});
-      const sp=[c[0]+in2[0]*2.3,c[1]+in2[1]*2.3];servo([...mod,'Steering servo'],'Axon MINI+ steering servo',[sp[0],sp[1],PLATE.z1],[0,0,-1],[in2[0],in2[1],0]);
-      part([...mod,'Steering servo'],'Steering pinion 20T',C.gear,g=>gear(g,frame([sp[0],sp[1],0],Z,X),.12,.42,.52,20,3.55,3.85));
-      part([...mod,'Steering servo'],'Pinion shaft',C.steel,g=>cylinder(g,frame([sp[0],sp[1],0],Z,X),.12,3.85,PLATE.z1,6));
-    }
-    // OTOS under the belly pan at the centre, looking at the floor.
-    part([CHASSIS,'SparkFun OTOS'],'SparkFun OTOS',K.red,g=>box(g,[-.5,-.5,PLATE.z0-.06],[.5,.5,PLATE.z0+.14]));
-    part([CHASSIS,'SparkFun OTOS'],'OTOS standoffs',C.alu,g=>{for(const [dx,dy] of [[.38,.38],[-.38,.38],[.38,-.38],[-.38,-.38]])cylinder(g,frame([dx,dy,PLATE.z0+.14],Z),.06,0,PLATE.z1-PLATE.z0-.04,6);});
-    hubAndBattery([ELECTRONICS],-2.8,2.8,1.1,-2.5,PLATE.z1+.1);
-  }
-  function swerveJoints(name){const M=SWERVE.module,R=SWERVE.r;
-    return CORNERS.flatMap(([k,sx,sy])=>{const mod=`${name}/${CHASSIS}/Swerve module ${k}`;
-      return [{id:'steer'+k,name:'Steering '+k,kind:'swerve-steer',type:'continuous',parts:[mod+'/Steering'],origin:[sx*M,sy*M,0],axis:[0,0,1],states:{forward:0,left:90},speed:720,drive:{signal:'steer'},source:src},
-        {id:'wheel'+k,name:'Swerve wheel '+k,kind:'drive-wheel',type:'continuous',parent:'steer'+k,parts:[mod+'/Steering/Wheel'],origin:[sx*M,sy*M,R],axis:[0,1,0],radius:R,drive:{signal:'wheel'},source:src}];});}
   // ---- the presets ---------------------------------------------------------------------------------------------------
   // draw: its parts; joints: its moving parts (CAD frame = robot frame); heightIn: its CAD's height; sensors: where it
   // gets its position; wiring: Control Hub ports as on the robot; parts: its mechanisms' CAD assemblies; cad: the vendor
@@ -130,13 +88,7 @@
     // It comes with odometry on (its pods and Pinpoint are on its CAD); a kit without them unticks it in Chassis and runs on its motor encoders and the hub's IMU.
     startermecanum:{...MECANUM,cad:'strafer',draw:starterMecanum,joints:mecanumJoints,heightIn:7.25,wheelDiameterMm:104,localization:'fused',imuSource:'device',
       wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-312',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-312',hub:'control',port:1},
-        'robot.backLeft':{model:'gobilda-5203-312',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-312',hub:'control',port:3},'robot.imu':{hub:'control',bus:0},'robot.pinpoint':{hub:'control',bus:1}}}},
-    a301swerve:{...SWERVE,cad:'swechanum',draw:a301Swerve,joints:swerveJoints,heightIn:9.25,wheelDiameterMm:76,localization:'optical',imuSource:'device',
-      wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-1150',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-1150',hub:'control',port:1},
-        'robot.backLeft':{model:'gobilda-5203-1150',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-1150',hub:'control',port:3},
-        'robot.steerFrontLeft':{model:'axon-mini-cr',hub:'control',port:0},'robot.steerFrontRight':{model:'axon-mini-cr',hub:'control',port:1},
-        'robot.steerBackLeft':{model:'axon-mini-cr',hub:'control',port:2},'robot.steerBackRight':{model:'axon-mini-cr',hub:'control',port:3},
-        'robot.imu':{hub:'control',bus:0},'robot.otos':{hub:'control',bus:1}}}}};
+        'robot.backLeft':{model:'gobilda-5203-312',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-312',hub:'control',port:3},'robot.imu':{hub:'control',bus:0},'robot.pinpoint':{hub:'control',bus:1}}}}};
   // ---- demo routes -------------------------------------------------------------------------------------------------
   // BIOBUZZ red autonomous routes that show what each robot does (Deck inches from the audience-left corner, headings
   // counter-clockwise from +x), validated headlessly in tests/sim-preset-robots.test.cjs: no zone touched, ending at the
@@ -151,16 +103,7 @@
       P(24,27,'','LEAVE: forward off the wall, then a 90° turn',plain('Drive forward'),{turn:90}),
       P(24,84,'','Up the field, then turned around',plain('Straight up the field'),{turn:-90}),
       P(24,48,'','Back down the field',plain('Straight back down')),
-      P(21,107,'','PARK: partly in the red LOADING ZONE, facing it',plain('Up into the loading zone, pushing its pollen into the corner'),{turn:-180})]},
-    // Swerve showing off: curves that spin the robot a whole turn while it drives, face the hive while it circles, spin
-    // back the other way and face where it drives, then sweep the loading zone's pollen into the corner as it parks.
-    a301swerve:{start:{x:9.83,y:27,heading:0},pins:[
-      P(34,27,'','LEAVE: off the starting wall',plain('Off the wall')),
-      P(62,28,'','',{style:'spline',note:'A full spin while it drives',rotate:'spin',spins:1}),
-      P(30,54,'','',{style:'spline',note:'Facing the hive while it circles',rotate:'track',target:{x:72,y:72}}),
-      P(32,86,'','',{style:'spline',note:'Spinning back the other way',rotate:'spin',spins:-1}),
-      P(30,124,'','',{style:'spline',note:'Facing where it drives',rotate:'tangent'}),
-      P(20.5,107,'','PARK: partly in the red LOADING ZONE, facing it',{style:'spline',note:'Into the loading zone, pushing its pollen into the corner'},{turn:-180})]}};
+      P(21,107,'','PARK: partly in the red LOADING ZONE, facing it',plain('Up into the loading zone, pushing its pollen into the corner'),{turn:-180})]}};
   // The demo route as a field of its own (the app gives it its id).
   function layout(id){const r=ROUTES[id];return {name:`${Mech().PRESETS[id].name} demo`,field:'biobuzz',alliance:'red',width:144,height:144,elements:true,start:{...r.start},zones:[],pins:JSON.parse(JSON.stringify(r.pins)),
     clearance:.25,style:'spline',rotate:false,route:null,tested:null};}

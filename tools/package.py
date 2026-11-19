@@ -155,14 +155,14 @@ def windows():
     compile_nsis('Setup.nsi',OUTPUT=setup,ICON=ROOT/'ui/icon.ico',SETUP_ICON=ROOT/'packaging/installer.ico',SIDEBAR=ROOT/'packaging/installer-sidebar.bmp',VERSION=VERSION,PAYLOAD=payload)
     finish(setup);latest(setup)
 def mac(arch):
-    archive=runtime_archive('darwin-'+arch);bundle='Deck Driver Station.app';file=OUT/f'DeckDriverStation-{VERSION}-macOS-{arch}.zip'
+    archive=runtime_archive('darwin-'+arch);bundle='Torque.app';file=OUT/f'DeckDriverStation-{VERSION}-macOS-{arch}.zip'
     with zipfile.ZipFile(file,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         with zipfile.ZipFile(archive) as original:
             for e in original.infolist():
                 if '/_CodeSignature/' in e.filename or e.filename.endswith('/_CodeSignature/'):continue
                 name=e.filename.replace('Electron.app',bundle,1) if e.filename.startswith('Electron.app') else 'Runtime licenses/'+e.filename;data=original.read(e.filename)
                 if e.filename=='Electron.app/Contents/Info.plist':
-                    p=plistlib.loads(data);p.update(CFBundleName='Deck Driver Station',CFBundleDisplayName='Deck Driver Station',CFBundleIdentifier='dev.deckdriverstation.app',CFBundleShortVersionString=VERSION,CFBundleVersion=VERSION,CFBundleIconFile='deck.icns',NSLocalNetworkUsageDescription='Connect to the robot websites you select on your local Wi-Fi network.');data=plistlib.dumps(p)
+                    p=plistlib.loads(data);p.update(CFBundleName='Torque',CFBundleDisplayName='Torque',CFBundleIdentifier='dev.deckdriverstation.app',CFBundleShortVersionString=VERSION,CFBundleVersion=VERSION,CFBundleIconFile='deck.icns',NSLocalNetworkUsageDescription='Connect to the robot websites you select on your local Wi-Fi network.');data=plistlib.dumps(p)
                 info=zipfile.ZipInfo(name,e.date_time);info.external_attr=e.external_attr;info.create_system=3;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data)
         for src,relative in app_files():
             info=zipfile.ZipInfo(bundle+'/Contents/Resources/app/'+relative);info.create_system=3;info.external_attr=0o100644<<16;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,src.read_bytes())

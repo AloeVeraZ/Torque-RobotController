@@ -22,7 +22,7 @@ function check(){
     if(dirty)throw Error(`${name} clone has local modifications:\n${dirty}`);
   }
   for(const [name,version] of Object.entries(versions)){const actual=JSON.parse(fs.readFileSync(path.join(deps,name,'package.json'),'utf8')).version;if(actual!==version)throw Error(`${name} ${actual} installed; expected ${version}.`);}
-  const robots=JSON.parse(fs.readFileSync(path.join(root,'ui/assets/robots/catalog.json'),'utf8'));for(const id of ['strafer','swechanum'])if(fs.existsSync(path.join(root,'ui/assets/robots',id+'.glb.gz'))&&sha(path.join(root,'ui/assets/robots',id+'.glb.gz'))!==robots[id].assetSha256)throw Error(`Bundled ${id} CAD differs from its prepared hash.`);
+  const robots=JSON.parse(fs.readFileSync(path.join(root,'ui/assets/robots/catalog.json'),'utf8'));for(const id of Object.keys(robots))if(fs.existsSync(path.join(root,'ui/assets/robots',id+'.glb.gz'))&&![robots[id].assetSha256].flat().includes(sha(path.join(root,'ui/assets/robots',id+'.glb.gz'))))throw Error(`Bundled ${id} CAD differs from its prepared hash.`);
 }
 function copy(from,to){fs.mkdirSync(path.dirname(to),{recursive:true});fs.cpSync(from,to,{recursive:true});}
 async function bundles(){

@@ -9,7 +9,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechanisms');fs.mkdirSync(out,{recursive:true});
 (async()=>{
-  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-mech-ui-')),env={...process.env,DECK_HEADLESS:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
+  const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-mech-ui-')),env={...process.env,DECK_HEADLESS:'1',DECK_TEST_SETUP:'1',DECK_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
   const app=await _electron.launch({executablePath:process.env.DECK_ELECTRON,args:[root],env});
   try{
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));

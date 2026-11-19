@@ -33,13 +33,13 @@ def main():
         elif name.endswith('.zip'):
             with zipfile.ZipFile(file) as archive:
                 is_mac='macOS' in name
-                prefix='Deck Driver Station.app/Contents/Resources/app/' if is_mac else f'DeckDriverStation-{VERSION}-Windows/app/'
+                prefix='Torque.app/Contents/Resources/app/' if is_mac else f'DeckDriverStation-{VERSION}-Windows/app/'
                 for src,relative in sources():assert archive.read(prefix+relative)==src.read_bytes(),name+': '+relative
                 if is_mac:
                     assert archive.getinfo('Install-Mac.command').external_attr>>16&0o111
-                    assert archive.getinfo('Deck Driver Station.app/Contents/MacOS/Electron').external_attr>>16&0o111
-                    assert archive.getinfo('Deck Driver Station.app/Contents/Resources/runtime-java/bin/java').external_attr>>16&0o111
-                    info=plistlib.loads(archive.read('Deck Driver Station.app/Contents/Info.plist'))
+                    assert archive.getinfo('Torque.app/Contents/MacOS/Electron').external_attr>>16&0o111
+                    assert archive.getinfo('Torque.app/Contents/Resources/runtime-java/bin/java').external_attr>>16&0o111
+                    info=plistlib.loads(archive.read('Torque.app/Contents/Info.plist'))
                     assert info['CFBundleIdentifier']=='dev.deckdriverstation.app'
                 else:
                     assert archive.read(f'DeckDriverStation-{VERSION}-Windows/runtime/electron.exe')[:2]==b'MZ'

@@ -6,7 +6,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const PR=require('../ui/sim-preset-robots.js'),T=require('../ui/sim-test-robot.js'),SM=require('../src/sim-model.cjs'),Mech=require('../ui/sim-mechanisms.js'),K=require('../ui/sim-kinematics.js');
 const C=require('../ui/sim-config.js'),W=require('../ui/sim-wiring.js'),DS=require('../tools/deck-sim.cjs');
 const near=(a,b,tol,msg)=>[].concat(a).forEach((v,i)=>assert.ok(Math.abs(v-[].concat(b)[i])<=tol,`${msg||''} ${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`));
-const IDS=['startermecanum','a301swerve'];
+const IDS=['startermecanum'];
 const engineOf=d=>C.drives[d].engine;
 
 test('there is a generated robot for every preset, and the Test robot is unchanged by sharing its builders',()=>{
@@ -33,8 +33,6 @@ for(const id of IDS)test(`${id}: every joint moves parts of the model; wheels ro
   assert.equal(kin.joints.length,raw.joints.length,'none dropped');for(const j of kin.joints)assert.ok(P.expand(j.parts).size>0,`${j.id} names parts of the model`);
   const wheels=kin.joints.filter(j=>j.drive?.signal==='wheel');assert.equal(wheels.length,4);
   for(const j of wheels){near(j.origin[2],j.radius,1e-3,j.id);}
-  if(id==='a301swerve')for(const k of ['FL','FR','BL','BR']){const steer=kin.joints.find(j=>j.id==='steer'+k),wheel=kin.joints.find(j=>j.id==='wheel'+k);
-    assert.deepEqual([steer.drive.signal,wheel.parent,steer.axis],['steer','steer'+k,[0,0,1]]);const all=P.expand(steer.parts);for(const p of P.expand(wheel.parts))assert.ok(all.has(p),'the wheel is inside its module');}
 });
 
 for(const id of IDS)test(`${id}: applied to a setup it is a locked FTC robot with clean wiring and its mechanisms on its CAD`,()=>{
