@@ -110,8 +110,8 @@ jobs:
           merge-multiple: true
           path: dist
       # Every built platform must have its update download and checksum, and nothing else may be
-      # there. A release for only some platforms leaves out the App package, which fits every
-      # platform: older updaters would install it on the devices this release was not built for.
+      # there. Then prepare keeps one download per platform (the Windows installer, the Mac zip and
+      # the Steam Deck installer), so the release page has exactly one file for each.
       - name: Publish the built platforms
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,32 +131,22 @@ jobs:
           if [[ -n "$notes" ]]; then args+=(--notes "$notes"); fi
           if [[ "$BRANCH" == testing ]]; then args+=(--prerelease); fi
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes "${args[@]}"
-      # The in-app updater reads this fixed download first, so update checks do not spend
-      # GitHub's 60-per-hour API allowance. Sizes and digests come from the release itself.
-      # The new release comes first; up to five earlier ones of the channel follow, so a device a
-      # partial release skips can still find the newest release with its download.
-      # Installs from before the repository's rename only accept download URLs with its old name,
-      # so the manifest keeps that name. GitHub redirects it, and newer installs accept both.
-      # The release before this one is V1. Only its title changes: nothing here removes a release.
-      - name: Name the earlier release
-        if: needs.validate.outputs.branch == 'main'
+      # No channel manifest is written: the Releases page holds only the versioned releases, and the
+      # in-app updater asks GitHub's API for them instead.
+      # One time only, for V2 (v2.4.34): once it is published with its three downloads, every other
+      # release is deleted with its tag, so V2 is the only release. Any other version skips this.
+      - name: Make V2 the only release
+        if: needs.validate.outputs.tag == 'v2.4.34'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit v2.4.25 --title "Torque V1 (v2.4.25, Windows x64 only)" || true
-      - name: Update the channel manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.validate.outputs.tag }}
-          BRANCH: ${{ needs.validate.outputs.branch }}
         run: |
-          if [[ "$BRANCH" == testing ]]; then channel=testing; pattern='^testing-v[0-9]+[.][0-9]+[.][0-9]+$'; else channel=main; pattern='^v[0-9]+[.][0-9]+[.][0-9]+$'; fi
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RUNNER_TEMP/newest.json"
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" > "$RUNNER_TEMP/recent.json" || echo '[]' > "$RUNNER_TEMP/recent.json"
-          jq -s --arg channel "$channel" --arg tag "$TAG" --arg pattern "$pattern" '
-            def slim: {tag_name,prerelease,draft,body:((.body//"")[:8000]),assets:[.assets[]|{name,size,digest,state,browser_download_url:(.browser_download_url|sub("/AloeVeraZ/Torque-RobotController/";"/AloeVeraZ/SteamDeck-RobotController/"))}]};
-            {schema:1,channel:$channel,releases:([.[0]|slim]+[(.[1]|if type=="array" then .[] else empty end)|select(.tag_name!=$tag and (.draft|not) and (.tag_name|test($pattern)))|slim][:5])}' "$RUNNER_TEMP/newest.json" "$RUNNER_TEMP/recent.json" > channel.json
-          jq -e --arg tag "$TAG" '.releases[0].tag_name==$tag and (.releases[0].assets|length)>0 and all(.releases[0].assets[];.digest!=null and .size>0)' channel.json
-          if ! gh release view "$channel-channel" >/dev/null 2>&1; then
-            gh release create "$channel-channel" --prerelease --latest=false --target "$GITHUB_SHA" --title "Torque $channel channel (updater manifest)" --notes "Used by the in-app updater. Install from the versioned releases."
-          fi
-          gh release upload "$channel-channel" channel.json --clobber
+          names=$(gh release view "$TAG" --json assets --jq '[.assets[].name]|sort|join(",")')
+          want="DeckDriverStation-2.4.34-SteamDeck.run,DeckDriverStation-2.4.34-Windows-Setup.exe,DeckDriverStation-2.4.34-macOS-arm64.zip"
+          [[ "$names" == "$want" ]] || { echo "V2 has $names, not $want: nothing deleted."; exit 1; }
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
+            [[ "$old" == "$TAG" ]] && continue
+            echo "Deleting $old"; gh release delete "$old" --cleanup-tag --yes
+          done
+          gh release list --limit 100

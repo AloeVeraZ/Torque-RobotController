@@ -4,7 +4,7 @@
 // skipped platforms would install it), and the publish workflow is wired to this logic.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{execFileSync}=require('node:child_process');
 const root=path.join(__dirname,'..'),script=path.join(root,'tools/release-targets.cjs');
-const {ALL,targets,partial,describe,plan}=require(script);
+const {ALL,targets,partial,describe,plan,extras}=require(script);
 const meta=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const workflow=fs.readFileSync(path.join(root,'.github/workflows/release.yml'),'utf8').replace(/\r\n/g,'\n');// Windows checkouts may use CRLF
 const files=(v,...platforms)=>platforms.flatMap(p=>({steamdeck:[`DeckDriverStation-${v}-SteamDeck.tar.gz`,`DeckDriverStation-${v}-SteamDeck.run`,'DeckDriverStation-SteamDeck.run',`DeckDriverStation-${v}-App-c6eacf3db1ea.tar.gz`],windows:[`DeckDriverStation-${v}-Windows.zip`,`DeckDriverStation-${v}-Windows-Setup.exe`,'DeckDriverStation-Windows-Setup.exe'],'macos-arm64':[`DeckDriverStation-${v}-macOS-arm64.zip`,'DeckDriverStation-macOS-arm64.zip']})[p]).flatMap(f=>[f,f+'.sha256']);
@@ -45,9 +45,15 @@ test('prepare checks dist, removes a partial build\'s App package and prints the
   const dist=fs.mkdtempSync(path.join(os.tmpdir(),'deck-release-'));t.after(()=>fs.rmSync(dist,{recursive:true,force:true}));
   for(const f of files('2.4.23','steamdeck','windows'))fs.writeFileSync(path.join(dist,f),'x');
   const out=JSON.parse(execFileSync(process.execPath,[script,'prepare',dist,'["steamdeck","windows"]','2.4.23','testing-v2.4.23'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}));
-  assert.match(out.title,/\(Steam Deck\/Linux and Windows x64 only\)$/);assert.ok(!fs.readdirSync(dist).some(f=>f.includes('-App-')));assert.equal(fs.readdirSync(dist).length,12);
+  assert.match(out.title,/\(Steam Deck\/Linux and Windows x64 only\)$/);
+  assert.deepEqual(fs.readdirSync(dist).sort(),['DeckDriverStation-2.4.23-SteamDeck.run','DeckDriverStation-2.4.23-Windows-Setup.exe'],'one download per platform, nothing else');
   assert.throws(()=>execFileSync(process.execPath,[script,'prepare',dist,'["windows"]','2.4.23','testing-v2.4.23'],{stdio:'pipe'}),/which this release does not build/);
-  assert.equal(fs.readdirSync(dist).length,12,'a failed check removes nothing');
+  assert.equal(fs.readdirSync(dist).length,2,'a failed check removes nothing');
+});
+test('a full release keeps exactly one download per platform',()=>{
+  const v='2.4.34',all=files(v,...ALL);assert.deepEqual(plan(all,ALL,v).problems,[]);
+  const kept=all.filter(f=>!extras(all,ALL,v).includes(f)).sort();
+  assert.deepEqual(kept,[`DeckDriverStation-${v}-SteamDeck.run`,`DeckDriverStation-${v}-Windows-Setup.exe`,`DeckDriverStation-${v}-macOS-arm64.zip`]);
 });
 test('the publish workflow builds and publishes exactly the chosen targets',()=>{
   const job=name=>workflow.split(/\n  (?=[\w-]+:\n)/).find(s=>s.startsWith(name+':'))||'';
@@ -59,6 +65,6 @@ test('the publish workflow builds and publishes exactly the chosen targets',()=>
   assert.match(publish,/TARGETS: \$\{\{ needs\.validate\.outputs\.targets \}\}/);
   const prepare=publish.indexOf('node tools/release-targets.cjs prepare dist "$TARGETS" "$VERSION" "$TAG"'),create=publish.indexOf('gh release create "$TAG" dist/*');
   assert.ok(prepare>0&&create>prepare,'dist is checked before the release is created');
-  // The manifest keeps the new release first, as updaters up to 2.4.22 and the jq check expect.
-  assert.match(publish,/releases:\(\[\.\[0\]\|slim\]\+/);assert.match(publish,/\.releases\[0\]\.tag_name==\$tag/);
+  // No channel manifest: the Releases page holds only the versioned releases.
+  assert.doesNotMatch(publish,/channel\.json/);
 });

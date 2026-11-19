@@ -38,11 +38,15 @@ test('this version is one V2 understands and counts as newer',()=>{
   for(const v of FUTURE)assert.ok(Old.compare(v,'2.4.28')>0&&Now.compare(v,'2.4.28')>0,v);assert.ok(Old.compare('2.10.0','2.9.0')>0,'numbers compare as numbers');
 });
 
-test('the publish job keeps the tags, flags and channel manifest V2 reads',()=>{
+test('the publish job keeps the tags and flags V2 reads',()=>{
   assert.match(workflow,/tags: \['v\[0-9\]\*\.\[0-9\]\*\.\[0-9\]\*', 'testing-v\[0-9\]\*\.\[0-9\]\*\.\[0-9\]\*'\]/,'tags v1.2.3 and testing-v1.2.3 publish');
   assert.match(workflow,/if \[\[ "\$BRANCH" == testing \]\]; then args\+=\(--prerelease\); fi/,'testing releases are pre-releases, main ones are not');
-  assert.match(workflow,/\{schema:1,channel:\$channel,releases:/,'manifest schema 1');assert.match(workflow,/gh release upload "\$channel-channel" channel\.json --clobber/,'at <channel>-channel/channel.json');
-  assert.doesNotMatch(workflow,/git push[^\n]*--delete|git tag -d|gh release delete|cleanup-tag/,'publishing never deletes a tag or a release: a deleted tag leaves its release hidden but still counted');
+  // The only deleting is the one-time step that made V2 (v2.4.34) the only release, after checking its three downloads.
+  // It deletes each release with its tag (never a tag alone: that leaves its release hidden but still counted).
+  const steps=workflow.split(/\n {6}- name: /),deleting=steps.filter(s=>/gh release delete|cleanup-tag|git tag -d|git push[^\n]*--delete/.test(s));
+  assert.equal(deleting.length,1);assert.match(deleting[0],/^Make V2 the only release\n {8}if: needs\.validate\.outputs\.tag == 'v2\.4\.34'\n/);
+  assert.match(deleting[0],/\[\[ "\$names" == "\$want" \]\] \|\| \{[^}]*exit 1; \}/,'nothing is deleted unless V2 has its three downloads');
+  assert.match(deleting[0],/gh release delete "\$old" --cleanup-tag --yes/);assert.doesNotMatch(deleting[0],/git tag -d|git push/);
 });
 
 test('V2 reads the channel manifest today\'s publishing writes, and falls back to GitHub when it is missing',async()=>{

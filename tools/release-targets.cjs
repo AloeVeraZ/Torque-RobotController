@@ -12,6 +12,10 @@ const LABEL={steamdeck:'Steam Deck/Linux',windows:'Windows x64','macos-arm64':'A
 const FILES={steamdeck:/-SteamDeck\.(tar\.gz|run)$/,windows:/-Windows(\.zip|-Setup\.exe)$/,'macos-arm64':/-macOS-arm64\.zip$/};
 const FULL={steamdeck:'SteamDeck.tar.gz',windows:'Windows.zip','macos-arm64':'macOS-arm64.zip'};
 const APP=/^DeckDriverStation-\d+\.\d+\.\d+-App-[a-f0-9]{12}\.tar\.gz$/;
+// The one download a release publishes for each platform, so nobody has to pick between files.
+const DOWNLOAD={steamdeck:'SteamDeck.run',windows:'Windows-Setup.exe','macos-arm64':'macOS-arm64.zip'};
+// After plan's checks pass: every file in dist that is not one of the chosen platforms' downloads.
+const extras=(files,list,version)=>{const keep=new Set(check(list).map(t=>`DeckDriverStation-${version}-${DOWNLOAD[t]}`));return files.filter(f=>!keep.has(f));};
 
 function check(list,key='testingReleaseTargets'){
   if(!Array.isArray(list)||!list.length||new Set(list).size!==list.length||list.some(t=>!ALL.includes(t)))throw Error(`${key} must list one or more of ${ALL.join(', ')}, each once.`);
@@ -47,7 +51,7 @@ function plan(files,list,version){
   return {keep,drop,problems};
 }
 
-module.exports={ALL,LABEL,targets,partial,describe,plan};
+module.exports={ALL,LABEL,DOWNLOAD,targets,partial,describe,plan,extras};
 if(require.main===module){
   const [command,...args]=process.argv.slice(2);
   try{
@@ -59,6 +63,8 @@ if(require.main===module){
       const chosen=JSON.parse(list),{drop,problems}=plan(fs.readdirSync(dist),chosen,version);
       if(problems.length)throw Error(problems.join('\n'));
       for(const file of drop){fs.rmSync(path.join(dist,file));console.error(`Left out ${file}: this release is not built for every platform.`);}
+      for(const file of extras(fs.readdirSync(dist),chosen,version)){fs.rmSync(path.join(dist,file));console.error(`Left out ${file}: one download per platform.`);}
+      const left=fs.readdirSync(dist);if(left.length!==chosen.length)throw Error(`Expected one download per platform, found: ${left.join(', ')}`);
       const meta=JSON.parse(fs.readFileSync(path.join(__dirname,'..','package.json'),'utf8'));process.stdout.write(JSON.stringify(describe(tag,chosen,meta.releaseName))+'\n');
     }else throw Error('Use: release-targets.cjs targets <testing|main> | prepare <dist> <targets JSON> <version> <tag>');
   }catch(e){console.error(e.message);process.exit(1);}

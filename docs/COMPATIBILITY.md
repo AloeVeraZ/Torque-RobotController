@@ -15,11 +15,16 @@ V2 finds updates the same way forever, so every release keeps to this:
 |---|---|
 | Versions are plain `X.Y.Z` numbers, always higher than the last | V2 ignores a tag like `v2.5.0-beta`, and compares number by number |
 | Main is tagged `vX.Y.Z` and is a full release. Testing is tagged `testing-vX.Y.Z` and is a pre-release | That is how V2 tells the two channels apart |
-| File names stay `DeckDriverStation-<version>-Windows.zip`, `-SteamDeck.tar.gz`, `-macOS-arm64.zip`, and `-App-<base>.tar.gz` | V2 downloads them by exact name. The App package is the small update for installs on the same runtime |
-| The channel manifest stays at the `main-channel` and `testing-channel` releases, as `channel.json` with `schema: 1` | V2 reads it first. Without it, V2 asks GitHub's API instead, which allows 60 checks an hour |
+| File names stay `DeckDriverStation-<version>-…` | V2 looks for its download by exact name |
 | The repository keeps redirecting from its old name `SteamDeck-RobotController` | Installs from before the rename still look there |
 
-**Removing a release:** delete the release itself, never only its tag. A release whose tag is deleted disappears from the Releases list but still exists, still counts in the Releases number, and can still be downloaded from its old link. In November 2026, 24 old releases ended up like that.
+**One download per platform (from v2.4.34).** A release publishes exactly three files: `DeckDriverStation-<version>-Windows-Setup.exe`, `-macOS-arm64.zip` and `-SteamDeck.run`. The updater-only files (`-Windows.zip`, `-SteamDeck.tar.gz`, `-App-<base>.tar.gz`, the `.sha256` files) and the `main-channel` / `testing-channel` manifests are no longer published. What that means for the in-app updater:
+
+- Macs still update in the app: `-macOS-arm64.zip` is both the download and the update, found through GitHub's API (60 checks an hour per network).
+- Windows and Steam Deck installs no longer find an update in the app, because their update file (`-Windows.zip`, `-SteamDeck.tar.gz`) is not published. They install the new version from the Releases page. Teaching the updater to install from `-Windows-Setup.exe` and `-SteamDeck.run` would bring in-app updates back.
+- Only Main releases are published, so Testing installs see no release. They can switch to Main in Settings.
+
+**Removing a release:** delete the release itself, never only its tag. A release whose tag is deleted disappears from the Releases list but still exists, still counts in the Releases number, and can still be downloaded from its old link. In November 2026, 24 old releases ended up like that. V2 (v2.4.34) was published as the only release: its publish deleted every earlier release and its tag (`.github/workflows/release.yml`, "Make V2 the only release").
 
 ## Saved data
 
