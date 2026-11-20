@@ -110,3 +110,19 @@ test('a skipped device, and one moved by hand, are checked off',()=>{
   pr=L.progress([],devs,{skipped:['lift','pp'],moved:{imu:{ok:true}}});
   assert.ok(pr.acts.find(a=>a.name==='lift').done);assert.ok(pr.sens.filter(s=>s.name==='pp').every(s=>s.done&&s.skipped));assert.ok(pr.sens.find(s=>s.name==='imu').done);
   assert.equal(L.progress([],devs,{moved:{imu:{ok:false}}}).sens.find(s=>s.name==='imu').done,false,'a failed watch does not count');});
+
+test('another robot’s picks do not stay: a swerve’s pods on a mecanum’s hub are guessed again, and its untried links go',()=>{
+  // What Starter Mecanum kept after a kiwi swerve was plugged in with it open, and the mecanum's own hub read after.
+  const mec=L.devices(['frontRight','frontLeft','backLeft','backRight'].map((name,port)=>({name,kind:'motor',hub:'control',port})).concat([{name:'imu',kind:'imu',hub:'control',bus:0}]),null);
+  const kept={type:'mecanum',slots:{frontLeft:{motor:'frontPod'},frontRight:{motor:'rightPod'},backLeft:{motor:'leftPod'},backRight:{motor:''}}};
+  assert.equal(L.staleChassis(kept,mec),true);
+  const fresh=L.guessChassis('mecanum',mec);assert.equal(L.staleChassis(fresh,mec),false);assert.deepEqual(L.simDevices(fresh),{frontLeft:'frontLeft',frontRight:'frontRight',backLeft:'backLeft',backRight:'backRight'},'the names Setup takes');
+  const link=(n,result)=>({id:n,causes:[{name:n,kind:'motor',dir:1}],effect:{key:`m:${n}:pos`,dir:1},...(result?{result}:{planned:true})});
+  const links=[link('frontPod'),link('rightPod'),{...link('leftPod'),planned:false},link('frontLeft',{state:'pass'}),link('backRight'),link('oldLift',{state:'pass'})];
+  assert.deepEqual(L.hereLinks(links,mec).map(l=>l.id),['frontLeft','backRight','oldLift'],'untried links for devices not here go; one that was tried stays');
+  // A swerve's steering servo and encoder count too, and nothing read yet says nothing.
+  const pods=L.devices([{name:'frontPod',kind:'motor',hub:'control',port:0},{name:'frontPodS',kind:'crservo',hub:'control',port:0},{name:'frontPodE',kind:'analog',hub:'control',port:0}],null);
+  assert.equal(L.staleChassis({type:'kiwiSwerve',slots:{front:{motor:'frontPod',servo:'frontPodS',encoder:'frontPodE'}}},pods),false);
+  assert.equal(L.staleChassis({type:'kiwiSwerve',slots:{front:{motor:'frontPod',servo:'frontPodS',encoder:'otherE'}}},pods),true);
+  assert.equal(L.staleChassis({type:'kiwiSwerve',slots:{front:{motor:'frontPod',servo:'gone',encoder:'frontPodE'}}},pods),true);
+  const none=L.devices([],null);assert.equal(L.staleChassis(kept,none),false);assert.equal(L.hereLinks(links,none).length,links.length);});

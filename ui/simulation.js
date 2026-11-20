@@ -2118,6 +2118,10 @@ public class MyAuto implements DeckAutonomous {
     // What needs a look shows; what simply matched is one line to open.
     if(fine.length>3){const more=document.createElement('li'),d=document.createElement('details'),sum=document.createElement('summary'),ul=document.createElement('ul');more.className='sim-hub-ok sim-hub-more';sum.textContent=`${fine.length} matched and linked`;ul.className='sim-hub-result';ul.append(...fine.map(li));d.append(sum,ul);more.append(d);list.replaceChildren(...look.map(li),more);}
     else list.replaceChildren(...lines.map(li));list.hidden=!list.children.length;setupRender();calRender();}
+  // The Control Hub plugged in now, into the robot open now: opening another robot takes the hub's names, hubs and ports
+  // as plugging it in does, so nothing shown is what the hub was when this robot was last open (or another robot's hub).
+  function hubIntoRobot(){if(!setupRobot||!setupRead||project.controller!=='ftc')return;const name=setupRead.active?.name||setupRead.configurations?.[0],xml=name?setupRead.files?.[name]:null;let config;try{config=xml?RobotConfig.parse(xml):{devices:[],hubs:[]};}catch{return;}
+    useHubConfig(window.DeckHubSetup.withScan(config,setupRobot.portals),{name:name||'no configuration',...(setupRead.serial?{serial:setupRead.serial}:{}),guessed:!!setupRead.active?.guessed,background:true},'#rs-matched',document.createElement('ul'));}
   async function hubSetup(from){
     const out=from==='setup'?'#rs-status':'#cal-hub-status',list=$(from==='setup'?'#rs-result':'#cal-hub-result'),buttons=[$('#cal-hub-setup'),$('#rs-read')];
     if(project.controller!=='ftc')return status(out,'Set up from the Control Hub is for an FTC Control Hub: choose it in Setup.');
@@ -2942,7 +2946,7 @@ public class MyAuto implements DeckAutonomous {
     garagePick=project.garageTile||null;garageKeys=null;wheelPlacing=null;wheelsSaid="";mechPlacing=null;mechFocus=null;chassisEdit=false;save();setupPanel();
     // Picked from Path planning or Run & review: a setup left half done opens in Setup where it was left.
     const half=!project.setupDone,away=was.where==='simulate';
-    if(was.where==='setup'){if(SETUP_ORDER.includes(was.flow))showSetupStep(was.step);else{flowStep=was.flow;flowMarks();setupRender();}}else if(was.where==='calibrate'){calRender();}else if(away&&!half)selectTab(was.tab);else openSetupAt();await switchLayout(project.active);refreshAll();
+    if(was.where==='setup'){if(SETUP_ORDER.includes(was.flow))showSetupStep(was.step);else{flowStep=was.flow;flowMarks();setupRender();}}else if(was.where==='calibrate'){calRender();}else if(away&&!half)selectTab(was.tab);else openSetupAt();await switchLayout(project.active);refreshAll();hubIntoRobot();
     // One that is not finished (a value Setup marks red, no CAD yet, more motors than the game allows) opens in Setup at that step.
     const step=away?unfinishedStep():null;if(step&&(!half||step!==setupStep)){project.setupDone=false;project.setupStep=step;project.setupFocus='';openSetupAt();refreshAll();}
     {const note=$('#sim-setup-resume');note.hidden=!(away&&(half||step));note.textContent=note.hidden?'':`“${project.setupName}” isn’t finished, so it opened here: complete ${SETUP_NAMES[project.setupStep]||'its setup'}, then go on to Path planning.`;}
@@ -4212,7 +4216,12 @@ public class MyAuto implements DeckAutonomous {
   // The chassis Calibrate → Electronics linked (which motor, steering servo and encoder each module is) is what Setup names
 // its drive devices: copied over whenever they differ, not only the first time, so a module linked or relinked later
 // (or a setup saved before) never leaves Setup on a name the Control Hub does not have.
-function syncChassisNames(){if(sampleOn?.())return false;const c=project.calibration?.electronics?.chassis,L=window.DeckLinks;if(!c?.slots||c.type!==project.robot?.drivetrain||!L?.simDevices)return false;
+function syncChassisNames(){if(sampleOn?.())return false;let c=project.calibration?.electronics?.chassis;const L=window.DeckLinks;if(!c?.slots||c.type!==project.robot?.drivetrain||!L?.simDevices)return false;
+  // Picks made with another robot plugged in (they name devices this Control Hub does not have) are not this robot's: the
+  // chassis is guessed again from the names this hub has, on whatever Calibrate page is open, and never copied into Setup.
+  {const devs=L.devices(configReadout(),null);if(L.staleChassis(c,devs)){const fresh=L.guessChassis(c.type,devs);if(!Object.values(fresh.slots).some(x=>x?.motor))return false;
+    const e=project.calibration.electronics;e.chassis=c=fresh;delete e.chassisAuto;project.calibration.links=L.hereLinks(Array.isArray(project.calibration.links)?project.calibration.links:[],devs);}}
+
   const diff=Object.entries(L.simDevices(c)).filter(([k,n])=>n&&project.robot.devices?.[k]?.name!==n);if(!diff.length)return false;
   // Taking the hub's own names changes nothing on the hub: a hub read that matched before still matches.
   const before=calHubHash();chassisToSimulate(Object.fromEntries(diff));if(project.calibration?.hub?.hash===before)project.calibration.hub.hash=calHubHash();save();return true;}

@@ -144,6 +144,15 @@
     for(const [,s] of Object.entries(chassis?.slots||{})){const m=devs.actuators.find(a=>a.name===s.motor&&a.kind==='motor');if(m&&encoderOf(m.name)!==false)out.push({causes:[{name:m.name,kind:'motor',dir:1}],effect:{key:`m:${m.name}:pos`,dir:1},planned:true});
       const sv=devs.actuators.find(a=>a.name===s.servo&&a.kind!=='motor'),en=devs.sensors.find(x=>x.key===`a:${s.encoder}`);if(sv&&en)out.push({causes:[{name:sv.name,kind:sv.kind,dir:1}],effect:{key:en.key,dir:1},planned:true});}
     return out;}
+  // What Electronics keeps about a chassis is about one robot's configuration. A pick that names a motor, servo or encoder
+  // this configuration does not have was made with another robot plugged in (a swerve's frontPod on a mecanum's hub), so it
+  // is not this robot's: the chassis is guessed again from the names that are here. Nothing read yet says nothing.
+  function staleChassis(chassis,devs){if(!chassis?.slots||!devs?.actuators?.length)return false;const act=n=>devs.actuators.some(a=>a.name===n),enc=n=>devs.sensors.some(x=>x.key===`a:${n}`);
+    return Object.values(chassis.slots).some(x=>!!x&&(!!x.motor&&!act(x.motor)||!!x.servo&&!act(x.servo)||!!x.encoder&&!enc(x.encoder)));}
+  // The links without those that were never tried and name something this configuration does not have: they were planned
+  // for another robot. One that was tried stays, as what was seen on the robot it was seen on.
+  function hereLinks(links,devs){if(!devs?.actuators?.length)return links;const act=n=>devs.actuators.some(a=>a.name===n),sen=k=>devs.sensors.some(x=>x.key===k);
+    return links.filter(l=>l.result?.state&&!l.planned||((l.causes||[]).every(c=>c.kind==='piece'||act(c.name))&&sen(l.effect?.key)));}
   // A link between this cause and this sensor already, whichever way.
   const joined=(links,name,key)=>links.find(l=>l.effect?.key===key&&l.causes?.length===1&&l.causes[0].name===name);
   // Planned links added for what has none yet; returns the new list.
@@ -178,7 +187,7 @@
     return {encoders:enc.some(v=>v===false)?false:names.length>0&&enc.every(v=>v===true)?true:undefined,
       fused:moved.some(v=>v===true)?true:(!!read&&!pins.length)||(moved.length>0&&moved.every(v=>v===false))?false:undefined,
       wheels:(drive||[]).length>0&&drive.every(d=>!!pods[d.key]?.drive),noPinpoint:!!read&&!pins.length};}
-  const api={sensingOf,devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,BY_HAND,PIECE};
+  const api={sensingOf,staleChassis,hereLinks,devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,BY_HAND,PIECE};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   // ---- the panel ----
@@ -214,12 +223,13 @@
     const pill=(state,text)=>`<span class="rs-pill ${state==='pass'?'ok':state?'warn':''}">${esc(text)}</span>`;
     const stateWords={pass:'Works',backwards:'Backwards',none:'No answer',other:'Wrong port?',moved:'Changed'};
     const hubOf=d=>d.hub==='control'?'Control Hub':d.hub?`Expansion Hub${/\d/.test(d.hub)?' '+d.hub.replace(/\D/g,''):''}`:d.hubName||'Hub',place=d=>{const hub=hubOf(d);return d.bus!==undefined?`${hub} · I2C ${d.bus}`:Number.isInteger(d.port)?`${hub} · port ${d.port}`:hub;};
-    const chassis=()=>{const c=el().chassis,type=p().robot?.drivetrain||'mecanum';return c?.type===type&&c.slots&&Object.values(c.slots).some(x=>x?.motor)?c:guessChassis(type,devs());};
+    const chassis=()=>{const c=el().chassis,type=p().robot?.drivetrain||'mecanum',d=devs();return c?.type===type&&c.slots&&Object.values(c.slots).some(x=>x?.motor)&&!staleChassis(c,d)?c:guessChassis(type,d);};
     // By default the chassis is the guess from the names, put on the board as planned links with nothing pressed: once for a configuration and drivetrain, so a link taken
     // off stays off. Nothing is trusted yet: each planned link still has to be moved and seen, which is the check a person does at the end.
+    // Another robot plugged in (what is kept names devices this one does not have) is a new configuration whatever it is called: it is guessed again, and Setup takes its names.
     let autoQueued=false;
-    function autoChassis(d){const c=chassis(),mark=`${opts.config?.()||''}|${c.type}`;if(autoQueued||el().chassisAuto===mark||!Object.values(c.slots).some(x=>x?.motor))return;const wanted=chassisLinks(c,d,encoderOf);if(!wanted.length)return;
-      autoQueued=true;setTimeout(()=>{autoQueued=false;if(el().chassisAuto===mark)return;const now=devs(),use=chassis();opts.setChassis?.({devices:simDevices(use)});edit(()=>{el().chassisAuto=mark;el().chassis=use;cal().links=plan(links(),chassisLinks(use,now,encoderOf));});},0);}
+    function autoChassis(d){const c=chassis(),mark=`${opts.config?.()||''}|${c.type}`,same=x=>el().chassisAuto===mark&&!staleChassis(el().chassis,x);if(autoQueued||same(d)||!Object.values(c.slots).some(x=>x?.motor))return;const wanted=chassisLinks(c,d,encoderOf);if(!wanted.length)return;
+      autoQueued=true;setTimeout(()=>{autoQueued=false;const now=devs();if(same(now))return;const use=chassis();opts.setChassis?.({devices:simDevices(use)});edit(()=>{el().chassisAuto=mark;el().chassis=use;cal().links=plan(hereLinks(links(),now),chassisLinks(use,now,encoderOf));});},0);}
     // The configuration's devices as rows: each actuator, and each sensor with its readings.
     function rows(d,pr){const r=read(),list=r.length?r:[...d.actuators.map(a=>({name:a.name,kind:a.kind})),...[...new Set(d.sensors.filter(s=>s.kind!=='motor').map(s=>s.name))].map(n=>({name:n,kind:d.sensors.find(s=>s.name===n).kind}))];
       return list.filter(x=>ACT.has(x.kind)||d.sensors.some(s=>s.name===x.name)).map(x=>{const act=pr.acts.find(a=>a.name===x.name),sens=pr.sens.filter(s=>s.name===x.name&&!(x.kind==='motor'&&s.key===`m:${x.name}:pos`));
