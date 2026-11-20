@@ -1635,7 +1635,10 @@ public class MyAuto implements DeckAutonomous {
         :`${saved}Uploaded, but the robot could not build it${r.errors.length?`: ${r.errors.slice(0,3).map(e=>`${e.file} line ${e.line}: ${e.message}`).join('; ')}`:'.'} An error in any OnBot Java file stops the whole build, including files Deck did not send.`);
       sendState={...s,result:null,fileNames:null};showCheck();showPlan(true);}
     catch(e){status('#sim-send-status',s.host==='usb'&&gen!==setupGen?HUB_UNPLUGGED:e.message);}finally{robotSending--;$('#sim-send-go').disabled=false;}};
-  if(native&&api.onRobotLink)api.onRobotLink(({stage,file})=>status('#sim-send-status',stage==='uploading'?`Uploading ${file}…`:'Building on the robot… (this takes up to a minute)'));
+  // Each step of a send, as it happens, wherever it was sent from: Simulate's Send to robot, and Calibrate's TeleOp and Autonomous
+  // (whose line says "Sending…" until the first step answers).
+  if(native&&api.onRobotLink)api.onRobotLink(({stage,file})=>{const text=stage==='uploading'?`Uploading ${file}…`:stage==='fixing'?`Fixing ${file} so the robot can build…`:'On the robot. Building it there now: this is the robot’s own compiler, and it takes up to a minute…';status('#sim-send-status',text);
+    for(const el of document.querySelectorAll('[data-at-status],[data-rt-status]'))if(/^(Sending it to the robot|Uploading |Fixing |On the robot\. Building)/.test(el.textContent))el.textContent=text;});
   // ------------------------------------------------------------------ guided check
   // The check TeleOp, run from here (src/robot-link.cjs runCheck): Deck starts it on the robot, shows each step with its
   // answers as buttons that press gamepad 1's on the robot, and puts the results into the setup.

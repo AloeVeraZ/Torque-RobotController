@@ -323,11 +323,11 @@
     const gOf=st=>{const l=links().find(x=>x.result?.state==='pass'&&x.effect?.key==='a:'+st.name&&x.causes?.some(c=>c.name===st.servo));return l&&l.effect.dir<0?-1:1;};
     // Every step in order, each locked until the one before it passes. A swerve: straight, then a step a pod. Anything
     // else: its wheels. That is all a chassis needs to be good to use: its motors are in the right place and turn the right
-    // way. Distance and the field map (only on a robot that measures where it is) are extras: they make a distance come
-    // out more exact, hold nothing up and are not counted as left to do.
+    // way, and together. How far it rolls and where it is on the field are not asked here: what the robot senses with (plain
+    // motors, their encoders, odometry) is Setup's choice, and the IMU and the odometry are checked by themselves.
     function states(c,devs){const r=rec(),gone=missing(c,devs),steer=steerOf(c),pods=podsOf(c,steer),pr=r.pods||{},podOk=q=>{const x=pr[q.key]||{};return !!x.drive&&(!q.steer||(tuned(x)&&!!x.left&&!!x.right));};
       const together=pods.every(q=>!!pr[q.key]?.drive)&&togetherMoves(c).every(m=>!!r.moves?.[m.id]);
-      const list=gone.length?[['gone',false]]:[...(steer.length?[['steer',!!r.steer],...pods.map(q=>['pod:'+q.key,podOk(q)])]:[]),['wheels',together],...(rolls(c)?[['roll',!!r.roll?.ok,true]]:[]),...(measures(c)==='position'?[['field',!!r.placed,true]]:[])];
+      const list=gone.length?[['gone',false]]:[...(steer.length?[['steer',!!r.steer],...pods.map(q=>['pod:'+q.key,podOk(q)])]:[]),['wheels',together]];
       let open=true,podsOpen=true;const s=list.map(([id,ok,extra])=>{const pod=id.startsWith('pod:'),state=!(pod?podsOpen:open)?'locked':ok?'pass':extra?'optional':'todo';if(!ok&&!extra){open=false;if(!pod)podsOpen=false;}return {id,state,...(extra?{extra:true}:{})};});return {gone,s,steer,pods};}
     const pill=s=>`<span class="rs-pill ${s==='pass'?'ok':s==='locked'||s==='optional'?'':'warn'}">${s==='pass'?'Done':s==='locked'?'Locked':s==='optional'?'Optional':'To do'}</span>`;
     function field(){const P=pose,W=144,trailPts=trail.map(q=>`${f(-q.y,2)},${f(-q.x,2)}`).join(' ');
