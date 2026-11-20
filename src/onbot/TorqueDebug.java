@@ -134,8 +134,47 @@ public class TorqueDebug extends LinearOpMode {
     final java.util.concurrent.CopyOnWriteArrayList<TorqueDebugLoop> loops = new java.util.concurrent.CopyOnWriteArrayList<>();
     TorqueDebugLoop loopOn(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) return l; return null; }
     /** The nudge pulse each actuator has learned in this run (its scale), kept when its loop is replaced or ended. */
-    final java.util.HashMap<String, Double> nudgeScale = new java.util.HashMap<>();
-    void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) { if (l.zone > 0) nudgeScale.put(l.actuator, l.scale); loops.remove(l); } loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
+    /**
+     * A burst (B): one CR servo at one power for a set time, then off, measured here where the timing is exact (Torque sees the
+     * readings a few tens of ms late, and unevenly). It reports how fast the reading was moving as the power went off, how far
+     * it went on after that, and how long after the power came on it first moved. The servo's signal stays on throughout, as in a loop.
+     */
+    final java.util.concurrent.CopyOnWriteArrayList<TorqueDebugBurst> bursts = new java.util.concurrent.CopyOnWriteArrayList<>();
+    TorqueDebugBurst burstOn(int index) { for (TorqueDebugBurst b : bursts) if (b.index == index) return b; return null; }
+    void endBurst(int index) { for (TorqueDebugBurst b : bursts) if (b.index == index) bursts.remove(b); }
+    void startBurst(String[] f) {
+        TorqueDebugBurst b = new TorqueDebugBurst();
+        b.actuator = f[1]; b.index = crNames.indexOf(f[1]); if (b.index < 0 || !f[2].startsWith("ana:")) return;
+        b.sensorIndex = analogNames.indexOf(f[2].substring(4)); if (b.sensorIndex < 0) return;
+        b.power = clamp(Double.parseDouble(f[3]), -1, 1); double secs = clamp(Double.parseDouble(f[4]), .02, 2); b.moveBy = Math.abs(Double.parseDouble(f[5])); b.wrap = Double.parseDouble(f[6]); b.id = (int) Double.parseDouble(f[7]);
+        endLoop(true, b.index); endBurst(b.index);
+        b.startNanos = System.nanoTime(); b.endNanos = b.startNanos + (long) (secs * 1e9); b.last = analogs.get(b.sensorIndex).getVoltage();
+        crTold[b.index] = true; crPower[b.index] = b.power; bursts.add(b);
+    }
+    void runBursts() {
+        long t = System.nanoTime();
+        for (TorqueDebugBurst b : bursts) {
+            if (b.phase == 2) continue;
+            double r = analogs.get(b.sensorIndex).getVoltage(), secs = (t - b.startNanos) / 1e9; b.travel += wrapOf(r - b.last, b.wrap); b.last = r;
+            if (b.phase == 0) {
+                if (b.delay < 0 && Math.abs(b.travel) > b.moveBy) b.delay = secs;
+                int k = b.n % b.ht.length; b.ht[k] = secs; b.hx[k] = b.travel; b.n++;
+                if (t < b.endNanos) { crPower[b.index] = b.power; continue; }
+                // The power goes off now: the speed over the last 60 ms of it (two readings back at least).
+                int j = b.n - 1; while (j > 0 && b.n - j < b.ht.length && (b.n - 1 - j < 2 || secs - b.ht[j % b.ht.length] < .06)) j--;
+                double span = secs - b.ht[j % b.ht.length]; b.speed = span > 0 ? (b.travel - b.hx[j % b.ht.length]) / span : 0;
+                b.cutTravel = b.travel; b.cutSecs = secs; b.mark = b.travel; b.quiet = 0; b.phase = 1; crPower[b.index] = 0;
+            } else {
+                // Coasting: over once the reading has stayed put for eight turns of the loop, or after 0.7 s.
+                if (Math.abs(b.travel - b.mark) > b.moveBy * .5) { b.mark = b.travel; b.quiet = 0; b.stopSecs = secs; } else b.quiet++;
+                if (b.quiet >= 8 || secs - b.cutSecs > .7) { b.coast = b.mark - b.cutTravel; b.phase = 2; }
+            }
+        }
+    }
+
+    /** What a steering loop learned about its pod in this run (how far a push really goes, each way), kept from one target to the next. */
+    final java.util.HashMap<String, double[]> steerLearned = new java.util.HashMap<>();
+    void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) { if (l.steer) steerLearned.put(l.actuator, new double[] { l.gainP, l.gainN }); loops.remove(l); } loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
 
     // ---- one webcam of the configuration's at a time, the first until told otherwise (W): its picture goes to the Driver Station's Camera Stream
     final List<WebcamName> webcams = new ArrayList<>();
@@ -230,12 +269,12 @@ public class TorqueDebug extends LinearOpMode {
                 if (!connected || now - heard > WATCHDOG_MS) stopOutputs(false);
                 // A power Deck stopped repeating has expired (a slider let go without its 0 arriving).
                 for (int i = 0; i < motors.size(); i++) if (now - motorAt[i] > WATCHDOG_MS && loopOn(false, i) == null) motorPower[i] = 0;
-                for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && loopOn(true, i) == null) crPower[i] = 0;
-                runLoop();
+                for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && loopOn(true, i) == null && burstOn(i) == null) crPower[i] = 0;
+                runLoop(); runBursts();
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
                 for (int i = 0; i < crservos.size(); i++) {
                     CRServo c = crservos.get(i);
-                    boolean driven = crPower[i] != 0 || loopOn(true, i) != null;
+                    boolean driven = crPower[i] != 0 || loopOn(true, i) != null || burstOn(i) != null;
                     if (c instanceof PwmControl) { PwmControl p = (PwmControl) c; if (driven && !p.isPwmEnabled()) p.setPwmEnable(); else if (!driven && p.isPwmEnabled()) p.setPwmDisable(); }
                     if (crTold[i] && driven) c.setPower(crPower[i]);
                 }
@@ -291,14 +330,15 @@ public class TorqueDebug extends LinearOpMode {
             switch (f[0]) {
                 case "P": break;
                 case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { endLoop(false, i); motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
-                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { endLoop(true, i); crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
+                case "B": startBurst(f); break;
+                case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { endLoop(true, i); endBurst(i); crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
                 case "S": { int i = servoNames.indexOf(f[1]); if (i >= 0) { servoPos[i] = clamp(Double.parseDouble(f[2]), 0, 1); servoOn[i] = true; } break; }
                 case "E": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoOn[i] = "1".equals(f[2]) && !Double.isNaN(servoPos[i]); break; }
                 case "L": { int i = servoNames.indexOf(f[1]); if (i >= 0) servoLatched[i] = "1".equals(f[2]); break; }
                 case "R": { int i = motorNames.indexOf(f[1]); if (i >= 0) { DcMotorEx m = motors.get(i); m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER); m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); } break; }
                 case "G": { int i = lightNames.indexOf(f[1]); if (i >= 0) lightOn[i] = "1".equals(f[2]); break; }
                 case "Q": startLoop(f); break;
-                case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; loop.from = Double.NaN; loop.wait = 0; loop.fire = 0; } break;
+                case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; loop.from = Double.NaN; loop.wait = 0; loop.fire = 0; loop.rest = false; } break;
                 case "X": stopOutputs(false); break;
                 case "V": case "D": case "K": case "W": cameraCommands.add(f); break;
                 default: break;
@@ -318,13 +358,20 @@ public class TorqueDebug extends LinearOpMode {
         l.target = Double.parseDouble(f[4]); l.kP = Double.parseDouble(f[5]); l.kI = Double.parseDouble(f[6]); l.kD = Double.parseDouble(f[7]);
         l.kF = Double.parseDouble(f[8]); l.kS = Double.parseDouble(f[9]); l.kG = Double.parseDouble(f[10]); l.tol = Math.abs(Double.parseDouble(f[11])); l.wrap = Double.parseDouble(f[12]);
         l.izone = f.length > 13 ? Math.abs(Double.parseDouble(f[13])) : 0;
-        // Snap and nudge (zone > 0): the nudge's zone, its pulse power, the speed that counts as still, the steps a command
-        // takes to show, and the pulse's scale to start from when this actuator has not learned one in this run.
-        if (f.length > 17) { l.zone = Math.abs(Double.parseDouble(f[14])); l.pulse = Math.abs(Double.parseDouble(f[15])); l.still = Math.abs(Double.parseDouble(f[16])); l.lag = Math.max(1, (int) Math.round(Double.parseDouble(f[17]))); }
-        Double learned = nudgeScale.get(l.actuator);
-        l.scale = learned != null ? learned : f.length > 18 ? Math.max(.4, Math.min(2.5, Double.parseDouble(f[18]))) : 1;
-        if (l.cr) crTold[l.index] = true; else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
-        endLoop(l.cr, l.index); loops.add(l); loop = l;
+        // Swerve steering ("S" after the integral zone): each way (positive power, then negative) the seconds a command takes
+        // to show, the creep power and its speed; then the speed gained per unit of power, top speed, the zone for pushes, the
+        // speed a push from rest gives each way, the speed that counts as still, the seconds to wait for a push to show, and how
+        // far out it eases to the creep. Speeds in sensor units a second.
+        if (f.length > 28 && "S".equals(f[14])) {
+            l.steer = true; l.leadP = clamp(Math.abs(Double.parseDouble(f[15])), .01, .25); l.leadN = clamp(Math.abs(Double.parseDouble(f[16])), .01, .25); l.cP = Math.abs(Double.parseDouble(f[17])); l.cN = Math.abs(Double.parseDouble(f[18]));
+            l.vP = Math.abs(Double.parseDouble(f[19])); l.vN = Math.abs(Double.parseDouble(f[20])); l.slope = Math.max(1e-6, Math.abs(Double.parseDouble(f[21]))); l.vmax = Math.abs(Double.parseDouble(f[22]));
+            l.zone = Math.abs(Double.parseDouble(f[23])); l.rP = Math.max(1e-6, Math.abs(Double.parseDouble(f[24]))); l.rN = Math.max(1e-6, Math.abs(Double.parseDouble(f[25]))); l.still = Math.abs(Double.parseDouble(f[26])); l.lag = Math.abs(Double.parseDouble(f[27])); l.ease = Math.abs(Double.parseDouble(f[28]));
+        }
+        if (l.cr) { crTold[l.index] = true; endBurst(l.index); } else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
+        endLoop(l.cr, l.index);
+        double[] learned = l.steer ? steerLearned.get(l.actuator) : null;
+        if (learned != null) { l.gainP = learned[0]; l.gainN = learned[1]; }
+        loops.add(l); loop = l;
     }
 
     /** The loop Deck asked for, one step: PID on the sensor's raw reading, plus feedforward (kF for speed, kS against friction, kG against gravity). */
@@ -334,7 +381,11 @@ public class TorqueDebug extends LinearOpMode {
         double measured = l.analog ? analogs.get(l.sensorIndex).getVoltage() : vel ? motors.get(l.sensorIndex).getVelocity() : motors.get(l.sensorIndex).getCurrentPosition();
         double e = l.target - measured;
         if (l.wrap > 0) { e %= l.wrap; if (e > l.wrap / 2) e -= l.wrap; if (e < -l.wrap / 2) e += l.wrap; }
-        if (l.zone > 0 && !vel) { l.out = snap(l, e, measured, FRAME_MS / 1000.0); l.error = e; if (l.cr) crPower[l.index] = l.out; else motorPower[l.index] = l.out; return; }
+        if (l.steer && !vel) {
+            // The loop runs as fast as the hub answers (about 13 ms a turn, not a fixed step): the law is given the time that really passed.
+            long now = System.nanoTime(); double step = l.lastNanos == 0 ? FRAME_MS / 1000.0 : (now - l.lastNanos) / 1e9; l.lastNanos = now;
+            l.out = steer(l, e, measured, step); l.error = e; if (l.cr) crPower[l.index] = l.out; else motorPower[l.index] = l.out; return;
+        }
         double dt = FRAME_MS / 1000.0, d = Double.isNaN(l.last) ? 0 : (e - l.last) / dt;
         l.last = e;
         // With an integral zone (izone > 0, a position loop): the integral only builds within it, so a long turn does not wind it
@@ -353,35 +404,89 @@ public class TorqueDebug extends LinearOpMode {
 
     static double wrapOf(double x, double wrap) { if (!(wrap > 0)) return x; x %= wrap; if (x > wrap / 2) x -= wrap; if (x < -wrap / 2) x += wrap; return x; }
     /**
-     * Snap, then nudge: one step of turning a swerve pod to its angle (ui/sim-chassis-cal.js snapStep is the reference, step for step).
-     * Outside the zone: kP on the error and kD on its speed, never less than kS towards the target, and the pulse's power when the
-     * wheel stalls. Inside it: a pulse of one to three steps, then power off until the wheel has started and stopped (or lag steps
-     * pass with nothing), then again; the pulse grows 15% when nothing moved and shrinks 20% when it went past. Off inside the tolerance.
+     * One step of turning a swerve pod to its angle (ui/sim-chassis-cal.js steerStep is the reference, step for step).
+     * A continuous servo is a speed, not a force: it turns only past a start power that differs each way, tops out at a speed,
+     * and does what it is told about lead seconds later (a different time each way); it slows only when its power goes to
+     * nothing (it brakes), and from a standstill it lurches rather than creeps. So, from outside the zone, an approach: the speed
+     * asked for only ever goes up (K times the distance left once the commands still on their way have played out, full power
+     * when far), then the power is cut at the point from which the wheel stops a little short of the target. What is left is
+     * done with pushes: the creep power for the distance over the speed a push from rest really gives, then off until the wheel
+     * has moved and stopped; what each push did corrects the next. Inside the tolerance the power is off, and once at rest it
+     * stays off until the reading is clearly out again. A wheel that gets nowhere gets more creep power that way until it moves
+     * on, and gives it back as it does.
      */
-    double snap(TorqueDebugLoop l, double e, double measured, double dt) {
-        double g = l.kP < 0 ? -1 : 1, kP = Math.abs(l.kP), kD = Math.abs(l.kD), kS = Math.abs(l.kS), pulse = Math.abs(l.pulse);
-        // g turns only the power round: for a servo whose positive power lowers the reading, the same error gets the opposite power.
-        double en = e, a = Math.abs(en), dir = en < 0 ? -1 : 1;
-        l.speed = l.hn < 3 ? 0 : Math.abs(wrapOf(measured - l.h[0], l.wrap)) / (3 * dt);
-        if (l.hn < 3) l.h[l.hn++] = measured; else { l.h[0] = l.h[1]; l.h[1] = l.h[2]; l.h[2] = measured; }
-        double d = Double.isNaN(l.lastN) ? 0 : (en - l.lastN) / dt; l.lastN = en;
-        if (a <= l.tol) { l.wait = 0; l.fire = 0; l.stall = 0; l.from = Double.NaN; return 0; }
-        if (a > l.zone) {
-            l.wait = 0; l.fire = 0; l.from = Double.NaN; double out = kP * en + kD * d;
-            if (out * en > 0) {
-                if (Math.abs(out) < kS) out = kS * dir;
-                l.stall = l.speed < l.still ? l.stall + 1 : 0;
-                if (l.stall >= 5) { out = dir * Math.max(Math.abs(out), pulse * l.scale); if (l.stall >= 10) { l.scale = Math.min(2.5, l.scale * 1.15); l.stall = 5; } }
-            } else l.stall = 0;
-            return g * clamp(out, -1, 1);
+    static final int PIPE = 128;
+    double steer(TorqueDebugLoop l, double e, double measured, double dt) {
+        double g = l.kP < 0 ? -1 : 1, K = Math.abs(l.kP);
+        dt = clamp(dt, .002, .1); l.st += dt;
+        // The middle of the last three readings: one wild reading (a motor starting disturbs the encoder's voltage) is dropped.
+        if (l.rawN < 3) l.raw[l.rawN++] = measured; else { l.raw[0] = l.raw[1]; l.raw[1] = l.raw[2]; l.raw[2] = measured; }
+        double off = 0;
+        if (l.rawN == 3) { double a0 = wrapOf(l.raw[0] - measured, l.wrap), b0 = wrapOf(l.raw[1] - measured, l.wrap); off = Math.max(Math.min(a0, b0), Math.min(Math.max(a0, b0), 0)); }
+        double m = measured + off, ef = wrapOf(e - off, l.wrap), a = Math.abs(ef), dir = ef < 0 ? -1 : 1;
+        if (l.hN < 5) { l.hT[l.hN] = l.st; l.hM[l.hN++] = m; } else { for (int i = 0; i < 4; i++) { l.hT[i] = l.hT[i + 1]; l.hM[i] = l.hM[i + 1]; } l.hT[4] = l.st; l.hM[4] = m; }
+        l.speed = l.hN < 3 ? 0 : Math.abs(wrapOf(m - l.hM[0], l.wrap)) / (l.st - l.hT[0]);
+        // What the commands still on their way will add. A command shows lead seconds after it is given and lasts until the next
+        // step, so the last one goes on the list now, with the time it really lasted: when it starts to show, when it has all
+        // shown, how far it carries the wheel.
+        if (l.cmdV != 0) {
+            if (l.pipeN == PIPE) { l.pipeHead = (l.pipeHead + 1) % PIPE; l.pipeN--; }
+            int at = (l.pipeHead + l.pipeN) % PIPE; l.pipeFrom[at] = l.st - dt + l.cmdLead; l.pipeAt[at] = l.st + l.cmdLead; l.pipeV[at] = l.cmdV * dt; l.pipeN++; l.cmdV = 0;
         }
-        l.stall = 0;
-        if (l.fire > 0) { l.fire--; return g * pulse * l.scale * l.fireDir; }
-        if (l.wait > 0) { l.wait--; l.lagLeft--; if (l.speed > l.still) l.moved = true; if (l.wait > 0 && (l.moved ? l.speed >= l.still : l.lagLeft > 0)) return 0; l.wait = 0; }
-        if (l.speed > l.still) return 0;
-        if (!Double.isNaN(l.from)) { double moved = Math.abs(wrapOf(measured - l.from, l.wrap)); if (moved < l.tol * .25) l.scale = Math.min(2.5, l.scale * 1.15); else if (dir != l.fireDir) l.scale = Math.max(.4, l.scale * .8); }
-        l.from = measured; l.fireDir = dir; l.fire = Math.max(1, Math.min(3, (int) Math.round(a / l.zone * 3))) - 1; l.wait = l.lag + 25; l.moved = false; l.lagLeft = l.lag;
-        return g * Math.min(1, pulse * l.scale) * dir;
+        while (l.pipeN > 0 && l.pipeAt[l.pipeHead] <= l.st) { l.pipeHead = (l.pipeHead + 1) % PIPE; l.pipeN--; }
+        double trav = 0; int coming = 0;
+        for (int i = 0; i < l.pipeN; i++) { int j = (l.pipeHead + i) % PIPE; if (l.pipeAt[j] > l.st) { trav += l.pipeV[j] * Math.min(1, (l.pipeAt[j] - l.st) / (l.pipeAt[j] - l.pipeFrom[j])); coming++; } }
+        boolean idle = coming == 0 && l.speed <= l.still;
+        // Where an approach's braking stop left the wheel: short of the target (+) or past it (-). The tuner sets lead by it.
+        if (l.pend != 0 && idle) { l.stops++; l.stopErr = dir == l.pend ? a : -a; l.stopWay = g * l.pend; l.stopFull = l.pendFull; l.pend = 0; }
+        if (l.rest) { if (a <= l.tol * 1.6) return 0; l.rest = false; }
+        // Inside the tolerance the power is off. It is at rest once it has stayed there, stopped, for 80 ms: a push that only
+        // springs the pod (it comes back) or shifts the reading does not count as arriving.
+        if (a <= l.tol) { l.fire = 0; l.tryT = 0; l.tryM = Double.NaN; l.inT += dt; if (idle && l.inT >= .08) { l.rest = true; l.wait = 0; l.from = Double.NaN; } return 0; }
+        // Stopped a little outside the tolerance but well inside what is allowed (the tolerance is 0.6 of that): left alone. A
+        // push from a standstill is a lurch, and would as likely knock it out as bring it in.
+        if (a <= l.tol * 1.35 && idle && l.fire <= 0 && l.wait <= 0) { l.tryT = 0; l.tryM = Double.NaN; l.inT += dt; if (l.inT >= .08) { l.rest = true; l.from = Double.NaN; } return 0; }
+        l.inT = 0;
+        // Outside the zone it is an approach. An approach gets one run in: once it has cut its power near the target, what is
+        // left is done with pushes from a standstill.
+        if (a > l.zone) { l.wait = 0; l.fire = 0; l.from = Double.NaN; if (!l.run) { l.vm = 0; l.runT = 0; } l.run = true; }
+        // A push under way: the rest of it, then power off until the wheel has moved and stopped (or lag passes with nothing).
+        if (l.fire > 0) { l.fire -= dt; return g * l.fireDir * l.firePow; }
+        if (l.wait > 0) { l.wait -= dt; l.lagLeft -= dt; if (l.speed > l.still) l.moved = true; if (l.wait > 0 && (l.moved ? l.speed > l.still : l.lagLeft > 0)) return 0; l.wait = 0; }
+        if (idle && a <= l.zone) {
+            // Stopped a little off: a push. From a standstill a pod does not creep, it lurches, further than its steady speed
+            // says, so the push is the creep power for a time: the distance over the speed a push from rest really gives. What
+            // the last push did corrects that for next time, each way.
+            boolean pos = g * dir > 0;
+            if (!Double.isNaN(l.from)) {
+                double went = l.fireDir * wrapOf(m - l.from, l.wrap); boolean wasPos = g * l.fireDir > 0; double gain = wasPos ? l.gainP : l.gainN;
+                // Nothing moved (a sticky spot): more power and a little longer. It moved: half of that extra power back, and
+                // further or less far than aimed makes the next one shorter or longer in proportion.
+                if (went < l.tol * .25) { if (wasPos) l.boostP = Math.min(.25, l.boostP + .025); else l.boostN = Math.min(.25, l.boostN + .025); gain = Math.max(.25, gain * .8); }
+                else { if (wasPos) l.boostP *= .5; else l.boostN *= .5; gain = Math.max(.25, Math.min(4, gain * Math.pow(Math.max(.5, Math.min(2, went / l.aim)), .7))); }
+                if (wasPos) l.gainP = gain; else l.gainN = gain;
+            }
+            double want = (a - l.tol * .3) / (pos ? l.rP * l.gainP : l.rN * l.gainN), time = Math.max(.006, Math.min(.12, want));
+            l.tryT = 0; l.tryM = Double.NaN; l.from = m; l.aim = a - l.tol * .3; l.fireDir = dir; l.firePow = Math.min(1, pos ? l.cP + l.boostP : l.cN + l.boostN); l.fire = time - dt; l.wait = l.lag + .4; l.lagLeft = l.lag; l.moved = false;
+            return g * dir * l.firePow;
+        }
+        // The approach. A continuous servo slows down only when its power goes to nothing (it brakes); given less power it just
+        // runs on. So the speed asked for only ever goes up (K times the distance left once the commands on their way have
+        // played out, full power when far), and then the power is cut, at the point from which the wheel stops a little short
+        // of the target (ease): a push finishes it. Stopping short is cheap; going past means coming back.
+        l.from = Double.NaN; double ap = ef - trav, A = Math.abs(ap), D = ap < 0 ? -1 : 1; boolean pos = g * D > 0; double lead = pos ? l.leadP : l.leadN;
+        // Trying for longer than a command takes to show with nothing to show for it: this spot takes more power than was
+        // measured, so the creep gets more, that way only, until the wheel moves on; each tolerance of progress takes some back.
+        if (Double.isNaN(l.tryM) || Math.abs(wrapOf(m - l.tryM, l.wrap)) > l.tol) { if (!Double.isNaN(l.tryM)) { l.boostP *= .85; l.boostN *= .85; } l.tryM = m; l.tryT = 0; }
+        l.tryT += dt;
+        if (!l.run) return 0;
+        if (A <= l.ease || D != dir) { if (l.runDir != 0) { l.pend = l.runDir; l.pendFull = l.vm >= l.vmax * .97; } l.run = false; l.vm = 0; l.runDir = 0; return 0; }
+        if (l.tryT > lead + .08) { if (pos) l.boostP = Math.min(.25, l.boostP + .4 * dt); else l.boostN = Math.min(.25, l.boostN + .4 * dt); }
+        double c = pos ? l.cP : l.cN, vc = pos ? l.vP : l.vN; l.vm = Math.max(l.vm, Math.min(l.vmax, Math.max(vc, K * (A - l.ease)))); boolean full = l.vm >= l.vmax * .97;
+        double u = full ? 1 : Math.min(1, c + (pos ? l.boostP : l.boostN) + (l.vm - vc) / l.slope);
+        // A crawling wheel stops almost where it is when the power goes; from a sixth of top speed up it runs on for the whole lead.
+        l.runDir = D; l.runT += dt; l.cmdV = D * (full ? l.vmax : l.vm); l.cmdLead = lead * Math.max(.3, Math.min(1, l.vm / (l.vmax * .17)));
+        return g * D * u;
     }
 
     void stall(int m, long now) {
@@ -390,7 +495,7 @@ public class TorqueDebug extends LinearOpMode {
     }
 
     void stopOutputs(boolean all) {
-        loop = null; loops.clear();
+        loop = null; loops.clear(); bursts.clear();
         java.util.Arrays.fill(motorPower, 0);
         java.util.Arrays.fill(crPower, 0);
         java.util.Arrays.fill(lightOn, false);
@@ -575,7 +680,8 @@ public class TorqueDebug extends LinearOpMode {
         b.append(']').append(hubWatch);
         TorqueDebugLoop l = loop;
         if (l != null) b.append(",\"q\":{\"actuator\":").append(str(l.actuator)).append(",\"target\":").append(num(l.target)).append(",\"error\":").append(num(l.error)).append(",\"out\":").append(num(l.out)).append('}');
-        if (!loops.isEmpty()) { b.append(",\"ql\":["); boolean first = true; for (TorqueDebugLoop x : loops) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"e\":").append(num(x.error)).append(",\"o\":").append(num(x.out)).append(",\"s\":").append(num(x.scale)).append('}'); } b.append(']'); }
+        if (!bursts.isEmpty()) { b.append(",\"bu\":["); boolean first = true; for (TorqueDebugBurst x : bursts) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"n\":").append(x.id).append(",\"done\":").append(x.phase == 2 ? 1 : 0).append(",\"v\":").append(num(x.speed)).append(",\"c\":").append(num(x.coast)).append(",\"d\":").append(num(x.delay)).append(",\"t\":").append(num(x.travel)).append('}'); } b.append(']'); }
+        if (!loops.isEmpty()) { b.append(",\"ql\":["); boolean first = true; for (TorqueDebugLoop x : loops) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"e\":").append(num(x.error)).append(",\"o\":").append(num(x.out)).append(",\"s\":").append(num(x.speed)); if (x.steer) b.append(",\"b\":[").append(num(x.boostP)).append(',').append(num(x.boostN)).append(',').append(num(x.gainP)).append(',').append(num(x.gainN)).append("],\"x\":[").append(x.stops).append(',').append(num(x.stopErr)).append(',').append(num(x.stopWay)).append(',').append(x.stopFull ? 1 : 0).append(']'); b.append('}'); } b.append(']'); }
         if (!webcams.isEmpty()) { if (camLast == null || now - camAt >= 100) { camLast = cameraJson(); camAt = now; } b.append(",\"cam\":").append(camLast); }
         return b.append('}').toString();
     }
@@ -851,9 +957,15 @@ public class TorqueDebug extends LinearOpMode {
 }
 
 /** A closed loop on one actuator (the Q command). */
+final class TorqueDebugBurst {
+    String actuator; int index, sensorIndex, id, phase, n, quiet; double power, moveBy, wrap, last, travel, speed, coast, delay = -1, cutTravel, cutSecs, stopSecs, mark; long startNanos, endNanos;
+    final double[] ht = new double[96], hx = new double[96];
+}
 final class TorqueDebugLoop {
     String actuator, sensor, mode; boolean cr; int index, sensorIndex; boolean analog;
     double target, kP, kI, kD, kF, kS, kG, tol, wrap, izone, integral, last = Double.NaN, lastE = Double.NaN, out, error;
-    // Snap and nudge (zone > 0).
-    double zone, pulse, still, scale = 1, speed, from = Double.NaN, lastN = Double.NaN, fireDir; final double[] h = new double[3]; int hn, lag = 6, wait, lagLeft, fire, stall; boolean moved;
+    // Swerve steering (steer): what the pod measured, then the law's state.
+    boolean steer, rest, moved, run; double leadP, leadN, cP, cN, vP, vN, slope, vmax, zone, rP, rN, still, lag, ease;
+    double st, speed, wait, lagLeft, fire, firePow, fireDir, from = Double.NaN, aim, gainP = 1, gainN = 1, boostP, boostN, tryT, tryM = Double.NaN, cmdV, cmdLead, inT, vm, runT, runDir, pend, stopErr, stopWay; int stops; boolean pendFull, stopFull; long lastNanos;
+    final double[] raw = new double[3], hT = new double[5], hM = new double[5], pipeFrom = new double[TorqueDebug.PIPE], pipeAt = new double[TorqueDebug.PIPE], pipeV = new double[TorqueDebug.PIPE]; int rawN, hN, pipeHead, pipeN;
 }
