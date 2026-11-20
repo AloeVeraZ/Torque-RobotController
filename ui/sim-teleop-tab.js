@@ -30,16 +30,18 @@
   // Whether a control (a button, a trigger, a stick's axis, both triggers) is in use on a reading.
   const active=(pad,c)=>!c||c==='none'?false:c==='triggers'?pad.lt>.3||pad.rt>.3:c==='left_trigger'?pad.lt>.3:c==='right_trigger'?pad.rt>.3:c==='left_stick_x'?Math.abs(pad.lx)>.3:c==='left_stick_y'?Math.abs(pad.ly)>.3:c==='right_stick_x'?Math.abs(pad.rx)>.3:c==='right_stick_y'?Math.abs(pad.ry)>.3:!!pad[c];
   // The choices as kept: only what the lists allow.
+  // The name the TeleOp shows under in Drive: one line, no quotes or backslashes, 60 characters at most ('' is Torque's own).
+  const cleanName=t=>String(t??'').replace(/[\r\n\t"\\]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
   function clean(raw,T){const r=raw&&typeof raw==='object'?raw:{},mechs={};for(const [id,m] of Object.entries(r.mechs&&typeof r.mechs==='object'?r.mechs:{})){if(!m||typeof m!=='object')continue;const out={};
       if(Object.hasOwn(T.MODES,m.mode))out.mode=m.mode;for(const k of ['a','b','c'])if(m[k]==='none'||Object.hasOwn(T.BUTTONS,m[k])||k==='a'&&Object.hasOwn(T.AXES,m[k]))out[k]=m[k];for(const k of ['power','posA','posB','posC'])if(Number.isFinite(+m[k])&&m[k]!==''&&m[k]!==null)out[k]=+m[k];mechs[id]=out;}
-    return {pad:r.pad==='gamepad2'?'gamepad2':'gamepad1',auto:r.auto!==false,mechs};}
+    const name=cleanName(r.name);return {pad:r.pad==='gamepad2'?'gamepad2':'gamepad1',auto:r.auto!==false,mechs,...(name?{name}:{})};}
   // The whole TeleOp from the choices: {tele: {file, opMode, source} | {error}, list (each mechanism with its choices), clashes, state}.
   function build(o){const T=o.T,kept=o.store.get(),state=clean(kept,T),chassis=o.chassis(),map=o.map(),swerve=!!o.swerve(),mechs=o.mechs()||[];
     // Until the team picks a controller for the mechanisms, they share the driving's while they all fit on it; when they do
     // not, they start on a second one (a driver and an operator, as most teams with that much on the robot run it).
     if(kept?.pad!=='gamepad1'&&kept?.pad!=='gamepad2'&&Object.values(T.mechMap(mechs,state.mechs,{pad:'gamepad1',map,swerve})).some(x=>x.full))state.pad='gamepad2';
     const picked=T.mechMap(mechs,state.mechs,{pad:state.pad,map,swerve}),list=mechs.map(m=>({...m,...picked[m.id]})),clashes=T.clashes(list,{pad:state.pad,map,swerve});
-    const tele=chassis?T.teleopOf({...chassis,map,className:T.FULL_NAME,opMode:T.FULL_OP_MODE,mechanisms:list,pad:state.pad}):{error:'This setup has no chassis Torque writes a TeleOp for yet.'};
+    const tele=chassis?T.teleopOf({...chassis,map,className:T.FULL_NAME,opMode:state.name||T.FULL_OP_MODE,mechanisms:list,pad:state.pad}):{error:'This setup has no chassis Torque writes a TeleOp for yet.'};
     return {tele,list,clashes,state,map,swerve,chassis};}
   // A bind button's key: 'map:<job>' for the chassis, 'mech:<id>:<a|b|c>' for a mechanism (its id has colons of its own).
   const keyOf=key=>{const j=key.lastIndexOf(':');return key.startsWith('map:')?['map',key.slice(4),'']:['mech',key.slice(5,j),key.slice(j+1)];};
@@ -75,7 +77,7 @@
     const keep=fn=>{const raw=o.store.get(),s=clean(raw,T);if(raw?.pad!=='gamepad1'&&raw?.pad!=='gamepad2')delete s.pad;fn(s);o.store.set(s);};
     const status=b=>{const last=lastSent(),same=b.tele.source&&last.sig===sig(b.tele.source);
       if(sending)return 'Sending it to the robot and building it there…';if(said)return said;if(b.tele.error)return '';
-      if(same)return `On the robot as “${T.FULL_OP_MODE}”${last.at?`, sent ${last.at}`:''}. Pick it in Drive.`;
+      if(same)return `On the robot as “${b.tele.opMode||T.FULL_OP_MODE}”${last.at?`, sent ${last.at}`:''}. Pick it in Drive.`;
       if(!o.connected())return b.state.auto?'No robot connected: plug in the Control Hub and it is sent by itself.':'No robot connected.';
       const why=o.busy();if(why)return `${why} It is sent when that is done${b.state.auto?'':' and you press Send'}.`;
       return last.sig?'Changed since it was last sent.':'Not on the robot yet.';};
@@ -116,17 +118,19 @@
           <div class="cal-fields"><div class="cal-field"><label for="rt-mode">What it does</label><select id="rt-mode" data-rt-mode="${esc(x.id)}">${modes.map(v=>`<option value="${v}"${x.mode===v?' selected':''}>${esc(T.MODES[v])}</option>`).join('')}</select></div>${fields}
           <div class="cal-field"><label for="rt-pad">All the mechanisms are on</label><select id="rt-pad" data-rt-pad><option value="gamepad1"${onPad1?' selected':''}>Controller 1, with the driving</option><option value="gamepad2"${onPad1?'':' selected'}>Controller 2, a second driver</option></select></div></div>
           ${x.full?'<p class="cal-sense-note bad">No control is left for it on this controller: free one on another mechanism, or put the mechanisms on a second controller.</p>':!x.device?'<p class="cal-sense-note bad">It has no name in the robot configuration yet: name it in Setup → Mechanisms.</p>':unset?'<p class="cal-note">Its positions are the same, so it will not move: type where it should go (0 to 1). Start near the middle and work outwards.</p>':''}${clashNote}</section>`;}
-      else if(view==='send')pane=`<section class="cal-card rt-card"><h2>Send to robot</h2><p class="hint">The TeleOp is written from Setup and from what Calibrate measured, and Torque puts it on the robot, where it shows in Drive as “${esc(T.FULL_OP_MODE)}”.</p>
+      else if(view==='send')pane=`<section class="cal-card rt-card"><h2>Send to robot</h2><p class="hint">The TeleOp is written from Setup and from what Calibrate measured, and Torque puts it on the robot, where it shows in Drive under the name you give it.</p>
         ${b.tele.error?`<p class="cal-sense-note bad">${esc(b.tele.error)}</p>`:''}${clashNote}
         <div class="button-row rt-send"><button type="button" class="primary" data-rt="send"${!can||sending?' disabled':''}>${sending?'Sending…':'Send to robot'}</button><label class="rt-auto"><input type="checkbox" data-rt-auto${b.state.auto?' checked':''}> Send it by itself when it changes</label></div>
+        <p class="hint at-named">Shows in Drive as “${esc(b.tele.opMode||b.state.name||T.FULL_OP_MODE)}”. <button type="button" class="text-button" data-rt="rename"${can?'':' disabled'}>Rename…</button></p>
         <p class="hint" role="status" data-rt-status>${esc(status(b))}</p>
         <div class="button-row"><button type="button" class="secondary" data-rt="save"${can?'':' disabled'}>Save as a file…</button><button type="button" class="secondary" data-rt="copy"${can?'':' disabled'}>Copy</button><span class="hint" role="status" data-rt-saved>${esc(savedNote)}</span></div>
-        ${src?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-rt-code>${esc(src)}</pre></details>`:''}</section>`;
+        ${src?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-rt-code>${esc(src)}</pre></details>`:''}</section>
+        <dialog class="at-name" aria-labelledby="rt-name-title"><form method="dialog"><h2 id="rt-name-title">Name the TeleOp</h2><p class="hint">This is the name it shows under in Drive, in the TeleOp list.</p><div class="cal-field"><label for="rt-name-input">Name</label><input id="rt-name-input" type="text" maxlength="60" autocomplete="off" spellcheck="false"></div><div class="button-row"><button type="submit" value="go" class="primary" data-rt-go>Send to robot</button><button type="submit" value="no" class="secondary">Cancel</button></div></form></dialog>`;
       else{const values=o.values?.()||null;pane=`<section class="cal-card rt-card"><h2>Calibration code</h2><p class="hint">Everything Calibrate measured on this robot (the chassis, the mechanisms, the cameras) as one class, TorqueCalibration, for the team’s own code. It builds in OnBot Java as it is: put it on the robot, or save the file. The raw numbers save as JSON too.</p>
         ${values?`<div class="button-row"><button type="button" class="primary" data-rt="values-send"${valuesSending?' disabled':''}>${valuesSending?'Sending…':'Put it on the robot (OnBot Java)'}</button><button type="button" class="secondary" data-rt="values-java">Save the Java class…</button><button type="button" class="secondary" data-rt="values-json">Save as JSON…</button><button type="button" class="secondary" data-rt="values-copy">Copy</button></div><p class="hint" role="status" data-rt-values>${esc(valuesNote)}</p><details class="usb-facts" open><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-rt-values-code>${esc(values.java)}</pre></details>`:'<p class="hint">Nothing is measured yet: Calibrate → Mechanisms and Camera measure it.</p>'}</section>`;}
       const html=`<div class="cal-elec2 rt2"><aside class="sim-garage cal-elec-list" aria-label="TeleOp: driving, each mechanism, and sending it">${rail}</aside><div class="rt-pane">${pane}</div></div>`;
       // The same page again changes nothing: an open list or a field being typed in is left alone.
-      if(html!==drawn){const same=shown===view,at=dom&&same?[box.querySelector('.rt-pane')?.scrollTop||0,box.querySelector('.cal-elec-list')?.scrollTop||0]:null,focus=dom&&same?document.activeElement?.id:'';
+      if(html!==drawn&&!box.querySelector?.('dialog[open]')){const same=shown===view,at=dom&&same?[box.querySelector('.rt-pane')?.scrollTop||0,box.querySelector('.cal-elec-list')?.scrollTop||0]:null,focus=dom&&same?document.activeElement?.id:'';
         drawn=html;shown=view;box.innerHTML=html;live=null;
         // Where the page was scrolled to, and the field in use, stay as they were through a redraw.
         if(at){const pn=box.querySelector('.rt-pane'),ls=box.querySelector('.cal-elec-list');if(pn)pn.scrollTop=at[0];if(ls)ls.scrollTop=at[1];if(focus&&/^rt-/.test(focus))box.querySelector('#'+focus)?.focus?.();}}
@@ -135,6 +139,10 @@
     // is not what is written now. It waits a moment, so a run of changes goes as one.
     function auto(b){clearTimeout(timer);if(!b.state.auto||sending||b.tele.error||!b.tele.source||b.clashes.length||!o.visible()||!o.connected()||o.busy())return;if(lastSent().sig===sig(b.tele.source))return;
       timer=setTimeout(()=>{const now=build(o);if(now.tele.source&&now.state.auto&&o.visible()&&o.connected()&&!o.busy()&&!now.clashes.length&&lastSent().sig!==sig(now.tele.source))void send(now);},1500);}
+    // Send to robot asks for the name first, in a pop-up, as Autonomous does; Rename only keeps it. Sent by itself, it goes under the name it has.
+    function ask(sendAfter){const d=box.querySelector('dialog.at-name');if(!d)return;const b=build(o),input=d.querySelector('input'),go=d.querySelector('[data-rt-go]');input.value=b.state.name||T.FULL_OP_MODE;go.textContent=sendAfter?'Send to robot':'Save the name';d.returnValue='';
+      d.onclose=()=>{if(d.returnValue!=='go')return render();const next=cleanName(input.value);keep(st=>{if(next&&next!==T.FULL_OP_MODE)st.name=next;else delete st.name;});said='';drawn='';if(!sendAfter)return render();void send(build(o));};
+      if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');input.focus();input.select?.();}
     function send(b){if(sending||b.tele.error||!b.tele.source)return Promise.resolve();sending=true;said='';render();const t=b.tele;
       return Promise.resolve().then(()=>o.send(t)).then(()=>{o.sent.set(JSON.stringify({sig:sig(t.source),at:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}));said='';},e=>{said=`It did not get there: ${e?.message||e}`;}).finally(()=>{sending=false;render();});}
     // ---- picking: from a list, or by using the control -------------------------------------------------------------------
@@ -198,7 +206,7 @@
       const a=e.target.closest?.('[data-rt]')?.dataset.rt;if(!a)return;const b=build(o),note=t=>{savedNote=t;const n=box.querySelector('[data-rt-saved]');if(n)n.textContent=t;drawn='';},vnote=t=>{valuesNote=t;const n=box.querySelector('[data-rt-values]');if(n)n.textContent=t;drawn='';};
       const saved=say=>f=>say(f?`Saved to ${f}`:''),failed=say=>x=>say(`It was not saved: ${x?.message||x}`);
       if(a==='setup')return void o.toSetup?.();if(a==='controller')return void o.openController?.();
-      if(a==='send'){said='';return void send(b);}
+      if(a==='send'||a==='rename')return ask(a==='send');
       if(a==='save'&&b.tele.source)return void Promise.resolve(o.saveFile(b.tele.file,b.tele.source)).then(saved(note),failed(note));
       if(a==='copy'&&b.tele.source)return void Promise.resolve(o.copy(b.tele.source)).then(()=>note('Copied.'),()=>note('It could not be copied: open See the code and select it.'));
       const v=o.values?.();if(!v)return;

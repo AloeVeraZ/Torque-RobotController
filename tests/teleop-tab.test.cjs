@@ -307,3 +307,11 @@ test('a chassis is good to use once its wheels are checked: it asks for no dista
   assert.match(src,/s\.filter\(x=>!x\.extra\)\.every\(x=>x\.state==='pass'\)\?`<span class="rs-pill ok">\$\{s\.every\(x=>x\.state==='pass'\)\?'Calibrated':'Good to use'\}<\/span>`/);
   assert.match(fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),/counts:st!=='info'&&st!=='optional'/,'an extra is not counted as left to do');
 });
+
+test('the TeleOp goes under the name the team gives it: kept with the choices, cleaned, and Torque’s own when there is none',()=>{
+  const map={},common={robot:{},imu:{name:'imu',scale:1},config:'robot',date:'2026-11-20'};let kept={name:'  Comp "Bot"\n TeleOp  '};
+  const o={T,chassis:()=>({...KINDS.mecanum,...common}),map:()=>T.mapOf(map),swerve:()=>false,mechs:()=>[],store:{get:()=>kept,set:v=>{kept=v;}}};
+  const b=R.build(o);assert.equal(b.state.name,'Comp Bot TeleOp');assert.equal(b.tele.opMode,'Comp Bot TeleOp');assert.match(b.tele.source,/@TeleOp\(name = "Comp Bot TeleOp"/);assert.match(b.tele.source,/class TorqueTeleOp /,'the file and class stay, so a renamed one replaces the old');
+  kept={};const d=R.build(o);assert.equal(d.state.name,undefined);assert.equal(d.tele.opMode,T.FULL_OP_MODE);assert.match(d.tele.source,/@TeleOp\(name = "Torque TeleOp"/);
+  const page=fs.readFileSync(path.join(__dirname,'../ui/sim-teleop-tab.js'),'utf8');assert.match(page,/Name the TeleOp/);assert.match(page,/if\(a==='send'\|\|a==='rename'\)return ask\(a==='send'\);/,'Send asks for the name first');
+});
