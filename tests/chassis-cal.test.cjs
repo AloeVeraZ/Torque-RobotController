@@ -87,7 +87,7 @@ test('what was checked is written as constants for the team’s code: a mecanum,
   assert.match(sw,/IMU_HEADING_SCALE = 1\.00123; \/\/ measured/);assert.match(sw,/FRONT_POD_E_ZERO_VOLTS = 1\.6520;\n/);assert.match(sw,/FRONT_POD_E_ENCODER_SIGN = -1;\n/);
   assert.match(sw,/FRONT_POD_S_SERVO_SIGN = 1;\n/,'the servo lowers the reading, and a lower reading is left');assert.match(sw,/FRONT_POD_ENCODER_SIGN = -1;\n/);assert.match(sw,/RIGHT_POD_REVERSED = true; \/\/ not checked yet/);
   assert.match(sw,/LEFT_POD_E_ZERO_VOLTS = 0\.0; \/\/ not set/);assert.match(sw,/LEFT_POD_E_ENCODER_SIGN = 1; \/\/ not checked yet/);assert.doesNotMatch(sw,/DRIVE_TICKS_PER_INCH/);
-  assert.equal(sw.split('{').length,sw.split('}').length);for(const l of sw.split('\n').filter(x=>/public static final/.test(x)))assert.match(l,/^    public static final (double|int|boolean) [A-Z0-9_]+ = (-?[0-9.]+|true|false);/);});
+  assert.equal(sw.split('{').length,sw.split('}').length);for(const l of sw.split('\n').filter(x=>/public static final/.test(x)&&!/class Steer/.test(x)))assert.match(l,/^    public static final (double|int|boolean) [A-Z0-9_]+ = (-?[0-9.]+|true|false);/);});
 
 test('a pod’s quarter turns: the reading to hold, the angle a reading is, and the loop Torque Debug runs',()=>{
   // Zero at 1.0 V of 3.3: a quarter turn left is a quarter of the span up, and the other way with the sense turned round.
@@ -95,7 +95,7 @@ test('a pod’s quarter turns: the reading to hold, the angle a reading is, and 
   near(K.steerTarget(.5,-90,3.3),.5-.825+3.3,1e-9,'past the end of the encoder, it comes round');
   near(K.steerAngle(1.825,1,3.3),90,1e-9);near(K.steerAngle(.175,1,3.3,-1),90,1e-9);near(K.steerAngle(2.975,.5,3.3),-90,1e-9,'the short way round');
   const q=K.steerLoop({servo:'frontPodS',name:'frontPodE'},1.825,-1,3.3).split('\t');
-  assert.deepEqual(q.slice(0,5),['Q','frontPodS','ana:frontPodE','pos','1.8250']);assert.ok(+q[5]<0&&+q[7]<0&&+q[9]<0,'a servo that lowers the reading is driven the other way');assert.equal(q[5],'-0.300','gentle until the pod is tuned');
+  assert.deepEqual(q.slice(0,5),['Q','frontPodS','ana:frontPodE','pos','1.8250']);assert.ok(+q[5]<0&&+q[7]<0&&+q[9]<0,'a servo that lowers the reading is driven the other way');assert.equal(q[5],'-0.3000','gentle until the pod is tuned');assert.equal(q.length,14,'an untuned pod runs the plain loop: no nudge fields');
   near(+q[11],.6*1.5/360*3.3,1e-4,'the loop rests well inside the degree and a half allowed, not on its edge');near(+K.steerLoop({servo:'s',name:'e'},1,1,3.3,undefined,3).split('\t')[11],.6*3/360*3.3,1e-4,'or inside what the team allows');assert.equal(q[12],'3.3','the short way round one turn');assert.equal(K.TOL_DEG,1.5);});
 
 test('a pod’s steering is tuned from how its own servo answers',()=>{
@@ -118,16 +118,17 @@ test('a pod’s steering is tuned from how its own servo answers',()=>{
   assert.ok(K.oscillates(K.stepStats(still,1.5)),'without the noise it reads as hunting');assert.ok(K.steady(K.stepStats(still,1.5,.8),1.8),'with it, a pod holding still passes');
   const real=[...still.slice(0,15),...Array.from({length:60},(_,i)=>[.6+i*.04,i%6<3?1.4:-1.4])];assert.ok(K.oscillates(K.stepStats(real,1.5,.8)),'a real swing well past the noise still fails');
   // The loop Torque Debug runs takes those gains, turned round for a servo that lowers the reading.
-  const q=K.steerLoop({servo:'leftPodS',name:'leftPodE'},1.568,-1,3.3,{kP:.25,kD:.01,kS:.04}).split('\t');assert.deepEqual([q[5],q[7],q[9]],['-0.250','-0.0100','-0.040']);
+  const q=K.steerLoop({servo:'leftPodS',name:'leftPodE'},1.568,-1,3.3,{kP:.25,kD:.01,kS:.04}).split('\t');assert.deepEqual([q[5],q[7],q[9]],['-0.2500','-0.01000','-0.040']);
+  // A pod tuned by the snap-and-nudge tuner sends its nudge too: zone, pulse, still speed, lag steps and the scale it learned.
+  const sq=K.steerLoop({servo:'leftPodS',name:'leftPodE'},1.568,-1,3.3,{kP:.9,kD:.01,kS:.07,pulse:.09,zone:.043,still:.08,lag:7,scale:1.15}).split('\t');assert.deepEqual(sq.slice(14),['0.0430','0.090','0.0800','7','1.150']);assert.equal(sq[5],'-0.9000');
   // And they go to the team's code a degree at a time.
   const kiwi={robot:{drivetrain:'kiwiSwerve',devices:{front:{name:'frontPod'},backLeft:{name:'leftPod'},backRight:{name:'rightPod'}}},sensors:{localization:'encoders'}};
-  const code=K.codeOf({ch:K.chassisOf(kiwi,C),rec:{steer:{zero:{leftPodE:.743}},pods:{backLeft:{left:true,right:true,sense:1,pid:{kP:.36,kD:.009,kS:.04,g:-1}}}},steer:[{key:'robot.steerBackLeft',name:'leftPodE',servo:'leftPodS',volts:3.6}]});
-  assert.match(code,/LEFT_POD_S_SERVO_SIGN = -1;\n/,'the tuned direction, not Electronics’ link');assert.match(code,/LEFT_POD_S_KP = 0\.0036; \/\/ power per degree/);assert.match(code,/LEFT_POD_S_KS = 0\.04; \/\/ power, towards the target/);
-  // With the loop itself, to call from teleop and autonomous: it is the loop that was tuned, a degree at a time.
-  assert.match(code,/public static double steerPower\(double volts, double targetDegrees, double zeroVolts, int encoderSign, int servoSign, double kP, double kS\) \{/);assert.match(code,/STEER_TOLERANCE_DEGREES = 1\.5;/);
-  const steerPower=(volts,target,zero,enc,servo,kP,kS)=>{let e=target-enc*(volts-zero)/3.6*360;e-=360*Math.round(e/360);return Math.abs(e)<=1.5?0:servo*(kP*e+kS*Math.sign(e));};
-  // The same power Torque Debug's loop gave at that reading: its gains are per volt, on (target volts − volts), turned by g.
-  const volts=1.1,target=K.steerTarget(.743,90,3.6,1),robot=-1*(.36*(target-volts)+.04*Math.sign(target-volts));near(steerPower(volts,90,.743,1,-1,.0036,.04),robot,1e-9,'one loop, two units');});
+  const code=K.codeOf({ch:K.chassisOf(kiwi,C),rec:{steer:{zero:{leftPodE:.743}},pods:{backLeft:{left:true,right:true,sense:1,pid:{v:4,kP:.36,kD:.009,kS:.04,pulse:.08,zone:.05,still:.1,lag:7,scale:1.25,g:-1}}}},steer:[{key:'robot.steerBackLeft',name:'leftPodE',servo:'leftPodS',volts:3.6}]});
+  assert.match(code,/LEFT_POD_S_SERVO_SIGN = -1;\n/,'the tuned direction, not Electronics’ link');assert.match(code,/LEFT_POD_S_KP = 0\.0036; \/\/ power per degree/);assert.match(code,/LEFT_POD_S_KS = 0\.04; \/\/ the least power that keeps it turning/);
+  assert.match(code,/LEFT_POD_S_PULSE = 0\.1; \/\/ the nudge's power/,'the pulse with the scale the pod learned');assert.match(code,/LEFT_POD_S_ZONE_DEGREES = 5; /);assert.match(code,/LEFT_POD_S_STILL_DEGREES_A_SECOND = 10; /);assert.match(code,/LEFT_POD_S_LAG_STEPS = 7; /);
+  // With the loop itself, to copy into teleop and autonomous: the same Steer class the TeleOp runs (snap, then nudge).
+  assert.match(code,/STEER_TOLERANCE_DEGREES = 1\.5;/);assert.match(code,/public static final class Steer \{/);assert.match(code,/double step\(double error, double angle, double dt\) \{/);assert.match(code,/servo\.setPower\(SERVO_SIGN \* steer\.step\(error, angle, 0\.02\)\);/);
+  assert.equal(code.split('{').length,code.split('}').length,'braces balance');});
 
 test('the tune looks for the quickest quarter turn that stays accurate, and the team sets how far off is allowed',()=>{
   const good=settle=>({settle,overshoot:.5,crossings:1}),hot={settle:null,overshoot:9,crossings:6},short={settle:null,overshoot:0,crossings:0},base={kP:.2,kD:.006,kS:.05,g:-1};

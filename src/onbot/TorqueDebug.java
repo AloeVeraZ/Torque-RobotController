@@ -133,7 +133,9 @@ public class TorqueDebug extends LinearOpMode {
     /** Every loop running, one an actuator: several swerve pods are held (and tuned) at once. loop is the newest, for T and q. */
     final java.util.concurrent.CopyOnWriteArrayList<TorqueDebugLoop> loops = new java.util.concurrent.CopyOnWriteArrayList<>();
     TorqueDebugLoop loopOn(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) return l; return null; }
-    void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) loops.remove(l); loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
+    /** The nudge pulse each actuator has learned in this run (its scale), kept when its loop is replaced or ended. */
+    final java.util.HashMap<String, Double> nudgeScale = new java.util.HashMap<>();
+    void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) { if (l.zone > 0) nudgeScale.put(l.actuator, l.scale); loops.remove(l); } loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
 
     // ---- one webcam of the configuration's at a time, the first until told otherwise (W): its picture goes to the Driver Station's Camera Stream
     final List<WebcamName> webcams = new ArrayList<>();
@@ -271,7 +273,7 @@ public class TorqueDebug extends LinearOpMode {
     //   E name 0|1                servo pulses off or on
     //   L name 0|1                latch: the servo keeps its position when the watchdog fires
     //   R name                    reset the motor's encoder to 0
-    //   Q actuator sensor mode target kP kI kD kF kS kG tolerance wrap [izone]
+    //   Q actuator sensor mode target kP kI kD kF kS kG tolerance wrap [izone zone pulse still lag scale]
     //                             run a loop here: actuator a motor or CR servo; sensor "enc:<motor>" or "ana:<analog>";
     //                             mode pos (target in ticks or volts) or vel (ticks a second); wrap > 0 takes the
     //                             shortest way round a circle of that many units; gains in power per raw unit
@@ -296,7 +298,7 @@ public class TorqueDebug extends LinearOpMode {
                 case "R": { int i = motorNames.indexOf(f[1]); if (i >= 0) { DcMotorEx m = motors.get(i); m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER); m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); } break; }
                 case "G": { int i = lightNames.indexOf(f[1]); if (i >= 0) lightOn[i] = "1".equals(f[2]); break; }
                 case "Q": startLoop(f); break;
-                case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; } break;
+                case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; loop.from = Double.NaN; loop.wait = 0; loop.fire = 0; } break;
                 case "X": stopOutputs(false); break;
                 case "V": case "D": case "K": case "W": cameraCommands.add(f); break;
                 default: break;
@@ -316,6 +318,11 @@ public class TorqueDebug extends LinearOpMode {
         l.target = Double.parseDouble(f[4]); l.kP = Double.parseDouble(f[5]); l.kI = Double.parseDouble(f[6]); l.kD = Double.parseDouble(f[7]);
         l.kF = Double.parseDouble(f[8]); l.kS = Double.parseDouble(f[9]); l.kG = Double.parseDouble(f[10]); l.tol = Math.abs(Double.parseDouble(f[11])); l.wrap = Double.parseDouble(f[12]);
         l.izone = f.length > 13 ? Math.abs(Double.parseDouble(f[13])) : 0;
+        // Snap and nudge (zone > 0): the nudge's zone, its pulse power, the speed that counts as still, the steps a command
+        // takes to show, and the pulse's scale to start from when this actuator has not learned one in this run.
+        if (f.length > 17) { l.zone = Math.abs(Double.parseDouble(f[14])); l.pulse = Math.abs(Double.parseDouble(f[15])); l.still = Math.abs(Double.parseDouble(f[16])); l.lag = Math.max(1, (int) Math.round(Double.parseDouble(f[17]))); }
+        Double learned = nudgeScale.get(l.actuator);
+        l.scale = learned != null ? learned : f.length > 18 ? Math.max(.4, Math.min(2.5, Double.parseDouble(f[18]))) : 1;
         if (l.cr) crTold[l.index] = true; else { motorCut[l.index] = false; motorOverSince[l.index] = 0; }
         endLoop(l.cr, l.index); loops.add(l); loop = l;
     }
@@ -327,6 +334,7 @@ public class TorqueDebug extends LinearOpMode {
         double measured = l.analog ? analogs.get(l.sensorIndex).getVoltage() : vel ? motors.get(l.sensorIndex).getVelocity() : motors.get(l.sensorIndex).getCurrentPosition();
         double e = l.target - measured;
         if (l.wrap > 0) { e %= l.wrap; if (e > l.wrap / 2) e -= l.wrap; if (e < -l.wrap / 2) e += l.wrap; }
+        if (l.zone > 0 && !vel) { l.out = snap(l, e, measured, FRAME_MS / 1000.0); l.error = e; if (l.cr) crPower[l.index] = l.out; else motorPower[l.index] = l.out; return; }
         double dt = FRAME_MS / 1000.0, d = Double.isNaN(l.last) ? 0 : (e - l.last) / dt;
         l.last = e;
         // With an integral zone (izone > 0, a position loop): the integral only builds within it, so a long turn does not wind it
@@ -341,6 +349,39 @@ public class TorqueDebug extends LinearOpMode {
         else if (Math.abs(e) > l.tol) out += l.kS * Math.signum(e);
         l.out = clamp(out, -1, 1); l.error = e;
         if (l.cr) crPower[l.index] = l.out; else motorPower[l.index] = l.out;
+    }
+
+    static double wrapOf(double x, double wrap) { if (!(wrap > 0)) return x; x %= wrap; if (x > wrap / 2) x -= wrap; if (x < -wrap / 2) x += wrap; return x; }
+    /**
+     * Snap, then nudge: one step of turning a swerve pod to its angle (ui/sim-chassis-cal.js snapStep is the reference, step for step).
+     * Outside the zone: kP on the error and kD on its speed, never less than kS towards the target, and the pulse's power when the
+     * wheel stalls. Inside it: a pulse of one to three steps, then power off until the wheel has started and stopped (or lag steps
+     * pass with nothing), then again; the pulse grows 15% when nothing moved and shrinks 20% when it went past. Off inside the tolerance.
+     */
+    double snap(TorqueDebugLoop l, double e, double measured, double dt) {
+        double g = l.kP < 0 ? -1 : 1, kP = Math.abs(l.kP), kD = Math.abs(l.kD), kS = Math.abs(l.kS), pulse = Math.abs(l.pulse);
+        // g turns only the power round: for a servo whose positive power lowers the reading, the same error gets the opposite power.
+        double en = e, a = Math.abs(en), dir = en < 0 ? -1 : 1;
+        l.speed = l.hn < 3 ? 0 : Math.abs(wrapOf(measured - l.h[0], l.wrap)) / (3 * dt);
+        if (l.hn < 3) l.h[l.hn++] = measured; else { l.h[0] = l.h[1]; l.h[1] = l.h[2]; l.h[2] = measured; }
+        double d = Double.isNaN(l.lastN) ? 0 : (en - l.lastN) / dt; l.lastN = en;
+        if (a <= l.tol) { l.wait = 0; l.fire = 0; l.stall = 0; l.from = Double.NaN; return 0; }
+        if (a > l.zone) {
+            l.wait = 0; l.fire = 0; l.from = Double.NaN; double out = kP * en + kD * d;
+            if (out * en > 0) {
+                if (Math.abs(out) < kS) out = kS * dir;
+                l.stall = l.speed < l.still ? l.stall + 1 : 0;
+                if (l.stall >= 5) { out = dir * Math.max(Math.abs(out), pulse * l.scale); if (l.stall >= 10) { l.scale = Math.min(2.5, l.scale * 1.15); l.stall = 5; } }
+            } else l.stall = 0;
+            return g * clamp(out, -1, 1);
+        }
+        l.stall = 0;
+        if (l.fire > 0) { l.fire--; return g * pulse * l.scale * l.fireDir; }
+        if (l.wait > 0) { l.wait--; l.lagLeft--; if (l.speed > l.still) l.moved = true; if (l.wait > 0 && (l.moved ? l.speed >= l.still : l.lagLeft > 0)) return 0; l.wait = 0; }
+        if (l.speed > l.still) return 0;
+        if (!Double.isNaN(l.from)) { double moved = Math.abs(wrapOf(measured - l.from, l.wrap)); if (moved < l.tol * .25) l.scale = Math.min(2.5, l.scale * 1.15); else if (dir != l.fireDir) l.scale = Math.max(.4, l.scale * .8); }
+        l.from = measured; l.fireDir = dir; l.fire = Math.max(1, Math.min(3, (int) Math.round(a / l.zone * 3))) - 1; l.wait = l.lag + 25; l.moved = false; l.lagLeft = l.lag;
+        return g * Math.min(1, pulse * l.scale) * dir;
     }
 
     void stall(int m, long now) {
@@ -534,6 +575,7 @@ public class TorqueDebug extends LinearOpMode {
         b.append(']').append(hubWatch);
         TorqueDebugLoop l = loop;
         if (l != null) b.append(",\"q\":{\"actuator\":").append(str(l.actuator)).append(",\"target\":").append(num(l.target)).append(",\"error\":").append(num(l.error)).append(",\"out\":").append(num(l.out)).append('}');
+        if (!loops.isEmpty()) { b.append(",\"ql\":["); boolean first = true; for (TorqueDebugLoop x : loops) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"e\":").append(num(x.error)).append(",\"o\":").append(num(x.out)).append(",\"s\":").append(num(x.scale)).append('}'); } b.append(']'); }
         if (!webcams.isEmpty()) { if (camLast == null || now - camAt >= 100) { camLast = cameraJson(); camAt = now; } b.append(",\"cam\":").append(camLast); }
         return b.append('}').toString();
     }
@@ -812,4 +854,6 @@ public class TorqueDebug extends LinearOpMode {
 final class TorqueDebugLoop {
     String actuator, sensor, mode; boolean cr; int index, sensorIndex; boolean analog;
     double target, kP, kI, kD, kF, kS, kG, tol, wrap, izone, integral, last = Double.NaN, lastE = Double.NaN, out, error;
+    // Snap and nudge (zone > 0).
+    double zone, pulse, still, scale = 1, speed, from = Double.NaN, lastN = Double.NaN, fireDir; final double[] h = new double[3]; int hn, lag = 6, wait, lagLeft, fire, stall; boolean moved;
 }

@@ -3,7 +3,7 @@
 // with the controller mapping the team picked. Where the simulator's JDK and FTC stand-ins are built, each kind is compiled.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
 const T=require('../ui/sim-chassis-teleop.js');
-const pod=(drive,x,y,more={})=>({label:drive,drive,reversed:false,servo:drive+'S',encoder:drive+'E',x,y,zero:1.2,encoderSign:1,servoSign:-1,kP:.004,kI:0,kD:.0001,kS:.05,volts:3.3,...more});
+const pod=(drive,x,y,more={})=>({label:drive,drive,reversed:false,servo:drive+'S',encoder:drive+'E',x,y,zero:1.2,encoderSign:1,servoSign:-1,kP:.004,kD:.0001,kS:.05,pulse:.08,zone:4.5,still:9,lag:7,volts:3.3,...more});
 const kiwi={kind:'swerve',tolerance:.9,robot:{hubLogo:'up',hubUsb:'forward'},imu:{name:'imu',scale:1.00123},config:'swerve',date:'2026-11-10',pods:[pod('frontPod',8.5,0,{zero:3.214}),pod('leftPod',-8.5,8.5,{reversed:true}),pod('rightPod',-8.5,-8.5,{encoderSign:-1})]};
 const mecanum={kind:'mecanum',robot:{},imu:{name:'imu',scale:1},motors:[{key:'frontLeft',name:'leftFront'},{key:'frontRight',name:'rightFront',reversed:true},{key:'backLeft',name:'leftBack'},{key:'backRight',name:'rightBack',reversed:true}]};
 const tank={kind:'tank',robot:{},motors:[{key:'left',name:'left'},{key:'right',name:'right',reversed:true}]};
@@ -13,8 +13,10 @@ test('a swerve’s TeleOp carries each pod as calibrated, with no package so eve
   assert.doesNotMatch(s,/^package /m,'a packaged OnBot class crash-loops some Robot Controller builds');assert.match(s,/@TeleOp\(name = "Torque Chassis", group = "Torque"\)\npublic class TorqueChassis extends LinearOpMode \{/);
   assert.match(s,/DRIVE = \{"frontPod", "leftPod", "rightPod"\}, STEER = \{"frontPodS", "leftPodS", "rightPodS"\}, ENCODER = \{"frontPodE", "leftPodE", "rightPodE"\};/);
   assert.match(s,/DRIVE_REVERSED = \{false, true, false\};/);assert.match(s,/POD_X = \{8\.5, -8\.5, -8\.5\}, POD_Y = \{0\.0, 8\.5, -8\.5\};/);assert.match(s,/ZERO_VOLTS = \{3\.214, 1\.2, 1\.2\};/);
-  assert.match(s,/ENCODER_SIGN = \{1, 1, -1\}, SERVO_SIGN = \{-1, -1, -1\};/);assert.match(s,/KP = \{0\.004, 0\.004, 0\.004\}, KI = \{0\.0, 0\.0, 0\.0\}, KD = \{0\.0001, 0\.0001, 0\.0001\}, KS = \{0\.05, 0\.05, 0\.05\};/);
-  assert.match(s,/TOLERANCE_DEGREES = 0\.9, INTEGRAL_ZONE_DEGREES = 15\.0, IMU_SCALE = 1\.00123;/);assert.match(s,/LogoFacingDirection\.UP, RevHubOrientationOnRobot\.UsbFacingDirection\.FORWARD/);
+  assert.match(s,/ENCODER_SIGN = \{1, 1, -1\}, SERVO_SIGN = \{-1, -1, -1\};/);assert.match(s,/KP = \{0\.004, 0\.004, 0\.004\}, KD = \{0\.0001, 0\.0001, 0\.0001\}, KS = \{0\.05, 0\.05, 0\.05\}, PULSE = \{0\.08, 0\.08, 0\.08\};/);assert.match(s,/ZONE_DEGREES = \{4\.5, 4\.5, 4\.5\}, STILL_DEGREES_A_SECOND = \{9\.0, 9\.0, 9\.0\};/);assert.match(s,/LAG_STEPS = \{7, 7, 7\};/);
+  // Each pod's own loop, snap then nudge, stepped 50 times a second and held in between.
+  assert.match(s,/static final class Steer \{/);assert.match(s,/loop\[i\] = new Steer\(KP\[i\], KD\[i\], KS\[i\], PULSE\[i\], ZONE_DEGREES\[i\], STILL_DEGREES_A_SECOND\[i\], TOLERANCE_DEGREES, LAG_STEPS\[i\]\);/);assert.match(s,/steerPower\[i\] = SERVO_SIGN\[i\] \* loop\[i\]\.step\(error, angle, STEER_STEP_SECONDS\);/);
+  assert.match(s,/TOLERANCE_DEGREES = 0\.9, IMU_SCALE = 1\.00123;/);assert.match(s,/LogoFacingDirection\.UP, RevHubOrientationOnRobot\.UsbFacingDirection\.FORWARD/);
   // The short way round: past a quarter turn the wheel runs backwards instead.
   assert.match(s,/if \(Math\.abs\(error\) > 90\) \{ error -= Math\.signum\(error\) \* 180; wheel = -wheel; \}/);
   assert.equal(s.split('{').length,s.split('}').length,'braces balance');

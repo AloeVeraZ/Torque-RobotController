@@ -27,7 +27,34 @@
   const imu=o=>['        IMU imu = hardwareMap.get(IMU.class, '+str(o.imu?.name||'imu')+');',...(o.imu?.mount?.note?[`        // The hub is ${o.imu.mount.note}.`]:[]),`        imu.initialize(new IMU.Parameters(${o.imu?.mount?.code||`new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.${FACE[o.robot?.hubLogo]||'UP'}, RevHubOrientationOnRobot.UsbFacingDirection.${FACE[o.robot?.hubUsb]||'FORWARD'})`}));`];
   const COMMON=['com.qualcomm.hardware.rev.RevHubOrientationOnRobot','com.qualcomm.robotcore.eventloop.opmode.LinearOpMode','com.qualcomm.robotcore.eventloop.opmode.TeleOp','com.qualcomm.robotcore.hardware.DcMotor','com.qualcomm.robotcore.hardware.DcMotorSimple','com.qualcomm.robotcore.hardware.IMU','org.firstinspires.ftc.robotcore.external.navigation.AngleUnit'];
   // pods: [{drive, reversed, servo, encoder, x, y (inches from the middle), zero (volts), encoderSign, servoSign,
-  //         kP, kI, kD, kS (power a degree), volts (one turn)}]
+  //         kP, kD (power a degree, and a degree a second), kS, pulse (power), zone (degrees), still (degrees a second),
+  //         lag (steps), volts (one turn)}]: the snap-and-nudge loop as Calibrate tuned it (ui/sim-chassis-cal.js snapStep).
+  // One pod's steering loop in Java, the same steps as ui/sim-chassis-cal.js snapStep and TorqueDebug.java's snap: in the
+  // TeleOp, and in the calibration class teams copy into their own code.
+  const STEER_CLASS=[
+      '    /** One pod\'s steering, as Torque tuned it: snap to the angle, then nudge onto it. Error and angle in degrees, left positive. */',
+      '    static final class Steer {','        final double kP, kD, kS, pulse, zone, still, tol; final int lag;',
+      '        double speed, from = Double.NaN, last = Double.NaN, fireDir, scale = 1; final double[] h = new double[3]; int hn, wait, lagLeft, fire, stall; boolean moved;',
+      '        Steer(double kP, double kD, double kS, double pulse, double zone, double still, double tol, int lag) { this.kP = kP; this.kD = kD; this.kS = kS; this.pulse = pulse; this.zone = zone; this.still = still; this.tol = tol; this.lag = lag; }',
+      '        static double wrap(double x) { return x - 360.0 * Math.round(x / 360.0); }',
+      '        /** The target moved: the nudge starts again (what it learned about its pulse is kept). */','        void retarget() { from = Double.NaN; wait = 0; fire = 0; }',
+      '        /** The power for this step: positive turns the wheel left. Call it every STEER_STEP_SECONDS. */',
+      '        double step(double error, double angle, double dt) {','            double a = Math.abs(error), dir = error < 0 ? -1 : 1;',
+      '            speed = hn < 3 ? 0 : Math.abs(wrap(angle - h[0])) / (3 * dt);','            if (hn < 3) h[hn++] = angle; else { h[0] = h[1]; h[1] = h[2]; h[2] = angle; }',
+      '            double d = Double.isNaN(last) ? 0 : (error - last) / dt; last = error;',
+      '            if (a <= tol) { wait = 0; fire = 0; stall = 0; from = Double.NaN; return 0; }',
+      '            if (a > zone) {','                // Snap: flat out from far away, braking on the way in, never less than what keeps the wheel turning.',
+      '                wait = 0; fire = 0; from = Double.NaN; double out = kP * error + kD * d;',
+      '                if (out * error > 0) {','                    if (Math.abs(out) < kS) out = kS * dir;','                    stall = speed < still ? stall + 1 : 0;',
+      '                    if (stall >= 5) { out = dir * Math.max(Math.abs(out), pulse * scale); if (stall >= 10) { scale = Math.min(2.5, scale * 1.15); stall = 5; } }',
+      '                } else stall = 0;','                return Math.max(-1, Math.min(1, out));','            }',
+      '            // Nudge: a short pulse, then power off until the wheel has started and stopped, then look again.','            stall = 0;',
+      '            if (fire > 0) { fire--; return pulse * scale * fireDir; }',
+      '            if (wait > 0) { wait--; lagLeft--; if (speed > still) moved = true; if (wait > 0 && (moved ? speed >= still : lagLeft > 0)) return 0; wait = 0; }',
+      '            if (speed > still) return 0;',
+      '            if (!Double.isNaN(from)) { double went = Math.abs(wrap(angle - from)); if (went < tol * 0.25) scale = Math.min(2.5, scale * 1.15); else if (dir != fireDir) scale = Math.max(0.4, scale * 0.8); }',
+      '            from = angle; fireDir = dir; fire = Math.max(1, Math.min(3, (int) Math.round(a / zone * 3))) - 1; wait = lag + 25; moved = false; lagLeft = lag;',
+      '            return Math.min(1, pulse * scale) * dir;','        }','    }'];
   function swerve(o,m){const p=o.pods,col=(f,fn=dbl)=>list(p.map(x=>fn(x[f])));
     return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[]),'com.qualcomm.robotcore.hardware.AnalogInput','com.qualcomm.robotcore.hardware.CRServo']),
       `    static final String[] DRIVE = ${col('drive',str)}, STEER = ${col('servo',str)}, ENCODER = ${col('encoder',str)};`,
@@ -35,19 +62,25 @@
       `    // Where each pod is from the middle of the robot, inches: forward, then left.`,`    static final double[] POD_X = ${col('x')}, POD_Y = ${col('y')};`,
       `    // Each pod's steering as calibrated: its encoder's reading with the wheel straight, which way the reading and the`,`    // servo go for a turn to the left, and its own tuned loop (power a degree of error).`,
       `    static final double[] ZERO_VOLTS = ${col('zero')};`,`    static final int[] ENCODER_SIGN = ${col('encoderSign',v=>String(v<0?-1:1))}, SERVO_SIGN = ${col('servoSign',v=>String(v<0?-1:1))};`,
-      `    static final double[] KP = ${col('kP')}, KI = ${col('kI')}, KD = ${col('kD')}, KS = ${col('kS')};`,
-      `    static final double VOLTS_PER_TURN = ${dbl(p[0]?.volts||3.3)}, TOLERANCE_DEGREES = ${dbl(o.tolerance||.9)}, INTEGRAL_ZONE_DEGREES = ${dbl(o.izone||15)}, IMU_SCALE = ${dbl(o.imu?.scale||1)};`,'',
+      `    static final double[] KP = ${col('kP')}, KD = ${col('kD')}, KS = ${col('kS')}, PULSE = ${col('pulse')};`,
+      `    // The nudge: inside ZONE_DEGREES of the target the servo gets short pulses; STILL_DEGREES_A_SECOND counts as stopped; LAG_STEPS is how long a pulse takes to show.`,
+      `    static final double[] ZONE_DEGREES = ${col('zone')}, STILL_DEGREES_A_SECOND = ${col('still')};`,`    static final int[] LAG_STEPS = ${col('lag',v=>String(Math.max(1,Math.round(v||6))))};`,
+      `    static final double VOLTS_PER_TURN = ${dbl(p[0]?.volts||3.3)}, TOLERANCE_DEGREES = ${dbl(o.tolerance||.9)}, IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
+      `    // The steering runs 50 times a second, as it was tuned.`,`    static final double STEER_STEP_SECONDS = 0.02;`,'',
+      ...STEER_CLASS,'',
       '    @Override public void runOpMode() {','        int n = DRIVE.length;','        DcMotor[] drive = new DcMotor[n];','        CRServo[] steer = new CRServo[n];','        AnalogInput[] encoder = new AnalogInput[n];','        double radius = 1e-6;',
       '        for (int i = 0; i < n; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);',
       '            steer[i] = hardwareMap.get(CRServo.class, STEER[i]);','            encoder[i] = hardwareMap.get(AnalogInput.class, ENCODER[i]);','            radius = Math.max(radius, Math.hypot(POD_X[i], POD_Y[i]));','        }',...imu(o),
-      '        double[] target = new double[n], lastError = new double[n], integral = new double[n], speed = new double[n];','        waitForStart();','        imu.resetYaw();','        long last = System.nanoTime();',
+      '        double[] target = new double[n], steered = new double[n], steerPower = new double[n], speed = new double[n];','        Steer[] loop = new Steer[n];','        for (int i = 0; i < n; i++) loop[i] = new Steer(KP[i], KD[i], KS[i], PULSE[i], ZONE_DEGREES[i], STILL_DEGREES_A_SECOND[i], TOLERANCE_DEGREES, LAG_STEPS[i]);','        waitForStart();','        imu.resetYaw();','        long last = System.nanoTime();','        double sinceSteer = STEER_STEP_SECONDS;',
       '        while (opModeIsActive()) {','            long now = System.nanoTime();','            double dt = Math.max(1e-3, (now - last) / 1e9);','            last = now;',...sticks(m),
       '            boolean moving = Math.hypot(forward, left) > 0.05 || Math.abs(turn) > 0.05;','            double top = 1;',
       '            // Each pod goes the way the robot is moving there: the drive, plus the turn about the middle.',
       '            for (int i = 0; i < n; i++) {','                double vx = forward - turn * POD_Y[i] / radius, vy = left + turn * POD_X[i] / radius;','                speed[i] = Math.hypot(vx, vy);','                if (moving) target[i] = Math.toDegrees(Math.atan2(vy, vx));','                top = Math.max(top, speed[i]);','            }',
+      '            sinceSteer += dt;','            boolean steerNow = sinceSteer >= STEER_STEP_SECONDS;','            if (steerNow) sinceSteer = 0;',
       '            for (int i = 0; i < n; i++) {','                double angle = ENCODER_SIGN[i] * (encoder[i].getVoltage() - ZERO_VOLTS[i]) / VOLTS_PER_TURN * 360.0;','                double error = target[i] - angle;','                error -= 360.0 * Math.round(error / 360.0);','                double wheel = moving ? speed[i] / top : 0;',
       '                // More than a quarter turn away: the wheel runs backwards instead, and the pod turns the short way.','                if (Math.abs(error) > 90) { error -= Math.signum(error) * 180; wheel = -wheel; }',
-      '                double power = 0;','                if (Math.abs(error) > TOLERANCE_DEGREES) {','                    // The integral builds only near the target (it would wind up on a long turn) and starts again when the pod crosses it.','                    if (Math.signum(error) != Math.signum(lastError[i])) integral[i] = 0;','                    else if (Math.abs(error) < INTEGRAL_ZONE_DEGREES) integral[i] += error * dt;','                    power = SERVO_SIGN[i] * (KP[i] * error + KI[i] * integral[i] + KD[i] * (error - lastError[i]) / dt + KS[i] * Math.signum(error));','                } else integral[i] = 0;','                lastError[i] = error;',
+      '                // The steering loop takes its step 50 times a second and holds its power in between.',
+      '                if (steerNow) {','                    if (Math.abs(target[i] - steered[i]) > 1) { loop[i].retarget(); steered[i] = target[i]; }','                    steerPower[i] = SERVO_SIGN[i] * loop[i].step(error, angle, STEER_STEP_SECONDS);','                }','                double power = steerPower[i];',
       '                steer[i].setPower(Math.max(-1, Math.min(1, power)));','                // A wheel still turning to its angle pushes less, so it does not drag the robot sideways.','                drive[i].setPower(wheel * Math.cos(Math.toRadians(error)));','            }',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
   // motors: [{key, name, reversed}] by Deck's keys. A mecanum's four; a tank's by side.
@@ -65,6 +98,6 @@
       if(bare.length)return {error:`Set the wheels straight first, with an absolute encoder on every pod: ${bare.join(', ')}.`};return {file:NAME+'.java',opMode:OP_MODE,source:swerve(o,m)};}
     if(o.kind==='mecanum'||o.kind==='tank'){if(!(o.motors||[]).length)return {error:'This chassis has no drive motors.'};return {file:NAME+'.java',opMode:OP_MODE,source:wheels(o,m,o.kind==='tank')};}
     return {error:'Torque writes this TeleOp for swerve, mecanum and tank chassis so far.'};}
-  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE};
+  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,steerClass:()=>STEER_CLASS.slice()};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.DeckChassisTeleop=api;
 })(typeof globalThis==='object'?globalThis:this);

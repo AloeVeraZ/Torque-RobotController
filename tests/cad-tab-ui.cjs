@@ -105,7 +105,13 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     await page.click('[data-garage="chassis:controller"]');await page.waitForTimeout(250);assert.equal(await page.locator('#mech-controller [data-controller]:visible').count(),0,'not picked again here');assert.equal(await page.locator('#mech-controller #sim-ctl-sensors').isVisible(),false,'position sensing is + Add to Chassis');
     await page.click('#sim-setup-step-robot');await page.click('#rs-control-card [data-controller="ftc"]');await page.waitForTimeout(250);await page.click('#sim-setup-step-mechanisms');await page.click('[data-garage="chassis:controller"]');await page.waitForTimeout(250);assert.equal(await page.locator('[data-garage="chassis:controller"] b').textContent(),'Control Hub','the tile is what was picked');assert.equal(await page.locator('#sim-hub-mount').isVisible(),true,'how the hub is mounted');await page.screenshot({path:path.join(out,'controller.png')});
     // Remove model: the drop zone takes its place, and it is still one screen.
-    await page.click('#sim-setup-step-robot');await page.waitForTimeout(200);await page.click('#sim-model-remove');await page.waitForFunction(()=>document.querySelector('#sim-model-box').hidden);
+    await page.click('#sim-setup-step-robot');await page.waitForTimeout(200);// Remove model asks first: No and Escape keep the CAD; only Yes takes it off the setup.
+    {const has=()=>page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).model);assert.equal(await has(),true);
+      await page.click('#sim-model-remove');assert.equal(await page.locator('#sim-remove-confirm').evaluate(d=>d.open),true,'it asks first');assert.match(await page.textContent('#sim-remove-confirm-title'),/Remove this robot’s CAD\?/);
+      await page.click('#sim-remove-no');await page.waitForTimeout(400);assert.equal(await has(),true,'No keeps the CAD');
+      await page.click('#sim-model-remove');await page.keyboard.press('Escape');await page.waitForTimeout(400);assert.equal(await has(),true,'Escape keeps the CAD');
+      await page.click('#sim-model-remove');await page.click('#sim-remove-yes');}
+    await page.waitForFunction(()=>document.querySelector('#sim-model-box').hidden);
     {const r=await page.evaluate(()=>({doc:document.documentElement.scrollHeight,win:innerHeight,remove:document.querySelector('#sim-model-remove').hidden,drop:document.querySelector('#sim-model-drop').getBoundingClientRect().height,parts:document.querySelector('#sim-parts').hidden}));assert.equal(r.remove,true,'nothing to remove');assert.ok(r.doc<=r.win,'one screen');assert.ok(r.drop>200,`the drop zone fills it: ${r.drop}`);assert.equal(r.parts,true);}
     await page.screenshot({path:path.join(out,'cad-empty.png')});
     // C. The kit: no CAD and no Mechanisms step, so wheels and power stay beside its size.

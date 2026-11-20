@@ -91,9 +91,56 @@
   // Torque Debug's own loop (Q) holds the pod there: power per volt of error, the short way round the turn.
   // g: +1 when positive servo power raises the reading (Electronics' link says), -1 when it lowers it.
   const TOL_DEG=1.5,STEER={kP:.3,kD:.01,kS:.03};
-  const steerLoop=(st,target,g,span,pid=STEER,tolDeg=TOL_DEG)=>['Q',st.servo,'ana:'+st.name,'pos',target.toFixed(4),(pid.kP*g).toFixed(3),((pid.kI||0)*g).toFixed(3),(pid.kD*g).toFixed(4),0,(pid.kS*g).toFixed(3),0,(tolDeg*.6/360*span).toFixed(4),span,(IZONE_DEG/360*span).toFixed(4)].join('\t');
+  // A pod not tuned yet, for the TeleOp: gentle snap-and-nudge numbers (per volt of a 3.3 V encoder) that work on most pods.
+  const SNAP_DEFAULT={kP:.35,kD:.004,kS:.06,pulse:.08,zone:4/360*3.3,still:10/360*3.3,lag:7,scale:1};
+  const steerLoop=(st,target,g,span,pid=STEER,tolDeg=TOL_DEG)=>{const q=['Q',st.servo,'ana:'+st.name,'pos',target.toFixed(4),(pid.kP*g).toFixed(4),((pid.kI||0)*g).toFixed(3),(pid.kD*g).toFixed(5),0,(pid.kS*g).toFixed(3),0,(tolDeg*.6/360*span).toFixed(4),span,(IZONE_DEG/360*span).toFixed(4)];
+    // Gains from the snap-and-nudge tuner carry its zone, pulse, still speed, lag and the pulse scale the pod learned.
+    return (pid.pulse>0&&pid.zone>0?[...q,pid.zone.toFixed(4),pid.pulse.toFixed(3),(pid.still||0).toFixed(4),pid.lag||6,(pid.scale||1).toFixed(3)]:q).join('\t');};
   // How far off a turn may stop, set by the team: plus is past the target, minus short of it, the way the wheel was turning.
   const TOLS=[.5,1,1.5,2,3,5],tolOf=rec=>{const t=rec?.tol||{},ok=v=>TOLS.includes(v)?v:TOL_DEG;return {plus:ok(t.plus),minus:ok(t.minus)};},bandOf=rec=>{const t=tolOf(rec);return Math.min(t.plus,t.minus);};
+  // ---- the steering law: snap, then nudge ----
+  // One step of the loop that turns a pod to an angle (TorqueDebug.java's stepLoop and the generated TeleOp run the same
+  // steps; this one is the reference they are checked against). A fast servo with lag cannot be eased onto a 1.5° target by
+  // a constant push: whatever keeps it moving carries it past before the loop sees it. So the move is in two parts.
+  //   Snap: outside the zone, power = kP·error + kD·its speed, never less than kS towards the target (what keeps the wheel
+  //         turning), so it goes flat out from far away and brakes on the way in. A wheel that stalls out here is pushed
+  //         with the nudge's power.
+  //   Nudge: inside the zone, short pulses: one to three loops at the power that starts it moving, then power off until the
+  //         wheel is still, then look again. The pulse grows 15% each time nothing moved and shrinks 20% each time it went
+  //         past, so it finds the smallest step this pod makes. Inside the tolerance the power is off.
+  // e: target minus reading; measured: the reading; both in the sensor's units, as k's zone, tol and still (units a second).
+  // k: {kP, kD, kS, pulse, zone, tol, still, lag (steps a command takes to show, with a margin), wrap}; kP's sign is which way power moves the reading. s: the state, kept
+  // between steps (snapState()). Returns the power, -1 to 1.
+  const snapState=(scale=1)=>({last:NaN,h:[],speed:0,wait:0,moved:false,fire:0,fireDir:0,scale,from:NaN,stall:0});
+  function snapStep(s,e,measured,dt,k){const g=k.kP<0?-1:1,kP=Math.abs(k.kP),kD=Math.abs(k.kD||0),kS=Math.abs(k.kS||0),pulse=Math.abs(k.pulse||0),wrapOf=x=>{if(!(k.wrap>0))return x;x%=k.wrap;if(x>k.wrap/2)x-=k.wrap;if(x<-k.wrap/2)x+=k.wrap;return x;};
+    // g turns only the power round: for a servo whose positive power lowers the reading, the same error gets the opposite power.
+    const en=e,a=Math.abs(en),dir=Math.sign(en)||1;
+    // Speed over the last three steps: one step's difference is mostly the encoder's noise.
+    s.speed=s.h.length<3?0:Math.abs(wrapOf(measured-s.h[0]))/(3*dt);s.h.push(measured);if(s.h.length>3)s.h.shift();const d=Number.isNaN(s.last)?0:(en-s.last)/dt;s.last=en;
+    if(a<=k.tol){s.wait=0;s.fire=0;s.stall=0;s.from=NaN;return 0;}
+    if(a>k.zone){s.wait=0;s.fire=0;s.from=NaN;let out=kP*en+kD*d;
+      if(out*en>0){if(Math.abs(out)<kS)out=kS*dir;s.stall=s.speed<k.still?s.stall+1:0;
+        if(s.stall>=5){out=dir*Math.max(Math.abs(out),pulse*s.scale);if(s.stall>=10){s.scale=Math.min(2.5,s.scale*1.15);s.stall=5;}}}
+      else s.stall=0;
+      return g*Math.max(-1,Math.min(1,out));}
+    s.stall=0;
+    if(s.fire>0){s.fire--;return g*pulse*s.scale*s.fireDir;}
+    // After a pulse: power off until the wheel is seen to start and then to stop (the command takes a few steps to act),
+    // or, if it never starts, until k.lag steps have gone by.
+    if(s.wait>0){s.wait--;s.lagLeft--;if(s.speed>k.still)s.moved=true;if(s.wait>0&&(s.moved?s.speed>=k.still:s.lagLeft>0))return 0;s.wait=0;}
+    if(s.speed>k.still)return 0;
+    if(!Number.isNaN(s.from)){const moved=Math.abs(wrapOf(measured-s.from));if(moved<k.tol*.25)s.scale=Math.min(2.5,s.scale*1.15);else if(dir!==s.fireDir)s.scale=Math.max(.4,s.scale*.8);}
+    s.from=measured;s.fireDir=dir;s.fire=Math.max(1,Math.min(3,Math.round(a/k.zone*3)))-1;s.wait=(k.lag||6)+25;s.moved=false;s.lagLeft=k.lag||6;
+    return g*Math.min(1,pulse*s.scale)*dir;}
+  // Where the tuner starts, in the encoder's own units (volts) unless said: from the servo's speed for its power (Kv), the wait
+  // before it answers (L), the power that starts it (breakaway) and keeps it turning (keep), the speed it creeps at on that
+  // (creep, units a second) and the encoder's noise (peak to peak). kP: full power from 30° out at most, less for a quick
+  // servo with a long wait; kS: just over what keeps it turning; the nudge's zone: as far as it coasts from a creep, so the
+  // snap never throws it clean through; still: a speed the noise alone cannot reach.
+  const ZONE_DEG=[3,15];
+  function snapGains({Kv,L,breakaway=0,keep,creep,noise=0,span=3.3}){const perDeg=span/360,kS=Math.max(.01,(Number.isFinite(keep)&&keep>0?Math.min(keep,breakaway):breakaway*.8)*1.15+.005),kP=Math.max(.0005/perDeg,Math.min(1/(30*perDeg),.35/(Kv*L)));
+    const creepDeg=(Number.isFinite(creep)&&creep>0?creep:Kv*kS*.3)/perDeg,zone=Math.max(ZONE_DEG[0],Math.min(ZONE_DEG[1],creepDeg*L*1.1))*perDeg,still=Math.max(8,noise/perDeg*20)*perDeg;
+    return {kP:+(kP*1.5).toFixed(4),kD:+(kP*L*.3).toFixed(5),kS:+kS.toFixed(3),pulse:+Math.max(.02,breakaway).toFixed(3),zone:+zone.toFixed(4),still:+still.toFixed(4),lag:Math.max(4,Math.min(12,Math.ceil(L/.02)+1))};}
   // ---- tuning a pod's steering by itself ----
   // A steering servo turns at a speed set by its power, after a short wait: the reading's speed is Kv times the power
   // (volts a second at full power), starting L seconds late. Both are read off one short run at a steady power.
@@ -136,7 +183,7 @@
   const KP_MAX=15;
   // The tuner's version: gains saved by an older one (before friction was measured both ways and the integral zone) are
   // tuned again before Turn it left / right use them, or they stop short where friction holds the pod.
-  const PID_V=3,tuned=x=>!!x?.pid&&x.pid.v===PID_V;
+  const PID_V=4,tuned=x=>!!x?.pid&&x.pid.v===PID_V;
   function nextTry(tries,max=9){const last=tries.at(-1);if(!last||tries.length>=max)return null;const scale=k=>({...last.pid,kP:+(last.pid.kP*k).toFixed(3),kD:+(last.pid.kD*k).toFixed(4)});
     if(steady(last.stats))return tries.some(t=>!steady(t.stats))||last.pid.kP>=KP_MAX?null:scale(1.35);
     if(tries.some(t=>steady(t.stats)))return null;
@@ -179,14 +226,13 @@
       for(const q of podsOf(ch,steer)){const m=q.steer;if(!m)continue;const z=rec.steer?.zero?.[m.name],x=pods[q.key]||{},checked=!!x.left&&!!x.right,sense=x.sense||1,g=link(m.servo,`a:${m.name}`);
         out.push(line('double',constant(m.name)+'_ZERO_VOLTS',Number.isFinite(z)?z.toFixed(4):'0.0',Number.isFinite(z)?'':'not set: Point the wheels straight sets it'),line('int',constant(m.name)+'_ENCODER_SIGN',sense,checked?'':'not checked yet'),line('int',constant(m.servo)+'_SERVO_SIGN',(x.pid?.g??g??1)*sense,checked&&(x.pid||g!==null)?'':'not checked yet'));
         // Tuned on this pod: power = KP * error + KD * error's speed, plus KS towards the target while outside the tolerance. Error in degrees.
-        if(x.pid){const per=(m.volts||3.3)/360;out.push(line('double',constant(m.servo)+'_KP',+(x.pid.kP*per).toFixed(5),'power per degree'),line('double',constant(m.servo)+'_KI',+((x.pid.kI||0)*per).toFixed(6),'power per degree-second'),line('double',constant(m.servo)+'_KD',+(x.pid.kD*per).toFixed(6),'power per degree a second'),line('double',constant(m.servo)+'_KS',x.pid.kS,'power, towards the target'));}}}
+        if(tuned(x)&&x.pid.pulse>0){const per=(m.volts||3.3)/360,S=constant(m.servo);out.push(line('double',S+'_KP',+(x.pid.kP*per).toFixed(6),'power per degree'),line('double',S+'_KD',+(x.pid.kD*per).toFixed(7),'power per degree a second'),line('double',S+'_KS',x.pid.kS,'the least power that keeps it turning'),
+          line('double',S+'_PULSE',+Math.min(1,x.pid.pulse*(x.pid.scale||1)).toFixed(3),'the nudge\'s power'),line('double',S+'_ZONE_DEGREES',+(x.pid.zone/per).toFixed(2),'nudge inside this'),line('double',S+'_STILL_DEGREES_A_SECOND',+(x.pid.still/per).toFixed(1),'slower than this is stopped'),line('int',S+'_LAG_STEPS',x.pid.lag||6,'steps a pulse takes to show'));}}}
     if(steer.length)out.push('',`    public static final double STEER_TOLERANCE_DEGREES = ${bandOf(rec)};`,'',
-      '    // The steering loop as tuned here: the servo power that turns a wheel to targetDegrees (left positive).','    // Call it every loop of your teleop or autonomous with that pod\'s own numbers from above.',
-      '    public static double steerPower(double volts, double targetDegrees, double zeroVolts, int encoderSign, int servoSign, double kP, double kS) {',
-      '        double angle = encoderSign * (volts - zeroVolts) / STEER_VOLTS_PER_TURN * 360.0;','        double error = targetDegrees - angle;','        error -= 360.0 * Math.round(error / 360.0); // the short way round',
-      '        if (Math.abs(error) <= STEER_TOLERANCE_DEGREES) return 0;','        return servoSign * (kP * error + kS * Math.signum(error));','    }');
+      '    // The steering loop as tuned here: snap to the angle, then nudge onto it. Make one Steer for each pod with its numbers from','    // above and STEER_TOLERANCE_DEGREES * 0.6, then 50 times a second:','    //   double angle = ENCODER_SIGN * (encoder.getVoltage() - ZERO_VOLTS) / STEER_VOLTS_PER_TURN * 360.0;','    //   double error = Steer.wrap(targetDegrees - angle);','    //   servo.setPower(SERVO_SIGN * steer.step(error, angle, 0.02));','    // Call steer.retarget() when the target jumps. The TeleOp Torque sends (Drive it) runs exactly this.',
+      ...((globalThis.DeckChassisTeleop||(typeof require==='function'?require('./sim-chassis-teleop.js'):null))?.steerClass?.()||[]).map(l=>l.replace('    static final class Steer','    public static final class Steer')));
     out.push('}');return out.join('\n');}
-  const api={chassisOf,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
+  const api={chassisOf,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,snapStep,snapState,snapGains,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -233,7 +279,7 @@
       const ds=debug?.state?.()||{},busy=!live()&&(ds.starting||ds.installing),liveSaid=ds.installing?'Putting Torque Debug on the robot: about a minute, once after Torque updates…':busy?(ds.text||'Starting live readings…'):!live()&&ds.kind==='error'&&ds.text?ds.text:'';
       if(busy&&!paint.waiting){paint.waiting=setTimeout(()=>{paint.waiting=0;paint();},600);}
       const blocks=`<p class="cal-note">Put the robot on blocks, wheels off the floor: these checks move it.</p>${live()?'':`<div class="button-row"><button type="button" class="primary" data-chassis="live"${busy?' disabled':''}>${busy?'Starting…':'Start live readings'}</button></div>${liveSaid?`<p class="hint${ds.kind==='error'&&!busy?' cal-sense-note bad':''}" role="status" data-chassis-live>${esc(liveSaid)}</p>`:''}`}${told?`<p class="hint" role="status">${esc(told)}</p>`:''}`;
-      const bPod=q=>{const x=(r.pods||{})[q.key]||{};return `${blocks}${q.steer?allowed:''}<ul class="cal-pod-checks">${q.steer?check(q,'tune','Tune the steering',x.pid&&!tuned(x)?'Tuned with an older Torque, which stopped short where friction held the pod: tune it again with the new tuner.':x.pid?`As fast as this pod stays accurate: a quarter turn in ${f(x.pid.settle,2)} s, ${f(x.pid.overshoot,1)}° past. Held still for 2 s with no oscillation${x.pid.backed?` after the gains came down ${x.pid.backed} time${x.pid.backed>1?'s':''}`:''}.`:'Start with the wheel straight. For about two minutes Torque measures this pod’s servo, then tries all three steering gains up and down, making quarter turns faster and faster until one swings past or hunts, and keeps the quickest that stays accurate.','Tune it',true)+check(q,'left','Turn left','Torque turns this wheel a quarter turn to the robot’s left and holds it there.','Turn it left',tuned(x))+check(q,'right','Turn right','Then a quarter turn to the right of straight.','Turn it right',tuned(x)):'<li class="cal-pod-check"><p class="hint">This pod has no absolute encoder in Simulate, so its steering cannot be checked.</p></li>'}${check(q,'drive','Drive forward','The wheel goes back to straight and spins for a second.','Spin the wheel',true)}</ul>`;};
+      const bPod=q=>{const x=(r.pods||{})[q.key]||{};return `${blocks}${q.steer?allowed:''}<ul class="cal-pod-checks">${q.steer?check(q,'tune','Tune the steering',x.pid&&!tuned(x)?'Tuned with an older Torque, whose loop bounced or stopped short on a quick servo: tune it again.':x.pid?(x.pid.quick?'Tuned enough to use (the tune was cut short): a quarter turn in '+f(x.pid.settle,2)+' s. Tune it again for the full two minutes.':`Tuned and checked both ways: 90° in ${f(x.pid.settle,2)} s${Number.isFinite(x.pid.settle45)?`, 45° in ${f(x.pid.settle45,2)} s`:''}${Number.isFinite(x.pid.settle30)?`, 30° in ${f(x.pid.settle30,2)} s`:''}, each inside ${bandOf(r)}° and holding${x.pid.backed?` (gains eased ${x.pid.backed} time${x.pid.backed>1?'s':''} to hold)`:''}. This pod is good to go.`):'Start with the wheel straight. In about two minutes Torque measures this pod’s friction and speed, then snaps it to 90°, 45° and 30° each way, quicker each time, and keeps the quickest gains that land inside the band and stay. When it finishes the pod is good to go.','Tune it',true)+check(q,'left','Turn left','Passed by the tune. To see it: Torque turns this wheel a quarter turn to the robot’s left and holds it. If it goes right instead, answer No and Torque swaps them.','Turn it left',tuned(x))+check(q,'right','Turn right','Then a quarter turn to the right of straight.','Turn it right',tuned(x)):'<li class="cal-pod-check"><p class="hint">This pod has no absolute encoder in Simulate, so its steering cannot be checked.</p></li>'}${check(q,'drive','Drive forward','The wheel goes back to straight and spins for a second.','Spin the wheel',true)}</ul>`;};
       const bWheels=`<p class="hint">Each drive motor spins for a second. A wheel that rolls backwards is reversed here, so forward means forward on every wheel.</p>${blocks}<ul class="cal-pod-checks">${pods.map(q=>check(q,'drive',`${q.label} · ${q.motor.name}`,q.motor.reversed?'Reversed.':'','Spin it',true)).join('')}</ul>`;
       const spots=r.spots||[],lastSpot=spots.at(-1);
       const b3=what==='nothing'?'<p class="hint">Nothing on this robot measures where it is: add odometry pods, a Pinpoint or an OTOS in Setup → Mechanisms.</p>':
@@ -273,7 +319,7 @@
       const now=debug?.values?.()||{};for(const el of box.querySelectorAll('[data-chassis-volts]')){const t=f(now['a:'+el.dataset.chassisVolts],3);if(el.textContent!==t)el.textContent=t;}}
     // Live: the pose follows every reading; the map redraws once a frame at most.
     function follow(){if(off||!debug?.listen)return;off=debug.listen((_f,v)=>{
-      seenAt=performance.now();for(const fn of taps.values())fn(v);
+      seenAt=performance.now();for(const fn of taps.values())fn(v,_f);
       for(const el of box.querySelectorAll('[data-chassis-volts]'))el.textContent=f(v['a:'+el.dataset.chassisVolts],3);
       if(rollFrom){const el=box.querySelector('[data-chassis-rolled]'),x=rollOf(ch(),rollFrom,v);if(el)el.textContent=f(Number.isFinite(x.ticksPerIn)?x.ticksPerIn*PUSH_IN/ch().nominalTicksPerIn:0);}
       // A pod on its way to a quarter turn: there once its encoder has stayed within the tolerance, or not after 6 s.
@@ -286,8 +332,8 @@
     // The chassis as the TeleOp needs it: each pod with what was checked on it, or each drive motor.
     function teleop(c,steer){const r=rec(),T=globalThis.DeckChassisTeleop,robot=p().robot||{},L=robot.length||17,W=robot.width||17,at=k=>({x:/front/i.test(k)?L/2:/back/i.test(k)?-L/2:0,y:/left/i.test(k)?W/2:/right/i.test(k)?-W/2:0});
       const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{}),found=measured&&(!setup||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null,common={robot,imu:{name:c.imu,scale:c.odo?.imu?.scale||1,...(found&&globalThis.DeckHubMount?{mount:globalThis.DeckHubMount.javaOf(found)}:{})},map:mapNow(),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA')};
-      if(steer.length)return T.teleopOf({...common,kind:'swerve',tolerance:+(bandOf(r)*.6).toFixed(2),pods:podsOf(c,steer).map(q=>{const st=q.steer,x=(r.pods||{})[q.key]||{},pid=x.pid||STEER,per=(st?.volts||3.3)/360,sense=x.sense||1;
-        return {label:q.label,drive:q.motor.name,reversed:q.motor.reversed,servo:st?.servo,encoder:st?.name,...at(q.key),zero:r.steer?.zero?.[st?.name],encoderSign:sense,servoSign:(pid.g??(st?gOf(st):1))*sense,kP:pid.kP*per,kI:(pid.kI||0)*per,kD:pid.kD*per,kS:pid.kS,volts:st?.volts||3.3};})});
+      if(steer.length)return T.teleopOf({...common,kind:'swerve',tolerance:+(bandOf(r)*.6).toFixed(2),pods:podsOf(c,steer).map(q=>{const st=q.steer,x=(r.pods||{})[q.key]||{},per=(st?.volts||3.3)/360,pid=tuned(x)&&x.pid.pulse>0?x.pid:{...SNAP_DEFAULT,g:x.pid?.g,zone:4*per,still:10*per},sense=x.sense||1;
+        return {label:q.label,drive:q.motor.name,reversed:q.motor.reversed,servo:st?.servo,encoder:st?.name,...at(q.key),zero:r.steer?.zero?.[st?.name],encoderSign:sense,servoSign:(pid.g??(st?gOf(st):1))*sense,kP:+(pid.kP*per).toFixed(6),kD:+(pid.kD*per).toFixed(7),kS:pid.kS,pulse:+Math.min(1,pid.pulse*(pid.scale||1)).toFixed(3),zone:+(pid.zone/per).toFixed(2),still:+(pid.still/per).toFixed(1),lag:pid.lag||6,volts:st?.volts||3.3};})});
       return T.teleopOf({...common,kind:c.type==='mecanum'?'mecanum':['tank','tank2'].includes(c.type)?'tank':c.type,motors:c.motors});}
     // Holds a pod's wheel at an angle from straight (left positive) with Torque Debug's loop; null with no encoder or no zero.
     function hold(q,deg,pid){const st=q.steer,z=rec().steer?.zero?.[st?.name];if(!st||!Number.isFinite(z))return null;const x=podRec(q.key),span=st.volts||3.3,target=steerTarget(z,deg,span,x.sense||1);pid=pid||x.pid;send(steerLoop(st,target,pid?.g??gOf(st),span,pid||STEER,bandOf(rec())));return {target,span,name:st.name,sense:x.sense||1};}
@@ -299,7 +345,7 @@
     const NO_READINGS='NO_READINGS',noReadings=()=>{if(!live()||performance.now()-seenAt>3000)throw Error(NO_READINGS);};
     async function tune(q,long=false){try{await tuneBody(q,long);}catch(e){const run=runs.get(q.key);if(!run||run.kind!=='tune')return;const st=q.steer;if(st)send(`C\t${st.servo}\t0`);taps.delete(q.key);runs.delete(q.key);
       const kept=!!podRec(q.key).pid;told=q.label+': '+(e?.message===NO_READINGS?`The robot stopped sending readings partway, so tuning stopped${kept?' (the gains found so far are kept)':''}. Press Start live readings if it shows, then Tune it again.`:`Tuning stopped: ${e?.message||e}.${kept?' The gains found so far are kept.':''} Tune it again.`);paint();}}
-    async function tuneBody(q,long=false){const st=q.steer,span=st.volts||3.3,key='a:'+st.name,mine={pod:q.key,kind:'tune',phase:'moving',note:'Finding the power that moves it…'};runs.set(q.key,mine);const T={};taps.set(q.key,v=>T.tap?.(v));told='';follow();paint();
+    async function tuneBody(q,long=false){const st=q.steer,span=st.volts||3.3,key='a:'+st.name,mine={pod:q.key,kind:'tune',phase:'moving',note:'Finding the power that moves it…'};runs.set(q.key,mine);const T={scale:1},began=performance.now();taps.set(q.key,(v,fr)=>{const sc=fr?.ql?.find?.(x=>x.a===st.servo)?.s;if(Number.isFinite(sc))T.scale=sc;T.tap?.(v);});told='';follow();paint();
       const alive=()=>runs.get(q.key)===mine,sleep=ms=>new Promise(r=>setTimeout(r,ms)),short=(a,b)=>{let t=(b-a)/span;t-=Math.round(t);return t*span;},say=t=>{mine.note=t;const el=box.querySelector(`[data-chassis-doing][data-pod="${CSS.escape(q.key)}"]`);if(el)el.textContent=t;};
       const fail=text=>{if(!alive())return;send(`C\t${st.servo}\t0`);taps.delete(q.key);runs.delete(q.key);told=q.label+': '+text;paint();};
       // Volts travelled, the short way round each reading, with when each reading came.
@@ -315,7 +361,7 @@
       // target, supplies the rest when friction holds it short.
       const moveV=Math.max(1.2,noise*2)/360*span;
       const friction=async sign=>{const seen=watch();let start=0;for(let u=.01;u<=.5&&alive();u+=.01){await drive(sign*u,80);if(seen.length&&Math.abs(seen.at(-1)[1])>moveV){start=+u.toFixed(2);break;}}
-        if(!start){send(`C\t${st.servo}\t0`);return null;}let keep=start;for(let u=start;u>0&&alive();u-=.01){const from=seen.at(-1)?.[1]??0;await drive(sign*u,120);const moved=Math.abs((seen.at(-1)?.[1]??0)-from);if(moved<moveV/3)break;keep=+u.toFixed(2);}
+        if(!start){send(`C\t${st.servo}\t0`);return null;}let keep=start;for(let u=start;u>0&&alive();u-=.01){await drive(sign*u,90);const from=seen.at(-1)?.[1]??0;await drive(sign*u,90);const moved=Math.abs((seen.at(-1)?.[1]??0)-from);if(moved<moveV/4)break;keep=+u.toFixed(2);}
         send(`C\t${st.servo}\t0`);return {start,keep};};
       say('Finding the power that starts it turning…');const up=await friction(1);if(!alive())return;await sleep(300);const down=await friction(-1);if(!alive())return;
       const both=[up,down].filter(Boolean),breakaway=both.length?both.reduce((a,x)=>a+x.start,0)/both.length:0,keepGoing=both.length?both.reduce((a,x)=>a+x.keep,0)/both.length:0;
@@ -323,40 +369,65 @@
       await sleep(250);
       say('Measuring how fast it turns…');const power=Math.min(.5,breakaway+.2),seen=watch();await drive(power,400);send(`C\t${st.servo}\t0`);T.tap=null;if(!alive())return;
       const plant=plantOf(seen.map(x=>[x[0],x[1]]),power);if(!plant)return fail('Its encoder gave too few readings to tune from. Try it again.');
-      const base={...gainsOf({...plant,breakaway,keep:keepGoing,span}),g:plant.g},band=bandOf(rec()),tries=[];
+      // How fast it creeps on the least power that keeps it turning: the nudge's zone is as far as it coasts from that.
+      say('Measuring its slowest turn…');const kS0=Math.max(.01,Math.min(keepGoing||breakaway*.8,breakaway)*1.15+.005);let creep=NaN;
+      {const cw=watch();await drive(Math.min(.5,breakaway+.1),120);await drive(kS0,420);send(`C\t${st.servo}\t0`);T.tap=null;if(!alive())return;
+        const late=cw.filter(x=>x[0]>.27);if(late.length>3){const v=Math.abs(late.at(-1)[1]-late[0][1])/(late.at(-1)[0]-late[0][0]);if(v>1e-3)creep=v;}}
+      await sleep(200);
+      const band=bandOf(rec()),base={...snapGains({Kv:plant.Kv,L:plant.L,breakaway,keep:keepGoing,creep,noise:noise/360*span,span}),kI:0,g:plant.g};
       // Snap tests: the pod is sent straight to each angle at once, as the stick sends it, and has to get there inside the
       // band and stay. One move: over once it has stayed inside the band for watch seconds, 1.6 s more at most.
       hold(q,0,base);await sleep(900);let n=0;
-      const turn=async(pid,watch=.3,deg=0)=>{const h=hold(q,deg,pid);n++;const trace=[],t0=performance.now();T.tap=v=>{if(Number.isFinite(v[key]))trace.push([(performance.now()-t0)/1000,steerAngle(v[key],h.target,span)]);};
+      const turn=async(pid,watch=.3,deg=0)=>{const h=hold(q,deg,{...pid,scale:T.scale});n++;const trace=[],t0=performance.now();T.tap=v=>{if(Number.isFinite(v[key]))trace.push([(performance.now()-t0)/1000,steerAngle(v[key],h.target,span)]);};
         seenAt=Math.max(seenAt,t0);for(;alive()&&performance.now()-t0<1600+watch*1000;await sleep(40)){noReadings();const now=stepStats(trace,band,noise);if(now&&now.settle!==null&&now.held>watch)break;}
         T.tap=null;return stepStats(trace,band,noise);};
       // A set of moves with one set of gains, counted by its worst move (the slowest to settle, the furthest past, the most
-      // crossings): every pod is as quick as its slowest turn, big or small, left or right.
-      const SNAP=[90,0,-90,0],FINE=[15,0,-15,0],worstOf=list=>list.some(x=>!x)?null:{overshoot:Math.max(...list.map(x=>x.overshoot)),crossings:Math.max(...list.map(x=>x.crossings)),settle:list.some(x=>x.settle===null)?null:Math.max(...list.map(x=>x.settle)),held:Math.min(...list.map(x=>x.held)),hunt:Math.max(...list.map(x=>x.hunt||0)),swing:Math.max(...list.map(x=>x.swing||0)),...(noise?{noise:+noise.toFixed(2)}:{})};
+      // crossings): a pod is as quick as its slowest turn, big or small, left or right.
+      const worstOf=list=>!list||list.some(x=>!x)?null:{overshoot:Math.max(...list.map(x=>x.overshoot)),crossings:Math.max(...list.map(x=>x.crossings)),settle:list.some(x=>x.settle===null)?null:Math.max(...list.map(x=>x.settle)),held:Math.min(...list.map(x=>x.held)),hunt:Math.max(...list.map(x=>x.hunt||0)),swing:Math.max(...list.map(x=>x.swing||0)),...(noise?{noise:+noise.toFixed(2)}:{})};
       const moves=async(pid,list,watch=.3)=>{const out=[];for(const d of list){if(!alive())return null;out.push(await turn(pid,watch,d));}return out;};
-      for(let pid=base;pid&&alive();pid=nextTry(tries)){const sofar=bestTry(tries);say(`Snap test ${tries.length+1} (0°, 90°, 0°, −90°)${sofar?`: slowest so far ${f(sofar.stats.settle,2)} s`:''}…`);const list=await moves(pid,SNAP);if(!alive())return;tries.push({pid,stats:worstOf(list)});}
-      if(!alive())return;let best=bestTry(tries);const last=tries.at(-1)?.stats;
-      if(best){const x=podRec(q.key);x.pid={...best.pid,v:PID_V,settle:best.stats.settle,overshoot:best.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,noise:+noise.toFixed(2),quick:true};opts.save();}
-      if(!best){hold(q,0,base);return fail(`It would not settle within ${band}°: the last turn swung ${f(last?.overshoot,1)}° past and crossed ${last?.crossings??0} times. Check that this pod turns freely and its encoder is tight on the shaft, or allow more above, then tune it again.`);}
-      // The long tune: two minutes of quarter turns, each of the three gains tried up and down in turn, keeping what is quicker.
-      if(long){const from=best.pid,until=performance.now()+120000,pair=async pid=>{const list=await moves(pid,[...SNAP,...FINE],.5)||[];return {list,a:worstOf(list),cost:list.length?Math.max(...list.map(costOf))*.7+list.reduce((t,x)=>t+costOf(x),0)/list.length*.3:9};};
-        let search=searchStart([from.kP,from.kI||0,from.kD],[from.kP*.25,from.kP*.5,Math.max(from.kD,.003)*.5]),top={pid:from,stats:best.stats,cost:Infinity};
-        while(alive()&&performance.now()<until){const [kP,kI,kD]=search.p,pid={...from,kP:+Math.min(KP_MAX,Math.max(.02,kP)).toFixed(4),kI:+Math.max(0,kI).toFixed(4),kD:+Math.max(0,kD).toFixed(5)};
-          say(`Snapping 0°, ±90° and ±15°, ${Math.ceil((until-performance.now())/1000)} s left: slowest move so far ${f(top.stats.settle,2)} s`);const r=await pair(pid);if(!alive())return;
-          if(r.cost<top.cost&&r.list.length&&r.list.every(x=>steady(x,.4)))top={pid,stats:r.a,cost:r.cost};search=searchStep(search,r.cost);}
-        if(!alive())return;if(Number.isFinite(top.cost))best={pid:top.pid,stats:top.stats};}
-      // The last word: a quarter turn each way with the chosen gains, each watched for two seconds after it arrives. If it
-      // hunts or drifts out, the gains come down a fifth and it is checked again; gains that never hold still are not kept.
-      // Backing off: first the integral goes and the start-up kick (kS, which flicks the wheel each time it drifts out of the
-      // band and is the usual cause of chatter at the target) comes down; after that the gains and kS come down together.
-      // The robot takes the derivative of the raw encoder reading, so its noise becomes power jitter: kD comes down faster.
-      const kSfloor=+(keepGoing*.8).toFixed(3),ease=(pid,i)=>({...pid,kP:+(pid.kP*(i?.8:1)).toFixed(4),kI:+((pid.kI||0)*.5).toFixed(4),kD:+(pid.kD*.7).toFixed(5),kS:+Math.max(kSfloor,(pid.kS||0)*.85).toFixed(3)});
-      let calm=null,backed=0,worst=null;for(let pid=best.pid;alive()&&backed<=5;pid=ease(pid,backed),backed++){
-        say(`Checking it holds still${backed?`, gains down ${backed} time${backed>1?'s':''}`:''}…`);const list=await moves(pid,SNAP,2);if(!alive()||!list)return;
-        if(list.every(x=>steady(x,1.8))){calm={pid,stats:worstOf(list)};break;}worst=list.find(x=>oscillates(x))||worst;}
-      if(!alive())return;if(!calm){hold(q,0,base);return fail(`It would not ${worst?'hold still':'settle and stay inside the band'} after it arrived${worst?`: it moved ${f(worst.swing,1)}° back and forth there (the encoder alone wanders ${f(noise,1)}°)`:''}, even with the gains and the start-up kick brought down. Turn the wheel by hand: if it has play (a loose encoder, a slipping gear or belt), fix that; if not, tune it again, or allow more above.`);}
-      best=calm;
-      const x=podRec(q.key);x.pid={...best.pid,v:PID_V,settle:best.stats.settle,overshoot:best.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,hunt:best.stats.hunt,swing:best.stats.swing,noise:+noise.toFixed(2),...(backed?{backed}:{}),...(long?{long:true}:{})};delete x.left;delete x.right;hold(q,0);taps.delete(q.key);runs.delete(q.key);save();}
+      const good=(list,watch)=>!!list&&list.length>0&&list.every(x=>steady(x,watch*.8)),costSet=(list,watch)=>!list?9:(good(list,watch)?0:5)+Math.max(...list.map(costOf))*.7+list.reduce((t,x)=>t+costOf(x),0)/list.length*.3;
+      const S90=[90,0,-90,0],S45=[45,0,-45,0],S30=[30,0,-30,0],gains=(pid,kP,kD)=>({...pid,kP:+Math.max(.0005*360/span,kP).toFixed(4),kD:+Math.max(0,kD).toFixed(5)});
+      // First, gains that land the quarter turns at all: the measured ones, made quicker while they arrive late with nothing
+      // wrong, gentler when they swing past or hunt.
+      let first=null,lastSet=null;
+      for(let pid=base,i=0;i<7&&alive();i++){say(`Quarter turns, try ${i+1}…`);const list=await moves(pid,S90,.3);if(!alive()||!list)return;lastSet=worstOf(list);
+        if(good(list,.3)){first={pid,stats:lastSet,cost:costSet(list,.3)};break;}
+        const late=list.some(x=>x.settle===null)&&list.every(x=>x.crossings<=1&&x.overshoot<=band);pid=gains(pid,pid.kP*(late?1.5:.6),pid.kD*(late?1.5:.6));}
+      if(!alive())return;
+      if(!first){hold(q,0,base);return fail(`It could not stop inside ${band}° and stay: the last turn went ${f(lastSet?.overshoot,1)}° past and crossed ${lastSet?.crossings??0} times, nudging back and forth. This pod’s smallest step looks bigger than ${band}°: allow more above (try ${Math.min(5,band*2)}°), or check that it turns freely and its encoder is tight, then tune it again.`);}
+      // Kept at once: a tune cut short from here still leaves the pod working.
+      {const x=podRec(q.key);x.pid={...first.pid,v:PID_V,scale:+T.scale.toFixed(3),settle:first.stats.settle,overshoot:first.stats.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,noise:+noise.toFixed(2),quick:true};opts.save();}
+      // Then three stages inside the two minutes, each a search over the two gains (up, down, keep what is quicker): quarter
+      // turns, then 45°, then 30°. The smaller stages keep a quarter turn in every test, so a gain that suits short moves
+      // cannot spoil the long one.
+      const left=()=>Math.max(0,Math.ceil(120-(performance.now()-began)/1000)),at=()=>(performance.now()-began)/1000;
+      let top={pid:first.pid,stats:first.stats,cost:first.cost};
+      // Climb: both gains up 40% at a time while every quarter turn still lands, stays and gets quicker.
+      while(alive()&&at()<34){const pid=gains(top.pid,top.pid.kP*1.4,top.pid.kD*1.4);say(`Snapping to 90° and back, quicker · ${left()} s left · slowest move ${f(top.stats.settle,2)} s`);
+        const set=await moves(pid,S90,.25);if(!alive()||!set)return;const cost=costSet(set,.25);if(cost>=top.cost)break;top={pid,stats:worstOf(set),cost};}
+      // Then each gain on its own, up and down, keeping what is quicker: on quarter turns, then 45°, then 30°.
+      let dp=[top.pid.kP*.2,Math.max(top.pid.kD,top.pid.kP*plant.L*.1)*.5];
+      for(const [name,list,until] of [['90°',S90,46],['45°',[...S45,90,0],68],['30°',[...S30,-90,0],90]]){if(!alive())return;
+        let search=searchStart([top.pid.kP,top.pid.kD],dp),stage=null;
+        while(alive()&&at()<until){const pid=gains(top.pid,search.p[0],search.p[1]);
+          say(`Snapping to ${name} and back · ${left()} s left · slowest move ${f((stage||top).stats.settle,2)} s`);
+          const set=await moves(pid,list,.25);if(!alive()||!set)return;const cost=costSet(set,.25);
+          if(cost<5&&(!stage||cost<stage.cost))stage={pid,stats:worstOf(set),cost};search=searchStep(search,cost);}
+        if(stage){top={pid:stage.pid,stats:stage.stats,cost:stage.cost};dp=search.dp.map((d,i)=>Math.max(d,[top.pid.kP*.08,top.pid.kP*plant.L*.03][i]));}}
+      if(!alive())return;
+      // The last word: every move again with the chosen gains, each watched for a second after it arrives. If any swings past,
+      // hunts or drifts out, the gains come down a fifth and it is checked again; the first gains that landed are the last resort.
+      const ALL=[...S90,...S45,...S30],CHECK=[...S90,...S30];let done=null,backed=0,worst=null;
+      for(let pid=top.pid;alive()&&backed<=4;backed++,pid=backed===4?first.pid:gains(pid,pid.kP*.8,pid.kD*.8)){
+        say(`Checking every move holds${backed?`, gains down ${backed} time${backed>1?'s':''}`:''}…`);const set=await moves(pid,backed?CHECK:ALL,backed?.8:1);if(!alive()||!set)return;
+        if(good(set,backed?.8:1)){done={pid,set,full:!backed};break;}worst=set.find(x=>!steady(x,.6))||worst;}
+      if(!alive())return;
+      if(!done){hold(q,0,first.pid);return fail(`It landed the quarter turns but would not hold every move inside ${band}°${worst?`: one went ${f(worst.overshoot,1)}° past and moved ${f(worst.swing,1)}° after arriving (the encoder alone wanders ${f(noise,1)}°)`:''}. The first gains that worked are kept, so the pod can be used; tune it again for quicker ones, or allow more above.`);}
+      // Done: the pod is good to go. The tune itself turned it a quarter turn each way and saw it land inside the band and
+      // stay, so Turn left and Turn right are passed with it (they stay, to see which way it goes).
+      const slow=list=>Math.max(...list.map(x=>x.settle)),st90=slow(done.set.slice(0,4)),st45=done.full?slow(done.set.slice(4,8)):null,st30=slow(done.set.slice(done.full?8:4)),all=worstOf(done.set);
+      const x=podRec(q.key);x.pid={...done.pid,v:PID_V,scale:+T.scale.toFixed(3),settle:+st90.toFixed(2),...(st45!==null?{settle45:+st45.toFixed(2)}:{}),settle30:+st30.toFixed(2),overshoot:all.overshoot,Kv:+plant.Kv.toFixed(3),L:+plant.L.toFixed(3),turns:n,hunt:all.hunt,swing:all.swing,noise:+noise.toFixed(2),...(backed?{backed}:{}),secs:Math.round((performance.now()-began)/1000)};
+      x.left=true;x.right=true;hold(q,0);taps.delete(q.key);runs.delete(q.key);save();}
     // Stopping one pod stops only its servo and motor; with no pod, everything (the TeleOp send, leaving the page).
     const stop=key=>{if(key){const r=runs.get(key);if(!r)return;clearInterval(r.timer);runs.delete(key);taps.delete(key);const c=ch(),q=podsOf(c,steerOf(c)).find(x=>x.key===key);if(q?.steer)send(`C\t${q.steer.servo}\t0`);if(q)send(`M\t${q.motor.name}\t0`);return;}
       for(const r of runs.values())clearInterval(r.timer);runs.clear();taps.clear();send('X');};
