@@ -161,7 +161,24 @@
     // A sensor is done once something moves it, once it was moved by hand (an IMU, Pinpoint or OTOS: all its readings), or skipped.
     const sens=devs.sensors.map(s=>({...s,links:ok.filter(l=>l.effect.key===s.key),hand:byHand(s.kind)&&!!moved[s.name]?.ok,skipped:skipped.has(s.name)})).map(s=>({...s,done:s.links.length>0||s.hand||s.skipped}));
     return {acts,sens,done:acts.filter(a=>a.done).length+sens.filter(s=>s.done).length,total:acts.length+sens.length};}
-  const api={devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,BY_HAND,PIECE};
+  // What Calibrate has checked about how a robot can know where it is, for Setup's choices (motors only, drive encoders, a
+  // Pinpoint). Debug is for looking at the robot: nothing here reads what it saw.
+  //   cal: project.calibration; drive: [{key, name}] the drive motors (key as Setup keys them: frontLeft...);
+  //   pinpoint: Setup's name for the Pinpoint.
+  // -> {encoders, fused: true (checked and it works) | false (checked, it does not) | undefined (not checked yet),
+  //     wheels (Mechanisms saw every wheel roll forward), noPinpoint (the robot's configuration has none)}
+  function sensingOf(cal,drive,pinpoint='pinpoint'){const c=cal||{},ls=Array.isArray(c.links)?c.links:[],e=c.electronics||{},names=(drive||[]).map(d=>d.name).filter(Boolean);
+    // A drive motor's encoder counted when Electronics moved it (a checked link to its own encoder); it did not when the
+    // motor moved and nothing counted.
+    const counted=n=>{const mine=ls.filter(l=>l.effect?.key===`m:${n}:pos`&&l.causes?.some(x=>x.name===n));
+      if(mine.some(l=>!l.planned&&['pass','backwards'].includes(l.result?.state)))return true;
+      return mine.some(l=>l.result?.state==='none'&&!l.result.unread)||(e.none||[]).includes(n)||(e.spins||[]).includes(n)?false:undefined;},enc=names.map(counted);
+    // The Pinpoint by the robot's own name for it: every one its configuration has, or Setup's name before a hub is read.
+    const read=Array.isArray(c.hub?.readout)?c.hub.readout:null,pins=read?read.filter(d=>d?.kind==='pinpoint').map(d=>d.name):[pinpoint],moved=pins.map(n=>e.moved?.[n]?.ok),pods=c.chassis?.pods||{};
+    return {encoders:enc.some(v=>v===false)?false:names.length>0&&enc.every(v=>v===true)?true:undefined,
+      fused:moved.some(v=>v===true)?true:(!!read&&!pins.length)||(moved.length>0&&moved.every(v=>v===false))?false:undefined,
+      wheels:(drive||[]).length>0&&drive.every(d=>!!pods[d.key]?.drive),noPinpoint:!!read&&!pins.length};}
+  const api={sensingOf,devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,BY_HAND,PIECE};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   // ---- the panel ----

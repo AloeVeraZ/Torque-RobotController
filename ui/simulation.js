@@ -1806,22 +1806,21 @@ public class MyAuto implements DeckAutonomous {
     document.querySelector('[data-setup-page=controller]').toggleAttribute('data-demo',kit);kitSensingPanel();
     const note=$('#sim-demo-note');note.hidden=!locked;note.textContent=locked?`This is the demo’s own route and can’t be changed: run it in Run & review, or make one of your own with Route → + New route.`:'';}
   // A mecanum kit (the Starter Mecanum, its demo too) runs the same route on motors alone (by time), with its drive encoders,
-  // or with a Pinpoint. What Calibrate → Debug has seen on the robot decides which it can have: a drive motor whose encoder
-  // does not count rules out encoders, a Pinpoint missing or not answering rules it out. Nothing seen yet keeps all three.
-  // A choice Debug rules out steps down to the next one it allows.
+  // or with a Pinpoint. What Calibrate checked on the real robot decides which it can have: Electronics moves each drive
+  // motor and watches its encoder count, and watches a Pinpoint answer while its pods are rolled; Mechanisms checks the
+  // wheels roll forward. A drive motor whose encoder did not count rules out encoders; a Pinpoint that is not in the robot's
+  // configuration, or did not answer, rules it out. Nothing checked yet keeps all three. Debug is for looking at the
+  // robot: nothing here reads what it saw. A choice ruled out steps down to the next one allowed.
   const KIT_SENSES=['gyro','encoders','fused'];
-  function kitEvidence(){let seen=null;try{seen=liveDebug?.sensing?.();}catch{}// Live debug is made after Setup's panels first draw
-    const ev=seen||{read:false,motors:{},i2c:{}},drive=window.DeckWiring.state(project).rows.filter(r=>r.role==='drive').map(r=>r.name).filter(Boolean),enc=drive.map(n=>ev.motors[n]);
-    const pods=Object.values(ev.i2c).filter(d=>d.kind==='pinpoint');
-    return {gyro:true,encoders:enc.some(v=>v===false)?false:drive.length&&enc.every(v=>v===true)?true:undefined,
-      fused:pods.some(d=>d.on===1)?true:ev.read&&(!pods.length||pods.every(d=>d.on===0))?false:undefined};}
+  function kitEvidence(){const drive=window.DeckWiring.state(project).rows.filter(r=>r.role==='drive').map(r=>({key:String(r.key||'').replace(/^robot\./,''),name:r.name}));
+    return {gyro:true,...window.DeckLinks.sensingOf(project.calibration,drive,project.robot.devices?.pinpoint?.name||'pinpoint')};}
   function kitSensingPanel(){const kit=!!MECH.PRESETS[project.robotPreset]?.adjustable&&project.controller==='ftc',box=$('#sim-kit-sensing');if(!box)return;box.hidden=!kit;
     document.querySelector('[data-setup-page=controller]').toggleAttribute('data-kit-sensing',kit);if(!kit)return;
     const ev=kitEvidence(),now=project.sensors.localization;
-    if(KIT_SENSES.includes(now)&&ev[now]===false){const to=[...KIT_SENSES.slice(0,KIT_SENSES.indexOf(now))].reverse().find(k=>ev[k]!==false)||'gyro';kitSensingPanel.said=`Debug ruled out ${now==='fused'?'the Pinpoint':'drive encoders'}, so this setup now runs on ${{gyro:'motors only',encoders:'motors + encoders'}[to]}.`;return setLocalization(to);}
-    const words={gyro:[true,'Any robot can run this.'],encoders:{true:'Debug saw every drive encoder count.',false:'Debug saw a drive motor whose encoder does not count: plug in its encoder cable, then check it again in Debug.',undefined:'Not seen in Debug yet: run the drive motors there to check.'},
-      fused:{true:'Debug found the Pinpoint answering.',false:'Debug found no Pinpoint answering on this robot.',undefined:'Not seen in Debug yet.'}};
-    for(const b of box.querySelectorAll('[data-kit-sense]')){const k=b.dataset.kitSense,v=ev[k];b.setAttribute('aria-pressed',String(now===k));b.disabled=v===false;b.dataset.seen=v===true?'yes':v===false?'no':'';
+    if(KIT_SENSES.includes(now)&&ev[now]===false){const to=[...KIT_SENSES.slice(0,KIT_SENSES.indexOf(now))].reverse().find(k=>ev[k]!==false)||'gyro';kitSensingPanel.said=`Calibrate → Electronics ruled out ${now==='fused'?'the Pinpoint':'drive encoders'}, so this setup now runs on ${{gyro:'motors only',encoders:'motors + encoders'}[to]}.`;return setLocalization(to);}
+    const words={gyro:[true,'Any robot can run this.'],encoders:{true:`Calibrate → Electronics saw every drive motor’s encoder count${ev.wheels?', and Mechanisms saw every wheel roll forward':''}.`,false:'Calibrate → Electronics moved a drive motor and its encoder did not count: plug in its encoder cable, then check that motor there again.',undefined:'Not checked yet: move each drive motor in Calibrate → Electronics.'},
+      fused:{true:'Calibrate → Electronics saw the Pinpoint answer.',false:ev.noPinpoint?'The robot’s configuration has no Pinpoint.':'The Pinpoint did not answer in Calibrate → Electronics.',undefined:'Not checked yet: roll its pods in Calibrate → Electronics.'}};
+    for(const b of box.querySelectorAll('[data-kit-sense]')){const k=b.dataset.kitSense,v=ev[k];b.setAttribute('aria-pressed',String(now===k));b.disabled=v===false;b.dataset.kitChecked=v===true?'yes':v===false?'no':'';
       b.querySelector('[data-kit-seen]').textContent=k==='gyro'?words.gyro[1]:words[k][String(v)];}
     const note=$('#sim-kit-sensing-note');if(note){note.textContent=kitSensingPanel.said||'';note.hidden=!kitSensingPanel.said;}}
   $('#sim-kit-sensing').onclick=e=>{const b=e.target.closest('[data-kit-sense]');if(!b||b.disabled)return;kitSensingPanel.said='';setLocalization(b.dataset.kitSense);kitSensingPanel();};
@@ -4362,7 +4361,7 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
   function mechParts(){const pane=$('#cal-mech-pane'),out=[],txt=el=>el?.textContent.trim()||'';if(!pane)return out;
     const match=$('#cal-hub-match'),g0=pane.querySelector('.cal-g0'),read=!!project.calibration?.hub;
     out.push({key:'hub',group:'Robot',badge:'HUB',title:'Control Hub',sub:read?txt(match):'Read it first',done:read&&!!match?.classList.contains('ok'),counts:true,els:[$('#cal-hub-card'),...(g0&&g0.dataset.state!=='pass'?[g0]:[])]});
-    for(const li of pane.querySelectorAll('.cal-chassis-step')){const st=li.dataset.state;out.push({key:'chassis-'+li.dataset.chassisStep,group:'Chassis',badge:({code:'{ }',drive:'▶'})[li.dataset.chassisStep]||li.dataset.chassisStep,title:txt(li.querySelector('h4')).replace(/^\d+\s·\s/,''),sub:st==='info'?(li.dataset.chassisStep==='drive'?'A TeleOp, sent to the robot':'The numbers, as a Java class'):st==='pass'?'Done':st==='locked'?'After the step before it':'To do',done:st==='pass',locked:st==='locked',counts:st!=='info',els:[$('#cal-chassis'),li]});}
+    for(const li of pane.querySelectorAll('.cal-chassis-step')){const st=li.dataset.state;out.push({key:'chassis-'+li.dataset.chassisStep,group:'Chassis',badge:({code:'{ }',drive:'▶'})[li.dataset.chassisStep]||li.dataset.chassisStep,title:txt(li.querySelector('h4')).replace(/^\d+\s·\s/,''),sub:st==='info'?(li.dataset.chassisStep==='drive'?'A TeleOp, sent to the robot':'The numbers, as a Java class'):st==='pass'?'Done':st==='locked'?'After the step before it':st==='optional'?'Optional':'To do',done:st==='pass',locked:st==='locked',counts:st!=='info'&&st!=='optional',els:[$('#cal-chassis'),li]});}
     const need=pane.querySelector('.cal-sense-live');
     [...pane.querySelectorAll('#cal-sensors>section:not(.cal-sense-live)')].forEach((sec,i)=>{const steps=sec.querySelectorAll('.cal-sense-step').length,got=sec.querySelectorAll('.cal-sense-result,.cal-sense-step .cal-sense-rows').length,[title,what]=txt(sec.querySelector('h2')).split(' · ');
       if(!steps){if(!sec.hidden)sec.hidden=true;return;}out.push({key:'sense-'+i,group:'Chassis',badge:title==='Heading'?'IMU':'XY',title,sub:steps?(got?`${got} of ${steps} measured`:`${steps} checks`):'Nothing to calibrate',done:steps>0&&got>=steps,els:[sec,...(need&&steps?[need]:[])]});});
@@ -4417,7 +4416,7 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
   // Configure's wiring notes for the active configuration: whether each motor's encoder cable is plugged in (false when not).
   function wiringNotes(){const n=setupRead?.active?.name||setupRead?.configurations?.[0],xml=n?setupRead?.files?.[n]:null;try{return xml?RobotConfig.notesOf(xml):{};}catch{return {};}}
   function encoderNote(name){const v=wiringNotes()[name]?.encoder;return typeof v==='boolean'?v:undefined;}
-  const liveDebug=window.DeckLiveDebug&&calRoot?window.DeckLiveDebug.create({host:$('#cal-debug'),api,native,project:()=>project,encoder:encoderNote,onSensing:()=>kitSensingPanel(),alsoWanted:()=>calibrating&&calTop==='calibrate',sample:()=>sampleOn()?sampleRobot():null,
+  const liveDebug=window.DeckLiveDebug&&calRoot?window.DeckLiveDebug.create({host:$('#cal-debug'),api,native,project:()=>project,encoder:encoderNote,alsoWanted:()=>calibrating&&calTop==='calibrate',sample:()=>sampleOn()?sampleRobot():null,
     link:()=>({host:$('#sim-send-robot').value||'usb',label:$('#sim-send-robot').selectedOptions[0]?.textContent||'the robot'}),
     onChange:()=>{const m=liveDebug?.latest().manifest;if(m&&calHubHash()!==project.calibration.hub?.hash)calHubRead({source:'live',devices:(m.motors?.length||0)+(m.servos?.length||0)+(m.crservos?.length||0)+(m.digital?.length||0)+(m.touch?.length||0)+(m.analog?.length||0)+(m.i2c?.length||0)});else calRender();}}):null;
   // ---- Mechanisms: a gate stepper per mechanism (docs/CALIBRATION.md, ui/sim-tune.js). Nothing shows until the Control
@@ -4430,7 +4429,7 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
   function calHubHash(){const st=window.DeckWiring.state(project);return TU.hash(st.rows.map(r=>[r.name,r.family,r.hub??'',r.port??r.bus??'',r.model??'']).sort());}
   function calHubRead(info){const {readout,config,scan}=project.calibration.hub||{};project.calibration.hub={...(readout?{readout}:{}),...(config?{config}:{}),...(scan?{scan}:{}),...info,at:new Date().toISOString(),hash:calHubHash()};calSave();}
   const calRec=id=>(project.calibration.mechs[id]??={gates:{}});
-  function calSave(){project.calibration=TU.sanitize(project.calibration);calToRobot();save();calRender();reliableNote();}
+  function calSave(){project.calibration=TU.sanitize(project.calibration);calToRobot();save();calRender();reliableNote();kitSensingPanel();}
   // Measured on the real robot, used everywhere: the drive encoders' ticks an inch (Calibrate → How far it rolls) become the
   // robot's, which the autonomous and TeleOp exports and the simulated Control Hub's encoders all count by.
   function calToRobot(){project.robot=rollToRobot(project.robot,project.calibration);}

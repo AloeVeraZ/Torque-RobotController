@@ -37,9 +37,9 @@ public final class SwerveBench {
     static final int N = NAME.length, LATE = 4;
     static SimMotor[] motor = new SimMotor[N]; static SimCRServo[] servo = new SimCRServo[N]; static SimAnalog[] enc = new SimAnalog[N]; static Imu imu = new Imu();
     static double[] angle = new double[N], turning = new double[N], wheel = new double[N]; static double[][] late = new double[N][LATE];
-    static double x, y, h, t, worst, flips;
+    static double x, y, h, t, worst, flips, yawBias;
     static DeckFollower follower;
-    static void sense() { for (int i = 0; i < N; i++) { double v = ZERO[i] + ENC[i] * angle[i] / 360.0 * VOLTS; v = ((v % VOLTS) + VOLTS) % VOLTS; enc[i].volts = v; } imu.yaw = Math.atan2(Math.sin(h), Math.cos(h)); }
+    static void sense() { for (int i = 0; i < N; i++) { double v = ZERO[i] + ENC[i] * angle[i] / 360.0 * VOLTS; v = ((v % VOLTS) + VOLTS) % VOLTS; enc[i].volts = v; } imu.yaw = Math.atan2(Math.sin(h + yawBias), Math.cos(h + yawBias)); }
     // One loop of the robot: the servos turn the pods, the wheels push the robot.
     static void physics() {
         double sx = 0, sy = 0, cx = 0, cy = 0; double[] wx = new double[N], wy = new double[N];
@@ -67,6 +67,9 @@ public final class SwerveBench {
         for (int i = 0; i < N; i++) { map.put(NAME[i] + "M", motor[i] = new SimMotor(i, MOUNT[i])); map.put(NAME[i] + "S", servo[i] = new SimCRServo(i)); map.put(NAME[i] + "E", enc[i] = new SimAnalog(i)); angle[i] = ${o.podStart}[i]; }
         map.put("imu", imu); x = PlannedRoute.START.x(); y = PlannedRoute.START.y(); h = PlannedRoute.START.heading(); sense();
         follower = Constants.create(map); follower.setPose(PlannedRoute.START);
+        // Between INIT and START the robot is carried to its spot: it is turned, and its wheels roll. Pressing START makes
+        // where it stands the route's start (the OpMode zeroes everything there); without that it believes it has moved.
+        if (${o.carried ? 'true' : 'false'}) { yawBias = 0.7; for (int i = 0; i < N; i++) motor[i].advance(700 * (i + 1), DT); sense(); if (${o.zeroed ? 'true' : 'false'}) follower.setPose(PlannedRoute.START); }
         Path[] legs = PlannedRoute.legs(); double lost = 0;
         for (int i = 0; i < legs.length; i++) {
             Constants.motorPower(PlannedRoute.MOTOR_POWER[i]); follower.follow(legs[i]); double from = t;
@@ -89,12 +92,12 @@ public final class SwerveBench {
     }
 }
 `;
-function run(t,pins,podStart='new double[] {0, 0, 0}'){
+function run(t,pins,podStart='new double[] {0, 0, 0}',{carried=false,zeroed=true}={}){
   if(!fs.existsSync(bin('javac'))||!fs.existsSync(bin('java'))||!fs.existsSync(stubs)){t.skip('the simulator’s JDK is not built here');return null;}
   const route=P.plan({start,zones:[],pins,style:'sharp',clearance:1},{front:8,rear:8,half:8}),out=F.files({route,layout,tuning:{},robot,localization:'encoders',routeJava:X.java(route,layout,{polygon:P.polygon}),swerve});
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-swerve-auto-')),list=[];
   try{const put=(f,src)=>{const at=path.join(dir,'src',f);fs.mkdirSync(path.dirname(at),{recursive:true});fs.writeFileSync(at,src);list.push(at);};
-    for(const [f,src] of Object.entries(out.files))if(!f.startsWith('deck/'))put(f,src);put('deck/sim/BenchClock.java',CLOCK);put('deck/sim/hub/SwerveBench.java',BENCH({pods:swerve.pods,ticksPerInch:out.hardware.drive.ticksPerInch,podStart}));
+    for(const [f,src] of Object.entries(out.files))if(!f.startsWith('deck/'))put(f,src);put('deck/sim/BenchClock.java',CLOCK);put('deck/sim/hub/SwerveBench.java',BENCH({pods:swerve.pods,ticksPerInch:out.hardware.drive.ticksPerInch,podStart,carried,zeroed}));
     try{execFileSync(bin('javac'),['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),...list],{stdio:'pipe'});}catch(e){assert.fail('it does not compile: '+String(e.stderr||e.message).slice(0,1500));}
     const said=execFileSync(bin('java'),['-cp',path.join(dir,'out'),'deck.sim.hub.SwerveBench'],{encoding:'utf8',timeout:120000}),num=(line,word)=>{const m=new RegExp(`^${line}\\b.*?\\b${word} (-?[\\d.eE+-]+)`,'m').exec(said);assert.ok(m,`${line} ${word} in:\n${said}`);return +m[1];};
     return {said,num,legs:(said.match(/^LEG /gm)||[]).length};}
@@ -116,6 +119,21 @@ test('it starts right whichever way the pods were left: backwards, sideways, any
   const r=run(t,[{x:90,y:24}],'new double[] {180, -90, 47}');if(!r)return;t.diagnostic(r.said.trim().split('\n').join(' | '));
   assert.doesNotMatch(r.said,/following true/);for(const m of r.said.matchAll(/^END \d+ off ([\d.eE+-]+)/gm))assert.ok(+m[1]<1,`ends on its point: ${m[1]} in off`);
   assert.ok(r.num('TRACK','worst')<4);assert.ok(r.num('TRACK','lost')<1.5);
+});
+
+test('where the robot stands when START is pressed is the start: the IMU, the encoders and every position sensor are zeroed to it',t=>{
+  // The OpMode sets the pose again as START is pressed, for every kind of robot and position sensing.
+  const route=P.plan({start,zones:[],pins:[{x:90,y:24}],style:'sharp',clearance:1},{front:8,rear:8,half:8}),routeJava=X.java(route,layout,{polygon:P.polygon}),mec={...C.robot({},'ftc'),length:16,width:16};
+  for(const src of [F.onBotJava({route,layout,tuning:{},robot:mec,localization:'encoders',routeJava}).source,F.onBotJava({route,layout,tuning:{},robot,localization:'fused',routeJava,swerve}).source]){
+    assert.match(src,/waitForStart\(\);\n(?:\s*\/\/[^\n]*\n)+\s*follower\.setPose\(PlannedRoute\.START\);\n\s*try \{/);
+    // Zeroing reads every sensor it measures from: the drive encoders, the pods, the IMU's heading, and a Pinpoint or an OTOS is told where it is.
+    for(const part of [/before\[i\]=motors\[i\]\.getCurrentPosition\(\);/,/podBefore\[i\]=pods\[i\]\.getCurrentPosition\(\);/,/oldImu=imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.RADIANS\);/,/if\(pinpoint!=null\)pinpoint\.setPosition\(/,/if\(otos!=null\)otos\.setPosition\(/])assert.match(src,part);}
+  // Carried to its spot after INIT (turned 40 degrees, wheels rolled), it still drives its route from where it stands.
+  const r=run(t,[{x:90,y:24}],'new double[] {0, 0, 0}',{carried:true,zeroed:true});if(!r)return;t.diagnostic(r.said.trim().split('\n').join(' | '));
+  assert.doesNotMatch(r.said,/following true/);for(const m of r.said.matchAll(/^END \d+ off ([\d.eE+-]+) heading (-?[\d.eE+-]+)/gm)){assert.ok(+m[1]<1,`ends on its point: ${m[1]} in off`);assert.ok(Math.abs(+m[2])<3);}assert.ok(r.num('TRACK','worst')<4);
+  // Without that zero it believes the carrying was driving, and goes wrong: this is what the zero is for.
+  const bad=run(t,[{x:90,y:24}],'new double[] {0, 0, 0}',{carried:true,zeroed:false});const ends=[...bad.said.matchAll(/^END \d+ off ([\d.eE+-]+) heading (-?[\d.eE+-]+)/gm)];
+  assert.ok(/following true/.test(bad.said)||ends.some(m=>+m[1]>3||Math.abs(+m[2])>20)||bad.num('TRACK','worst')>6,'not zeroed at START, it is off: '+bad.said.replace(/\n/g,' | '));
 });
 
 test('a swerve gets an autonomous only once Calibrate has its pods, and the others keep theirs',()=>{

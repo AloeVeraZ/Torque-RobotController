@@ -257,6 +257,10 @@ public class ${options.opModeName} extends LinearOpMode {
         telemetry.addData("Route", legs.length + " legs");
         telemetry.update();
         waitForStart();
+        // Where the robot stands when START is pressed is the route's start. The IMU's heading, the encoders and every
+        // position sensor are zeroed to it here, so everything is measured from this spot and nothing that moved the robot
+        // between INIT and START is counted.
+        follower.setPose(${R}.START);
         try {
             ElapsedTime timer = new ElapsedTime(), movingTimer = new ElapsedTime();
             double plannedHeading = ${R}.START.heading();

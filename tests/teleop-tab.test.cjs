@@ -279,3 +279,31 @@ test('the name goes into the autonomous the Driver Station lists',()=>{
   // A swerve has no Control Hub autonomous yet, and says so.
   assert.throws(()=>F.hardware({...robot,drivetrain:'kiwiSwerve'},'encoders'),/mecanum and tank drivetrains/);
 });
+
+test('how a robot can follow its route comes from what Calibrate checked, never from Debug',()=>{
+  const L=require('../ui/sim-links.js'),drive=['frontLeft','frontRight','backLeft','backRight'].map(k=>({key:k,name:k.replace(/[A-Z]/g,c=>'_'+c.toLowerCase())}));
+  const link=(n,state,more={})=>({id:n,causes:[{name:n,kind:'motor',dir:1}],effect:{key:`m:${n}:pos`,dir:1},result:{state,at:'t'},...more});
+  // Nothing checked: every choice stays open, and says where to check it.
+  assert.deepEqual(L.sensingOf({},drive),{encoders:undefined,fused:undefined,wheels:false,noPinpoint:false});assert.deepEqual(L.sensingOf(null,[]),{encoders:undefined,fused:undefined,wheels:false,noPinpoint:false});
+  // Electronics moved every drive motor and saw its encoder count: encoders can be used. One still only planned is not checked yet.
+  const all=drive.map(d=>link(d.name,'pass'));assert.equal(L.sensingOf({links:all},drive).encoders,true);assert.equal(L.sensingOf({links:[...all.slice(0,3),link('back_right','pass',{planned:true})]},drive).encoders,undefined);
+  assert.equal(L.sensingOf({links:[...all.slice(0,3),link('back_right','backwards')]},drive).encoders,true,'an encoder that counts the other way still counts');
+  // A motor that moved with nothing counting rules encoders out: by its link, or as Electronics noted it.
+  assert.equal(L.sensingOf({links:[...all.slice(0,3),link('back_right','none')]},drive).encoders,false);assert.equal(L.sensingOf({links:all.slice(0,3),electronics:{none:['back_right']}},drive).encoders,false);assert.equal(L.sensingOf({links:all.slice(0,3),electronics:{spins:['back_right']}},drive).encoders,false);
+  assert.equal(L.sensingOf({links:[...all.slice(0,3),{...link('back_right','none'),result:{state:'none',unread:true}}]},drive).encoders,undefined,'no reading at all is not a check');
+  // A Pinpoint: seen answering when its pods were rolled; ruled out when the robot's configuration has none, or it did not answer.
+  assert.equal(L.sensingOf({electronics:{moved:{pinpoint:{ok:true}}}},drive).fused,true);assert.equal(L.sensingOf({electronics:{moved:{pinpoint:{ok:false}}}},drive).fused,false);
+  assert.deepEqual([L.sensingOf({hub:{readout:[{name:'imu',kind:'imu'}]}},drive).fused,L.sensingOf({hub:{readout:[{name:'imu',kind:'imu'}]}},drive).noPinpoint],[false,true]);
+  assert.equal(L.sensingOf({hub:{readout:[{name:'odo',kind:'pinpoint'}]},electronics:{moved:{odo:{ok:true}}}},drive,'pinpoint').fused,true,'by the robot’s own name for it');assert.equal(L.sensingOf({hub:{readout:[{name:'odo',kind:'pinpoint'}]}},drive).fused,undefined);
+  // Mechanisms: every wheel seen to roll forward.
+  assert.equal(L.sensingOf({chassis:{pods:Object.fromEntries(drive.map(d=>[d.key,{drive:true}]))}},drive).wheels,true);assert.equal(L.sensingOf({chassis:{pods:{frontLeft:{drive:true}}}},drive).wheels,false);
+  // Nothing in the app's pages reads Debug's findings to decide this any more.
+  const page=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');assert.doesNotMatch(page,/liveDebug\?\.sensing|Debug saw|Debug found (?:the|no)|Debug ruled|seen in Debug/);assert.match(page,/Not checked yet: move each drive motor in Calibrate → Electronics\./);
+});
+
+test('a chassis is good to use once its wheels are checked: measuring distance and the field map are extras',()=>{
+  const src=fs.readFileSync(path.join(__dirname,'../ui/sim-chassis-cal.js'),'utf8');
+  assert.match(src,/\['roll',!!r\.roll\?\.ok,true\]/);assert.match(src,/\['field',!!r\.placed,true\]/);assert.match(src,/ok\?'pass':extra\?'optional':'todo';if\(!ok&&!extra\)\{open=false;/,'an extra not done holds nothing up');
+  assert.match(src,/s\.filter\(x=>!x\.extra\)\.every\(x=>x\.state==='pass'\)\?`<span class="rs-pill ok">\$\{s\.every\(x=>x\.state==='pass'\)\?'Calibrated':'Good to use'\}<\/span>`/);
+  assert.match(fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),/counts:st!=='info'&&st!=='optional'/,'an extra is not counted as left to do');
+});
