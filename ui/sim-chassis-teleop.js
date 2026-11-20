@@ -25,6 +25,9 @@
   // The buttons of controller 1 the chassis has taken (the sticks are its own): for giving the mechanisms the rest.
   function chassisButtons(raw,swerve=true){const m=mapOf(raw),out=[],two=k=>({bumpers:['left_bumper','right_bumper'],triggers:['left_trigger','right_trigger'],dpad:['dpad_left','dpad_right']}[k]||[]);
     out.push(...two(m.turn),...two(m.spin));for(const k of ['slow','reset'])if(m[k]!=='none')out.push(m[k]);if(swerve&&m.lock!=='none')out.push(m.lock);return [...new Set(out)];}
+  // Every part of controller 1 the chassis uses: those buttons, the whole stick that drives it, and the side-to-side of the
+  // stick that turns it (that stick's up and down is free for a mechanism).
+  function chassisParts(raw,swerve=true){const m=mapOf(raw),out=[`${m.drive}_stick_x`,`${m.drive}_stick_y`];if(m.turn==='left'||m.turn==='right')out.push(`${m.turn}_stick_x`);return [...out,...chassisButtons(raw,swerve)];}
   const n=(v,d=5)=>Number.isFinite(+v)?String(+(+v).toFixed(d)):'0',list=a=>`{${a.join(', ')}}`,str=s=>`"${String(s).replace(/[\\"]/g,'\\$&')}"`;
   const dbl=v=>{const t=n(v);return /[.e]/.test(t)?t:t+'.0';};
   const FACE={up:'UP',down:'DOWN',forward:'FORWARD',backward:'BACKWARD',left:'LEFT',right:'RIGHT'};
@@ -38,64 +41,110 @@
       ...(m.field==='yes'?['            // Field centric: the stick is turned back by the robot\'s heading, so forward stays away from the driver.','            double f = forward * Math.cos(heading) + left * Math.sin(heading);','            left = -forward * Math.sin(heading) + left * Math.cos(heading);','            forward = f;']:[])];}
   const head=(o,imports)=>[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,'// Everything in capitals was checked or measured on the real robot. Send it again after calibrating again.',`@TeleOp(name = ${str(o.opMode||OP_MODE)}, group = "Torque")`,`public class ${o.className||NAME} extends LinearOpMode {`];
   // ---- mechanisms -------------------------------------------------------------------------------------------------------
-  // What a mechanism does in the TeleOp, by what drives it. A motor or a continuous servo: runs while a button is held
-  // (and backwards on another), is switched on and off by a button, or goes up and down on two buttons (a motor, braked
-  // when let go). A servo: a button for each of two positions, or one button that flips between them.
-  const BUTTONS={right_trigger:'Right trigger',left_trigger:'Left trigger',right_bumper:'Right bumper',left_bumper:'Left bumper',a:'A / Cross',b:'B / Circle',x:'X / Square',y:'Y / Triangle',dpad_up:'D-pad up',dpad_down:'D-pad down',dpad_left:'D-pad left',dpad_right:'D-pad right',left_stick_button:'Left stick click',right_stick_button:'Right stick click',back:'Back / Share'};
-  const MODES={hold:'Runs while a button is held',toggle:'One button switches it on and off',updown:'Up and down on two buttons',positions:'A button for each of two positions',flip:'One button flips between two positions',off:'Not in this TeleOp'};
-  const modesFor=kind=>kind==='servo'?['flip','positions','off']:kind==='crservo'?['hold','toggle','off']:['hold','toggle','updown','off'];
-  // Which buttons a mode uses: [what the first does, what the second does (or nothing)].
-  const USES={hold:['Runs it','Runs it backwards'],toggle:['On and off','Backwards while held'],updown:['Up','Down'],positions:['First position','Second position'],flip:['Flips it',null],off:[null,null]};
-  const SPIN=/flywheel|roller|feeder|conveyor|spinner|spindle|spin|propeller/;
-  // A mechanism's choices, whole: {mode, a, b, power, posA, posB}. free: the buttons nothing else has, in order; the ones
-  // it takes are removed from it. What it is decides how it starts: a flywheel is switched on and off, an intake runs
-  // while held (and backwards), a lift or an arm goes up and down, a servo flips between two positions.
+  // What a mechanism does in the TeleOp, by what drives it, on any part of the controller.
+  //   A motor or a continuous servo: runs while a button is held (and backwards on another), is switched on and off by a
+  //   button, goes one way and the other on two buttons (a motor, braked when let go), or follows a stick or the triggers.
+  //   A servo: a button for each of two or three positions, one button that flips between two, over while a button is
+  //   held and back when it is let go, or wherever a trigger or a stick puts it between two positions.
+  // How each starts comes from what it is (ui/sim-mechanism-types.js: an intake, a claw, a lift, a turret...), the way
+  // teams usually drive that kind; the team changes any of it.
+  const BUTTONS={right_trigger:'Right trigger',left_trigger:'Left trigger',right_bumper:'Right bumper',left_bumper:'Left bumper',a:'A / Cross',b:'B / Circle',x:'X / Square',y:'Y / Triangle',dpad_up:'D-pad up',dpad_down:'D-pad down',dpad_left:'D-pad left',dpad_right:'D-pad right',left_stick_button:'Left stick click',right_stick_button:'Right stick click',back:'Back / Share',start:'Start / Options'};
+  // What a stick or a trigger can be followed by: up and right are positive, the right trigger one way and the left the other.
+  const AXES={right_stick_y:'Right stick, up and down',right_stick_x:'Right stick, left and right',left_stick_y:'Left stick, up and down',left_stick_x:'Left stick, left and right',triggers:'Both triggers: right one way, left the other',right_trigger:'Right trigger',left_trigger:'Left trigger'};
+  const MODES={hold:'Runs while a button is held',toggle:'One button switches it on and off',updown:'Two buttons, one each way',axis:'Follows a stick or the triggers',positions:'A button for each position',flip:'One button flips between two positions',momentary:'Over while a button is held, back when let go',follow:'Follows a trigger or a stick',off:'Not in this TeleOp'};
+  const ANALOG=new Set(['axis','follow']);
+  const modesFor=kind=>kind==='servo'?['flip','positions','momentary','follow','off']:kind==='crservo'?['hold','toggle','axis','off']:['hold','toggle','updown','axis','off'];
+  // The parts of the controller a control uses (both triggers are two), so that nothing is given two jobs.
+  const partsOf=c=>c==='triggers'?['left_trigger','right_trigger']:c&&c!=='none'?[c]:[];
+  const PARTS=[...Object.keys(BUTTONS),'left_stick_x','left_stick_y','right_stick_x','right_stick_y'];
+  const cap=t=>{const w=String(t||'').replace(/([a-z])([0-9])/g,'$1 $2');return w?w[0].toUpperCase()+w.slice(1):'';};
+  // What each control of a mode does, in the mechanism's own words when it has them (its states in Setup: open and
+  // closed, down and up, front, left and right): [first, second, third], null where the mode has none.
+  function usesOf(mode,states){const n=(states||[]).map(cap),three=n.length>=3,one=n[n.length>=2?1:0],other=three?n[2]:n[0];
+    return {hold:['Runs it','Runs it backwards',null],toggle:['On and off','Backwards while held',null],updown:[one||'Up',n.length>=2?other:'Down',null],axis:['Follows',null,null],
+      positions:[n[0]||'First position',n[1]||'Second position',three?n[2]:null],flip:[n.length>=2?`Flips ${n[0].toLowerCase()} and ${n[1].toLowerCase()}`:'Flips it',null,null],momentary:[n.length>=2?`${n[1]} while held`:'Over while held',null,null],follow:['Follows',null,null],off:[null,null,null]}[mode]||[null,null,null];}
+  const USES=Object.fromEntries(Object.keys(MODES).map(m=>[m,usesOf(m,[])]));
+  const SPIN=/flywheel|roller|feeder|conveyor|spinner|spindle|spin|propeller|spindexer|geneva/,SIDEWAYS=/turret|base-yaw|neck|steering/;
+  // How a kind of mechanism starts out, as teams usually drive it.
+  function startOf(m,kind){const t=String(m.type||''),n=(m.states||[]).length;
+    if(kind==='servo')return /kicker|gate|button-pusher|finger|knocker/.test(t)?'momentary':n>=3?'positions':'flip';
+    if(/flywheel|spinner|spindle|propeller/.test(t))return 'toggle';
+    return SPIN.test(t)&&!/winch/.test(t)||m.template==='T3'||kind==='crservo'?'hold':'updown';}
+  // A mechanism's choices, whole: {mode, a, b, c, power, posA, posB, posC}. free: the parts of the controller nothing else
+  // has, in order; the ones it takes are removed from it.
   function mechOf(m,raw,free){const kind=m.kind==='servo'?'servo':m.kind==='crservo'?'crservo':'motor',modes=modesFor(kind),r=raw&&typeof raw==='object'?raw:{},num=(v,d,lo,hi)=>Number.isFinite(+v)&&v!==''&&v!==null&&v!==undefined?Math.max(lo,Math.min(hi,+v)):d;
-    const spins=SPIN.test(String(m.type||''))||m.template==='T3'||kind==='crservo',start=kind==='servo'?'flip':/flywheel/.test(m.type||'')?'toggle':spins?'hold':'updown';
-    const mode=modes.includes(r.mode)?r.mode:start,out={mode,a:'none',b:'none',power:+num(r.power,1,.05,1).toFixed(2),posA:+num(r.posA,num(m.posA,.5,0,1),0,1).toFixed(3),posB:+num(r.posB,num(m.posB,.5,0,1),0,1).toFixed(3)};
+    const mode=modes.includes(r.mode)?r.mode:startOf(m,kind),pA=num(m.posA,.5,0,1),pB=num(m.posB,.5,0,1);
+    const out={mode,a:'none',b:'none',c:'none',power:+num(r.power,1,.05,1).toFixed(2),posA:+num(r.posA,pA,0,1).toFixed(3),posB:+num(r.posB,pB,0,1).toFixed(3),posC:+num(r.posC,num(m.posC,+((pA+pB)/2).toFixed(3),0,1),0,1).toFixed(3)};
     if(mode==='off')return out;
-    const has=b=>!!b&&b!=='none'&&free.includes(b),take=b=>{free.splice(free.indexOf(b),1);return b;},next=()=>free.length?free.shift():'none';
-    const needB=mode==='updown'||mode==='positions',wantsB=needB||has(r.b)||r.b===undefined&&mode==='hold'&&/intake|roller/.test(m.type||'');
-    // Up and down starts on a pair that reads as up and down.
-    const pair=mode==='updown'&&!has(r.a)&&!has(r.b)?[['dpad_up','dpad_down'],['y','a'],['right_trigger','left_trigger'],['right_bumper','left_bumper'],['dpad_right','dpad_left']].find(q=>q.every(b=>free.includes(b))):null;
+    const has=c=>!!c&&c!=='none'&&partsOf(c).every(p=>free.includes(p)),take=c=>{for(const p of partsOf(c))free.splice(free.indexOf(p),1);return c;},give=c=>{for(const p of partsOf(c).reverse())if(!free.includes(p))free.unshift(p);};
+    if(ANALOG.has(mode)){const pick=Object.hasOwn(AXES,r.a)&&has(r.a)?r.a:Object.keys(AXES).filter(c=>kind!=='servo'||mode!=='follow'||true).find(has);if(!pick)return {...out,mode:'off',full:true};out.a=take(pick);return out;}
+    const next=()=>{const b=Object.keys(BUTTONS).find(has);return b?take(b):'none';},ok=c=>Object.hasOwn(BUTTONS,c)&&has(c);
+    const three=mode==='positions'&&(m.states||[]).length>=3,needB=mode==='updown'||mode==='positions',wantsB=needB||ok(r.b)||r.b===undefined&&mode==='hold'&&/intake|roller|conveyor/.test(m.type||'');
+    // Two buttons, one each way, start on a pair that reads that way: left and right for what turns sideways, up and down otherwise.
+    const pairs=SIDEWAYS.test(m.type||'')?[['dpad_left','dpad_right'],['left_bumper','right_bumper'],['x','b']]:[['dpad_up','dpad_down'],['y','a'],['right_trigger','left_trigger'],['right_bumper','left_bumper'],['dpad_right','dpad_left']];
+    const pair=mode==='updown'&&!ok(r.a)&&!ok(r.b)?pairs.find(q=>q.every(has)):null;
     if(pair){out.a=take(pair[0]);out.b=take(pair[1]);return out;}
-    const bPick=has(r.b)?take(r.b):null;out.a=has(r.a)?take(r.a):next();if(wantsB)out.b=bPick||next();else if(bPick)free.unshift(bPick);
-    // No button left for it: it is left out, and says so.
-    if(out.a==='none'||needB&&out.b==='none'){for(const b of [out.b,out.a])if(b!=='none')free.unshift(b);return {...out,mode:'off',a:'none',b:'none',full:true};}
+    const bPick=ok(r.b)?take(r.b):null,cPick=three&&ok(r.c)?take(r.c):null;out.a=ok(r.a)?take(r.a):next();if(wantsB)out.b=bPick||next();else if(bPick)give(bPick);if(three)out.c=cPick||next();else if(cPick)give(cPick);
+    // No control left for it: it is left out, and says so.
+    if(out.a==='none'||needB&&out.b==='none'){for(const c of [out.c,out.b,out.a])give(c);return {...out,mode:'off',a:'none',b:'none',c:'none',full:true};}
     return out;}
-  // Every mechanism's choices at once, in the list's order. pad: 'gamepad1' shares the controller with the chassis (its
-  // buttons are taken first), 'gamepad2' has a controller to itself. A button the team picked stays with the mechanism
-  // it was picked for (the first, if two picked it); the others take what is left, in order.
-  function mechMap(list,raw,{pad='gamepad1',map,swerve=true}={}){const taken=pad==='gamepad1'?chassisButtons(map,swerve):[],free=Object.keys(BUTTONS).filter(b=>!taken.includes(b)),out={},claimed=new Set(),picked={};
-    for(const m of list){const r=raw?.[m.id];if(!r||r.mode==='off')continue;const mine={};for(const k of ['a','b']){const b=r[k];if(b&&b!=='none'&&free.includes(b)&&!claimed.has(b)){claimed.add(b);mine[k]=b;}}picked[m.id]=mine;}
+  // Every mechanism's choices at once, in the list's order. pad: 'gamepad1' shares the controller with the chassis (what
+  // it uses is taken first: its sticks too), 'gamepad2' has a controller to itself. A control the team picked stays with
+  // the mechanism it was picked for (the first, if two picked it); the others take what is left, in order.
+  // The controls go round by how much a kind of mechanism is used in a match, so the intake gets the triggers and a hood
+  // or a ramp gets what is left: the intake, what lifts, what grabs, what shoots, what feeds it, what aims, then the rest.
+  const RANK=[/intake|roller(?!-claw)/,/lift|slide|elevator|arm|climb|winch|hang/,/claw|gripper|grab/,/flywheel|shooter|launcher|catapult/,/feeder|kicker|gate|indexer|transfer|conveyor/,/turret|wrist|pivot/];
+  const rankOf=m=>{const t=String(m.type||''),i=RANK.findIndex(r=>r.test(t));return /deploy|ramp|hood/.test(t)?RANK.length+1:i<0?RANK.length:i;};
+  function mechMap(list,raw,{pad='gamepad1',map,swerve=true}={}){const taken=pad==='gamepad1'?chassisParts(map,swerve):[],free=PARTS.filter(b=>!taken.includes(b)),out={},claimed=new Set(),picked={};
+    for(const m of list){const r=raw?.[m.id];if(!r||r.mode==='off')continue;const mine={};for(const k of ['a','b','c']){const c=r[k],parts=partsOf(c);if(parts.length&&parts.every(p=>free.includes(p)&&!claimed.has(p))){for(const p of parts)claimed.add(p);mine[k]=c;}}picked[m.id]=mine;}
     const pool=free.filter(b=>!claimed.has(b));
-    for(const m of list){const r=raw?.[m.id],mine=picked[m.id]||{},local=[...Object.values(mine),...pool],before=new Set(local);
-      out[m.id]=mechOf(m,r?{...r,a:mine.a||(r.a==='none'?'none':undefined),b:mine.b||(r.b==='none'?'none':undefined)}:r,local);
-      for(const b of before)if(!local.includes(b)&&pool.includes(b))pool.splice(pool.indexOf(b),1);for(const b of Object.values(mine))if(local.includes(b)&&!pool.includes(b))pool.unshift(b);}
+    for(const m of list.map((m,i)=>[rankOf(m),i,m]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(x=>x[2])){const r=raw?.[m.id],mine=picked[m.id]||{},own=Object.values(mine).flatMap(partsOf),local=[...own,...pool],before=new Set(local),keep=k=>mine[k]||(r[k]==='none'?'none':undefined);
+      out[m.id]=mechOf(m,r?{...r,a:keep('a'),b:keep('b'),c:keep('c')}:r,local);
+      for(const b of before)if(!local.includes(b)&&pool.includes(b))pool.splice(pool.indexOf(b),1);for(const b of own)if(local.includes(b)&&!pool.includes(b))pool.unshift(b);}
     return out;}
   const pressed=(pad,b)=>/_trigger$/.test(b)?`${pad}.${b} > 0.5`:`${pad}.${b}`;
-  const RESERVED=new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null n drive steer encoder radius imu target steered steerPower speed loop hubs hub last now dt forward left turn spin heading f moving top lock power p i vx vy angle error wheel telemetry gamepad1 gamepad2 hardwareMap'.split(' '));
-  // The Java for the mechanisms: {imports, init (before waitForStart), loop (every loop), notes (a comment line each)}.
-  // list: [{label, device (its name in the robot configuration), kind: 'motor'|'crservo'|'servo', reversed, mode, a, b, power, posA, posB}].
-  function mechCode(list,pad='gamepad1'){const imports=[],init=[],loop=[],names=new Set(),say=b=>BUTTONS[b]||b;
+  // A stick or the triggers as a number: up and right are positive, the right trigger one way and the left the other.
+  const axisOf=(pad,c)=>c==='triggers'?`${pad}.right_trigger - ${pad}.left_trigger`:/_stick_y$/.test(c)?`-${pad}.${c}`:`${pad}.${c}`;
+  const RESERVED=new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null n drive steer encoder radius imu target steered steerPower speed loop hubs hub last now dt forward left turn spin heading f moving top lock power p i vx vy angle error wheel flip end telemetry gamepad1 gamepad2 hardwareMap'.split(' '));
+  // The Java for the mechanisms: {imports, init (before waitForStart), loop (every loop)}.
+  // list: [{label, device (its name in the robot configuration), kind: 'motor'|'crservo'|'servo', reversed, states, mode, a, b, c, power, posA, posB, posC}].
+  function mechCode(list,pad='gamepad1'){const imports=[],init=[],loop=[],names=new Set(),say=b=>BUTTONS[b]||AXES[b]||b,low=t=>String(t||'').toLowerCase();
     const ident=(label,i)=>{const w=String(label||'').replace(/[^A-Za-z0-9]+/g,' ').trim().split(' ').filter(Boolean);let id=w.map((x,k)=>k?x[0].toUpperCase()+x.slice(1).toLowerCase():x.toLowerCase()).join('');if(!id||/^[0-9]/.test(id)||RESERVED.has(id))id='mech'+(i+1);while(names.has(id))id+='B';names.add(id);return id;};
-    (list||[]).forEach((m,i)=>{if(!m||m.mode==='off'||!MODES[m.mode]||!m.device||!m.a||m.a==='none')return;const v=ident(m.label,i),servo=m.kind==='servo',cls=servo?'Servo':m.kind==='crservo'?'CRServo':'DcMotor',pw=dbl(Math.max(.05,Math.min(1,+m.power||1))),A=pressed(pad,m.a),hasB=m.b&&m.b!=='none',B=hasB?pressed(pad,m.b):null;
-      if(servo!==(m.mode==='positions'||m.mode==='flip'))return;if((m.mode==='updown'||m.mode==='positions')&&!hasB)return;if(m.mode==='updown'&&m.kind!=='motor')return;
+    (list||[]).forEach((m,i)=>{if(!m||m.mode==='off'||!MODES[m.mode]||!m.device||!m.a||m.a==='none')return;const servo=m.kind==='servo',cls=servo?'Servo':m.kind==='crservo'?'CRServo':'DcMotor',pw=dbl(Math.max(.05,Math.min(1,+m.power||1))),analog=ANALOG.has(m.mode);
+      if(!modesFor(servo?'servo':m.kind==='crservo'?'crservo':'motor').includes(m.mode))return;if(analog?!Object.hasOwn(AXES,m.a):!Object.hasOwn(BUTTONS,m.a))return;
+      const hasB=!analog&&m.b&&m.b!=='none',hasC=m.mode==='positions'&&m.c&&m.c!=='none',u=usesOf(m.mode,m.states);if((m.mode==='updown'||m.mode==='positions')&&!hasB)return;
+      const v=ident(m.label,i),A=analog?axisOf(pad,m.a):pressed(pad,m.a),B=hasB?pressed(pad,m.b):null,C=hasC?pressed(pad,m.c):null,pA=dbl(m.posA),pB=dbl(m.posB),pC=dbl(m.posC);
       imports.push('com.qualcomm.robotcore.hardware.'+cls);
-      const what={hold:`hold ${say(m.a)} to run it${hasB?`, ${say(m.b)} to run it backwards`:''}`,toggle:`${say(m.a)} switches it on and off${hasB?`; ${say(m.b)} runs it backwards while held`:''}`,updown:`${say(m.a)} moves it up, ${say(m.b)} down; it brakes when let go`,positions:`${say(m.a)} sends it to ${dbl(m.posA)}, ${say(m.b)} to ${dbl(m.posB)}`,flip:`${say(m.a)} flips it between ${dbl(m.posA)} and ${dbl(m.posB)}`}[m.mode];
+      const what={hold:`hold ${say(m.a)} to run it${hasB?`, ${say(m.b)} to run it backwards`:''}`,toggle:`${say(m.a)} switches it on and off${hasB?`; ${say(m.b)} runs it backwards while held`:''}`,updown:`${say(m.a)} moves it ${low(u[0])}, ${say(m.b)} ${low(u[1])}; it brakes when let go`,
+        axis:`it follows ${low(say(m.a))}`,positions:`${say(m.a)} sends it to ${low(u[0])} (${pA}), ${say(m.b)} to ${low(u[1])} (${pB})${hasC?`, ${say(m.c)} to ${low(u[2])} (${pC})`:''}`,flip:`${say(m.a)} flips it between ${pA} and ${pB}`,momentary:`at ${pB} while ${say(m.a)} is held, at ${pA} when it is let go`,follow:`${low(say(m.a))} puts it anywhere between ${pA} and ${pB}`}[m.mode];
       init.push(`        // ${String(m.label||m.device).replace(/[\r\n]+/g,' ')}: ${what}.`,`        ${cls} ${v} = hardwareMap.get(${cls}.class, ${str(m.device)});`);
       if(!servo&&m.reversed)init.push(`        ${v}.setDirection(DcMotorSimple.Direction.REVERSE);`);
-      if(m.mode==='updown')init.push(`        ${v}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`);
+      if(m.mode==='updown'||m.mode==='axis'&&m.kind==='motor')init.push(`        ${v}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`);
       if(m.mode==='toggle'||m.mode==='flip')init.push(`        boolean ${v}On = false, ${v}Was = false;`);
       if(m.mode==='hold'||m.mode==='updown')loop.push(`            ${v}.setPower(${A} ? ${pw} : ${hasB?`${B} ? -${pw} : `:''}0);`);
       else if(m.mode==='toggle')loop.push(`            boolean ${v}Now = ${A};`,`            if (${v}Now && !${v}Was) ${v}On = !${v}On;`,`            ${v}Was = ${v}Now;`,`            ${v}.setPower(${hasB?`${B} ? -${pw} : `:''}${v}On ? ${pw} : 0);`);
-      else if(m.mode==='positions')loop.push(`            if (${A}) ${v}.setPosition(${dbl(m.posA)}); else if (${B}) ${v}.setPosition(${dbl(m.posB)});`);
-      else loop.push(`            boolean ${v}Now = ${A};`,`            if (${v}Now && !${v}Was) { ${v}On = !${v}On; ${v}.setPosition(${v}On ? ${dbl(m.posB)} : ${dbl(m.posA)}); }`,`            ${v}Was = ${v}Now;`);});
+      else if(m.mode==='axis')loop.push(`            double ${v}Go = ${A};`,`            ${v}.setPower(Math.abs(${v}Go) < 0.05 ? 0 : ${v}Go * ${pw});`);
+      else if(m.mode==='positions')loop.push(`            if (${A}) ${v}.setPosition(${pA}); else if (${B}) ${v}.setPosition(${pB});${hasC?` else if (${C}) ${v}.setPosition(${pC});`:''}`);
+      else if(m.mode==='momentary')loop.push(`            ${v}.setPosition(${A} ? ${pB} : ${pA});`);
+      else if(m.mode==='follow')loop.push(`            ${v}.setPosition(${pA} + (${pB} - ${pA}) * Math.max(0, Math.min(1, ${/trigger$/.test(m.a)?A:`(${A} + 1) / 2`})));`);
+      else loop.push(`            boolean ${v}Now = ${A};`,`            if (${v}Now && !${v}Was) { ${v}On = !${v}On; ${v}.setPosition(${v}On ? ${pB} : ${pA}); }`,`            ${v}Was = ${v}Now;`);});
     return {imports:[...new Set(imports)],init,loop};}
-  // A control doing two jobs on one controller: [{button, uses: [what]}]. The chassis's own are on controller 1.
-  function clashes(list,{pad='gamepad1',map,swerve=true}={}){const by=new Map(),put=(b,t)=>{if(!b||b==='none')return;if(!by.has(b))by.set(b,[]);by.get(b).push(t);};
-    if(pad==='gamepad1')for(const b of chassisButtons(map,swerve))put(b,'the chassis');for(const m of list||[]){if(!m||m.mode==='off')continue;put(m.a,m.label);if(USES[m.mode]?.[1]!==null)put(m.b,m.label);}
-    return [...by].filter(([,u])=>u.length>1).map(([button,uses])=>({button,name:BUTTONS[button]||button,uses}));}
+  // The same, in JavaScript, one loop: what the mechanism is told with the controller as it is. st: its own memory (kept
+  // between loops). Returns {power} for a motor or a continuous servo, {position, at (which of its positions, or null)} for a servo.
+  function mechStep(m,st,pad){const p=pad||{},on=b=>held(p,b),ax=c=>c==='triggers'?(p.rt||0)-(p.lt||0):c==='right_trigger'?p.rt||0:c==='left_trigger'?p.lt||0:c==='left_stick_y'?-(p.ly||0):c==='left_stick_x'?p.lx||0:c==='right_stick_y'?-(p.ry||0):c==='right_stick_x'?p.rx||0:0,pw=Math.max(.05,Math.min(1,+m.power||1)),hasB=m.b&&m.b!=='none';
+    if(m.kind!=='servo'){if(m.mode==='hold'||m.mode==='updown')return {power:on(m.a)?pw:hasB&&on(m.b)?-pw:0};
+      if(m.mode==='toggle'){const now=on(m.a);if(now&&!st.was)st.on=!st.on;st.was=now;return {power:hasB&&on(m.b)?-pw:st.on?pw:0};}
+      if(m.mode==='axis'){const v=ax(m.a);return {power:Math.abs(v)<.05?0:v*pw};}return {power:0};}
+    if(st.position===undefined){st.position=null;st.at=null;}const set=(v,at)=>{st.position=v;st.at=at;};
+    if(m.mode==='positions'){if(on(m.a))set(m.posA,0);else if(on(m.b))set(m.posB,1);else if(m.c&&m.c!=='none'&&on(m.c))set(m.posC,2);}
+    else if(m.mode==='flip'){const now=on(m.a);if(now&&!st.was){st.on=!st.on;set(st.on?m.posB:m.posA,st.on?1:0);}st.was=now;}
+    else if(m.mode==='momentary')set(on(m.a)?m.posB:m.posA,on(m.a)?1:0);
+    else if(m.mode==='follow'){const v=ax(m.a),t=Math.max(0,Math.min(1,/trigger$/.test(m.a)?v:(v+1)/2));set(m.posA+(m.posB-m.posA)*t,null);}
+    return {position:st.position,at:st.at};}
+  // A part of the controller doing two jobs: [{button, name, uses: [what]}]. The chassis's own are on controller 1.
+  function clashes(list,{pad='gamepad1',map,swerve=true}={}){const by=new Map(),put=(c,t)=>{for(const b of partsOf(c)){if(!by.has(b))by.set(b,[]);if(!by.get(b).includes(t))by.get(b).push(t);}},NAME={...BUTTONS,left_stick_x:'Left stick, left and right',left_stick_y:'Left stick, up and down',right_stick_x:'Right stick, left and right',right_stick_y:'Right stick, up and down'};
+    if(pad==='gamepad1')for(const b of chassisParts(map,swerve))put(b,'the chassis');for(const m of list||[]){if(!m||m.mode==='off')continue;const u=usesOf(m.mode,m.states);put(m.a,m.label);if(u[1]!==null)put(m.b,m.label);if(u[2]!==null)put(m.c,m.label);}
+    return [...by].filter(([,u])=>u.length>1).map(([button,uses])=>({button,name:NAME[button]||button,uses}));}
   // The mechanisms written into a chassis TeleOp's source: their devices before waitForStart, their buttons every loop.
   function withMechanisms(source,o){const c=mechCode(o.mechanisms,o.pad==='gamepad2'?'gamepad2':'gamepad1');if(!c.init.length)return source;const lines=source.split('\n'),at=t=>lines.findIndex(l=>l===t),w=at('        waitForStart();'),missing=c.imports.filter(i=>!lines.includes(`import ${i};`));
     if(w<0)return source;lines.splice(w,0,'        // The mechanisms, as Setup has them and the TeleOp tab mapped them.',...c.init);
@@ -176,8 +225,10 @@
       '            double u = full ? 1 : Math.min(1, c + (pos ? boostP : boostN) + (asked - vc) / slope);',
       '            // A crawling wheel stops almost where it is when the power goes; from a sixth of top speed up it runs on for the whole lead.',
       '            lastGo = D * (full ? top : asked); lastLead = lead * Math.max(0.3, Math.min(1, asked / (top * 0.17)));','            return g * D * u;','        }','    }'];
-  function swerve(o,m){const p=o.pods,col=(f,fn=dbl)=>list(p.map(x=>fn(x[f]))),lock=m.lock!=='none';
-    return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[]),'com.qualcomm.hardware.lynx.LynxModule','com.qualcomm.robotcore.hardware.AnalogInput','com.qualcomm.robotcore.hardware.CRServo']),
+  // What every program that drives these pods starts from: their devices, where they are, and each one's steering as
+  // Calibrate measured it. The TeleOp has them, and so does the autonomous Simulate writes (ui/sim-ftc.js).
+  function swerveConstants(o){const p=o.pods,col=(f,fn=dbl)=>list(p.map(x=>fn(x[f])));
+    return [
       `    static final String[] DRIVE = ${col('drive',str)}, STEER = ${col('servo',str)}, ENCODER = ${col('encoder',str)};`,
       `    static final boolean[] DRIVE_REVERSED = ${col('reversed',v=>String(!!v))};`,
       `    // Where each pod is from the middle of the robot, inches: forward, then left.`,`    static final double[] POD_X = ${col('x')}, POD_Y = ${col('y')};`,
@@ -190,13 +241,23 @@
       `    // Stopped inside ZONE_DEGREES of the target the servo gets pushes: the creep power for the distance over PUSH (what a push from rest gives). It eases to the`,`    // creep EASE_DEGREES out; STILL_DEGREES_A_SECOND counts as stopped; a push takes PUSH_WAIT_SECONDS to show.`,
       `    static final double[] PUSH_P_DEGREES_A_SECOND = ${col('pushP')}, PUSH_N_DEGREES_A_SECOND = ${col('pushN')}, ZONE_DEGREES = ${col('zone')}, EASE_DEGREES = ${col('ease')};`,
       `    static final double[] STILL_DEGREES_A_SECOND = ${col('still')}, PUSH_WAIT_SECONDS = ${col('lag')};`,
-      `    static final double VOLTS_PER_TURN = ${dbl(p[0]?.volts||3.3)}, TOLERANCE_DEGREES = ${dbl(o.tolerance||.9)}, IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
+      `    static final double VOLTS_PER_TURN = ${dbl(p[0]?.volts||3.3)}, TOLERANCE_DEGREES = ${dbl(o.tolerance||.9)}, IMU_SCALE = ${dbl(o.imu?.scale||1)};`];}
+  const NEW_STEER='new Steer(SERVO_SIGN[i], GAIN[i], LEAD_P_SECONDS[i], LEAD_N_SECONDS[i], CREEP_P[i], CREEP_N[i], CREEP_P_DEGREES_A_SECOND[i], CREEP_N_DEGREES_A_SECOND[i], DEGREES_A_SECOND_PER_POWER[i], TOP_DEGREES_A_SECOND[i], PUSH_P_DEGREES_A_SECOND[i], PUSH_N_DEGREES_A_SECOND[i], ZONE_DEGREES[i], EASE_DEGREES[i], STILL_DEGREES_A_SECOND[i], PUSH_WAIT_SECONDS[i], TOLERANCE_DEGREES)';
+  // What a swerve still needs before anything is written for it: '' when it is ready.
+  function swerveMissing(o){const p=o?.pods||[];if(!p.length)return 'This chassis has no pods to drive.';const bare=p.filter(x=>!x.servo||!x.encoder||!Number.isFinite(x.zero)).map(x=>x.label||x.drive);
+    return bare.length?`Set the wheels straight first, with an absolute encoder on every pod: ${bare.join(', ')}.`:'';}
+  // The pieces another program needs to drive the same pods: {error} or {constants (lines), steer (the Steer class, lines),
+  // newSteer (the expression that makes pod i's loop), imports}.
+  function swerveParts(o){const error=swerveMissing(o);return error?{error}:{constants:swerveConstants(o),steer:STEER_CLASS.slice(),newSteer:NEW_STEER,imports:['com.qualcomm.hardware.lynx.LynxModule','com.qualcomm.robotcore.hardware.AnalogInput','com.qualcomm.robotcore.hardware.CRServo']};}
+  function swerve(o,m){const lock=m.lock!=='none';
+    return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[]),'com.qualcomm.hardware.lynx.LynxModule','com.qualcomm.robotcore.hardware.AnalogInput','com.qualcomm.robotcore.hardware.CRServo']),
+      ...swerveConstants(o),
       '',
       ...STEER_CLASS,'',
       '    @Override public void runOpMode() {','        int n = DRIVE.length;','        DcMotor[] drive = new DcMotor[n];','        CRServo[] steer = new CRServo[n];','        AnalogInput[] encoder = new AnalogInput[n];','        double radius = 1e-6;',
       '        for (int i = 0; i < n; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);',
       '            steer[i] = hardwareMap.get(CRServo.class, STEER[i]);','            encoder[i] = hardwareMap.get(AnalogInput.class, ENCODER[i]);','            radius = Math.max(radius, Math.hypot(POD_X[i], POD_Y[i]));','        }',...imu(o),
-      '        double[] target = new double[n], steered = new double[n], steerPower = new double[n], speed = new double[n];','        Steer[] loop = new Steer[n];','        for (int i = 0; i < n; i++) loop[i] = new Steer(SERVO_SIGN[i], GAIN[i], LEAD_P_SECONDS[i], LEAD_N_SECONDS[i], CREEP_P[i], CREEP_N[i], CREEP_P_DEGREES_A_SECOND[i], CREEP_N_DEGREES_A_SECOND[i], DEGREES_A_SECOND_PER_POWER[i], TOP_DEGREES_A_SECOND[i], PUSH_P_DEGREES_A_SECOND[i], PUSH_N_DEGREES_A_SECOND[i], ZONE_DEGREES[i], EASE_DEGREES[i], STILL_DEGREES_A_SECOND[i], PUSH_WAIT_SECONDS[i], TOLERANCE_DEGREES);','        // One read of each hub a loop: every encoder and motor from the same instant, and a quicker loop (as it was tuned).','        java.util.List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);','        for (LynxModule hub : hubs) hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);','        waitForStart();','        imu.resetYaw();','        long last = System.nanoTime();',
+      '        double[] target = new double[n], steered = new double[n], steerPower = new double[n], speed = new double[n];','        Steer[] loop = new Steer[n];',`        for (int i = 0; i < n; i++) loop[i] = ${NEW_STEER};`,'        // One read of each hub a loop: every encoder and motor from the same instant, and a quicker loop (as it was tuned).','        java.util.List<LynxModule> hubs = hardwareMap.getAll(LynxModule.class);','        for (LynxModule hub : hubs) hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);','        waitForStart();','        imu.resetYaw();','        long last = System.nanoTime();',
       '        while (opModeIsActive()) {','            for (LynxModule hub : hubs) hub.clearBulkCache();','            long now = System.nanoTime();','            double dt = Math.max(1e-3, (now - last) / 1e9);','            last = now;',...sticks(m),
       '            boolean moving = Math.hypot(forward, left) > 0.05 || Math.abs(turn) > 0.05;','            double top = 1;',...(lock?[`            boolean lock = gamepad1.${m.lock};`]:[]),
       '            // Each pod goes the way the robot is moving there: the drive, plus the turn about the middle.',
@@ -215,12 +276,22 @@
       '                steer[i].setPower(Math.max(-1, Math.min(1, power)));','                // A wheel still turning to its angle pushes less, so it does not drag the robot sideways.','                drive[i].setPower(wheel * Math.cos(Math.toRadians(error)));','            }',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
   // motors: [{key, name, reversed}] by Deck's keys. A mecanum's four; a tank's by side.
-  function wheels(o,m,tank){const ms=o.motors,side=k=>/right/i.test(k)?'right':'left',front=k=>/front/i.test(k);
-    const mix=x=>tank?(side(x.key)==='left'?'forward - turn':'forward + turn'):({'left front':'forward - left - turn','right front':'forward + left + turn','left back':'forward + left - turn','right back':'forward - left + turn'})[`${side(x.key)} ${front(x.key)?'front':'back'}`];
+  // A chassis whose wheels do not steer. o.kind: 'mecanum', 'xdrive' and 'butterfly' (four wheels that between them push
+  // any way: one mix for all three, as their rollers or their angles work out the same), 'kiwi' (three omni wheels, each
+  // across its corner), 'tank' (two sides; no sideways).
+  const KIWI=.866025;
+  function wheelMix(key,kind){const side=/right/i.test(key)?'right':'left',front=/front/i.test(key);
+    if(kind==='tank')return side==='left'?'forward - turn':'forward + turn';
+    if(kind==='kiwi')return front&&!/left|right/i.test(key)?'left + turn':side==='left'?`-${KIWI} * forward - 0.5 * left + turn`:`${KIWI} * forward - 0.5 * left + turn`;
+    return ({'left front':'forward - left - turn','right front':'forward + left + turn','left back':'forward + left - turn','right back':'forward - left + turn'})[`${side} ${front?'front':'back'}`];}
+  const WHEELED={mecanum:'A mecanum drive: forward and back, sideways on its rollers, any diagonal between, and turning, all at once.',xdrive:'An X-drive: four omni wheels at 45°, so it goes any way like a mecanum (the same mix).',butterfly:'A butterfly drive on its mecanum wheels: any way at once. Its shift to the traction wheels is a mechanism of its own.',
+    kiwi:'A kiwi drive: three omni wheels, each across its corner. Positive power on a wheel turns the robot to the left (counterclockwise from above).',tank:'A tank drive: both sides together drive it, one against the other turns it. It cannot go sideways.'};
+  function wheels(o,m){const ms=o.motors,kind=o.kind,tank=kind==='tank';
     return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[])]),`    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,'',
       '    @Override public void runOpMode() {','        int n = DRIVE.length;','        DcMotor[] drive = new DcMotor[n];','        for (int i = 0; i < n; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',...imu(o),
       '        waitForStart();','        imu.resetYaw();','        while (opModeIsActive()) {',...sticks(tank?{...m,field:'no'}:m),
-      `            double[] power = ${list(ms.map(mix))};`,'            double top = 1;','            for (double p : power) top = Math.max(top, Math.abs(p));','            for (int i = 0; i < n; i++) drive[i].setPower(power[i] / top);',
+      `            // ${WHEELED[kind]||WHEELED.mecanum} Every motor is scaled together, so none is asked for more than full power.`,
+      `            double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'            double top = 1;','            for (double p : power) top = Math.max(top, Math.abs(p));','            for (int i = 0; i < n; i++) drive[i].setPower(power[i] / top);',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
   // ---- the same drive, in JavaScript ---------------------------------------------------------------------------------
   // What the TeleOp does with the controller each loop, for the TeleOp tab's live picture and for the tests: the Java
@@ -244,19 +315,20 @@
       if(flip){error-=Math.sign(error)*180;wheel=-wheel;}
       out.push({target:targets[i]||0,error,power:wheel*Math.cos(error*Math.PI/180),flipped:flip});}
     return out;}
-  // A mecanum or a tank, one loop: each motor's power, in the order given. motors: [{key}] by Deck's keys.
-  function wheelPowers(motors,cmd,tank=false){const side=k=>/right/i.test(k)?'right':'left',front=k=>/front/i.test(k),f=cmd.forward,l=tank?0:cmd.left,t=cmd.turn;
-    const power=motors.map(x=>tank?(side(x.key)==='left'?f-t:f+t):({'left front':f-l-t,'right front':f+l+t,'left back':f+l-t,'right back':f-l+t})[`${side(x.key)} ${front(x.key)?'front':'back'}`]),top=Math.max(1,...power.map(Math.abs));return power.map(v=>v/top);}
-  // o: {kind:'swerve'|'mecanum'|'tank', pods|motors, robot:{hubLogo, hubUsb}, imu:{name, scale}, tolerance, map, config, date}.
+  // A chassis whose wheels do not steer, one loop: each motor's power, in the order given. motors: [{key}] by Deck's keys;
+  // kind as wheels takes it (true, for a tank, still works).
+  function wheelPowers(motors,cmd,kind='mecanum'){if(kind===true)kind='tank';if(kind===false)kind='mecanum';const side=k=>/right/i.test(k)?'right':'left',front=k=>/front/i.test(k),f=cmd.forward,l=kind==='tank'?0:cmd.left,t=cmd.turn;
+    const power=motors.map(x=>kind==='tank'?(side(x.key)==='left'?f-t:f+t):kind==='kiwi'?(front(x.key)&&!/left|right/i.test(x.key)?l+t:side(x.key)==='left'?-KIWI*f-.5*l+t:KIWI*f-.5*l+t):({'left front':f-l-t,'right front':f+l+t,'left back':f+l-t,'right back':f-l+t})[`${side(x.key)} ${front(x.key)?'front':'back'}`]),top=Math.max(1,...power.map(Math.abs));return power.map(v=>v/top);}
+  // o: {kind:'swerve'|'mecanum'|'xdrive'|'butterfly'|'kiwi'|'tank', pods|motors, robot:{hubLogo, hubUsb}, imu:{name, scale}, tolerance, map, config, date}.
   // Returns {file, opMode, source}, or {error} saying what is not calibrated yet or not written for.
   //   className, opMode: for the whole robot's TeleOp ("TorqueTeleOp", "Torque TeleOp"); the chassis alone keeps its own.
   //   mechanisms: [{label, device, kind, reversed, mode, a, b, power, posA, posB}] (mechCode), pad: 'gamepad1' | 'gamepad2'.
   // Returns {file, opMode, source}, or {error} saying what is not calibrated yet or not written for.
   function teleopOf(o){const m=mapOf(o.map),done=source=>({file:(o.className||NAME)+'.java',opMode:o.opMode||OP_MODE,source:withMechanisms(source,o)});
-    if(o.kind==='swerve'){const p=o.pods||[];if(!p.length)return {error:'This chassis has no pods to drive.'};const bare=p.filter(x=>!x.servo||!x.encoder||!Number.isFinite(x.zero)).map(x=>x.label||x.drive);
-      if(bare.length)return {error:`Set the wheels straight first, with an absolute encoder on every pod: ${bare.join(', ')}.`};return done(swerve(o,m));}
-    if(o.kind==='mecanum'||o.kind==='tank'){if(!(o.motors||[]).length)return {error:'This chassis has no drive motors.'};return done(wheels(o,{...m,lock:'none'},o.kind==='tank'));}
-    return {error:'Torque writes this TeleOp for swerve, mecanum and tank chassis so far.'};}
-  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,MODES,USES,modesFor,mechOf,mechMap,mechCode,clashes,chassisButtons,command,swerveDrive,wheelPowers,wrapDeg,steerClass:()=>STEER_CLASS.slice()};
+    if(o.kind==='swerve'){const error=swerveMissing(o);return error?{error}:done(swerve(o,m));}
+    if(Object.hasOwn(WHEELED,o.kind)){const need=o.kind==='kiwi'?3:o.kind==='tank'?2:4;if((o.motors||[]).length<need)return {error:`This chassis needs ${need} drive motors: Setup has ${(o.motors||[]).length}.`};return done(wheels(o,{...m,lock:'none'}));}
+    if(/^diffSwerve/.test(o.kind||''))return {error:'A differential swerve needs its own calibration (each module’s angle from its two motors) before Torque can write its TeleOp: that is not built yet.'};
+    return {error:'Torque writes this TeleOp for swerve, mecanum, X-drive, butterfly, kiwi and tank chassis.'};}
+  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.DeckChassisTeleop=api;
 })(typeof globalThis==='object'?globalThis:this);

@@ -18,20 +18,23 @@
   };
   const SUPPORTED={encoders:'drive encoders + IMU',odometry:'two odometry pods + IMU',odometry3:'three odometry pods + IMU',fused:'goBILDA Pinpoint',optical:'SparkFun OTOS'};
   // Wiring of the virtual Control Hub for a robot and sensing setup.
-  function hardware(robot,localization){
+  // swerve: a swerve as Calibrate has it (ui/sim-chassis-cal.js teleopInput: its pods with their drive motor, steering
+  // servo, absolute encoder and the steering loop tuned on the robot). With it a swerve's autonomous is written too.
+  function hardware(robot,localization,swerve=null){
     if(!SUPPORTED[localization])throw Error('Autonomous on a Control Hub needs position sensing: drive encoders, odometry pods, Pinpoint or OTOS. IMU-only setups export timed commands.');
-    const drivetrain=robot.drivetrain||'mecanum',tank=TANK.has(drivetrain);
-    if(!tank&&drivetrain!=='mecanum')throw Error('Autonomous on a Control Hub is exported for mecanum and tank drivetrains. Swerve, X-drive, Kiwi and butterfly export timed commands or route geometry for your own drivetrain code.');
+    const drivetrain=robot.drivetrain||'mecanum',tank=TANK.has(drivetrain),sw=swerve&&swerve.kind==='swerve'&&Array.isArray(swerve.pods)&&swerve.pods.length?swerve:null;
+    let steered=null;if(sw){steered=(globalThis.DeckChassisTeleop||require('./sim-chassis-teleop.js')).swerveParts(sw);if(steered.error)throw Error(steered.error);}
+    if(!tank&&drivetrain!=='mecanum'&&!sw)throw Error('Autonomous on a Control Hub is exported for mecanum and tank drivetrains, and for a swerve once Calibrate has set its wheels straight. X-drive, Kiwi and butterfly export timed commands or route geometry for your own drivetrain code.');
     const rpm=robot.driveRpm||312,inches=Math.PI*(robot.wheelDiameterMm||WHEEL_MM)/25.4;
     const mount=(globalThis.DeckSimConfig||require('./sim-config.js')).hubMounting(robot);
     // The robot's own names for these devices (Setup → Robot controller, or picked from its configuration), and drive
     // motors set to turn the other way. mount is the physical truth the virtual Control Hub drives: -1 is REVERSE.
     const own=robot.devices||{},named=(key,fallback)=>own[key]?.name||fallback;
-    const motors=Object.fromEntries(Object.entries(drivetrain==='tank2'?DIFF:MOTORS).map(([key,m])=>[key,{name:named(key,m.name),mount:typeof own[key]?.reversed==='boolean'?(own[key].reversed?-1:1):m.mount}]));
+    const motors=sw?Object.fromEntries(sw.pods.map((q,i)=>['pod'+i,{name:q.drive,mount:q.reversed?-1:1}])):Object.fromEntries(Object.entries(drivetrain==='tank2'?DIFF:MOTORS).map(([key,m])=>[key,{name:named(key,m.name),mount:typeof own[key]?.reversed==='boolean'?(own[key].reversed?-1:1):m.mount}]));
     // Odometry as mounted (Setup → Robot controller → Odometry): pod positions and directions, the Pinpoint's pod
     // offsets, directions and pod type, and the OTOS's position, rotation and scalars.
     const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(robot);
-    return {localization,imu:named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},drive:{kind:tank?'tank':'mecanum',ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
+    return {localization,imu:sw?.imu?.name||named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
       ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
@@ -87,7 +90,8 @@ public final class Constants {
     public static void motorPower(double p) { config.maxPathSpeed=p; hardware.limit=p; }
 }
 `;}
-  function robotDrive(h,options){const motors=Object.entries(h.drive.motors),pods=h.pods,kind=h.drive.kind,pp=h.pinpointMount,ot=h.otosMount;
+  function robotDrive(h,options){const motors=Object.entries(h.drive.motors),pods=h.pods,kind=h.drive.kind,pp=h.pinpointMount,ot=h.otosMount,sw=kind==='swerve'?h.drive.steered:null;
+    const extra=[...(sw?sw.imports:[]),...(h.imuMount?.imports||[])].filter(i=>!/^com\.qualcomm\.robotcore\.hardware\.\w+$/.test(i)&&!['com.qualcomm.hardware.rev.RevHubOrientationOnRobot','org.firstinspires.ftc.robotcore.external.navigation.AngleUnit'].includes(i));
     const PODS_ENUM={'4bar':'goBILDA_4_BAR_POD',swingarm:'goBILDA_SWINGARM_POD'},direction=r=>`GoBildaPinpointDriver.EncoderDirection.${r?'REVERSED':'FORWARD'}`;
     return `package ${options.packageName}.drive;
 import deck.pathing.DeckFollower;
@@ -100,11 +104,24 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
-/** Motor names and directions, wheel gearing, the Control Hub's mounting and the odometry come from Deck's settings
+${[...new Set(extra)].sort().map(i=>`import ${i};\n`).join('')}/** Motor names and directions, wheel gearing, the Control Hub's mounting and the odometry come from Deck's settings
  * (Setup → Robot controller); the guided check TeleOp finds the directions and odometry offsets on the robot.
- * Gains measured in simulation are starting values; calibrate distances and turns on the field. */
+ * Gains measured in simulation are starting values; calibrate distances and turns on the field.${sw?`
+ * A swerve: every pod is turned to the way the robot should move there by its own steering loop, as Calibrate tuned it
+ * on the robot, taking the shortest way (turning, or staying and running its motor backwards), as in Torque TeleOp.`:''} */
 public final class RobotDrive implements Drivetrain, Localizer {
-    private final DcMotorEx[] motors = new DcMotorEx[${motors.length}], pods = new DcMotorEx[${pods.length}];
+${sw?`${sw.constants.join('\n')}
+
+${sw.steer.join('\n')}
+
+    private final CRServo[] steer = new CRServo[${motors.length}];
+    private final AnalogInput[] encoder = new AnalogInput[${motors.length}];
+    private final Steer[] loop = new Steer[${motors.length}];
+    /** Each pod: where it should point, the target its loop was last started for, and where it points now (degrees, left is positive). */
+    private final double[] target = new double[${motors.length}], steered = new double[${motors.length}], podAngle = new double[${motors.length}];
+    private double podRadius = 1e-6, steerTime = -1;
+    private boolean podsRead;
+`:''}    private final DcMotorEx[] motors = new DcMotorEx[${motors.length}], pods = new DcMotorEx[${pods.length}];
 ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that counts backward as the robot drives its way. */
     private static final int[] POD_SIGN = {${pods.map(p=>p.reversed?-1:1).join(', ')}};
 `:''}    private final IMU imu;
@@ -116,12 +133,16 @@ ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that co
     double limit=${n(.6)};
     private MotionState state=MotionState.ofVelocity(Pose.zero(),Velocity.zero());
     public RobotDrive(HardwareMap map) {
-${motors.map(([key,m],i)=>`        motors[${i}]=map.get(DcMotorEx.class, ${javaString(m.name)}); motors[${i}].setDirection(DcMotorSimple.Direction.${m.mount<0?'REVERSE':'FORWARD'});`).join('\n')}
+${sw?`        for (int i = 0; i < motors.length; i++) {
+            motors[i] = map.get(DcMotorEx.class, DRIVE[i]); motors[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+            steer[i] = map.get(CRServo.class, STEER[i]); encoder[i] = map.get(AnalogInput.class, ENCODER[i]);
+            loop[i] = ${sw.newSteer}; podRadius = Math.max(podRadius, Math.hypot(POD_X[i], POD_Y[i]));
+        }`:motors.map(([key,m],i)=>`        motors[${i}]=map.get(DcMotorEx.class, ${javaString(m.name)}); motors[${i}].setDirection(DcMotorSimple.Direction.${m.mount<0?'REVERSE':'FORWARD'});`).join('\n')}
         for(DcMotorEx m:motors){m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);}
 ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.name)});`).join('\n')}
         imu=map.get(IMU.class,${javaString(h.imu)});
         // How the Control Hub is mounted (Deck: Setup → Robot controller). If this is wrong, every turn and heading is wrong.
-        imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.${h.hub.logo},RevHubOrientationOnRobot.UsbFacingDirection.${h.hub.usb})));
+        imu.initialize(new IMU.Parameters(${h.imuMount?.code||`new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.${h.hub.logo},RevHubOrientationOnRobot.UsbFacingDirection.${h.hub.usb})`}));
         pinpoint=${h.localization==='fused'?`map.get(GoBildaPinpointDriver.class,${javaString(h.pinpoint)})`:'null'};${pp?`
         // The Pinpoint's pods: X is the forward pod (its offset: inches left of the robot's centre), Y the strafe pod (inches
         // forward of it). Resetting also calibrates its IMU, so the robot must be still at INIT. The reset takes about 0.25 s
@@ -150,15 +171,21 @@ ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.nam
         if(otos!=null)otos.setPosition(new SparkFunOTOS.Pose2D(p.x(),p.y(),p.heading()));
         state=MotionState.ofVelocity(p,Velocity.zero());
     }
-    public void update(){
-        double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;Pose p=state.pose(),next;
+${sw?`    /** Where each pod points now: its absolute encoder, from the reading with the wheel straight. */
+    private void readPods(){for(int i=0;i<podAngle.length;i++)podAngle[i]=ENCODER_SIGN[i]*(encoder[i].getVoltage()-ZERO_VOLTS[i])/VOLTS_PER_TURN*360.0;podsRead=true;}
+`:''}    public void update(){
+        ${sw?'readPods();':''}double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;Pose p=state.pose(),next;
         double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=${h.imuScale&&h.imuScale!==1?`${n(h.imuScale)}*`:''}DeckFollower.angle(yaw-oldImu);oldImu=yaw;
         // The Pinpoint turns with its own IMU; while it does not answer (a loose cable), the Control Hub's IMU carries the heading.
         if(pinpoint!=null){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new Pose(p.x(),p.y(),p.heading()+dh);}
         else if(otos!=null){SparkFunOTOS.Pose2D q=otos.getPosition();next=new Pose(q.x,q.y,q.h);}
         else {
-            double[] d=new double[motors.length];for(int i=0;i<d.length;i++){int ticks=motors[i].getCurrentPosition();d[i]=(ticks-before[i])*${n(1/h.drive.ticksPerInch)};before[i]=ticks;}
-            double forward=${kind==='tank'?'('+motors.map((_,i)=>`d[${i}]`).join('+')+')/'+motors.length:'(d[0]+d[1]+d[2]+d[3])/4'},left=${kind==='tank'?'0':'(-d[0]+d[1]+d[2]-d[3])/4'};
+${sw?`            // Each wheel rolled along the way its pod points; less what turning on the spot gives a pod out where it is, the
+            // pods together say how far the robot went.
+            double forward=0,left=0;
+            for(int i=0;i<motors.length;i++){int ticks=motors[i].getCurrentPosition();double d=(ticks-before[i])*${n(1/h.drive.ticksPerInch)},a=Math.toRadians(podAngle[i]);before[i]=ticks;forward+=d*Math.cos(a)+POD_Y[i]*dh;left+=d*Math.sin(a)-POD_X[i]*dh;}
+            forward/=motors.length;left/=motors.length;`:`            double[] d=new double[motors.length];for(int i=0;i<d.length;i++){int ticks=motors[i].getCurrentPosition();d[i]=(ticks-before[i])*${n(1/h.drive.ticksPerInch)};before[i]=ticks;}
+            double forward=${kind==='tank'?'('+motors.map((_,i)=>`d[${i}]`).join('+')+')/'+motors.length:'(d[0]+d[1]+d[2]+d[3])/4'},left=${kind==='tank'?'0':'(-d[0]+d[1]+d[2]-d[3])/4'};`}
 ${pods.length?`            double[] pod=new double[pods.length];for(int i=0;i<pods.length;i++){int ticks=pods[i].getCurrentPosition();pod[i]=(ticks-podBefore[i])*POD_SIGN[i];podBefore[i]=ticks;}
             forward=(${pods.map((p,i)=>p.axis==='forward'?`pod[${i}]*${n(1/p.ticksPerInch)}+${n(p.y)}*dh`:null).filter(Boolean).map(t=>'('+t+')').join('+')})/${pods.filter(p=>p.axis==='forward').length};
             left=${pods.map((p,i)=>p.axis==='strafe'?`pod[${i}]*${n(1/p.ticksPerInch)}-(${n(p.x)})*dh`:null).filter(Boolean).join('+')};`:''}
@@ -166,12 +193,32 @@ ${pods.length?`            double[] pod=new double[pods.length];for(int i=0;i<po
         }
         state=MotionState.ofVelocity(next,new Velocity((next.x()-p.x())/dt,(next.y()-p.y())/dt,DeckFollower.angle(next.heading()-p.heading())/dt));
     }
-    public void drive(DrivePowers p,boolean manual){
+${sw?`    public void drive(DrivePowers p,boolean manual){
+        double now=clock.seconds(),dt=steerTime<0?0.013:Math.max(0.001,Math.min(0.1,now-steerTime));steerTime=now;if(!podsRead)readPods();podsRead=false;
+        double forward=p.forward(),left=p.strafe(),turn=p.turn(),top=1;double[] speed=new double[motors.length];
+        // A command too small to move the robot leaves the pods where they point, so they do not hunt while it holds still.
+        boolean moving=limit>0&&(Math.hypot(forward,left)>0.03||Math.abs(turn)>0.03);
+        // Each pod goes the way the robot is moving there: the drive, plus the turn about the middle.
+        for(int i=0;i<motors.length;i++){double vx=forward-turn*POD_Y[i]/podRadius,vy=left+turn*POD_X[i]/podRadius;speed[i]=Math.hypot(vx,vy);if(moving)target[i]=Math.toDegrees(Math.atan2(vy,vx));top=Math.max(top,speed[i]/Math.max(.000001,limit));}
+        for(int i=0;i<motors.length;i++){
+            double error=target[i]-podAngle[i];error-=360.0*Math.round(error/360.0);double wheel=moving?speed[i]/top:0;
+            // The shortest way to get the wheel pushing where it should: more than a quarter turn away, the motor runs
+            // backwards instead and the pod turns the short way.
+            boolean flip=Math.abs(error)>95;
+            if(!flip&&Math.abs(error)>=85){double end=target[i]-360.0*Math.round(target[i]/360.0);flip=end<=-90||end>90;}
+            if(flip){error-=Math.signum(error)*180;wheel=-wheel;}
+            if(Math.abs(target[i]-steered[i])>1){loop[i].retarget();steered[i]=target[i];}
+            steer[i].setPower(Math.max(-1,Math.min(1,loop[i].step(error,podAngle[i],dt))));
+            // A wheel still turning to its angle pushes less, so it does not drag the robot sideways.
+            motors[i].setPower(wheel*Math.cos(Math.toRadians(error)));
+        }
+    }
+    public void stop(){for(DcMotorEx m:motors)m.setPower(0);for(CRServo s:steer)s.setPower(0);steerTime=-1;}`:`    public void drive(DrivePowers p,boolean manual){
         double[] powers=new double[]{${kind==='tank'?motors.map(([key])=>`p.forward()${/left/i.test(key)?'-':'+'}p.turn()`).join(','):'p.forward()-p.strafe()-p.turn(),p.forward()+p.strafe()+p.turn(),p.forward()+p.strafe()-p.turn(),p.forward()-p.strafe()+p.turn()'}};
         double scale=1;for(double w:powers)scale=Math.max(scale,Math.abs(w)/Math.max(.000001,limit));
         for(int i=0;i<motors.length;i++)motors[i].setPower(limit<=0?0:powers[i]/scale);
     }
-    public void stop(){for(DcMotorEx m:motors)m.setPower(0);}
+    public void stop(){for(DcMotorEx m:motors)m.setPower(0);}`}
 }
 `;}
   function opMode(options){const R=options.className;return `package ${options.packageName};
@@ -192,7 +239,7 @@ import ${options.packageName}.drive.Constants;
  * runs the pin's action and pause. Mechanism code goes in RobotActions.java; the driving comes from
  * the simulator. Paste ${R}.java, RouteActions.java, RobotActions.java, this file and drive/ with pathing/ into TeamCode.
  */
-@Autonomous(name = ${javaString(`${options.layoutName||'Planned route'} (Deck)`)}, group = "Torque")
+@Autonomous(name = ${javaString(options.autoName||`${options.layoutName||'Planned route'} (Deck)`)}, group = "Torque")
 public class ${options.opModeName} extends LinearOpMode {
     private DeckFollower follower;
     private RouteActions actions;
@@ -1157,6 +1204,8 @@ ${[...motorTurrets,...crTurrets.map(({x})=>x)].map(x=>`        ${x.field}.setPow
   // telemetry line (CHECK_RESULTS reads them back). Deck's Send to robot can run it and press the buttons; on any Driver
   // Station a gamepad answers. mechType is Mechanisms, or Outer.Mechanisms for the single OnBot Java file.
   const DRIVE_LABELS={frontLeft:'front left wheel',frontRight:'front right wheel',backLeft:'back left wheel',backRight:'back right wheel',left:'left wheels',right:'right wheels'};
+  // A swerve's pods are checked in Calibrate (each one linked, set straight and tuned), so its check TeleOp has only the mechanisms.
+  const checkHardware=h=>h?.drive?.kind==='swerve'?null:h;
   // The setting a device's direction answer sets, by the field that holds its name.
   const REVERSED_FIELD={motor:'reversed',motor2:'reversed2',indexer:'indexerReversed',turretMotor:'turretReversed'};
   function checkOpMode(options,h,m,mechType='Mechanisms'){
@@ -1779,9 +1828,10 @@ ${flywheels.length&&velocity?`
   }
   // Every TeamCode file for the Control Hub, keyed by path under TeamCode/src/main/java. RobotActions
   // is listed in keep: it is written only when it does not exist yet.
-  function files({route,layout,tuning,robot,localization,setupName,packageName='org.firstinspires.ftc.teamcode',className='PlannedRoute',routeJava,mechanisms=null,kinematics=null,target=null,exporter=globalThis.DeckSimExport||require('./sim-export.js')}){
-    const h=hardware(robot,localization),dir=packageName.replace(/\./g,'/'),opModeName=className+'Auto',mech=mechanisms?.enabled?mechanisms:null,list=exporter.actions(route),{parts,sensorSpecs}=exportParts({robot,localization,mechanisms,kinematics});
-    const options={packageName,className,opModeName,layoutName:layout.name,setupName,exporter,mechanisms:mech,kinematics,parts,sensorSpecs,sequences:exporter.sequences?.(route)||[]};
+  function files({route,layout,tuning,robot,localization,setupName,packageName='org.firstinspires.ftc.teamcode',className='PlannedRoute',autoName='',swerve=null,routeJava,mechanisms=null,kinematics=null,target=null,exporter=globalThis.DeckSimExport||require('./sim-export.js')}){
+    const h=hardware(robot,localization,swerve),dir=packageName.replace(/\./g,'/'),opModeName=className+'Auto',mech=mechanisms?.enabled?mechanisms:null,list=exporter.actions(route),{parts,sensorSpecs}=exportParts({robot,localization,mechanisms,kinematics});
+    // autoName: what the autonomous shows as on the Driver Station, when the team named it (one line, no quotes).
+    const options={packageName,className,opModeName,layoutName:layout.name,autoName:String(autoName||'').replace(/[\r\n\t"\\]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60),setupName,exporter,mechanisms:mech,kinematics,parts,sensorSpecs,sequences:exporter.sequences?.(route)||[]};
     if(mech)h.mechanisms=mechanismHardware(mech);
     // Older callers export geometry before passing the measured robot tuning. Resolve inherited
     // power here as well, so generated code and the virtual follower use the same default.
@@ -1792,7 +1842,7 @@ ${flywheels.length&&velocity?`
     if(mech)out[`${dir}/Mechanisms.java`]=mechanismsSource(options,mech,target||{x:72,y:72},{length:robot?.length,width:robot?.width,wiring:robot?.wiring});
     if(parts.list.length)out[`${dir}/Parts.java`]=partsSource(options,parts.list,sensorSpecs);
     // The check TeleOp tests the drive motors and every mechanism device on the robot before the autonomous runs.
-    const checkName=className+'Check',check=`${dir}/${checkName}.java`;out[check]=checkOpMode({...options,checkName},h,mech);
+    const checkName=className+'Check',check=`${dir}/${checkName}.java`;out[check]=checkOpMode({...options,checkName},checkHardware(h),mech);
     // Deck runs these actions itself: an old RobotActions.java's untouched empty methods for them are taken out (retireStubs).
     const retire={[`${dir}/RobotActions.java`]:list.filter(a=>mechanismAction(a.name,mech,parts)).map(a=>a.slot)};
     return {files:out,keep:[`${dir}/RobotActions.java`],retire,opMode:`${packageName}.${opModeName}`,check:{path:check,opMode:`${packageName}.${checkName}`},hardware:h,actions:list};
@@ -1815,7 +1865,7 @@ ${flywheels.length&&velocity?`
     const source=`package ${packageName};\n\n${[...imports].sort().map(i=>'import '+i+';').join('\n')}\n\n/** Upload this file to OnBot Java, match the robot hardware names and IMU mounting,\n * then Build Everything. Select this autonomous on the Driver Station and INIT/START.\n * All driving code is included. The intake and shooter set up in Deck run in Mechanisms;\n * write anything else (or your own version of an action) in RobotActions.\n * Calibrate wheel travel, pod offsets and control gains on the actual robot.\n */\n${outer}\n${nested.join('\n\n')}\n}\n`;
     // The check TeleOp is its own file (an OpMode cannot be nested) and uses this file's Mechanisms.
     const dir=packageName.replace(/\./g,'/'),checkName=out.check.opMode.split('.').at(-1),mech=options.mechanisms?.enabled?options.mechanisms:null;
-    const check={name:checkName+'.java',source:checkOpMode({packageName,layoutName:options.layout.name,setupName:options.setupName,checkName},out.hardware,mech,name+'.Mechanisms'),opMode:out.check.opMode};
+    const check={name:checkName+'.java',source:checkOpMode({packageName,layoutName:options.layout.name,setupName:options.setupName,checkName},checkHardware(out.hardware),mech,name+'.Mechanisms'),opMode:out.check.opMode};
     return {name:name+'.java',source,opMode:out.opMode,check,files:{[dir+'/'+name+'.java']:source,[dir+'/'+check.name]:check.source},hardware:out.hardware};
   }
   // The robot's own moving parts and the sensors the code reads, for one export.

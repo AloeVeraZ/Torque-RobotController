@@ -5,7 +5,7 @@
 // sent to the robot by itself when it changes, and everything Calibrate measured as one class that builds in OnBot Java. Where the simulator's JDK and FTC stand-ins are built,
 // every kind of chassis is compiled with its mechanisms on either controller.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');
-const T=require('../ui/sim-chassis-teleop.js'),R=require('../ui/sim-teleop-tab.js'),TU=require('../ui/sim-tune.js'),K=require('../ui/sim-chassis-cal.js'),C=require('../ui/sim-config.js');
+const T=require('../ui/sim-chassis-teleop.js'),R=require('../ui/sim-teleop-tab.js'),A=require('../ui/sim-auto-tab.js'),TU=require('../ui/sim-tune.js'),K=require('../ui/sim-chassis-cal.js'),C=require('../ui/sim-config.js');
 const pod=(n,x,y)=>({label:n,drive:n+'M',reversed:false,servo:n+'S',encoder:n+'E',x,y,zero:1.5,encoderSign:1,servoSign:-1,gain:40,leadP:.083,leadN:.075,creepP:.13,creepN:.1,creepSpeedP:78,creepSpeedN:74,slope:1700,top:475,pushP:150,pushN:140,zone:8,ease:1,still:12,lag:.14,volts:3.3});
 const KINDS={swerve:{kind:'swerve',tolerance:.9,pods:[pod('front',6,0),pod('left',-3,5),pod('right',-3,-5)]},mecanum:{kind:'mecanum',motors:[{key:'frontLeft',name:'lf'},{key:'frontRight',name:'rf',reversed:true},{key:'backLeft',name:'lb'},{key:'backRight',name:'rb',reversed:true}]},tank:{kind:'tank',motors:[{key:'left',name:'l'},{key:'right',name:'r'}]}};
 const common={robot:{},imu:{name:'imu',scale:1},config:'c',date:'d'};
@@ -100,8 +100,10 @@ test('each mechanism in Setup gets buttons nothing else has, starting as what it
   const used=Object.values(m).flatMap(x=>[x.a,x.b]).filter(b=>b!=='none');assert.equal(new Set(used).size,used.length,'no button twice');
   for(const b of T.chassisButtons({spin:'bumpers',lock:'x'}))assert.ok(!used.includes(b),`${b} is the chassis’s`);
   assert.deepEqual(T.clashes(MECHS.map(x=>({...x,...m[x.id]})),{map:{spin:'bumpers',lock:'x'}}),[]);
-  // On a second controller they have every button.
-  assert.equal(T.mechMap(MECHS,{},{pad:'gamepad2'})['shooter:0:flywheel'].a,'right_bumper');
+  // On a second controller they have every button. The controls go round by how much each kind is used, whatever order
+  // Setup lists them in: the intake on the triggers, the lift on the D-pad, the claw on a bumper, then what shoots and feeds.
+  const second=T.mechMap(MECHS,{},{pad:'gamepad2'}),ctl=m=>Object.fromEntries(Object.entries(m).map(([k,x])=>[k.split(':').pop(),[x.a,x.b].filter(c=>c!=='none').join('/')]));
+  assert.deepEqual(ctl(second),{roller:'right_trigger/left_trigger',flywheel:'left_bumper',lift:'dpad_up/dpad_down',claw:'right_bumper',feeder:'a',hood:'b'});assert.deepEqual(ctl(T.mechMap([...MECHS].reverse(),{},{pad:'gamepad2'})),ctl(second));
   // What the team picked stays; what it displaced takes another; a mechanism turned off takes none.
   const picked=T.mechMap(MECHS,{'kin:claw':{mode:'positions',a:'right_trigger',b:'left_trigger'},'kin:lift':{mode:'off'}},{pad:'gamepad2'});
   assert.deepEqual([picked['kin:claw'].mode,picked['kin:claw'].a,picked['kin:claw'].b],['positions','right_trigger','left_trigger']);assert.ok(!['right_trigger','left_trigger'].includes(picked['intake:0:roller'].a));assert.deepEqual([picked['kin:lift'].mode,picked['kin:lift'].a],['off','none']);
@@ -138,10 +140,15 @@ test('the TeleOp is written from the choices kept, and sent by itself only when 
   assert.deepEqual(R.clean({pad:'gamepad9',auto:0,mechs:{a:{mode:'fly',a:'nose',b:'none',power:'x',posA:.25}}},T),{pad:'gamepad1',auto:true,mechs:{a:{b:'none',posA:.25}}});assert.equal(R.clean({auto:false},T).auto,false);
   const b=R.build(o);assert.equal(b.tele.file,'TorqueTeleOp.java');assert.equal(b.list.length,MECHS.length);assert.match(b.tele.source,/intake1Rollers\.setPower\(gamepad1\./);
   kept={pad:'gamepad2',auto:true,mechs:{'kin:lift':{mode:'off'}}};const b2=R.build(o);assert.match(b2.tele.source,/intake1Rollers\.setPower\(gamepad2\./);assert.doesNotMatch(b2.tele.source,/DcMotor lift/);
+  // Until the team picks, the mechanisms share the driving's controller while they fit and start on a second one when they do not.
+  kept=undefined;assert.equal(R.build(o).state.pad,'gamepad1');const crowd=Array.from({length:16},(_,i)=>({id:'c'+i,label:'C'+i,device:'c'+i,kind:'crservo',type:'spinner'}));
+  assert.equal(R.build({...o,mechs:()=>crowd}).state.pad,'gamepad2');assert.ok(!R.build({...o,mechs:()=>crowd}).list.some(x=>x.full));kept={pad:'gamepad1'};assert.equal(R.build({...o,mechs:()=>crowd}).state.pad,'gamepad1','picked: it stays');kept={pad:'gamepad2',auto:true,mechs:{'kin:lift':{mode:'off'}}};
   // No chassis to write for: it says so rather than writing half a TeleOp.
   assert.match(R.build({...o,chassis:()=>null}).tele.error,/no chassis/);
   const ui=R.create(o),wait=ms=>new Promise(r=>setTimeout(r,ms));
-  ui.refresh();assert.match(o.box.innerHTML,/No robot connected: plug in the Control Hub and it is sent by itself/);await wait(1700);assert.equal(sent.length,0,'no robot: nothing is sent');
+  // The page opens on Driving, with the list beside it: the status of the send is on its tile, its words on its own page.
+  ui.refresh();assert.match(o.box.innerHTML,/data-rt-view="drive" aria-pressed="true"/);assert.match(o.box.innerHTML,/<b>Send to robot<\/b><small>No robot connected<\/small>/);assert.doesNotMatch(o.box.innerHTML,/data-rt="send"/,'one thing at a time');
+  ui.show('send');assert.match(o.box.innerHTML,/No robot connected: plug in the Control Hub and it is sent by itself/);await wait(1700);assert.equal(sent.length,0,'no robot: nothing is sent');
   connected=true;busy='A check or a tune is running in Mechanisms.';ui.refresh();assert.match(o.box.innerHTML,/A check or a tune is running in Mechanisms\. It is sent when that is done/);await wait(1700);assert.equal(sent.length,0,'the robot is in use: it waits');
   busy='';visible=false;ui.refresh();await wait(1700);assert.equal(sent.length,0,'the TeleOp tab is not showing: it waits');
   visible=true;ui.refresh();await wait(1800);assert.equal(sent.length,1,'then it goes by itself');assert.equal(sent[0].file,'TorqueTeleOp.java');assert.match(o.box.innerHTML,/On the robot as “Torque TeleOp”/);
@@ -164,4 +171,111 @@ test('the whole robot’s TeleOp compiles for every chassis, mapping and control
       try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(d,'out'),path.join(d,tele.file)],{stdio:'pipe'});}catch(e){assert.fail(`${name} with ${JSON.stringify(map)} on ${pad} does not compile: ${String(e.stderr||e.message).slice(0,500)}`);}}
     assert.equal(k,18);}
   finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('every wheeled chassis has its own arithmetic, the same in the picture and in the Java',t=>{
+  const four=KINDS.mecanum.motors,three=[{key:'front',name:'f'},{key:'backLeft',name:'bl'},{key:'backRight',name:'br',reversed:true}],go=(kind,motors,pad)=>T.wheelPowers(motors,T.command({field:'no'},pad),kind).map(v=>+v.toFixed(2));
+  // A kiwi: driving ahead the front wheel only rolls sideways and the back two push; sideways the front one leads; turning, all three run the same way.
+  assert.deepEqual(go('kiwi',three,{ly:-1}),[0,-.87,.87]);assert.deepEqual(go('kiwi',three,{lx:-1}),[1,-.5,-.5]);assert.deepEqual(go('kiwi',three,{rx:-1}),[1,1,1]);assert.equal(Math.max(...go('kiwi',three,{ly:-1,rx:-1}).map(Math.abs)),1,'scaled together, never past full power');
+  // An X-drive and a butterfly move any way, as a mecanum does; a tank of two motors or four does not strafe.
+  for(const kind of ['xdrive','butterfly']){assert.deepEqual(go(kind,four,{lx:-1}),[-1,1,1,-1]);assert.deepEqual(go(kind,four,{lx:1,ly:-1}),[1,0,0,1]);}
+  assert.deepEqual(go('tank',KINDS.tank.motors,{ly:-1,lx:1}),[1,1]);assert.deepEqual(go('tank',four,{rx:-1}),[-1,1,-1,1]);
+  const src=kind=>T.teleopOf({kind,motors:kind==='kiwi'?three:four,...common}).source;
+  assert.match(src('kiwi'),/double\[\] power = \{left \+ turn, -0\.866025 \* forward - 0\.5 \* left \+ turn, 0\.866025 \* forward - 0\.5 \* left \+ turn\};/);assert.match(src('kiwi'),/A kiwi drive/);assert.match(src('xdrive'),/An X-drive/);assert.match(src('butterfly'),/butterfly/);
+  assert.match(src('xdrive'),/double\[\] power = \{forward - left - turn, forward \+ left \+ turn, forward \+ left - turn, forward - left \+ turn\};/);
+  // The picture has a wheel for each motor: a kiwi's three round the robot, an X-drive's four turned 45°.
+  assert.equal(R.chassisArt({kind:'kiwi',motors:three}).split('data-rt-arrow=').length-1,3);assert.match(R.chassisArt({kind:'kiwi',motors:three}),/rotate\(-90\)/);assert.equal(R.chassisArt({kind:'xdrive',motors:four}).split('rotate(45)').length-1,2);assert.doesNotMatch(R.chassisArt({kind:'xdrive',motors:four}),/rt-roller/);
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.diagnostic('the simulator’s JDK is not built here: not compiled');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-kinds-'));
+  try{for(const kind of ['mecanum','xdrive','butterfly','kiwi','tank']){const tele=T.teleopOf({kind,motors:kind==='kiwi'?three:four,...common,map:{spin:'bumpers',turn:'triggers'}}),d=path.join(dir,kind);fs.mkdirSync(d);fs.writeFileSync(path.join(d,tele.file),tele.source);
+      try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(d,'out'),path.join(d,tele.file)],{stdio:'pipe'});}catch(e){assert.fail(`${kind} does not compile: ${String(e.stderr||e.message).slice(0,500)}`);}}}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+const WHOLE=[{id:'lift',label:'Lift',device:'lift',kind:'motor',type:'lift',template:'T1',states:['down','up']},{id:'tur',label:'Turret',device:'tur',kind:'motor',type:'turret',template:'T2',states:['front','left','right']},
+  {id:'kick',label:'Kicker',device:'kick',kind:'servo',type:'kicker',states:['back','out'],posA:.1,posB:.6},{id:'mini',label:'Mini turret',device:'mini',kind:'servo',type:'mini-turret',states:['front','left','right'],posA:.5,posB:.2},
+  {id:'claw',label:'Claw',device:'claw',kind:'servo',type:'claw',states:['open','closed'],posA:.2,posB:.8},{id:'arm',label:'Arm',device:'arm',kind:'motor',type:'arm',template:'T2',states:['down','up']}];
+
+test('a mechanism can be on any part of the controller: a button, a trigger, a stick, in its own words',t=>{
+  const raw={arm:{mode:'axis'},claw:{mode:'follow',a:'right_trigger'}},m=T.mechMap(WHOLE,raw,{pad:'gamepad1',map:{},swerve:true}),list=WHOLE.map(x=>({...x,...m[x.id]}));
+  // How each starts comes from what it is: a lift on up and down, a turret on left and right, a kicker over while held, three positions on three buttons.
+  assert.deepEqual([m.lift.mode,m.lift.a,m.lift.b],['updown','dpad_up','dpad_down']);assert.deepEqual([m.tur.mode,m.tur.a,m.tur.b],['updown','dpad_left','dpad_right']);assert.equal(m.kick.mode,'momentary');
+  assert.equal(m.mini.mode,'positions');assert.ok(![m.mini.a,m.mini.b,m.mini.c].includes('none'),'a button for each of its three positions');assert.equal(new Set([m.mini.a,m.mini.b,m.mini.c]).size,3);
+  // Its controls are named by its own positions.
+  assert.deepEqual(T.usesOf('updown',['down','up']),['Up','Down',null]);assert.deepEqual(T.usesOf('updown',['front','left','right']),['Left','Right',null]);assert.deepEqual(T.usesOf('positions',['front','left','right']),['Front','Left','Right']);assert.deepEqual(T.usesOf('flip',['open','closed']),['Flips open and closed',null,null]);assert.equal(T.usesOf('positions',[])[2],null);
+  assert.equal(R.says(T,list[0]),'Up: D-pad up · down: D-pad down');assert.equal(R.says(T,list[2]),`Out while ${T.BUTTONS[m.kick.a]} is held`);assert.equal(R.says(T,list[5]),'Follows right stick, up and down');
+  // A stick the chassis does not drive or turn with is free for a mechanism; one it does use is not offered.
+  assert.equal(m.arm.a,'right_stick_y','the driving has the left stick and the right stick’s left and right');assert.equal(m.claw.a,'right_trigger');
+  assert.deepEqual(T.chassisParts({},true).slice(0,3),['left_stick_x','left_stick_y','right_stick_x']);assert.equal(T.mechMap([WHOLE[5]],{arm:{mode:'axis',a:'left_stick_y'}},{pad:'gamepad1',map:{}}).arm.a,'right_stick_y','a stick the chassis has is not taken');
+  assert.equal(T.mechMap([WHOLE[5]],{arm:{mode:'axis',a:'left_stick_y'}},{pad:'gamepad2'}).arm.a,'left_stick_y','a second controller has both sticks');
+  // Both triggers as one control take both: nothing else gets either.
+  const trig=T.mechMap(WHOLE,{arm:{mode:'axis',a:'triggers'}},{pad:'gamepad2'});assert.equal(trig.arm.a,'triggers');for(const [id,x] of Object.entries(trig))if(id!=='arm')for(const k of ['a','b','c'])assert.ok(!/_trigger$/.test(x[k]),`${id} is not on a trigger`);
+  assert.deepEqual(T.clashes(list,{pad:'gamepad1',map:{}}),[]);
+  assert.deepEqual(T.clashes([{label:'A',kind:'motor',mode:'axis',a:'left_stick_y'}],{pad:'gamepad1',map:{}}),[{button:'left_stick_y',name:'Left stick, up and down',uses:['the chassis','A']}]);
+  assert.equal(T.clashes([{label:'A',kind:'motor',mode:'axis',a:'triggers'},{label:'B',kind:'servo',mode:'flip',a:'left_trigger'}],{pad:'gamepad2'})[0].button,'left_trigger');
+  // The Java: a stick as a number (up is positive), a trigger from 0 to 1, a servo over while held, three positions.
+  const code=T.mechCode(list),loop=code.loop.join('\n');
+  assert.match(loop,/double armGo = -gamepad1\.right_stick_y;\n\s+arm\.setPower\(Math\.abs\(armGo\) < 0\.05 \? 0 : armGo \* 1\.0\);/);assert.match(loop,/claw\.setPosition\(0\.2 \+ \(0\.8 - 0\.2\) \* Math\.max\(0, Math\.min\(1, gamepad1\.right_trigger\)\)\);/);
+  assert.match(loop,/kicker\.setPosition\(gamepad1\.\w+(?: > 0\.5)? \? 0\.6 : 0\.1\);/);assert.match(loop,/if \(gamepad1\.\w+\) miniTurret\.setPosition\(0\.5\); else if \(gamepad1\.\w+\) miniTurret\.setPosition\(0\.2\); else if \(gamepad1\.\w+\) miniTurret\.setPosition\(0\.35\);/);
+  assert.match(code.init.join('\n'),/\/\/ Turret: D-pad left moves it left, D-pad right right; it brakes when let go\./);assert.match(code.init.join('\n'),/arm\.setZeroPowerBehavior\(DcMotor\.ZeroPowerBehavior\.BRAKE\);/);
+  // The same steps in the page's meter: what the controller is telling it right now.
+  const step=(x,pads)=>{const st={};let r;for(const p of pads)r=T.mechStep(x,st,p);return r;};
+  assert.deepEqual(step(list[0],[{dpad_up:true}]),{power:1});assert.deepEqual(step(list[0],[{dpad_down:true}]),{power:-1});assert.deepEqual(step(list[0],[{}]),{power:0});
+  assert.equal(step(list[5],[{ry:-.5}]).power,.5,'a stick pushed up is positive');assert.equal(step(list[5],[{ry:.02}]).power,0);
+  assert.deepEqual(step(list[2],[{[m.kick.a]:true,lt:1,rt:1}]),{position:.6,at:1});assert.deepEqual(step(list[2],[{}]),{position:.1,at:0});
+  assert.deepEqual(step(list[3],[{}]),{position:null,at:null},'a servo is not moved until its control is used');assert.deepEqual(step(list[3],[{[m.mini.c]:true}]),{position:.35,at:2});
+  assert.ok(Math.abs(step(list[4],[{rt:.5}]).position-.5)<1e-9);
+  const flip={...WHOLE[4],...T.mechMap([WHOLE[4]],{},{pad:'gamepad2'}).claw};assert.deepEqual(step(flip,[{[flip.a]:true,rt:1},{},{[flip.a]:true,rt:1}]),{position:.2,at:0},'pressed twice, it is back where it started');
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.diagnostic('the simulator’s JDK is not built here: not compiled');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-whole-'));
+  try{let k=0;for(const pad of ['gamepad1','gamepad2'])for(const pick of [raw,{arm:{mode:'axis',a:'triggers'},claw:{mode:'momentary'},kick:{mode:'follow',a:'right_stick_y'},mini:{mode:'flip'},lift:{mode:'toggle'},tur:{mode:'hold'}}]){
+      const mm=T.mechMap(WHOLE,pick,{pad,map:{},swerve:false}),tele=T.teleopOf({...KINDS.mecanum,...common,className:T.FULL_NAME,opMode:T.FULL_OP_MODE,mechanisms:WHOLE.map(x=>({...x,...mm[x.id]})),pad}),d=path.join(dir,String(k++));fs.mkdirSync(d);fs.writeFileSync(path.join(d,tele.file),tele.source);
+      try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(d,'out'),path.join(d,tele.file)],{stdio:'pipe'});}catch(e){assert.fail(`mechanisms on ${pad} do not compile: ${String(e.stderr||e.message).slice(0,500)}`);}}}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('the TeleOp tab is a list with one thing showing at a time: driving, a mechanism, sending, the calibration code',()=>{
+  let kept;const map={};
+  const o={box:{innerHTML:'',addEventListener(){},querySelector(){return null;}},T,chassis:()=>({...KINDS.mecanum,...common}),map:()=>T.mapOf(map),setMap:(k,v)=>{map[k]=v;},swerve:()=>false,mechs:()=>WHOLE,
+    store:{get:()=>kept,set:v=>{kept=v;}},sent:{get:()=>null,set(){}},send:async()=>'ok',connected:()=>false,busy:()=>'',visible:()=>false,saveFile:async()=>null,copy:async()=>{},values:()=>({java:'public final class TorqueCalibration {}',json:'{}',jsonName:'x.json'})};
+  const ui=R.create(o),html=()=>o.box.innerHTML,count=re=>(html().match(re)||[]).length;ui.refresh();
+  // The list: Driving, every mechanism, Send to robot, Calibration code.
+  assert.equal(count(/data-rt-view="/g),1+WHOLE.length+2);assert.match(html(),/<b>Driving<\/b><small>Mecanum · left stick drives<\/small>/);assert.match(html(),/<b>Lift<\/b><small>Up: D-pad up · down: D-pad down<\/small>/);
+  assert.equal(count(/<section class="cal-card rt-card">/g),1,'one page at a time');assert.match(html(),/<h2>Driving<\/h2>/);assert.match(html(),/What the controller does/);assert.doesNotMatch(html(),/Lock the wheels/,'only a swerve locks its wheels');
+  // A mechanism's page: what it does, its controls by its own words, any stick or trigger, and a meter.
+  ui.show('mech:tur');assert.match(html(),/<h2>Turret<\/h2>/);assert.match(html(),/<label for="rt-a">Left<\/label>/);assert.match(html(),/<label for="rt-b">Right<\/label>/);assert.match(html(),/data-rt-meter/);assert.doesNotMatch(html(),/What the controller does/);
+  assert.doesNotMatch(html().split('id="rt-a"')[1].split('</select>')[0],/value="right_bumper"/,'a button the chassis has is not offered');
+  kept={mechs:{arm:{mode:'axis'}}};ui.show('mech:arm');assert.match(html(),/<label for="rt-a">Follows<\/label>/);assert.match(html(),/<option value="right_stick_y" selected>Right stick, up and down<\/option>/);assert.match(html(),/<option value="triggers">Both triggers/);assert.doesNotMatch(html().split('id="rt-a"')[1].split('</select>')[0],/value="left_stick_y"/);
+  ui.show('mech:mini');assert.match(html(),/<label for="rt-c">Right<\/label>/);assert.match(html(),/Front \(0 to 1\)/);assert.match(html(),/Right \(0 to 1\)/);
+  // Sending and the calibration code each have their own page.
+  ui.show('send');assert.match(html(),/<h2>Send to robot<\/h2>/);assert.match(html(),/data-rt="send"/);assert.match(html(),/See the code/);ui.show('code');assert.match(html(),/<h2>Calibration code<\/h2>/);assert.match(html(),/Put it on the robot \(OnBot Java\)/);
+  // With no mechanisms in Setup the list says so, and where to add them.
+  const none=R.create({...o,box:{innerHTML:'',addEventListener(){},querySelector(){return null;}},mechs:()=>[]});none.refresh();none.show('nomech');
+});
+
+test('Autonomous sends what Simulate has, under the name the team gives it',async()=>{
+  assert.equal(A.cleanName('  Red "left"\n side \\ 2  '),'Red left side 2');assert.equal(A.cleanName('x'.repeat(90)).length,60);assert.equal(A.defaultName({name:'Qualifier'}),'Qualifier (Deck)');assert.equal(A.facts({paths:3,actions:1,seconds:12.34}),'3 paths · 1 action · about 12.3 s');assert.equal(A.facts({paths:1,actions:0,seconds:null}),'1 path');
+  let name='',route={name:'Qualifier',paths:3,actions:2,seconds:14.2,stamp:1,problem:'',report:null},why='',sentNote=null,connected=true,made=0;const sent=[];
+  const box={innerHTML:'',addEventListener(){},querySelector(){return null;}},wait=()=>new Promise(r=>setTimeout(r,20));
+  const ui=A.create({box,route:()=>route,supported:()=>why,name:{get:()=>name,set:v=>{name=v;}},code:async()=>{made++;return {files:{'a/QualifierAuto.java':'x'},name:'QualifierAuto.java',source:`@Autonomous(name = "${name||'Qualifier (Deck)'}")`,opMode:name||'Qualifier (Deck)'};},
+    send:async out=>{sent.push(out);return 'Built.';},sent:{get:()=>sentNote,set:v=>{sentNote=v;}},connected:()=>connected,busy:()=>'',toRun(){},saveFile:async()=>null,copy:async()=>{}});
+  ui.refresh();await wait();
+  assert.match(box.innerHTML,/<b>Qualifier<\/b><span>3 paths · 2 actions · about 14\.2 s<\/span>/);assert.match(box.innerHTML,/Not run in Run &amp; review yet/);assert.match(box.innerHTML,/Shows on the Driver Station as “Qualifier \(Deck\)”/);assert.match(box.innerHTML,/Not on the robot yet\./);
+  assert.match(box.innerHTML,/<dialog class="at-name"/,'Send to robot asks for the name in a pop-up');assert.match(box.innerHTML,/data-at="send">Send to robot/);assert.equal(ui.name(),'Qualifier (Deck)');
+  // The same route is not written again; a changed one, or a new name, is.
+  ui.refresh();await wait();assert.equal(made,1);route={...route,stamp:2,report:{title:'Finished in 13.9 s',level:'ok'}};ui.refresh();await wait();assert.equal(made,2);assert.match(box.innerHTML,/class="at-run ok">Run &amp; review: Finished in 13\.9 s/);
+  name='Red left';ui.refresh();await wait();assert.equal(made,3);assert.match(box.innerHTML,/Shows on the Driver Station as “Red left”/);assert.match(box.innerHTML,/@Autonomous\(name = &quot;Red left&quot;\)/);
+  // A route that cannot be sent, or a robot Torque writes no autonomous for, says why and sends nothing.
+  route={...route,problem:'Add a path first: click the field in Path planning.'};ui.refresh();assert.match(box.innerHTML,/Add a path first/);assert.match(box.innerHTML,/data-at="send" disabled/);
+  route={...route,problem:''};why='Autonomous on a Control Hub is exported for mecanum and tank drivetrains.';ui.refresh();assert.match(box.innerHTML,/exported for mecanum and tank drivetrains/);assert.match(box.innerHTML,/data-at="send" disabled/);assert.equal(sent.length,0);
+});
+
+test('the name goes into the autonomous the Driver Station lists',()=>{
+  const P=require('../ui/sim-planner.js'),X=require('../ui/sim-export.js'),F=require('../ui/sim-ftc.js');
+  const start={x:24,y:24,heading:0},layout={name:'Hub',field:'empty',width:144,height:144,start,zones:[]},route=P.plan({start,zones:[],pins:[{x:90,y:24}],style:'sharp',clearance:1},{front:8,rear:8,half:8}),robot={...C.robot({},'ftc'),length:16,width:16},routeJava=X.java(route,layout,{polygon:P.polygon});
+  const plain=F.onBotJava({route,layout,tuning:{},robot,localization:'encoders',routeJava}),named=F.onBotJava({route,layout,tuning:{},robot,localization:'encoders',routeJava,autoName:'Red left "2"\n'});
+  assert.match(plain.source,/@Autonomous\(name = "Hub \(Deck\)", group = "Torque"\)/);assert.match(named.source,/@Autonomous\(name = "Red left 2", group = "Torque"\)/);assert.match(named.check.source,/@TeleOp\(name = "Hub check \(Deck\)"/,'its check TeleOp keeps the route’s name');
+  assert.equal(named.name,plain.name,'the file keeps its name: only what the Driver Station shows changes');
+  // A swerve has no Control Hub autonomous yet, and says so.
+  assert.throws(()=>F.hardware({...robot,drivetrain:'kiwiSwerve'},'encoders'),/mecanum and tank drivetrains/);
 });
