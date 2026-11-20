@@ -189,6 +189,9 @@ class SimulationHost{
       if(data.keep){targets[data.key]={path:r.filePath,format:data.format};save();}
       return {name:path.basename(r.filePath),created:companion(r.filePath),beside:beside(r.filePath)};
     }
+    // A file Torque wrote for the team's own code (the TeleOp, the calibrated values): saved where they choose.
+    if(action==='code-save'){if(typeof data?.text!=='string'||data.text.length>2000000)throw Error('There is nothing to save.');const name=String(data?.name||'Torque.java').replace(/[\\/:*?"<>|]+/g,' ').trim().slice(0,80)||'Torque.java',ext=(path.extname(name).slice(1)||'java').toLowerCase();
+      const r=await dialog.showSaveDialog(win,{title:'Save '+name,defaultPath:name,filters:[{name:ext==='json'?'JSON':ext==='java'?'Java source':ext.toUpperCase(),extensions:[ext]}]});if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,data.text);return r.filePath;}
     // A real run report (Calibrate → Real run): text and JSON kept with the app's data, and beside the code too when Torque runs from its checkout.
     if(action==='real-run-save'){if(typeof data?.text!=='string'||typeof data?.json!=='string'||data.text.length>400000||data.json.length>400000)throw Error('The report could not be read.');
       const d=new Date(),two=n=>String(n).padStart(2,'0'),stamp=`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`,base=`${stamp}-${String(data.name||'robot').replace(/[^\w-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'robot'}`;

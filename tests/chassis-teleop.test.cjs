@@ -32,7 +32,7 @@ test('the controller is mapped the way the team picked',()=>{
   const m=T.teleopOf({...mecanum,map:{drive:'right',turn:'triggers',slow:'none',reset:'y',field:'no'}}).source;
   assert.match(m,/forward = -gamepad1\.right_stick_y, left = -gamepad1\.right_stick_x, turn = gamepad1\.left_trigger - gamepad1\.right_trigger;/);assert.doesNotMatch(m,/0\.4/);assert.match(m,/if \(gamepad1\.y\) imu\.resetYaw\(\);/);assert.doesNotMatch(m,/Field centric/);
   // Driving and turning cannot both be the same stick's left and right; a choice not on the list is the default.
-  assert.deepEqual(T.mapOf({drive:'right',turn:'right',slow:'x'}),{drive:'right',turn:'left',slow:'right_bumper',reset:'start',field:'yes'});
+  assert.deepEqual(T.mapOf({drive:'right',turn:'right',slow:'x'}),{drive:'right',turn:'left',spin:'none',lock:'none',slow:'right_bumper',reset:'start',field:'yes'});
   // Mecanum: forward, left and a turn to the left, wheel by wheel. Tank: a side each, never field centric.
   assert.match(d,/double\[\] power = \{forward - left - turn, forward \+ left \+ turn, forward \+ left - turn, forward - left \+ turn\};/);assert.match(d,/DRIVE_REVERSED = \{false, true, false, true\};/);
   const k=T.teleopOf(tank).source;assert.match(k,/double\[\] power = \{forward - turn, forward \+ turn\};/);assert.doesNotMatch(k,/Field centric/);});
