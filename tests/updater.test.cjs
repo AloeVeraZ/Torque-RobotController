@@ -75,3 +75,15 @@ test('an update keeps locally installed field and robot CAD that release package
   assert.equal(fs.readFileSync(path.join(next,'ui/vendor/models/biobuzz/field.glb'),'utf8'),'field');assert.equal(fs.readFileSync(path.join(next,'ui/assets/robots/strafer.glb.gz'),'utf8'),'robot');
   assert.equal(fs.readFileSync(path.join(next,'ui/assets/fields/decode.glb.gz'),'utf8'),'new decode');assert.equal(fs.readFileSync(path.join(next,'ui/app.js'),'utf8'),'new code');assert.equal(fs.readFileSync(path.join(next,'ui/assets/robots/catalog.json'),'utf8'),'new catalog');
 });
+
+test('switching channels never offers the build already installed: a Main install on Testing with nothing newer is up to date',()=>{
+  const {selectRelease,assetName}=require('../src/updater.cjs'),rel=(tag,v,pre=false)=>({tag_name:tag,draft:false,prerelease:pre,body:'',assets:[{name:assetName(v,'darwin','arm64'),state:'uploaded',size:1}]});
+  const ask=(rs,o)=>selectRelease(rs,{platform:'darwin',arch:'arm64',base:'',...o});
+  // Main 2.4.35 installed, Testing chosen, only v2.4.35 published: installing it would change nothing, again and again.
+  const a=ask([rel('v2.4.35','2.4.35')],{version:'2.4.35',channel:'testing',installedChannel:'main'});assert.equal(a.status,'current');assert.match(a.message,/The next testing release reaches you here/);
+  // The testing build of the same version is a different build: it is offered, and after it the channels agree.
+  assert.equal(ask([rel('v2.4.35','2.4.35'),rel('testing-v2.4.35','2.4.35',true)],{version:'2.4.35',channel:'testing',installedChannel:'main'}).tag,'testing-v2.4.35');
+  assert.equal(ask([rel('v2.4.35','2.4.35'),rel('testing-v2.4.35','2.4.35',true)],{version:'2.4.35',channel:'testing',installedChannel:'testing'}).status,'current');
+  // Testing back to Main still installs Main's build, the same version or an older one.
+  assert.equal(ask([rel('v2.4.35','2.4.35')],{version:'2.4.35',channel:'main',installedChannel:'testing'}).tag,'v2.4.35');assert.equal(ask([rel('v2.4.35','2.4.35')],{version:'2.4.36',channel:'main',installedChannel:'testing'}).tag,'v2.4.35');
+});

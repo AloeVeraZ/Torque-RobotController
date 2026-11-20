@@ -26,6 +26,11 @@ function selectRelease(releases,{version,channel,installedChannel=channel,platfo
   const pattern=channel==='testing'?/^(?:testing-)?v(\d+\.\d+\.\d+)$/:/^v(\d+\.\d+\.\d+)$/;
   const candidates=releases.filter(r=>!r.draft&&pattern.test(r.tag_name)&&(channel==='testing'||!r.prerelease)).map(r=>({...r,version:r.tag_name.match(pattern)[1]})).sort((a,b)=>compare(b.version,a.version));
   if(!candidates.length)return {status:'unpublished',message:`No ${channel} releases have been published yet.`};
+  // The build already installed is never offered again. Switching channels offers the other channel's build of a
+  // version, but a Main install that switches to Testing while Testing has nothing newer would be offered its own release
+  // (v1.2.3) over and over: installing it changes nothing, so it is the same as being up to date.
+  const same=c=>c.version===version&&c.tag_name===(installedChannel==='testing'?'testing-v':'v')+version;
+  if(channel!==installedChannel){const other=candidates.filter(c=>!same(c));if(!other.length)return {status:'current',latest:candidates[0].version,message:`You’re up to date. Latest ${channel} release: ${candidates[0].version}. The next ${channel} release reaches you here.`};candidates.splice(0,candidates.length,...other);}
   const r=candidates[0];if(channel===installedChannel&&compare(r.version,version)<=0)return {status:'current',latest:r.version,message:`You’re up to date. Latest ${channel} release: ${r.version}.`};
   // A release can be built for only some devices (testing builds). It reaches this device only with
   // this device's full download; its App package fits every platform, so it counts only beside that.
