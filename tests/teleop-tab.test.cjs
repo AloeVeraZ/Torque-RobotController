@@ -148,7 +148,7 @@ test('the TeleOp is written from the choices kept, and sent by itself only when 
   const ui=R.create(o),wait=ms=>new Promise(r=>setTimeout(r,ms));
   // The page opens on Driving, with the list beside it: the status of the send is on its tile, its words on its own page.
   ui.refresh();assert.match(o.box.innerHTML,/data-rt-view="drive" aria-pressed="true"/);assert.match(o.box.innerHTML,/<b>Send to robot<\/b><small>No robot connected<\/small>/);assert.doesNotMatch(o.box.innerHTML,/data-rt="send"/,'one thing at a time');
-  ui.show('send');assert.match(o.box.innerHTML,/No robot connected: plug in the Control Hub and it is sent by itself/);await wait(1700);assert.equal(sent.length,0,'no robot: nothing is sent');
+  ui.show('send');assert.match(o.box.innerHTML,/Simulated<\/span> No Control Hub is connected, so there is no robot to send to/);await wait(1700);assert.equal(sent.length,0,'no robot: nothing is sent');
   connected=true;busy='A check or a tune is running in Mechanisms.';ui.refresh();assert.match(o.box.innerHTML,/A check or a tune is running in Mechanisms\. It is sent when that is done/);await wait(1700);assert.equal(sent.length,0,'the robot is in use: it waits');
   busy='';visible=false;ui.refresh();await wait(1700);assert.equal(sent.length,0,'the TeleOp tab is not showing: it waits');
   visible=true;ui.refresh();await wait(1800);assert.equal(sent.length,1,'then it goes by itself');assert.equal(sent[0].file,'TorqueTeleOp.java');assert.match(o.box.innerHTML,/On the robot as “Torque TeleOp”/);

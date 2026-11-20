@@ -158,7 +158,8 @@ function openPicker(flavor){
   if(!list.length){closePicker();noneOf=flavor;try{session.command('CMD_REQUEST_OP_MODE_LIST');}catch{}toast(`This robot has no ${flavor==='AUTONOMOUS'?'autonomous':'TeleOp'} op modes yet. Send one from Calibrate → ${flavor==='AUTONOMOUS'?'Autonomous':'TeleOp'}, then pick it here.`,6000);return queueRender();}
   noneOf='';
   for(const m of [...list].sort((a,b)=>a.name.localeCompare(b.name))){const g=!m.group||m.group==='$$$$$$$'?'':m.group;if(!groups.has(g))groups.set(g,[]);groups.get(g).push(m);}
-  const names=[...groups.keys()].sort((a,b)=>a===''?-1:b===''?1:a.localeCompare(b)),items=[];
+  // What Torque sent comes first (its group, "Torque"), so a TeleOp just sent is at the top of a long list; then the ungrouped ones, then each group.
+  const rank=g=>g==='Torque'?0:g===''?1:2,names=[...groups.keys()].sort((a,b)=>rank(a)-rank(b)||a.localeCompare(b)),items=[];
   for(const g of names){if(g)items.push(el('h3','',g));for(const m of groups.get(g)){const b=el('button',selected?.name===m.name?'selected':'');b.setAttribute('role','option');b.append(el('span','',m.name));if(m.source==='BLOCKLY'||m.source==='ONBOTJAVA')b.append(el('small','',m.source==='BLOCKLY'?'Blocks':'OnBot Java'));b.onclick=()=>{selected=m;timerOn=m.flavor==='AUTONOMOUS'&&prefs.autoTimer;closePicker();queueRender();};items.push(b);}}
   if(!items.length)items.push(el('p','none',`No ${flavor==='AUTONOMOUS'?'autonomous':'TeleOp'} op modes are registered on this robot.`));
   $('#picker-title').textContent=flavor==='AUTONOMOUS'?'Autonomous':'TeleOp';$('#picker-list').replaceChildren(...items);$('#picker').hidden=false;$('#picker-list button')?.focus();

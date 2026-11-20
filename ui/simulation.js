@@ -2261,9 +2261,9 @@ public class MyAuto implements DeckAutonomous {
     const conn=usb?.found?{id:'usb:'+usb.serial,host:'usb'}:d.wifi?.robot&&d.wifi.reachable!==false?{id:'wifi:'+d.wifi.host,host:d.wifi.host}:null;
     if(!conn&&setupRobot?.id?.startsWith('wifi:')&&++setupGone<2)return;
     if(conn)setupGone=0;
-    if(!conn){setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;if(setupRobot){setupRobot=null;setupRead=null;setupChecks([]);setupRender();}if(hubUsbForget())hubUsbChanged();
+    if(!conn){const wasOn=!!setupConn;setupConn=null;if(wasOn)calRender();setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;if(setupRobot){setupRobot=null;setupRead=null;setupChecks([]);setupRender();}if(hubUsbForget())hubUsbChanged();
       setupPlug(usb?.plugged?(stuck&&Date.now()-hubPlugAt>90000?'Control Hub plugged in, but it is not answering. Check the robot is on, or unplug it and plug it back in.':usb.message):usb?.message&&!/Not plugged/.test(usb.message)?usb.message:HUB_PLUG,!!usb?.plugged);return;}
-    const had=setupConn;setupConn=conn;if(!had)hubUsbChanged();if(!had&&!flowChosen&&setupShown&&flowStep!=='setup'){flowStep='setup';flowMarks();}void hubUsbAsk();void hubLimeAsk();hubScanLook();void hubRcLook();if((setupShown||calibrating)&&setupRobot?.id!==conn.id&&setupTried!==conn.id){setupTried=conn.id;await setupRead_({check:setupShown});}
+    const had=setupConn;setupConn=conn;if(!had){hubUsbChanged();calRender();}if(!had&&!flowChosen&&setupShown&&flowStep!=='setup'){flowStep='setup';flowMarks();}void hubUsbAsk();void hubLimeAsk();hubScanLook();void hubRcLook();if((setupShown||calibrating)&&setupRobot?.id!==conn.id&&setupTried!==conn.id){setupTried=conn.id;await setupRead_({check:setupShown});}
     else if((setupShown||calibrating)&&setupRobot?.id===conn.id&&setupAgain>0&&setupAgain<8)await setupRead_();
     // Plugged in: it scans by itself, once for each time the hub is connected.
     if(setupShown&&setupRobot?.id===conn.id&&setupAutoFor!==conn.id&&!setupBusy&&!hubRobotBusy()&&(setupAgain===0||setupAgain>=8)){setupAutoFor=conn.id;setupAutoTries++;await setupScan({auto:true});}}
@@ -2340,7 +2340,7 @@ public class MyAuto implements DeckAutonomous {
   function hubLeft(){hubOnUsb=false;hubPushedOn=false;hubMisses=0;setupGen++;setupFree();setupScanning=null;setupChecking=null;setupConn=null;setupTried=null;setupAutoFor=null;setupAutoTries=0;setupAgain=0;setupRobot=null;setupRead=null;setupChecks([]);setupNote('');
     if(hubTest){hubTest=null;void liveDebug?.stop();}liveDebug?.unplugged();setupPlug(HUB_PLUG,false);hubLinkFollow({found:false,message:'Not plugged in.'});
     if(sendState?.host==='usb'){sendState=null;showCheck();showPlan();$('#sim-send-confirm').hidden=true;status('#sim-send-status',HUB_UNPLUGGED);}
-    hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();}setupRender();hubUsbChanged();}
+    hubUsbForget();if(project.controller==='ftc'&&!hubDropped.open){hubDropped.showModal();}setupRender();calRender();hubUsbChanged();}
   // What the USB watch pushes (src/usb-watch.cjs): Windows's word on the cable first, then ADB's, and this comes at once whatever else is busy.
   function hubPushed(s){if(!s||!setupTimer)return;hubLive=s;const there=!!s.hub,seeing=s.usb||s.adb?.running;hubDarkAt=seeing?0:hubDarkAt||Date.now();
     if(there&&!hubPushedOn){hubPushedOn=true;liveCamera?.replugged?.();liveDebug?.recheck?.();hubOnUsb=true;hubMisses=0;hubPlugAt=Date.now();hubNudged=undefined;if(hubDropped.open)hubDropped.close();if(setupRobot?.id!=='usb:'+s.hub.serial)setupPlug('Control Hub plugged in.',true);}

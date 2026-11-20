@@ -120,9 +120,9 @@
           ${x.full?'<p class="cal-sense-note bad">No control is left for it on this controller: free one on another mechanism, or put the mechanisms on a second controller.</p>':!x.device?'<p class="cal-sense-note bad">It has no name in the robot configuration yet: name it in Setup → Mechanisms.</p>':unset?'<p class="cal-note">Its positions are the same, so it will not move: type where it should go (0 to 1). Start near the middle and work outwards.</p>':''}${clashNote}</section>`;}
       else if(view==='send')pane=`<section class="cal-card rt-card"><h2>Send to robot</h2><p class="hint">The TeleOp is written from Setup and from what Calibrate measured, and Torque puts it on the robot, where it shows in Drive under the name you give it.</p>
         ${b.tele.error?`<p class="cal-sense-note bad">${esc(b.tele.error)}</p>`:''}${clashNote}
-        <div class="button-row rt-send"><button type="button" class="primary" data-rt="send"${!can||sending?' disabled':''}>${sending?'Sending…':'Send to robot'}</button><label class="rt-auto"><input type="checkbox" data-rt-auto${b.state.auto?' checked':''}> Send it by itself when it changes</label></div>
+        <div class="button-row rt-send"><button type="button" class="primary" data-rt="send"${!can||sending||!o.connected()?' disabled':''}>${sending?'Sending…':'Send to robot'}</button><label class="rt-auto"><input type="checkbox" data-rt-auto${b.state.auto?' checked':''}> Send it by itself when it changes</label></div>
         <p class="hint at-named">Shows in Drive as “${esc(b.tele.opMode||b.state.name||T.FULL_OP_MODE)}”. <button type="button" class="text-button" data-rt="rename"${can?'':' disabled'}>Rename…</button></p>
-        <p class="hint" role="status" data-rt-status>${esc(status(b))}</p>
+        ${o.connected()?`<p class="hint" role="status" data-rt-status>${esc(status(b))}</p>`:'<p class="hint at-sim" data-sim-robot><span class="rs-pill sample">Simulated</span> No Control Hub is connected, so there is no robot to send to. Plug it in by USB-C, or join its Wi-Fi, with the robot on.</p>'}
         <div class="button-row"><button type="button" class="secondary" data-rt="save"${can?'':' disabled'}>Save as a file…</button><button type="button" class="secondary" data-rt="copy"${can?'':' disabled'}>Copy</button><span class="hint" role="status" data-rt-saved>${esc(savedNote)}</span></div>
         ${src?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-rt-code>${esc(src)}</pre></details>`:''}</section>
         <dialog class="at-name" aria-labelledby="rt-name-title"><form method="dialog"><h2 id="rt-name-title">Name the TeleOp</h2><p class="hint">This is the name it shows under in Drive, in the TeleOp list.</p><div class="cal-field"><label for="rt-name-input">Name</label><input id="rt-name-input" type="text" maxlength="60" autocomplete="off" spellcheck="false"></div><div class="button-row"><button type="submit" value="go" class="primary" data-rt-go>Send to robot</button><button type="submit" value="no" class="secondary">Cancel</button></div></form></dialog>`;
@@ -206,7 +206,7 @@
       const a=e.target.closest?.('[data-rt]')?.dataset.rt;if(!a)return;const b=build(o),note=t=>{savedNote=t;const n=box.querySelector('[data-rt-saved]');if(n)n.textContent=t;drawn='';},vnote=t=>{valuesNote=t;const n=box.querySelector('[data-rt-values]');if(n)n.textContent=t;drawn='';};
       const saved=say=>f=>say(f?`Saved to ${f}`:''),failed=say=>x=>say(`It was not saved: ${x?.message||x}`);
       if(a==='setup')return void o.toSetup?.();if(a==='controller')return void o.openController?.();
-      if(a==='send'||a==='rename')return ask(a==='send');
+      if(a==='send'&&!o.connected())return render();if(a==='send'||a==='rename')return ask(a==='send');
       if(a==='save'&&b.tele.source)return void Promise.resolve(o.saveFile(b.tele.file,b.tele.source)).then(saved(note),failed(note));
       if(a==='copy'&&b.tele.source)return void Promise.resolve(o.copy(b.tele.source)).then(()=>note('Copied.'),()=>note('It could not be copied: open See the code and select it.'));
       const v=o.values?.();if(!v)return;
