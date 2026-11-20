@@ -225,17 +225,21 @@
   const linkOk=l=>!!l&&typeof l==='object'&&typeof l.id==='string'&&Array.isArray(l.causes)&&l.causes.every(c=>c&&typeof c.name==='string'&&['motor','crservo','servo','piece'].includes(c.kind)&&(c.dir===1||c.dir===-1))&&!!l.effect&&typeof l.effect.key==='string'&&[1,-1,0].includes(l.effect.dir);
   // The constants file for the team's code: each calibrated mechanism's units, zero, limits and gains, as Java.
   // lens: project.calibration.lens, {camera: {size: {fx, fy, cx, cy}}}, one-tag estimates from Calibrate → Camera. The simulated webcam's are left out.
-  function constants(list,{packageName='org.firstinspires.ftc.teamcode',className='DeckCalibration',when='',lens}={}){
+  // The lines themselves, for a class of their own (constants) or inside TorqueCalibration with the chassis's
+  // (ui/sim-chassis-cal.js codeOf): {mechs, lens}, each '' when there is nothing. A mechanism with nothing measured is left out.
+  function constantLines(list,{lens}={}){
     const id=s=>String(s).replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'').toUpperCase()||'MECHANISM',n=v=>finite(v)?String(+(+v).toPrecision(6)):'0';
-    const body=list.map(({name,template,rec})=>{const p=id(name),t=rec?.transform||{},lines=[`    // ${name}: ${TEMPLATES[template]?.name||template}`];
+    const body=(list||[]).map(({name,template,rec})=>{const p=id(name),t=rec?.transform||{},lines=[`    // ${name}: ${TEMPLATES[template]?.name||template}`];
       if(finite(t.cpr))lines.push(`    public static final double ${p}_COUNTS_PER_UNIT = ${n(toRaw(1,{...t,offset:0})-toRaw(0,{...t,offset:0}))};`,`    public static final double ${p}_ZERO_OFFSET = ${n(t.offset||0)};`,`    public static final int ${p}_DIRECTION = ${t.sign===-1?-1:1};`);
       if(rec?.range)lines.push(`    public static final double ${p}_MIN = ${n(rec.range.lo)}, ${p}_MAX = ${n(rec.range.hi)};`);
       if(rec?.ff)lines.push(`    public static final double ${p}_KS = ${n(rec.ff.kS)}, ${p}_KG = ${n(rec.ff.kG)}, ${p}_KV = ${n(rec.ff.kV)};`);
       if(rec?.pid)lines.push(`    public static final double ${p}_KP = ${n(rec.pid.kP)}, ${p}_KI = ${n(rec.pid.kI)}, ${p}_KD = ${n(rec.pid.kD)}, ${p}_TOLERANCE = ${n(rec.pid.tolerance)};`);
       if(rec?.threshold)lines.push(`    public static final double ${p}_THRESHOLD = ${n(rec.threshold.value)}, ${p}_HYSTERESIS = ${n(rec.threshold.hysteresis)};`);
       if(rec?.positions)for(const [k,v] of Object.entries(rec.positions))lines.push(`    public static final double ${p}_${id(k)} = ${n(v)};`);
-      return lines.join('\n');}).join('\n\n');
+      return lines.length>1?lines.join('\n'):'';}).filter(Boolean).join('\n\n');
     const lenses=Object.entries(lens||{}).filter(([k])=>k!=='sim').flatMap(([k,sizes])=>Object.entries(sizes||{}).map(([size,l])=>{const p=`LENS_${id(k)}_${id(size)}`;return `    // ${k} at ${size}: a one-tag estimate. new AprilTagProcessor.Builder().setLensIntrinsics(${p}_FX, ${p}_FY, ${p}_CX, ${p}_CY)\n    public static final double ${p}_FX = ${n(l.fx)}, ${p}_FY = ${n(l.fy)}, ${p}_CX = ${n(l.cx)}, ${p}_CY = ${n(l.cy)};`;})).join('\n\n');
-    return `package ${packageName};\n\n/** Calibrated in Torque${when?` (${when})`:''}. Units are each mechanism's own (degrees or mm); gains are power per unit. */\npublic final class ${className} {\n    private ${className}() {}\n\n${[body,lenses].filter(Boolean).join('\n\n')}\n}\n`;}
-  return {KINDS,GATES,TEMPLATES,TYPE_TEMPLATE,ILLEGAL,feedbackOf,templateOf,gateStates,toUnits,toRaw,perTurnOf,fitLine,holdBand,velocityFit,ratioFit,stepInfo,threshold,shortest,simulate,suggest,topSpeed,settleOf,simValues,simValueAt,simWrite,simMeasured,hash,sanitize,constants};
+    return {mechs:body,lens:lenses};}
+  function constants(list,{packageName='org.firstinspires.ftc.teamcode',className='DeckCalibration',when='',lens}={}){const c=constantLines(list,{lens});
+    return `package ${packageName};\n\n/** Calibrated in Torque${when?` (${when})`:''}. Units are each mechanism's own (degrees or mm); gains are power per unit. */\npublic final class ${className} {\n    private ${className}() {}\n\n${[c.mechs,c.lens].filter(Boolean).join('\n\n')}\n}\n`;}
+  return {KINDS,GATES,TEMPLATES,TYPE_TEMPLATE,ILLEGAL,feedbackOf,templateOf,gateStates,toUnits,toRaw,perTurnOf,fitLine,holdBand,velocityFit,ratioFit,stepInfo,threshold,shortest,simulate,suggest,topSpeed,settleOf,simValues,simValueAt,simWrite,simMeasured,hash,sanitize,constants,constantLines};
 });

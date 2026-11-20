@@ -20,8 +20,8 @@ test('a swerve’s TeleOp carries each pod as calibrated, with no package so eve
   assert.match(s,/static final class Steer \{/);assert.match(s,/loop\[i\] = new Steer\(SERVO_SIGN\[i\], GAIN\[i\], LEAD_P_SECONDS\[i\], LEAD_N_SECONDS\[i\], CREEP_P\[i\], CREEP_N\[i\], CREEP_P_DEGREES_A_SECOND\[i\], CREEP_N_DEGREES_A_SECOND\[i\], DEGREES_A_SECOND_PER_POWER\[i\], TOP_DEGREES_A_SECOND\[i\], PUSH_P_DEGREES_A_SECOND\[i\], PUSH_N_DEGREES_A_SECOND\[i\], ZONE_DEGREES\[i\], EASE_DEGREES\[i\], STILL_DEGREES_A_SECOND\[i\], PUSH_WAIT_SECONDS\[i\], TOLERANCE_DEGREES\);/);
   assert.match(s,/double power = steerPower\[i\] = loop\[i\]\.step\(error, angle, dt\);/);assert.match(s,/hub\.setBulkCachingMode\(LynxModule\.BulkCachingMode\.MANUAL\);/);assert.match(s,/for \(LynxModule hub : hubs\) hub\.clearBulkCache\(\);/);
   assert.match(s,/TOLERANCE_DEGREES = 0\.9, IMU_SCALE = 1\.00123;/);assert.match(s,/LogoFacingDirection\.UP, RevHubOrientationOnRobot\.UsbFacingDirection\.FORWARD/);
-  // The short way round: past a quarter turn the wheel runs backwards instead.
-  assert.match(s,/if \(Math\.abs\(error\) > 90\) \{ error -= Math\.signum\(error\) \* 180; wheel = -wheel; \}/);
+  // The short way round: past a quarter turn the wheel runs backwards instead (at a quarter turn, the way that leaves the pod forward or left).
+  assert.match(s,/boolean flip = Math\.abs\(error\) > 95;/);assert.match(s,/if \(flip\) \{ error -= Math\.signum\(error\) \* 180; wheel = -wheel; \}/);
   assert.equal(s.split('{').length,s.split('}').length,'braces balance');
   assert.match(T.teleopOf({...kiwi,pods:[pod('frontPod',8,0,{zero:undefined})]}).error,/Set the wheels straight first.*frontPod/);
   assert.match(T.teleopOf({kind:'kiwi',motors:[{key:'front',name:'f'}]}).error,/swerve, mecanum and tank/);});

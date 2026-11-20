@@ -115,9 +115,9 @@ test('Debug: a Limelight says how it is',()=>{
 });
 test('Setup and Calibrate each have their own steps; Debug and the programmers sit beside Calibrate\u2019s, and USB devices are inside Debug, not Electronics',()=>{
   const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');
-  // Calibrate: Electronics, Mechanisms, Camera, Real run, numbered; then Debug (no number) and the programmers.
+  // Calibrate: Electronics, Mechanisms, Camera, TeleOp, numbered; then Debug (no number) and the programmers.
   const cal=[...src.matchAll(/flowStep_\('cal-tab-(\w+)','(\w+)',(\d),'([^']+)'/g)].map(m=>[m[1],+m[3],m[4]]);
-  assert.deepEqual(cal,[['electronics',1,'Electronics'],['mechanisms',2,'Mechanisms'],['camera',3,'Camera'],['realrun',4,'Real run']]);
+  assert.deepEqual(cal,[['electronics',1,'Electronics'],['mechanisms',2,'Mechanisms'],['camera',3,'Camera'],['teleop',4,'TeleOp']]);
   assert.deepEqual([...src.matchAll(/class="flow-(\w+) flow-tool" data-flow="(\w+)"/g)].map(m=>m[2]),['debug','axon','swyft','servotest'],'Debug, then the programmers and Servo Test');
   assert.match(src,/id="cal-tab-debug" class="flow-debug flow-tool" data-flow="debug" data-cal-top="debug"/,'Debug has no number');
   assert.match(src,/class="flow-axon flow-tool" data-flow="axon" data-cal-top="axon"><span class="flow-new">New<\/span>Axon Programmer/);

@@ -39,7 +39,7 @@ function check(){
       ['Calibrate → Electronics',async()=>{await go('calibrate');await click('#cal-tab-electronics');}],
       ['Calibrate → Mechanisms',()=>click('#cal-tab-mechanisms')],
       ['Calibrate → Camera',()=>click('#cal-tab-camera')],
-      ['Calibrate → Real run',()=>click('#cal-tab-realrun')],
+      ['Calibrate → TeleOp',()=>click('#cal-tab-teleop')],
       ['Calibrate → Debug',()=>click('#cal-tab-debug')],
       ['Calibrate → Axon Programmer',()=>click('#calibrate-view .cal-flow [data-flow=axon]')],
       ['Calibrate → SWYFT Programmer',()=>click('#calibrate-view .cal-flow [data-flow=swyft]')],

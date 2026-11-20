@@ -4,7 +4,7 @@
 // chassis is on the sticks; each mechanism from Setup (o.mechanisms) is on buttons. It is one OnBot Java file with no
 // package (a packaged class crash-loops some Robot Controller builds), so Send puts it on the robot as it is and it
 // shows in Drive's op mode list: "Torque Chassis" for the chassis alone (Calibrate → Mechanisms → Drive it), "Torque
-// TeleOp" for the whole robot (Calibrate → Real run).
+// TeleOp" for the whole robot (Calibrate → TeleOp).
 // Frame: forward and left are positive, turning counterclockwise is positive, as everywhere in Deck.
 (function(root){
   const NAME='TorqueChassis',OP_MODE='Torque Chassis';
@@ -98,7 +98,7 @@
     return [...by].filter(([,u])=>u.length>1).map(([button,uses])=>({button,name:BUTTONS[button]||button,uses}));}
   // The mechanisms written into a chassis TeleOp's source: their devices before waitForStart, their buttons every loop.
   function withMechanisms(source,o){const c=mechCode(o.mechanisms,o.pad==='gamepad2'?'gamepad2':'gamepad1');if(!c.init.length)return source;const lines=source.split('\n'),at=t=>lines.findIndex(l=>l===t),w=at('        waitForStart();'),missing=c.imports.filter(i=>!lines.includes(`import ${i};`));
-    if(w<0)return source;lines.splice(w,0,'        // The mechanisms, as Setup has them and Real run mapped them.',...c.init);
+    if(w<0)return source;lines.splice(w,0,'        // The mechanisms, as Setup has them and the TeleOp tab mapped them.',...c.init);
     const t=lines.findIndex(l=>/^            telemetry\.addData\("Heading"/.test(l));lines.splice(t<0?lines.length:t,0,'            // Mechanisms.',...c.loop);
     if(missing.length){const first=lines.findIndex(l=>/^import /.test(l)),lastI=lines.reduce((k,l,i)=>/^import /.test(l)?i:k,-1),all=[...lines.slice(first,lastI+1),...missing.map(i=>`import ${i};`)].sort();lines.splice(first,lastI-first+1,...all);}
     return lines.join('\n');}
@@ -203,7 +203,13 @@
       '            for (int i = 0; i < n; i++) {','                double vx = forward - turn * POD_Y[i] / radius, vy = left + turn * POD_X[i] / radius;','                speed[i] = Math.hypot(vx, vy);','                if (moving) target[i] = Math.toDegrees(Math.atan2(vy, vx));','                top = Math.max(top, speed[i]);','            }',
       ...(lock?['            // Lock: every wheel turned to point at the middle of the robot and stopped, so it cannot be pushed off its spot.','            if (lock) for (int i = 0; i < n; i++) target[i] = Math.toDegrees(Math.atan2(POD_Y[i], POD_X[i]));']:[]),
       '            for (int i = 0; i < n; i++) {','                double angle = ENCODER_SIGN[i] * (encoder[i].getVoltage() - ZERO_VOLTS[i]) / VOLTS_PER_TURN * 360.0;','                double error = target[i] - angle;','                error -= 360.0 * Math.round(error / 360.0);',`                double wheel = moving${lock?' && !lock':''} ? speed[i] / top : 0;`,
-      '                // More than a quarter turn away: the wheel runs backwards instead, and the pod turns the short way.','                if (Math.abs(error) > 90) { error -= Math.signum(error) * 180; wheel = -wheel; }',
+      '                // The shortest way to get the wheel pushing where it should. More than a quarter turn away, the motor runs',
+      '                // backwards instead and the pod turns the short way (stick back: the pods stay forward and the motors reverse).',
+      '                // At a quarter turn both are as far: the one that leaves the pod facing forward or left is taken, so right is',
+      '                // "pods left, motors backwards", as left is "pods left, motors forwards".',
+      '                boolean flip = Math.abs(error) > 95;',
+      '                if (!flip && Math.abs(error) >= 85) { double end = target[i] - 360.0 * Math.round(target[i] / 360.0); flip = end <= -90 || end > 90; }',
+      '                if (flip) { error -= Math.signum(error) * 180; wheel = -wheel; }',
       '                // The steering loop takes a step every loop, with the time that really passed.',
       '                if (Math.abs(target[i] - steered[i]) > 1) { loop[i].retarget(); steered[i] = target[i]; }','                double power = steerPower[i] = loop[i].step(error, angle, dt);',
       '                steer[i].setPower(Math.max(-1, Math.min(1, power)));','                // A wheel still turning to its angle pushes less, so it does not drag the robot sideways.','                drive[i].setPower(wheel * Math.cos(Math.toRadians(error)));','            }',
@@ -216,6 +222,31 @@
       '        waitForStart();','        imu.resetYaw();','        while (opModeIsActive()) {',...sticks(tank?{...m,field:'no'}:m),
       `            double[] power = ${list(ms.map(mix))};`,'            double top = 1;','            for (double p : power) top = Math.max(top, Math.abs(p));','            for (int i = 0; i < n; i++) drive[i].setPower(power[i] / top);',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
+  // ---- the same drive, in JavaScript ---------------------------------------------------------------------------------
+  // What the TeleOp does with the controller each loop, for the TeleOp tab's live picture and for the tests: the Java
+  // above is these steps. pad: {lx, ly, rx, ry (sticks, as the Gamepad API gives them: up and left are negative), lt, rt
+  // (0 to 1), and each button by its FTC name}.
+  const wrapDeg=x=>x-360*Math.round(x/360),held=(pad,b)=>!!b&&b!=='none'&&(/_trigger$/.test(b)?(pad[b==='left_trigger'?'lt':'rt']||0)>.5:!!pad[b]);
+  function command(raw,pad,{swerve=true,heading=0}={}){const m=mapOf(raw),p=pad||{},st=k=>k==='left'?[p.lx||0,p.ly||0]:[p.rx||0,p.ry||0],[dx,dy]=st(m.drive);
+    const pair={triggers:(p.lt||0)-(p.rt||0),bumpers:(p.left_bumper?1:0)-(p.right_bumper?1:0),dpad:(p.dpad_left?1:0)-(p.dpad_right?1:0)};
+    let forward=-dy,left=-dx,turn=m.turn in pair?pair[m.turn]:-st(m.turn)[0];const spin=m.spin in pair?pair[m.spin]:0;if(Math.abs(spin)>.05)turn=spin;
+    const slow=held(p,m.slow);if(slow){forward*=.4;left*=.4;turn*=.4;}
+    if(m.field==='yes'){const f=forward*Math.cos(heading)+left*Math.sin(heading);left=-forward*Math.sin(heading)+left*Math.cos(heading);forward=f;}
+    return {forward,left,turn,slow,lock:swerve&&held(p,m.lock),reset:held(p,m.reset)};}
+  // A swerve, one loop: pods [{x, y}] (inches from the middle: forward, left), angles (degrees, where each pod points now:
+  // 0 forward, 90 left), targets (where each was last asked to point: kept while the sticks are let go). Returns each pod's
+  // {target, error (how far its servo still has to turn, the short way), power (the motor: negative is backwards), flipped}.
+  function swerveDrive(pods,angles,targets,cmd){const n=pods.length,radius=Math.max(1e-6,...pods.map(p=>Math.hypot(p.x,p.y))),moving=Math.hypot(cmd.forward,cmd.left)>.05||Math.abs(cmd.turn)>.05,speed=[],out=[];let top=1;
+    for(let i=0;i<n;i++){const vx=cmd.forward-cmd.turn*pods[i].y/radius,vy=cmd.left+cmd.turn*pods[i].x/radius;speed[i]=Math.hypot(vx,vy);if(moving)targets[i]=Math.atan2(vy,vx)*180/Math.PI;top=Math.max(top,speed[i]);}
+    if(cmd.lock)for(let i=0;i<n;i++)targets[i]=Math.atan2(pods[i].y,pods[i].x)*180/Math.PI;
+    for(let i=0;i<n;i++){let error=wrapDeg((targets[i]||0)-(angles[i]||0)),wheel=moving&&!cmd.lock?speed[i]/top:0,flip=Math.abs(error)>95;
+      if(!flip&&Math.abs(error)>=85){const end=wrapDeg(targets[i]||0);flip=end<=-90||end>90;}
+      if(flip){error-=Math.sign(error)*180;wheel=-wheel;}
+      out.push({target:targets[i]||0,error,power:wheel*Math.cos(error*Math.PI/180),flipped:flip});}
+    return out;}
+  // A mecanum or a tank, one loop: each motor's power, in the order given. motors: [{key}] by Deck's keys.
+  function wheelPowers(motors,cmd,tank=false){const side=k=>/right/i.test(k)?'right':'left',front=k=>/front/i.test(k),f=cmd.forward,l=tank?0:cmd.left,t=cmd.turn;
+    const power=motors.map(x=>tank?(side(x.key)==='left'?f-t:f+t):({'left front':f-l-t,'right front':f+l+t,'left back':f+l-t,'right back':f-l+t})[`${side(x.key)} ${front(x.key)?'front':'back'}`]),top=Math.max(1,...power.map(Math.abs));return power.map(v=>v/top);}
   // o: {kind:'swerve'|'mecanum'|'tank', pods|motors, robot:{hubLogo, hubUsb}, imu:{name, scale}, tolerance, map, config, date}.
   // Returns {file, opMode, source}, or {error} saying what is not calibrated yet or not written for.
   //   className, opMode: for the whole robot's TeleOp ("TorqueTeleOp", "Torque TeleOp"); the chassis alone keeps its own.
@@ -226,6 +257,6 @@
       if(bare.length)return {error:`Set the wheels straight first, with an absolute encoder on every pod: ${bare.join(', ')}.`};return done(swerve(o,m));}
     if(o.kind==='mecanum'||o.kind==='tank'){if(!(o.motors||[]).length)return {error:'This chassis has no drive motors.'};return done(wheels(o,{...m,lock:'none'},o.kind==='tank'));}
     return {error:'Torque writes this TeleOp for swerve, mecanum and tank chassis so far.'};}
-  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,MODES,USES,modesFor,mechOf,mechMap,mechCode,clashes,chassisButtons,steerClass:()=>STEER_CLASS.slice()};
+  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,MODES,USES,modesFor,mechOf,mechMap,mechCode,clashes,chassisButtons,command,swerveDrive,wheelPowers,wrapDeg,steerClass:()=>STEER_CLASS.slice()};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.DeckChassisTeleop=api;
 })(typeof globalThis==='object'?globalThis:this);

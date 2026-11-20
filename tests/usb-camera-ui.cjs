@@ -1,6 +1,6 @@
 'use strict';
 // A camera on the Control Hub's USB in the real app, against a stubbed hub:
-//  A. Calibrate's row: Electronics, Mechanisms, Camera and Real run, then Debug and the programmers; Debug's link opens Camera on the simulated webcam;
+//  A. Calibrate's row: Electronics, Mechanisms, Camera and TeleOp, then Debug and the programmers; Debug's link opens Camera on the simulated webcam;
 //  B. a scan's camera reaches Configure and Camera, a new scan redraws both with nothing lost, and neither writes to the robot until Save;
 //  C. Add, rename and remove, and the XML Save sends;
 //  D. the Robot Controller restarting after a scan does not hide the camera from Configure while Setup still shows it;
@@ -51,8 +51,8 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     // Camera tab by itself, so the first visit goes straight to Debug's step, where the hold above keeps it off.
     await page.evaluate(()=>document.querySelector('#calibrate-view [data-flow=debug]').click());await page.waitForFunction(()=>state.page==='calibrate');await page.waitForSelector('#cal-gate',{state:'hidden'});
     // Calibrate's row: four numbered steps with Camera third, then Debug and the programmers, unnumbered.
-    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.map(b=>b.dataset.flow)),['electronics','tune','camera','realrun','debug','axon','swyft','servotest']);
-    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.filter(b=>b.querySelector('.flow-num')).map(b=>[b.id,b.textContent])),[['cal-tab-electronics','1Electronics'],['cal-tab-mechanisms','2Mechanisms'],['cal-tab-camera','3Camera'],['cal-tab-realrun','4Real run']]);
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.map(b=>b.dataset.flow)),['electronics','tune','camera','teleop','debug','axon','swyft','servotest']);
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.filter(b=>b.querySelector('.flow-num')).map(b=>[b.id,b.textContent])),[['cal-tab-electronics','1Electronics'],['cal-tab-mechanisms','2Mechanisms'],['cal-tab-camera','3Camera'],['cal-tab-realrun','4TeleOp']]);
     const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id)),shown=()=>page.$$eval('#calibrate-view [data-cal-top]',l=>l.filter(b=>!b.hidden).map(b=>b.dataset.calTop));
     assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);
     // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, in Calibrate's Camera step.
