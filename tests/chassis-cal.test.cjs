@@ -185,3 +185,11 @@ test('a drive motor with no direction set turns as the exports turn it: a mecanu
   // Said in Setup or by Calibrate, a direction is kept as said.
   assert.equal(K.chassisOf({robot:{drivetrain:'mecanum',devices:{frontLeft:{reversed:false}}},sensors:{localization:'encoders'}},C).motors[0].reversed,false);
 });
+
+test('the chassis as one: four moves, and what each wheel should be seen to do, for every drivetrain',()=>{
+  const of=(drivetrain)=>K.togetherMoves(K.chassisOf({robot:{drivetrain},sensors:{}},C)),pw=m=>Object.fromEntries(m.wheels.map(w=>[w.key,w.power]));
+  const mec=of('mecanum');assert.deepEqual(mec.map(m=>m.label),['Drive forward','Drive backward','Slide left','Slide right']);
+  assert.deepEqual(pw(mec[0]),{frontLeft:1,frontRight:1,backLeft:1,backRight:1});assert.deepEqual(pw(mec[2]),{frontLeft:-1,frontRight:1,backLeft:1,backRight:-1});assert.deepEqual(mec[3].wheels.map(w=>w.does),['rolls forward','rolls backward','rolls backward','rolls forward']);
+  const tank=of('tank');assert.deepEqual(tank.map(m=>m.label),['Drive forward','Drive backward','Turn left','Turn right'],'it cannot slide, so it turns');assert.deepEqual(pw(tank[2]),{frontLeft:-1,frontRight:1,backLeft:-1,backRight:1});
+  const kiwi=of('kiwi');assert.equal(kiwi[0].wheels.find(w=>w.key==='front').does,'stays still','a kiwi’s front wheel does not roll driving forward');assert.equal(kiwi[2].wheels.find(w=>w.key==='front').power,1);
+  const sw=of('kiwiSwerve');assert.deepEqual(sw.map(m=>m.deg),[0,0,90,-90],'a swerve points its wheels the way it goes');assert.ok(sw[1].wheels.every(w=>w.power===-1));assert.ok(sw[2].wheels.every(w=>w.power===1&&/points to the robot’s left/.test(w.does)));});

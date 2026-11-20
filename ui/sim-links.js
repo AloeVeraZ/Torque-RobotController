@@ -235,7 +235,7 @@
       return list.filter(x=>ACT.has(x.kind)||d.sensors.some(s=>s.name===x.name)).map(x=>{const act=pr.acts.find(a=>a.name===x.name),sens=pr.sens.filter(s=>s.name===x.name&&!(x.kind==='motor'&&s.key===`m:${x.name}:pos`));
         const skip=(el().skipped||[]).includes(x.name),hand=byHand(x.kind)&&el().moved?.[x.name];
         const done=act?act.done:sens.length>0&&sens.every(s=>s.done),what=skip?'skipped':hand?.ok?'moved by hand':act?(act.links.length?`→ ${act.links.map(l=>d.sensors.find(s=>s.key===l.effect.key)?.label||l.effect.key).join(', ')}`:act.none?'no sensor on it':act.noEncoder?(act.spins?'turns · no encoder':'no encoder'):''):sens.filter(s=>s.done).map(s=>`← ${s.links.map(l=>l.causes.map(causeName).join(' and ')).join(', ')}`).join(' ');
-        return {...x,act:!!act,done,what};});}
+        const way=x.kind==='motor'&&el().dir?.[x.name]?(el().dir[x.name].reversed?'reversed':'forward'):'';return {...x,act:!!act,done,what:[what,way].filter(Boolean).join(' · ')};});}
     const badge=x=>x.bus!==undefined?`I2C ${x.bus}`:Number.isInteger(x.port)?`${{motor:'M',servo:'S',crservo:'S',digital:'D',touch:'D',analog:'A'}[x.kind]||''}${x.port}`:'—';
     const tile=(x,extra='')=>`<button type="button" class="sim-tile cal-elec-tile${x.done?' done':''}" data-elec-pick="${esc(x.name)}" aria-pressed="${x.name===picked}"><span class="cal-elec-badge" aria-hidden="true">${esc(x.badge??badge(x))}</span><span class="sim-tile-text"><b>${x.done?'<i class="cal-elec-tick" aria-label="done">✓</i> ':''}${esc(x.title||x.name)}</b><small>${esc(x.sub??(KIND_WORD[x.kind]||x.kind))}${x.what?` · ${esc(x.what)}`:x.done?'':' · to do'}</small></span>${extra}</button>`;
     function chassisDone(d){const c=chassis(),wanted=chassisLinks(c,d,encoderOf);return Object.values(c.slots).some(s=>s.motor)&&wanted.every(w=>{const l=joined(links(),w.causes[0].name,w.effect.key);return l?.result?.state==='pass'&&!l.planned;})&&wanted.length>0;}
@@ -257,6 +257,17 @@
           ${has(x.key)?'<span class="rs-pill ok">Linked</span>':`<button type="button" class="primary" data-seen-link="${esc(x.key)}">Link it</button>`}</li>`;}).join('')}</ul>
         ${seen.changes.some(x=>configured(c,x.key)==='other')&&!seen.changes.some(x=>configured(c,x.key)==='own')?'<p class="cal-sense-note bad">Its own encoder did not count, another port’s did: the encoder cables may be swapped. Check the ports in Configure.</p>':''}</div>`;}
     const lockText=()=>!live()?'Start live readings first.':!zeroed?'Say everything is at zero first (above).':'';
+    // Which way a motor turns is checked here, one motor at a time: it is moved, and the student says whether that was
+    // forward. A drive motor's wheel rolling forward is the robot driving forward; any other motor's forward is the way its
+    // mechanism goes up, out or in. The answer is kept by the motor's name (electronics.dir: reversed, and its encoder's
+    // sign), and a wheel's goes to Setup and to Mechanisms, which then only checks the wheels together.
+    const wheelOf=name=>{const c=chassis(),sl=slotsOf(c.type).find(x=>c.slots?.[x.key]?.motor===name);return sl||null;};
+    const dirOf=name=>el().dir?.[name]||null;
+    function dirHtml(a){const wheel=wheelOf(a.name),got=dirOf(a.name),moved=seen&&seen.cause.name===a.name&&!seen.error;
+      const look=wheel?`Watch the ${esc(wheel.label.toLowerCase())} wheel${wheel.steer?' (point it straight ahead by hand first)':''}: forward is the way it rolls when the robot drives forward.`:'Forward is the way you want it to go on positive power: up for a lift, out for a slide, in for an intake.';
+      const have=got?`<p class="hint" data-elec-dir-kept>${got.reversed?'<span class="rs-pill warn">Reversed</span> It turned backwards, so it is reversed: forward is forward now.':'<span class="rs-pill ok">Forward</span> Positive power turns it forward.'} Move it again to check it again.</p>`:'';
+      if(!moved)return `<h4 class="cal-group-title">Which way it turns</h4><p class="hint">${look}</p>${have||'<p class="hint">Move it, then say which way it went.</p>'}`;
+      return `<h4 class="cal-group-title">Which way it turns</h4><p class="hint">${look}</p><div class="cal-seen" data-elec-dir-ask><p><b>${wheel?'Did the wheel roll forward?':'Did it go forward?'}</b>${seen.cause.dir<0?' (It was moved on negative power: say what you saw, Torque works out the rest.)':''}</p><div class="button-row"><button type="button" class="primary" data-elec-dir="yes">Yes, forward</button><button type="button" class="secondary" data-elec-dir="no">No, backwards</button></div></div>${have}`;}
     // The picked device: its controls, what followed its last move, and its links.
     function deviceHtml(d,pr){const a=d.actuators.find(x=>x.name===picked),sensorsHere=d.sensors.filter(s=>s.name===picked&&!(a?.kind==='motor'&&s.key===`m:${picked}:pos`)),dev=read().find(x=>x.name===picked)||{name:picked,kind:a?.kind||sensorsHere[0]?.kind},act=a&&pr.acts.find(x=>x.name===a.name);
       const lock=!a&&byHand(dev.kind)?(live()?"":"Start live readings first."):lockText(),done=a?act?.done:sensorsHere.length&&sensorsHere.every(s=>pr.sens.find(x=>x.key===s.key)?.done);
@@ -274,7 +285,7 @@
       else controls=`<p class="hint">Nothing on the robot turns this by itself? A game piece may: put one in by hand while Torque watches.</p><div class="cal-elec-controls"><button type="button" class="primary" data-elec-piece${lock||busy||checking?' disabled':''}>Watch for a game piece</button></div>`;
       const watching=busy==='watch'?`<div class="cal-elec-controls"><p class="hint" role="status" data-elec-ready="${ready?1:0}">${ready?'Watching every sensor: put the game piece in now (up to 30 s).':'Hold still: reading every sensor at rest…'}</p><button type="button" class="secondary" data-elec-stop>Stop watching</button></div>`:'';
       const mine=links().filter(l=>l.causes.some(c=>c.name===picked)||sensorsHere.some(s=>s.key===l.effect.key));
-      return `<section class="cal-elec-device" data-elec-device="${esc(picked)}">${head}${lock?`<p class="hint">${esc(lock)}</p>`:''}${controls}${watching}${seen&&(seen.cause.name===picked||seen.cause.kind==='piece')?seenHtml(d):''}${mine.length?`<h4 class="cal-group-title">Its links</h4><ol class="cal-link-list">${mine.map(l=>linkHtml(l,d)).join('')}</ol>`:''}
+      return `<section class="cal-elec-device" data-elec-device="${esc(picked)}">${head}${lock?`<p class="hint">${esc(lock)}</p>`:''}${controls}${watching}${seen&&(seen.cause.name===picked||seen.cause.kind==='piece')?seenHtml(d):''}${a?.kind==='motor'&&!lock?dirHtml(a):''}${mine.length?`<h4 class="cal-group-title">Its links</h4><ol class="cal-link-list">${mine.map(l=>linkHtml(l,d)).join('')}</ol>`:''}
         ${rows(d,pr).some(x=>!x.done)?'<div class="button-row"><button type="button" class="secondary" data-elec-next>Next to do</button></div>':''}</section>`;}
     // An IMU, Pinpoint or OTOS: move it by hand while Torque watches, then every reading before and after.
     const HAND_SAY={imu:'Nothing on the robot turns its IMU, so move it yourself: press Watch, hold still a moment, then pick the robot up and turn it, and tilt it forward and to the side.',
@@ -420,6 +431,9 @@
       if(b.hasAttribute('data-elec-hand'))return void handMove();
       if(b.dataset.elecSkip)return edit(()=>{const now=new Set(el().skipped||[]);if(b.dataset.elecSkip==='on')now.add(picked);else now.delete(picked);el().skipped=[...now];seen=null;});
       if(b.hasAttribute('data-elec-stop'))return void stopWatch?.();
+      // What was seen, against the power it was moved on: backwards on positive power (or forward on negative) is a reversed motor.
+      if(b.dataset.elecDir&&seen){const name=seen.cause.name,dir=seen.cause.dir<0?-1:1,forward=b.dataset.elecDir==='yes',reversed=forward!==(dir>0),own=seen.changes.find(x=>x.key===`m:${name}:pos`),enc=own&&own.dir?(own.dir*dir<0?-1:1):1,wheel=wheelOf(name);
+        edit(()=>{el().dir={...el().dir,[name]:{reversed,enc,at:new Date().toISOString()}};seen=null;});if(wheel)opts.setWheel?.(wheel.key,{reversed,enc});return;}
       if(b.hasAttribute('data-elec-spins'))return edit(()=>{el().spins=[...new Set([...(el().spins||[]),picked])];seen=null;});
       if(b.hasAttribute('data-elec-chassis-use')){const c=chassis();opts.setChassis?.({devices:simDevices(c)});return edit(()=>{el().chassis=c;cal().links=plan(links(),chassisLinks(c,d,encoderOf));});}
       if(b.hasAttribute('data-elec-sim-use'))return edit(()=>{cal().links=plan(links(),simWanted(d));});

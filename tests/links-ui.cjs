@@ -147,17 +147,25 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/is not on the hub/);
     // A mecanum on motors only: nothing Electronics already checked is asked again, and plain motors have nothing to
     // calibrate. Its wheels are checked to roll forward, and it is good to use.
-    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['Wheels roll forward','Use it in your code','Drive it']);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['All wheels together','Use it in your code','Drive it']);
     await page.click('[data-mech-pick="chassis-1"]');
-    // Each drive motor spins by itself and the student says which way its wheel rolled. One that rolled backwards is reversed.
-    const spin=async(key,answer)=>{await page.click(`[data-chassis=go][data-pod="${key}"]`);await page.waitForSelector(`[data-chassis=${answer}]`,{timeout:8000});await page.click(`[data-chassis=${answer}]`);};
-    // Left unset, a left-side drive motor of a mecanum counts as reversed (the SDK default the generated code uses), so that is where it starts.
-    const reversedBefore=await page.evaluate(()=>{const d=JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft;return typeof d?.reversed==='boolean'?d.reversed:true;});
-    await spin('frontLeft','yes');await spin('frontRight','yes');await spin('backLeft','no');
-    await soon('the motor that rolled backwards is reversed in Simulate',async()=>await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backLeft?.reversed)===!reversedBefore);assert.match(await page.textContent('[data-chassis-step="1"]'),/leftBack is reversed now/);
-    assert.equal(await page.locator('[data-chassis-step="1"]').getAttribute('data-state'),'todo','not done until it rolls forward');
-    await spin('backLeft','yes');await spin('backRight','yes');assert.ok(motorLines.some(l=>/^M\tleftBack\t-?0\.30$/.test(l)),'spun at a third of its power');
-    await soon('good to use once every wheel rolls forward',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));assert.match(await page.textContent('[data-mech-pick="chassis-1"]'),/✓/);
+    // Each motor by itself is Electronics' check: until every wheel's motor has been moved there and said to roll forward or backwards, nothing moves here.
+    assert.match(await page.textContent('[data-chassis-step="1"]'),/Not checked yet: Front left \(leftFront\), Front right \(rightFront\), Back left \(leftBack\), Back right \(rightBack\)/);assert.equal(await page.locator('[data-chassis=move-go]').count(),0);
+    await page.click('[data-chassis-step="1"] [data-chassis=to-elec]');await page.waitForSelector('#cal-links .cal-elec2',{state:'visible'});
+    // Left unset, a left-side drive motor of a mecanum counts as reversed (the SDK default the generated code uses). Electronics moves the motor as it is and takes the answer as seen.
+    const way=async(name,answer)=>{await pick(name);await moveIt();await page.waitForSelector('[data-elec-dir-ask]');assert.match(await page.textContent('[data-elec-dir-ask]'),/Did the wheel roll forward\?/);await page.click(`[data-elec-dir=${answer}]`);await page.waitForSelector('[data-elec-dir-kept]');};
+    await way('leftFront','yes');await way('rightFront','yes');await way('leftBack','no');await way('rightBack','yes');
+    assert.match(await page.textContent('[data-elec-dir-kept]'),/Forward/);assert.match(await page.textContent('[data-elec-pick="leftBack"]'),/reversed/);assert.match(await page.textContent('[data-elec-pick="leftFront"]'),/forward/);
+    {const d=await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('deck-simulation-project-v2'));return {dev:p.robot.devices,pods:p.calibration.chassis.pods};});
+      assert.equal(d.dev.backLeft.reversed,true,'rolled backwards on positive power: reversed in Setup');assert.equal(d.dev.frontLeft.reversed,false);assert.deepEqual(Object.keys(d.pods).sort(),['backLeft','backRight','frontLeft','frontRight']);assert.ok(Object.values(d.pods).every(x=>x.drive===true),'Mechanisms takes each wheel as checked');}
+    // Mechanisms: the chassis as one. All the wheels are driven four ways and the student says whether each did what is written.
+    await page.click('#cal-tab-mechanisms');await page.click('[data-mech-pick="chassis-1"]');await page.waitForSelector('[data-chassis=move-go]');
+    assert.deepEqual(await page.$$eval('[data-move-check] > b',l=>l.map(b=>b.textContent.trim())),['Drive forward','Drive backward','Slide left','Slide right']);assert.match(await page.textContent('[data-move-check=forward]'),/Every wheel rolls forward/);assert.match(await page.textContent('[data-move-check=left]'),/Front left leftFront rolls backward/);
+    const drive=async(id,answer)=>{motorLines.length=0;await page.click(`[data-chassis=move-go][data-move=${id}]`);await page.waitForSelector(`[data-chassis=move-${answer}][data-move=${id}]`,{timeout:8000});await page.click(`[data-chassis=move-${answer}][data-move=${id}]`);};
+    await drive('forward','yes');assert.ok(motorLines.some(l=>/^M\tleftBack\t-0\.30$/.test(l))&&motorLines.some(l=>/^M\tleftFront\t0\.30$/.test(l)),'every wheel at a third of its power, a reversed motor the other way');
+    await drive('back','yes');await drive('left','no');assert.match(await page.textContent('[data-chassis-step="1"]'),/check that motor again in Electronics/);assert.equal(await page.locator('[data-chassis-step="1"]').getAttribute('data-state'),'todo','not done until all four are seen');
+    await drive('left','yes');assert.ok(motorLines.some(l=>/^M\tleftFront\t-0\.30$/.test(l))&&motorLines.some(l=>/^M\trightBack\t-0\.30$/.test(l)),'sliding left: front left and back right backward');await drive('right','yes');
+    await soon('good to use once the wheels work together',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));assert.match(await page.textContent('[data-mech-pick="chassis-1"]'),/✓/);
     await page.click('[data-mech-pick="chassis-code"]');assert.match(await page.textContent('[data-chassis-code]'),/LEFT_FRONT_REVERSED = (true|false);\n/);
     assert.equal(await page.locator('[data-cal-mech-row="drive"]').count(),0,'the chassis is not listed again below');
     await page.screenshot({path:path.join(root,'test-results/chassis-ui.png'),fullPage:true}).catch(()=>{});
