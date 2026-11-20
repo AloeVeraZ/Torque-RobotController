@@ -239,7 +239,9 @@ class DriverStation {
     else if(t.tag===Tags.WARNING)Object.assign(patch,{systemWarning:value||'',systemError:''});
     else if(t.tag===Tags.NONE)Object.assign(patch,{systemError:'',systemWarning:''});
     else if(!t.tag||t.tag==='TELEMETRY_DATA'){
-      const strings=t.sorted?[...t.strings].sort((a,b)=>a[0].localeCompare(b[0])):t.strings;
+      // The robot's own keys ($Robot$Battery$Level$ and the like) can ride along with an op mode's telemetry: the battery is taken as the battery, and none of them is printed as a line.
+      const sys=k=>/^\$[^\s]*\$$/.test(k),batt=t.strings.find(([k])=>k===Tags.BATTERY)?.[1];if(batt!==undefined)patch.battery=batt===Tags.NO_VOLTAGE?{volts:null}:{volts:Number.parseFloat(batt)};
+      const strings=(t.sorted?[...t.strings].sort((a,b)=>a[0].localeCompare(b[0])):t.strings).filter(([k])=>!sys(k));
       const lines=[...strings.map(([k,v])=>k.startsWith('\0')?v:`${k} : ${v}`),...t.numbers.map(([k,v])=>k.startsWith('\0')?String(v):`${k} : ${v}`)];
       patch.telemetry={...this.state.telemetry,lines,updated:Date.now()};
     }
