@@ -17,7 +17,7 @@
   const nameOf=(o,route)=>cleanName(o.name.get())||defaultName(route);
   // What the route is, in a line.
   function facts(r){const n=(k,one,many)=>`${k} ${k===1?one:many}`,out=[n(r.paths,'path','paths')];if(r.actions)out.push(n(r.actions,'action','actions'));if(Number.isFinite(r.seconds))out.push(`about ${r.seconds.toFixed(1)} s`);return out.join(' · ');}
-  function create(o){const box=o.box;let sending=false,said='',savedNote='',drawn='',code=null,codeKey='',codeErr='',making=false;
+  function create(o){const box=o.box;let turnSending=false,turnSaid='',sending=false,said='',savedNote='',drawn='',code=null,codeKey='',codeErr='',making=false;
     const lastSent=()=>{try{return JSON.parse(o.sent.get()||'null')||{};}catch{return {};}};
     // The code as it would be sent, made again whenever the route or its name changes.
     function make(route,name){const key=JSON.stringify([route.name,route.paths,route.actions,route.seconds,route.stamp,name]);if(key===codeKey||making)return;making=true;
@@ -35,9 +35,18 @@
         ${sim?'<p class="hint at-sim" data-sim-robot><span class="rs-pill sample">Simulated</span> No Control Hub is connected, so there is no robot to send to. Plug it in by USB-C, or join its Wi-Fi, with the robot on.</p>':`<p class="hint" role="status" data-at-status>${esc(ok?status(route,name):'')}</p>`}
         <div class="button-row"><button type="button" class="secondary" data-at="save"${can?'':' disabled'}>Save as a file…</button><button type="button" class="secondary" data-at="copy"${can?'':' disabled'}>Copy</button><span class="hint" role="status" data-at-saved>${esc(savedNote)}</span></div>
         ${code&&ok?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-at-code>${esc(code.source)}</pre></details>`:''}</section>
+        ${turnCard(sim)}
         <dialog class="at-name" aria-labelledby="at-name-title"><form method="dialog"><h2 id="at-name-title">Name the autonomous</h2><p class="hint">This is the name it shows under on the Driver Station, in the Autonomous list.</p><div class="cal-field"><label for="at-name-input">Name</label><input id="at-name-input" type="text" maxlength="60" autocomplete="off" spellcheck="false"></div><div class="button-row"><button type="submit" value="go" class="primary" data-at-go>Send to robot</button><button type="submit" value="no" class="secondary">Cancel</button></div></form></dialog>`;
       // The same page again changes nothing: an open pop-up or the code being read is left alone.
       if(html!==drawn&&!box.querySelector?.('dialog[open]')){drawn=html;box.innerHTML=html;}}
+    // A test of the heading alone (o.turnTest: an autonomous that uses only the IMU): it rolls forward a little and turns to a
+    // row of angles, slowing into each. It shows whether the robot turns by the right heading before a whole route depends on it.
+    function turnCard(sim){const t=o.turnTest?.();if(!t)return '';const can=!t.error&&!sim&&!turnSending;
+      return `<section class="cal-card rt-card at-card" data-at-turn-card><h2>IMU turn test</h2><p class="hint">A test autonomous that uses only the Control Hub’s IMU. Put the robot on the floor with room to turn, facing the way that is 0°, and run it from Drive: it rolls forward a little, then turns to 90°, 0°, −90°, 0°, 180° and back to 0°, slowing as it nears each one. Left is positive, and where it stands at START is 0°. The heading is taken the way round the chassis’ quarter turn found.</p>
+        ${t.error?`<p class="cal-sense-note bad">${esc(t.error)}</p>`:''}
+        <div class="button-row rt-send"><button type="button" class="primary" data-at="turn-send"${can?'':' disabled'}>${turnSending?'Sending…':'Send the turn test'}</button>${t.error?'':`<span class="hint">Shows on the Driver Station as “${esc(t.opMode)}”, under Autonomous.</span>`}</div>
+        ${sim&&!t.error?'<p class="hint">No Control Hub is connected, so there is no robot to send to.</p>':`<p class="hint" role="status" data-at-turn-status>${esc(turnSending?'Sending it to the robot and building it there…':turnSaid)}</p>`}
+        ${t.source?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code" data-at-turn-code>${esc(t.source)}</pre></details>`:''}</section>`;}
     // The pop-up: the name, then what to do with it (send it, or only keep it).
     function ask(sendAfter){const d=box.querySelector('dialog.at-name');if(!d)return;const route=o.route(),input=d.querySelector('input'),go=d.querySelector('[data-at-go]');input.value=nameOf(o,route);go.textContent=sendAfter?'Send to robot':'Save the name';d.returnValue='';
       d.onclose=()=>{if(d.returnValue!=='go')return render();const next=cleanName(input.value);o.name.set(next===defaultName(route)?'':next);said='';codeKey='';code=null;drawn='';
@@ -46,7 +55,8 @@
           .catch(e=>{said=`It did not get there: ${e?.message||e}`;}).finally(()=>{sending=false;drawn='';render();});};
       if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');input.focus();input.select?.();}
     box.addEventListener('click',e=>{const a=e.target.closest?.('[data-at]')?.dataset.at;if(!a)return;const note=t=>{savedNote=t;const n=box.querySelector('[data-at-saved]');if(n)n.textContent=t;drawn='';};
-      if(a==='run')return void o.toRun?.();if(a==='send')return o.connected()?ask(true):render();if(a==='rename')return ask(false);if(!code)return;
+      if(a==='run')return void o.toRun?.();
+      if(a==='turn-send'){const t=o.turnTest?.();if(!t||t.error||turnSending||!o.connected())return;turnSending=true;turnSaid='';drawn='';render();return void Promise.resolve().then(()=>o.sendTurnTest(t)).then(x=>{turnSaid=x||'On the robot.';},x=>{turnSaid=`It did not get there: ${x?.message||x}`;}).finally(()=>{turnSending=false;drawn='';render();});}if(a==='send')return o.connected()?ask(true):render();if(a==='rename')return ask(false);if(!code)return;
       if(a==='save')return void Promise.resolve(o.saveFile(code.name,code.source)).then(f=>note(f?`Saved to ${f}`:''),x=>note(`It was not saved: ${x?.message||x}`));
       if(a==='copy')return void Promise.resolve(o.copy(code.source)).then(()=>note('Copied.'),()=>note('It could not be copied: open See the code and select it.'));});
     return {refresh:render,name:()=>nameOf(o,o.route())};}

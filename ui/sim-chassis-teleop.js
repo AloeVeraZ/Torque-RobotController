@@ -293,6 +293,43 @@
       `            // ${WHEELED[kind]||WHEELED.mecanum} Every motor is scaled together, so none is asked for more than full power.`,
       `            double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'            double top = 1;','            for (double p : power) top = Math.max(top, Math.abs(p));','            for (int i = 0; i < n; i++) drive[i].setPower(power[i] / top);',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
+  // ---- a test of the heading alone -------------------------------------------------------------------------------------
+  // An autonomous that uses nothing but the Control Hub's IMU: a short push forward by time, then a turn to each angle in
+  // turn, slowing as it nears each one. Where the robot stands at START is 0°, whatever the IMU reads then, and the IMU's
+  // yaw is taken the way round and by the scale Calibrate measured (o.imu.scale, negative when it counts backwards). It
+  // shows whether the heading the robot's code turns by is right before a whole route depends on it.
+  // o: as teleopOf takes (kind, motors, robot, imu, config, date), angles: degrees from the start, left positive.
+  const TURN_TEST={className:'TorqueTurnTest',opMode:'Torque IMU turn test',angles:[90,0,-90,0,180,0]};
+  function turnTestOf(o){if(!o||o.kind==='swerve'||!Array.isArray(o.motors)||!o.motors.length)return {error:'The IMU turn test is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
+    const ms=o.motors,kind=o.kind,angles=(Array.isArray(o.angles)&&o.angles.length?o.angles:TURN_TEST.angles).map(Number).filter(Number.isFinite).slice(0,12),name=o.className||TURN_TEST.className,opMode=o.opMode||TURN_TEST.opMode;
+    const imports=[...COMMON.filter(i=>!/\.TeleOp$/.test(i)),'com.qualcomm.robotcore.eventloop.opmode.Autonomous','com.qualcomm.robotcore.util.ElapsedTime',...(o.imu?.mount?.imports||[])];
+    const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,
+      '// A test of the heading alone: it uses only the IMU. Put the robot down facing the way that is 0° and press START:','// it rolls forward a little, then turns to each angle below, slowing as it nears each one. Left is positive.',
+      `@Autonomous(name = ${str(opMode)}, group = "Torque")`,`public class ${name} extends LinearOpMode {`,
+      `    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,
+      '    // The IMU\'s yaw is multiplied by this: its scale, and -1 when Calibrate found it counts a turn to the left as a turn to the right.',`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
+      '    // The angles it turns to, in order: degrees from where it stood at START, left positive.',`    static final double[] ANGLES = ${list(angles.map(dbl))};`,
+      '    // Turning: the most power, the least that still moves it, how far out it starts to slow, how close counts as there,','    // and how hard it brakes against its own speed (power for each degree a second).',
+      '    static final double TOP_TURN = 0.45, LEAST_TURN = 0.08, SLOW_FROM_DEGREES = 50, DONE_DEGREES = 2, BRAKE = 0.0016;','    static final double FORWARD_POWER = 0.25, FORWARD_SECONDS = 0.6;','',
+      '    DcMotor[] drive;','    IMU imu;','    double lastYaw, heading;','',
+      '    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }','',
+      '    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
+      '    double read() {','        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading += wrap(yaw - lastYaw) * IMU_SCALE;','        lastYaw = yaw;','        return heading;','    }','',
+      '    void set(double forward, double left, double turn) {',`        double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'        double top = 1;','        for (double p : power) top = Math.max(top, Math.abs(p));','        for (int i = 0; i < drive.length; i++) drive[i].setPower(power[i] / top);','    }','',
+      '    /** Turns to an angle and stops there: full turn power far out, less and less from SLOW_FROM_DEGREES in, braked by its own speed. */',
+      '    void turnTo(double target) {','        ElapsedTime time = new ElapsedTime();','        double before = read(), at = time.seconds();','        int there = 0;',
+      '        while (opModeIsActive() && time.seconds() < 6 && there < 12) {','            double now = read(), t = time.seconds(), rate = t > at ? (now - before) / (t - at) : 0, error = wrap(target - now);','            before = now; at = t;',
+      '            double power = 0;','            if (Math.abs(error) > DONE_DEGREES) {','                power = Math.copySign(Math.max(LEAST_TURN, TOP_TURN * Math.min(1, Math.abs(error) / SLOW_FROM_DEGREES)), error) - BRAKE * rate;','                power = Math.max(-TOP_TURN, Math.min(TOP_TURN, power));','            }',
+      '            there = Math.abs(error) <= DONE_DEGREES && Math.abs(rate) < 8 ? there + 1 : 0;','            set(0, 0, power);',
+      '            telemetry.addData("Turning to", "%.0f", target);','            telemetry.addData("Heading", "%.1f", now);','            telemetry.addData("Left to turn", "%.1f", error);','            telemetry.addData("Turn power", "%.2f", power);','            telemetry.update();','            sleep(10);','        }',
+      '        set(0, 0, 0);','        sleep(400);','    }','',
+      '    @Override public void runOpMode() {','        drive = new DcMotor[DRIVE.length];','        for (int i = 0; i < drive.length; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',
+      ...imu(o).map(l=>l.replace('        IMU imu = ','        imu = ')),
+      '        waitForStart();','        // Where it stands now is 0°, whatever the IMU says.','        lastYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading = 0;',
+      '        ElapsedTime time = new ElapsedTime();','        while (opModeIsActive() && time.seconds() < FORWARD_SECONDS) { read(); set(FORWARD_POWER, 0, 0); sleep(10); }','        set(0, 0, 0);','        sleep(300);',
+      '        for (double angle : ANGLES) { if (!opModeIsActive()) break; turnTo(angle); }',
+      '        while (opModeIsActive()) { telemetry.addData("Done. Heading", "%.1f", read()); telemetry.update(); sleep(50); }','    }','}',''].join('\n');
+    return {file:`org/firstinspires/ftc/teamcode/${name}.java`,opMode,source};}
   // ---- the same drive, in JavaScript ---------------------------------------------------------------------------------
   // What the TeleOp does with the controller each loop, for the TeleOp tab's live picture and for the tests: the Java
   // above is these steps. pad: {lx, ly, rx, ry (sticks, as the Gamepad API gives them: up and left are negative), lt, rt
@@ -329,6 +366,6 @@
     if(Object.hasOwn(WHEELED,o.kind)){const need=o.kind==='kiwi'?3:o.kind==='tank'?2:4;if((o.motors||[]).length<need)return {error:`This chassis needs ${need} drive motors: Setup has ${(o.motors||[]).length}.`};return done(wheels(o,{...m,lock:'none'}));}
     if(/^diffSwerve/.test(o.kind||''))return {error:'A differential swerve needs its own calibration (each module’s angle from its two motors) before Torque can write its TeleOp: that is not built yet.'};
     return {error:'Torque writes this TeleOp for swerve, mecanum, X-drive, butterfly, kiwi and tank chassis.'};}
-  const api={teleopOf,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};
+  const api={teleopOf,turnTestOf,TURN_TEST,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.DeckChassisTeleop=api;
 })(typeof globalThis==='object'?globalThis:this);

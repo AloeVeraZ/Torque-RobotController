@@ -1638,7 +1638,7 @@ public class MyAuto implements DeckAutonomous {
   // Each step of a send, as it happens, wherever it was sent from: Simulate's Send to robot, and Calibrate's TeleOp and Autonomous
   // (whose line says "Sending…" until the first step answers).
   if(native&&api.onRobotLink)api.onRobotLink(({stage,file})=>{const text=stage==='uploading'?`Uploading ${file}…`:stage==='fixing'?`Fixing ${file} so the robot can build…`:'On the robot. Building it there now: this is the robot’s own compiler, and it takes up to a minute…';status('#sim-send-status',text);
-    for(const el of document.querySelectorAll('[data-at-status],[data-rt-status]'))if(/^(Sending it to the robot|Uploading |Fixing |On the robot\. Building)/.test(el.textContent))el.textContent=text;});
+    for(const el of document.querySelectorAll('[data-at-status],[data-rt-status],[data-at-turn-status]'))if(/^(Sending it to the robot|Uploading |Fixing |On the robot\. Building)/.test(el.textContent))el.textContent=text;});
   // ------------------------------------------------------------------ guided check
   // The check TeleOp, run from here (src/robot-link.cjs runCheck): Deck starts it on the robot, shows each step with its
   // answers as buttons that press gamepad 1's on the robot, and puts the results into the setup.
@@ -4312,6 +4312,9 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     supported:()=>{if(project.controller==='motionmodule')return 'A MotionModule robot takes its autonomous as autonomous.py: export it in Simulate → Run & review.';
       try{window.DeckSimFtc.hardware(project.robot,project.sensors.localization,swerveNow());return '';}catch(e){return e.message;}},
     name:{get:()=>L().autoName||'',set:v=>{const l=L();if(v)l.autoName=v;else delete l.autoName;save();}},
+    // A test of the heading alone, from the chassis as Calibrate has it (its motors and which way they turn, the hub's mounting, and the IMU's way round and scale).
+    turnTest:()=>{const T=window.DeckChassisTeleop,input=chassisCal?.teleopInput?.();if(project.controller!=='ftc'||!T?.turnTestOf)return null;return input?T.turnTestOf({...input,date:new Date().toLocaleDateString('en-CA')}):{error:'This setup has no chassis yet.'};},
+    sendTurnTest:async t=>{if(liveDebug?.running())await liveDebug.stop();robotSending++;try{await sendJava(t.file,t.source);return `Built on the robot. In Drive it is “${t.opMode}”, under Auto.`;}finally{robotSending--;}},
     code:async()=>{await ready();const out=teamCode(L().route,true);return {files:out.files,name:out.name,source:out.source,opMode:(/@Autonomous\(name = "((?:\\.|[^"\\])*)"/.exec(out.source)||[])[1]||''};},
     // Live readings use the robot's one program slot: they are stopped first.
     send:async out=>{if(liveDebug?.running())await liveDebug.stop();const host=calHost();robotSending++;
