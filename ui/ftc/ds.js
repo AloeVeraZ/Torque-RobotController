@@ -40,7 +40,10 @@ function render(){
   $('#volts').textContent=known?`${v.toFixed(2)} V`:connected&&s.battery?'No sensor':'—';$('#volts-min').textContent=minVolts!==null?`Low ${minVolts.toFixed(2)} V`:'';
   const rc=s.rcBattery,rcKnown=!!rc&&Number.isFinite(rc.percent);$('.rc-batt').hidden=!prefs.showRcBattery;$('.rc-batt').classList.toggle('none',!rcKnown);$('#rc-battery').textContent=rcKnown?`${Math.round(rc.percent)}%`:'—';
   const m=selected?opMode(selected.name)||selected:null;
-  $('#opmode-label').textContent=m?m.name:'Select Op Mode';$('#opmode-hint').hidden=!!m;$('#opmode-name').classList.toggle('chosen',!!m);
+  // The robot has none of the kind that was asked for: said here, in place, until it has one (a list that opens empty says nothing).
+  if(noneOf&&(m||s.opModes.some(x=>x.flavor===noneOf)))noneOf='';
+  const kindWord=noneOf==='AUTONOMOUS'?'autonomous':'TeleOp';
+  $('#opmode-label').textContent=m?m.name:noneOf?`No ${kindWord} on this robot`:'Select Op Mode';$('#opmode-hint').textContent=noneOf?(noneOf==='AUTONOMOUS'?'Send one from Calibrate → Autonomous':'Send one from Calibrate → TeleOp'):'From Auto or TeleOp';$('#opmode-hint').hidden=!!m;$('#opmode-name').classList.toggle('chosen',!!m);$('#opmode-name').classList.toggle('none',!m&&!!noneOf);
   for(const id of ['#auto-list','#teleop-list','#opmode-name'])$(id).disabled=!connected||busy;
   const go=$('#main-action'),state=s.opModeState,kind=state==='running'?'stop':state==='init'?'start':'init';
   go.className=`go ${kind}${s.pendingAction?' waiting':''}`;$('#main-label').textContent='INIT';go.setAttribute('aria-label',kind.toUpperCase());
@@ -148,8 +151,12 @@ function choosePractice(){
 }
 
 // ---- Op mode selection and control ---------------------------------------------------------
+let noneOf='';
 function openPicker(flavor){
   const s=session.state,list=s.opModes.filter(m=>m.flavor===flavor),groups=new Map();
+  // None of this kind: no list to open. It says so where the op mode's name goes, and asks the robot again, since one just sent to it shows up as soon as the robot lists it.
+  if(!list.length){closePicker();noneOf=flavor;try{session.command('CMD_REQUEST_OP_MODE_LIST');}catch{}toast(`This robot has no ${flavor==='AUTONOMOUS'?'autonomous':'TeleOp'} op modes yet. Send one from Calibrate → ${flavor==='AUTONOMOUS'?'Autonomous':'TeleOp'}, then pick it here.`,6000);return queueRender();}
+  noneOf='';
   for(const m of [...list].sort((a,b)=>a.name.localeCompare(b.name))){const g=!m.group||m.group==='$$$$$$$'?'':m.group;if(!groups.has(g))groups.set(g,[]);groups.get(g).push(m);}
   const names=[...groups.keys()].sort((a,b)=>a===''?-1:b===''?1:a.localeCompare(b)),items=[];
   for(const g of names){if(g)items.push(el('h3','',g));for(const m of groups.get(g)){const b=el('button',selected?.name===m.name?'selected':'');b.setAttribute('role','option');b.append(el('span','',m.name));if(m.source==='BLOCKLY'||m.source==='ONBOTJAVA')b.append(el('small','',m.source==='BLOCKLY'?'Blocks':'OnBot Java'));b.onclick=()=>{selected=m;timerOn=m.flavor==='AUTONOMOUS'&&prefs.autoTimer;closePicker();queueRender();};items.push(b);}}
