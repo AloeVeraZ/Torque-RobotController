@@ -67,7 +67,8 @@
       for(const axis of ['x','y']){const n=inch(v[axis]);if(n!==undefined&&n!==d[axis])e[axis]=n;}if(v.reversed===true)e.reversed=true;if(finite(v.scale)&&v.scale>=.8&&v.scale<=1.25&&Math.abs(v.scale-1)>1e-6)e.scale=+v.scale.toFixed(5);if(Object.keys(e).length)pods[key]=e;}
     if(Object.keys(pods).length)out.pods=pods;
     // The Control Hub IMU's heading scale, from whole turns in Calibrate. Further than 5% off is a fault, not something to scale away.
-    const im=raw.imu;if(im&&typeof im==='object'&&finite(im.scale)&&im.scale>=.95&&im.scale<=1.05&&Math.abs(im.scale-1)>1e-6)out.imu={scale:+im.scale.toFixed(6)};
+    // reversed: a quarter turn to the left read as a turn to the right (Calibrate → Mechanisms, the chassis' quarter turn), so its heading is taken the other way round.
+    const im=raw.imu;if(im&&typeof im==='object'){const e={};if(finite(im.scale)&&im.scale>=.95&&im.scale<=1.05&&Math.abs(im.scale-1)>1e-6)e.scale=+im.scale.toFixed(6);if(im.reversed===true)e.reversed=true;if(Object.keys(e).length)out.imu=e;}
     const p=raw.pinpoint,pd=ODOMETRY.pinpoint;if(p&&typeof p==='object'){const e={};if(Object.hasOwn(POD_TYPES,p.pods)&&p.pods!==pd.pods)e.pods=p.pods;
       for(const k of ['xOffset','yOffset']){const n=inch(p[k]);if(n!==undefined&&n!==pd[k])e[k]=n;}for(const k of ['xReversed','yReversed'])if(p[k]===true)e[k]=true;if(Object.keys(e).length)out.pinpoint=e;}
     const o=raw.otos,od=ODOMETRY.otos;if(o&&typeof o==='object'){const e={};for(const k of ['x','y']){const n=inch(o[k]);if(n!==undefined&&n!==od[k])e[k]=n;}

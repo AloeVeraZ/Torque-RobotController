@@ -193,3 +193,13 @@ test('the chassis as one: four moves, and what each wheel should be seen to do, 
   const tank=of('tank');assert.deepEqual(tank.map(m=>m.label),['Drive forward','Drive backward','Turn left','Turn right'],'it cannot slide, so it turns');assert.deepEqual(pw(tank[2]),{frontLeft:-1,frontRight:1,backLeft:-1,backRight:1});
   const kiwi=of('kiwi');assert.equal(kiwi[0].wheels.find(w=>w.key==='front').does,'stays still','a kiwi’s front wheel does not roll driving forward');assert.equal(kiwi[2].wheels.find(w=>w.key==='front').power,1);
   const sw=of('kiwiSwerve');assert.deepEqual(sw.map(m=>m.deg),[0,0,90,-90],'a swerve points its wheels the way it goes');assert.ok(sw[1].wheels.every(w=>w.power===-1));assert.ok(sw[2].wheels.every(w=>w.power===1&&/points to the robot’s left/.test(w.does)));});
+
+test('the heading the code turns by: a quarter turn to the left by hand says which way round the IMU counts',()=>{
+  assert.deepEqual(K.quarterTurn(88.4),{ok:true,measured:88.4,backwards:false,offDeg:-1.6});assert.equal(K.quarterTurn(-91.2).backwards,true);assert.match(K.quarterTurn(20).problem,/not a quarter turn/);assert.match(K.quarterTurn(170).problem,/not a quarter turn/);assert.match(K.quarterTurn(NaN).problem,/nothing/);
+  // Kept with the robot, and what the autonomous, the TeleOp and the calibration class multiply the yaw by.
+  const rev=C.robot({drivetrain:'mecanum',odometry:{imu:{reversed:true,scale:1.02}}},'ftc'),ch=K.chassisOf({robot:rev,sensors:{localization:'encoders'}},C);
+  assert.deepEqual(rev.odometry.imu,{scale:1.02,reversed:true});assert.equal(K.imuFactor(ch),-1.02);assert.equal(K.hubHeading(ch),true);assert.equal(K.hubHeading(K.chassisOf({robot:rev,sensors:{localization:'fused'}},C)),false,'a Pinpoint turns with its own IMU');
+  assert.equal(C.robot({drivetrain:'mecanum',odometry:{imu:{reversed:false}}},'ftc').odometry,undefined,'nothing kept when it counts the right way');
+  const F=require('../ui/sim-ftc.js');assert.equal(F.hardware(rev,'encoders').imuScale,-1.02);assert.equal(F.hardware(C.robot({drivetrain:'mecanum'},'ftc'),'encoders').imuScale,1);
+  const tr=K.tracker(ch);tr.zero({'i:imu:yaw':10,'m:frontLeft:pos':0,'m:frontRight:pos':0,'m:backLeft:pos':0,'m:backRight:pos':0});
+  near(tr.update({'i:imu:yaw':-80,'m:frontLeft:pos':0,'m:frontRight:pos':0,'m:backLeft:pos':0,'m:backRight:pos':0}).h,91.8,.1,'a reading that falls is a turn to the left');});

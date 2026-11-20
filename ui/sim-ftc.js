@@ -34,7 +34,7 @@
     // Odometry as mounted (Setup → Robot controller → Odometry): pod positions and directions, the Pinpoint's pod
     // offsets, directions and pod type, and the OTOS's position, rotation and scalars.
     const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(robot);
-    return {localization,imu:sw?.imu?.name||named('imu','imu'),imuScale:odo.imu.scale,hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
+    return {localization,imu:sw?.imu?.name||named('imu','imu'),imuScale:odo.imu.scale*(odo.imu.reversed?-1:1),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
       ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }

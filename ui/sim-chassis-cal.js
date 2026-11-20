@@ -46,13 +46,22 @@
       ['left',slide?'Slide left':'Turn left',slide?{left:1}:{turn:1},90,1,'points to the robot’s left and rolls that way'],['right',slide?'Slide right':'Turn right',slide?{left:-1}:{turn:-1},-90,1,'points to the robot’s right and rolls that way']]
       .map(([id,label,cmd,deg,power,says])=>{const p=ch.swerve?ch.motors.map(()=>power):T.wheelPowers(ch.motors,{forward:0,left:0,turn:0,...cmd},kind);
         return {id,label,...(ch.swerve?{deg}:{}),wheels:ch.motors.map((m,i)=>({key:m.key,name:m.name,power:+p[i].toFixed(3),does:ch.swerve?says:does(p[i])}))};});}
+  // The heading the code uses, from the Control Hub's IMU: its yaw, the way round Calibrate found it and by its measured scale.
+  const imuFactor=ch=>(ch.odo?.imu?.scale||1)*(ch.odo?.imu?.reversed?-1:1);
+  // Whether this chassis takes its heading from the Control Hub's IMU (a Pinpoint or an OTOS turns with its own).
+  const hubHeading=ch=>['encoders','gyro','odometry','odometry3'].includes(ch.loc)&&!!ch.imu;
+  // A quarter turn to the left by hand, squared against a wall before and after: what the IMU's own yaw read (degrees, as
+  // the hub gives it, left positive when it is mounted as Setup says). Near +90 it counts the right way; near -90 it counts
+  // backwards and the code takes it the other way round; anything else was not a quarter turn.
+  function quarterTurn(measured){const m=Math.abs(measured);if(!Number.isFinite(measured)||m<60||m>120)return {problem:`It read ${Number.isFinite(measured)?measured.toFixed(1):'nothing'}°, which is not a quarter turn. Square it against the wall, press Start, turn it 90° to its left, square it again and press Done.`};
+    return {ok:true,measured:+measured.toFixed(1),backwards:measured<0,offDeg:+(m-90).toFixed(1)};}
   // What it can say about where it is: x, y and heading, or heading only.
   const measures=ch=>ch.swerve&&ch.loc==='encoders'?'heading':['fused','optical','odometry','odometry3','encoders'].includes(ch.loc)?'position':ch.loc==='gyro'?'heading':'nothing';
   // ---- where it is, from Torque Debug's readings (v: {key: value}) ----
   // tracker(ch).zero(v) sets here as (0, 0) facing 0°; update(v) returns {x, y, h} from there.
   function tracker(ch){
     let z=null,pose={x:0,y:0,h:0},last=null;
-    const imuH=v=>{const y=v[`i:${ch.imu}:yaw`];return Number.isFinite(y)?y*(ch.odo.imu?.scale||1):NaN;};
+    const imuH=v=>{const y=v[`i:${ch.imu}:yaw`];return Number.isFinite(y)?y*imuFactor(ch):NaN;};
     // An absolute sensor (Pinpoint, OTOS): its own x, y, h, made relative to the zero.
     const absolute=v=>{if(ch.loc==='fused'){const n=ch.pinpoint,x=v[`i:${n}:x`],y=v[`i:${n}:y`];return {x:x/MM,y:y/MM,h:v[`i:${n}:h`]};}const n=ch.otos;return {x:v[`i:${n}:x`],y:v[`i:${n}:y`],h:v[`i:${n}:h`]};};
     // A counting one (pods or drive encoders, with the IMU's heading): how far it went forward and sideways since last time.
@@ -283,7 +292,7 @@
   // Calibrate measured. The class has no package and nothing but plain Java in it: it builds in OnBot Java as it is.
   function codeOf({ch,rec={},links=[],steer=[],config='',date='',more=null}){
     const link=(cause,key)=>{const l=links.find(x=>x.result?.state==='pass'&&x.effect?.key===key&&x.causes?.some(c=>c.name===cause));return l?(l.effect.dir<0?-1:1):null;};
-    const line=(type,name,value,note)=>`    public static final ${type} ${name} = ${value};${note?' // '+note:''}`,scale=ch.odo?.imu?.scale||1,pods=rec.pods||{},out=[];
+    const line=(type,name,value,note)=>`    public static final ${type} ${name} = ${value};${note?' // '+note:''}`,scale=imuFactor(ch),pods=rec.pods||{},out=[];
     out.push(`// Measured on the real robot by Torque (Calibrate)${date?', '+date:''}.${config?` Configuration: "${config}".`:''}`,'// Everything Calibrate measured, as one class: put it in OnBot Java (or TeamCode) and read these numbers from your own code,','// as TorqueCalibration.NAME. It has no package, so it builds in OnBot Java as it is.','public final class TorqueCalibration {','    private TorqueCalibration() {}','',
       '    // Heading. Multiply the IMU\'s yaw by this before you use it.',line('double','IMU_HEADING_SCALE',(+scale.toFixed(6)).toString()+(Number.isInteger(scale)?'.0':''),scale===1?'not corrected: Heading, Spin it off a wall measures it':'measured by turning it'));
     if(ch.motors.length){out.push('','    // Drive motors. REVERSED: set that motor\'s direction to REVERSE so positive power rolls its wheel forward.','    // ENCODER_SIGN: +1 when its encoder counts up as the wheel rolls forward, -1 when it counts down.');
@@ -303,7 +312,7 @@
     if(more?.mechs)out.push('','    // ---- Mechanisms: units are each mechanism\'s own (degrees or mm); gains are power per unit. ----',more.mechs);
     if(more?.lens)out.push('','    // ---- Cameras ----',more.lens);
     out.push('}');return out.join('\n');}
-  const api={chassisOf,togetherMoves,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,steerStep,steerState,steerGains,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
+  const api={chassisOf,togetherMoves,quarterTurn,hubHeading,imuFactor,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,steerStep,steerState,steerGains,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -312,7 +321,7 @@
   // steerEncoders() (each steering servo's absolute encoder), setSteerZero(zero), setReversed(driveKey, on), config()
   function create(opts){
     const {box,debug}=opts,p=()=>opts.project(),rec=()=>{const c=p().calibration||(p().calibration={});return c.chassis||(c.chassis={});};
-    let codeSending=false,codeSaid='',seenAt=0,track=null,trail=[],pose=null,off=null,queued=false,rollFrom=null,ready='',runs=new Map(),taps=new Map(),told='',sending=false,sent='',spotSaid='';
+    let turnRun=null,codeSending=false,codeSaid='',seenAt=0,track=null,trail=[],pose=null,off=null,queued=false,rollFrom=null,ready='',runs=new Map(),taps=new Map(),told='',sending=false,sent='',spotSaid='';
     const ch=()=>chassisOf(p(),opts.C,{cpr:opts.cpr?.()||537.7});
     const mapNow=()=>({...(rec().map||{}),field:p().robot?.driveStyle==='field'?'yes':'no'});
     const live=()=>!!debug?.running?.();
@@ -327,7 +336,7 @@
     // motors, their encoders, odometry) is Setup's choice, and the IMU and the odometry are checked by themselves.
     function states(c,devs){const r=rec(),gone=missing(c,devs),steer=steerOf(c),pods=podsOf(c,steer),pr=r.pods||{},podOk=q=>{const x=pr[q.key]||{};return !!x.drive&&(!q.steer||(tuned(x)&&!!x.left&&!!x.right));};
       const together=pods.every(q=>!!pr[q.key]?.drive)&&togetherMoves(c).every(m=>!!r.moves?.[m.id]);
-      const list=gone.length?[['gone',false]]:[...(steer.length?[['steer',!!r.steer],...pods.map(q=>['pod:'+q.key,podOk(q)])]:[]),['wheels',together]];
+      const list=gone.length?[['gone',false]]:[...(steer.length?[['steer',!!r.steer],...pods.map(q=>['pod:'+q.key,podOk(q)])]:[]),['wheels',together],...(hubHeading(c)?[['turn',!!r.turn?.ok]]:[])];
       let open=true,podsOpen=true;const s=list.map(([id,ok,extra])=>{const pod=id.startsWith('pod:'),state=!(pod?podsOpen:open)?'locked':ok?'pass':extra?'optional':'todo';if(!ok&&!extra){open=false;if(!pod)podsOpen=false;}return {id,state,...(extra?{extra:true}:{})};});return {gone,s,steer,pods};}
     const pill=s=>`<span class="rs-pill ${s==='pass'?'ok':s==='locked'||s==='optional'?'':'warn'}">${s==='pass'?'Done':s==='locked'?'Locked':s==='optional'?'Optional':'To do'}</span>`;
     function field(){const P=pose,W=144,trailPts=trail.map(q=>`${f(-q.y,2)},${f(-q.x,2)}`).join(' ');
@@ -378,6 +387,11 @@
       const bSteer=`<p class="hint">Turn every pod by hand until its wheel points straight ahead, each the same way round (its gear on the same side), then press the button. That reading is each pod’s zero.</p>${start}
         <ul class="cal-sense-rows">${steer.map(m=>`<li><b>${esc(m.label)}</b> <code>${esc(m.name)}</code>: now <span data-chassis-volts="${esc(m.name)}"></span> V${Number.isFinite(r.steer?.zero?.[m.name])?` · zero kept at ${f(r.steer.zero[m.name],3)} V`:''}</li>`).join('')}</ul>
         <div class="button-row"><button type="button" class="${r.steer?'secondary':'primary'}" data-chassis="steer"${live()&&steer.every(m=>Number.isFinite(volts(m)))?'':' disabled'}>${r.steer?'Set straight again':'They all point straight'}</button></div>`;
+      // The heading the autonomous and the TeleOp turn by. Where the robot stands when START is pressed is its zero, whatever the IMU says then; this checks
+      // that a turn to the left from there counts as a turn to the left, by turning it a real quarter turn by hand.
+      const tn=r.turn,yawNow=now[`i:${c.imu}:yaw`],bTurn=`<p class="hint">Autonomous and TeleOp take the robot’s heading from the Control Hub’s IMU, counted from where it stands when it starts. Put the robot on the floor with its side square against a wall or a tile seam: that is 0°. Press Start, turn it by hand a quarter turn to its <b>left</b> (counter-clockwise, seen from above) until it is square again, then press Done.</p>${start}
+        <div class="button-row">${turnRun?`<button type="button" class="primary" data-chassis="turn-done">Done</button><button type="button" class="secondary" data-chassis="turn-cancel">Cancel</button><span class="hint">Turned so far: <b data-chassis-turned>0.0</b>°</span>`:`<button type="button" class="${tn?.ok?'secondary':'primary'}" data-chassis="turn-start"${live()&&Number.isFinite(yawNow)?'':' disabled'}>${tn?'Measure again':'Start'}</button>${live()&&!Number.isFinite(yawNow)?`<span class="hint">No reading from “${esc(c.imu)}” yet.</span>`:''}`}</div>
+        ${turnRun?'':tn?.ok?`<p class="cal-sense-result"><span class="rs-pill ok">${tn.backwards?'Corrected':'Good'}</span> The quarter turn read <b>${f(tn.measured,1)}°</b>${tn.backwards?': the IMU counted it as a turn to the right, so the code now takes its heading the other way round. If the Control Hub is mounted another way than Setup says, fix that in Setup too.':`: a turn to the left counts as a turn to the left${Math.abs(tn.offDeg)>6?`. It is ${f(Math.abs(tn.offDeg),1)}° ${tn.offDeg>0?'over':'under'} 90°: square it more carefully, or measure the scale in Heading`:''}.`}</p>`:tn?.problem?`<p class="cal-sense-note bad">${esc(tn.problem)}</p>`:''}`;
       const rr=r.roll,rollRows=rr?.rows?`<ul class="cal-sense-rows">${rr.rows.map(x=>`<li>${x.weak||x.backwards?'<span class="rs-pill warn">Fix it</span>':'<span class="rs-pill ok">Good</span>'} <b>${esc(x.name)}</b>: ${x.ticks} ticks${x.weak?'. It hardly counted: check its encoder cable.':x.backwards?'. It counts backwards: reverse this motor in Setup → Mechanisms, or in your code.':''}</li>`).join('')}</ul>
         <p class="cal-sense-result"><b>${f(rr.ticksPerIn,2)}</b> ticks an inch. The motor and wheel size say ${f(rr.expected,2)}: ${f(Math.abs(rr.errorPct),1)}% ${rr.errorPct>=0?'more':'fewer'}${Math.abs(rr.errorPct)>15?'. That far apart, check the drive motor and wheel size in Setup → Mechanisms':''}.</p>`:rr?.problem?`<p class="cal-sense-note bad">${esc(rr.problem)}</p>`:'';
       const bRoll=`<p class="hint">Optional: without it Torque uses the motor’s and the wheel’s own numbers. Put the robot on the floor${c.swerve?' with its wheels pointing straight ahead':''}, its back on a tile seam. Press Start, push it straight forward ${PUSH_IN} in (two tiles), then press Done. Torque counts the encoder ticks in an inch of floor, which is what makes a distance in autonomous come out right.</p>${start}
@@ -390,7 +404,7 @@
         ${tele.error?`<p class="cal-sense-note bad">${esc(tele.error)}</p>`:s.every(x=>x.state==='pass')?'':'<p class="cal-note">Some checks above are not done yet: what they would set is left as Torque guessed it.</p>'}
         <div class="button-row"><button type="button" class="primary" data-chassis="send"${tele.error||sending?' disabled':''}>${sending?'Sending…':'Send to the robot'}</button>${sent?`<span class="hint" role="status">${esc(sent)}</span>`:''}</div>
         ${tele.source?`<details class="usb-facts"><summary>See the code</summary><pre class="cal-cam-code cal-chassis-code">${esc(tele.source)}</pre></details>`:''}</li>`;
-      const podOf=id=>pods.find(q=>'pod:'+q.key===id),title=id=>({gone:'A name in Setup is not on the Control Hub',steer:'Point the wheels straight',wheels:'All wheels together',roll:'How far it rolls',field:'Where it is on the field'})[id]||`${podOf(id).label} pod`,body=id=>({gone:bGone,steer:bSteer,wheels:bWheels,roll:bRoll,field:b3})[id]??bPod(podOf(id));
+      const podOf=id=>pods.find(q=>'pod:'+q.key===id),title=id=>({gone:'A name in Setup is not on the Control Hub',steer:'Point the wheels straight',wheels:'All wheels together',turn:'Quarter turn to the left',roll:'How far it rolls',field:'Where it is on the field'})[id]||`${podOf(id).label} pod`,body=id=>({gone:bGone,steer:bSteer,wheels:bWheels,turn:bTurn,roll:bRoll,field:b3})[id]??bPod(podOf(id));
       const html=`<section class="cal-card cal-chassis"><div class="cal-hub-head"><h2>Chassis</h2>${s.filter(x=>!x.extra).every(x=>x.state==='pass')?`<span class="rs-pill ok">${s.every(x=>x.state==='pass')?'Calibrated':'Good to use'}</span>`:''}</div><ol class="cal-chassis-steps">${s.map((x,i)=>step(i+1,title(x.id),x.state,x.state==='locked'?'':body(x.id))).join('')}${gone.length?'':bCode+bDrive}</ol></section>`;
       if(box.dataset.html!==html){const focus=document.activeElement?.id;box.dataset.html=html;box.innerHTML=html;if(focus)document.getElementById(focus)?.focus();}
       livePaint();}
@@ -404,6 +418,7 @@
     function follow(){if(off||!debug?.listen)return;off=debug.listen((_f,v)=>{
       seenAt=performance.now();for(const fn of taps.values())fn(v,_f);
       for(const el of box.querySelectorAll('[data-chassis-volts]'))el.textContent=f(v['a:'+el.dataset.chassisVolts],3);
+      if(turnRun){const y=v[turnRun.key];if(Number.isFinite(y)){let d=y-turnRun.last;d-=360*Math.round(d/360);turnRun.total+=d;turnRun.last=y;const el=box.querySelector('[data-chassis-turned]');if(el)el.textContent=f(turnRun.total,1);}}
       if(rollFrom){const el=box.querySelector('[data-chassis-rolled]'),x=rollOf(ch(),rollFrom,v);if(el)el.textContent=f(Number.isFinite(x.ticksPerIn)?x.ticksPerIn*PUSH_IN/ch().nominalTicksPerIn:0);}
       // A pod on its way to a quarter turn: there once its encoder has stayed within the tolerance, or not after 6 s.
       for(const [podKey,run] of runs){if(run.phase!=='moving'||run.kind==='drive'||run.kind==='tune'||run.kind==='move')continue;const d=steerAngle(v['a:'+run.name],run.target,run.span,run.sense)*(run.kind==='right'?-1:1),t=tolOf(rec());/* d: past the target (+) or short of it (-), the way it was turning */run.hits=d<=t.plus&&d>=-t.minus?run.hits+1:0;
@@ -415,7 +430,7 @@
     // The chassis as the TeleOp needs it: each pod with what was checked on it, or each drive motor.
     // What the chassis TeleOp is written from (DeckChassisTeleop.teleopOf's input): the TeleOp tab adds the mechanisms to it.
     function teleopIn(c,steer){const r=rec(),robot=p().robot||{},L=robot.length||17,W=robot.width||17,at=k=>({x:/front/i.test(k)?L/2:/back/i.test(k)?-L/2:0,y:/left/i.test(k)?W/2:/right/i.test(k)?-W/2:0});
-      const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{}),found=measured&&(!setup||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null,common={robot,imu:{name:c.imu,scale:c.odo?.imu?.scale||1,...(found&&globalThis.DeckHubMount?{mount:globalThis.DeckHubMount.javaOf(found)}:{})},map:mapNow(),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA')};
+      const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{}),found=measured&&(!setup||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null,common={robot,imu:{name:c.imu,scale:imuFactor(c),...(found&&globalThis.DeckHubMount?{mount:globalThis.DeckHubMount.javaOf(found)}:{})},map:mapNow(),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA')};
       if(steer.length)return ({...common,kind:'swerve',tolerance:+(bandOf(r)*.6).toFixed(2),pods:podsOf(c,steer).map(q=>{const st=q.steer,x=(r.pods||{})[q.key]||{},per=(st?.volts||3.3)/360,k0=STEER_DEFAULT,pid=tuned(x)&&x.pid.leadP>0&&x.pid.rP>0?x.pid:{...k0,g:x.pid?.g,vP:k0.vP/3.3*(st?.volts||3.3),vN:k0.vN/3.3*(st?.volts||3.3),slope:k0.slope/3.3*(st?.volts||3.3),vmax:k0.vmax/3.3*(st?.volts||3.3),rP:80*per,rN:80*per,zone:8*per,ease:1*per,still:12*per},sense=x.sense||1;
         return {label:q.label,drive:q.motor.name,reversed:q.motor.reversed,servo:st?.servo,encoder:st?.name,...at(q.key),zero:r.steer?.zero?.[st?.name],encoderSign:sense,servoSign:(pid.g??(st?gOf(st):1))*sense,gain:pid.kP,leadP:pid.leadP,leadN:pid.leadN,creepP:pid.cP,creepN:pid.cN,creepSpeedP:+(pid.vP/per).toFixed(1),creepSpeedN:+(pid.vN/per).toFixed(1),
           slope:+(pid.slope/per).toFixed(1),top:+(pid.vmax/per).toFixed(1),pushP:+(pid.rP/per).toFixed(1),pushN:+(pid.rN/per).toFixed(1),zone:+(pid.zone/per).toFixed(2),ease:+((pid.ease||0)/per).toFixed(2),still:+(pid.still/per).toFixed(1),lag:pid.lag||.14,volts:st?.volts||3.3};})});
@@ -587,6 +602,10 @@
       if(a==='placed'){r.placed=new Date().toISOString();return save();}
       if(a==='steer'){const v=debug.values(),zero={};for(const m of steerOf(ch())){if(!Number.isFinite(v['a:'+m.name]))return void(b.textContent='No readings yet: try again');zero[m.name]=+v['a:'+m.name].toFixed(4);}
         r.steer={at:new Date().toISOString(),zero};for(const x of Object.values(r.pods||{})){delete x.left;delete x.right;}opts.setSteerZero?.(zero);return save();}
+      if(a==='turn-start'){const c=ch(),key=`i:${c.imu}:yaw`,y=debug.values()[key];if(!Number.isFinite(y))return void(b.textContent='No readings yet: try again');turnRun={key,last:y,total:0};follow();return paint();}
+      if(a==='turn-cancel'){turnRun=null;return paint();}
+      // The IMU's own yaw is what was watched; a correction already in place is undone first, so measuring twice does not flip it back.
+      if(a==='turn-done'){if(!turnRun)return;const res=quarterTurn(turnRun.total);turnRun=null;if(res.ok){opts.setImuReversed?.(res.backwards);r.turn={...res,at:new Date().toISOString()};}else r.turn=res;return save();}
       if(a==='roll-start'){rollFrom={...debug.values()};follow();return paint();}
       if(a==='roll-cancel'){rollFrom=null;return paint();}
       if(a==='roll-done'){const c=chassisOf({...p(),calibration:{}},opts.C,{cpr:opts.cpr?.()||537.7});r.roll={...rollOf(c,rollFrom,debug.values()),at:new Date().toISOString()};rollFrom=null;return save();}
