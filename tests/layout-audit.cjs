@@ -20,8 +20,9 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
   const tap=async selector=>{const el=page.locator(selector);await el.scrollIntoViewIfNeeded();const r=await el.boundingBox();await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x+r.width/2,y:r.y+r.height/2}]});await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});};
   const inspect=async(name,label)=>{
    cases++;
-   // Menus and dialogs open on a short spring (they grow from 94%); measure them once they have settled.
-   await page.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))).then(()=>undefined));
+   // Menus and dialogs open on a short spring (they grow from 94%); measure them settled. Each is taken to its end here
+   // rather than waited for: a window that is not being drawn (a headless Linux run) never advances an animation.
+   await page.evaluate(()=>{for(const a of document.getAnimations())if(a.effect?.getComputedTiming().iterations!==Infinity){try{a.finish();}catch{}}});
    const found=await page.evaluate(()=>{
     const problems=[],visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',rect=e=>e.getBoundingClientRect(),cross=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
     const dialog=document.querySelector('dialog[open]'),scope=dialog||document;
