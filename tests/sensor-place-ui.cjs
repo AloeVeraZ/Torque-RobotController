@@ -27,19 +27,14 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/sensor-
     await page.selectOption('#sense-face-imu-a','left');await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.hubLogo==='left');
     assert.equal(await page.inputValue('#sim-hub-logo'),'left','the hub mounting picker shows the same');
     assert.equal(await page.locator('#sense-face-imu-b option[value="right"]').isDisabled(),true,'the USB end cannot face along the logo');
-    await page.fill(`${imu} [data-sense-pos="imu:x"]`,'3.5');await page.press(`${imu} [data-sense-pos="imu:x"]`,'Tab');await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.sensorPlace?.imu?.x===3.5);
+    await page.fill(`${imu} [data-sense-pos="imu:x"]`,'3.5');await page.press(`${imu} [data-sense-pos="imu:x"]`,'Tab');await page.waitForFunction(()=>Number.isFinite(JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.sensorPlace?.imu?.x));
+    // The box is the hub's middle; what is kept is its IMU chip, the middle plus the chip's place in the hub as it faces.
+    {const P=require('../ui/sim-sensor-place.js'),C=require('../ui/sim-config.js'),r=(await project()).robot,p=P.of(r,C).imu;assert.ok(Math.abs(P.middle(p).x-3.5)<.002,`the hub's middle is 3.5 in forward: ${JSON.stringify(P.middle(p))}`);assert.ok(Math.abs(p.x-3.5-P.chipOffset(p)[0])<.002);assert.equal(await page.inputValue(`${imu} [data-sense-pos="imu:x"]`),'3.5');assert.equal(await page.locator(`${imu} [data-sense-pos="imu:z"]`).count(),0,'it cannot be moved up or down');}
     assert.equal((await project()).robot.sensorPlace.imu.from,'typed');
     await page.selectOption('#sense-imu-kind','navx');await page.waitForSelector(`${imu} .cal-sense-note.bad`);assert.match(await page.textContent(`${imu} .cal-sense-note.bad`),/gyroscope, not as an IMU/);
     await page.selectOption('#sense-imu-kind','controlHub');await page.waitForTimeout(250);
-    // A part clicked on the model: its box gives x, y and z.
-    await page.click(`${imu} [data-sense-place="imu"]`);await page.waitForTimeout(250);
-    const canvas=page.locator('#mech-model-preview canvas');await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();
-    let placed=null;for(const [fx,fy] of [[.5,.5],[.45,.45],[.55,.5],[.5,.6],[.4,.55]]){await page.mouse.click(b.x+b.width*fx,b.y+b.height*fy);await page.waitForTimeout(400);placed=(await project()).robot.sensorPlace?.imu;if(placed?.from==='cad')break;
-      if(!await page.locator(`${imu} [data-sense-place="imu"][aria-pressed="true"]`).count())await page.click(`${imu} [data-sense-place="imu"]`);}
-    assert.equal(placed?.from,'cad',`clicked on the model: ${JSON.stringify(placed)}`);assert.ok(Number.isFinite(placed.z)&&placed.part,'its box gives a height and its name');
-    assert.match(await page.textContent(`${imu} [data-sense-said]`),/^Logo left, USB ports \w+ · /);
-    assert.equal((await project()).robot.hubLogo,'left','a CAD pick leaves which way it faces alone');
-    await page.waitForTimeout(600);await page.screenshot({path:path.join(out,'imu-placed.png')});
+    // A sensor is placed by typed numbers only: nothing on its card places it by a click on the model.
+    assert.equal(await page.locator('#mech-drive-ports [data-sense-place]').count(),0,'no Click it on the model for a sensor');assert.equal(await page.locator('#mech-drive-ports [data-wheel-place^="pinpoint"],#mech-drive-ports [data-wheel-place^="pod"]').count(),0);
     // Or found by itself: the Control Hub and the Pinpoint by their parts' names, the IMU at the hub's chip; which way it faces stays as picked.
     await page.click(`${imu} [data-sensors-find]`);await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.sensorPlace?.imu?.part==='Control Hub');
     {const r=(await project()).robot;assert.equal(r.sensorPlace.imu.from,'cad');assert.equal(r.hubLogo,'left','found, not turned');assert.match(await page.textContent(`${imu} .sim-chassis-find [role=status]`),/^Found the IMU in “Control Hub”/);

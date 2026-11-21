@@ -41,6 +41,8 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     await page.locator('#sim-part-list button').first().click();await page.waitForSelector('#sim-part-pick:not([hidden])');assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight),'the part’s roles fit');await page.screenshot({path:path.join(out,'cad-part.png')});await page.click('#sim-part-clear');
     // B. Wheels, power and driving style are on the chassis.
     await page.click('#sim-setup-step-mechanisms');await page.waitForTimeout(300);
+    // The wheel diameter box shows only for Other: the three mecanum wheel sets are picked by name.
+    assert.equal(await page.locator('#mech-drive #sim-wheel-type').isVisible(),true,'the mecanum wheels are picked on the Chassis card');await page.selectOption('#sim-wheel-type','other');
     for(const id of ['sim-rpm','sim-wheel','sim-maxspeed','sim-drive-style'])assert.equal(await page.locator(`#mech-drive #${id}`).isVisible(),true,`${id} is on the Chassis card`);
     await page.fill('#sim-wheel','96');await page.press('#sim-wheel','Tab');await page.fill('#sim-maxspeed','0.6');await page.press('#sim-maxspeed','Tab');await page.selectOption('#sim-drive-style','field');await page.waitForTimeout(200);
     {const p=await project();assert.equal(p.robot.wheelDiameterMm,96);assert.equal(p.tuning.maxPathSpeed,0.6);assert.equal(p.robot.driveStyle,'field');}
@@ -122,7 +124,17 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     await page.screenshot({path:path.join(out,'kit.png')});
     // It is set up on Mechanisms like any robot (no Chassis step of its own): its wheels, power and ports in Chassis there, and they work.
     assert.equal(await page.locator('#sim-setup-step-controller').isVisible(),false,'no kit-only Chassis step');await page.click('#sim-setup-step-mechanisms');await page.click('[data-garage="chassis"]');await page.waitForTimeout(300);
-    for(const id of ['sim-rpm','sim-wheel'])assert.equal(await page.locator(`[data-setup-page=mechanisms] #${id}`).isVisible(),true,`${id} in Chassis`);
+    for(const id of ['sim-rpm','sim-wheel-type'])assert.equal(await page.locator(`[data-setup-page=mechanisms] #${id}`).isVisible(),true,`${id} in Chassis`);
+    // Its three wheel sets: one brings its diameter and the kit's size over those wheels, and the diameter box shows only for Other.
+    // No Done button follows a number box: a typed number saves by itself.
+    assert.deepEqual(await page.$$eval('#sim-wheel-type option',l=>l.map(o=>o.value)),['96','104','140','other']);
+    if((await project()).robot.appearance==='strafer'){
+      await page.selectOption('#sim-wheel-type','104');await page.waitForTimeout(300);await page.selectOption('#sim-wheel-type','140');await page.waitForTimeout(300);{const r=(await project()).robot;assert.equal(r.wheelDiameterMm,140);assert.equal(r.length,18.74);assert.equal(r.width,18.19);assert.equal(r.wheelPos.frontLeft.x,6.614,'the axles stay where they are');}
+      assert.equal(await page.locator('#sim-wheel').isVisible(),false,'a named wheel set needs no diameter');
+      await page.selectOption('#sim-wheel-type','104');await page.waitForTimeout(300);{const r=(await project()).robot;assert.equal(r.wheelDiameterMm,104);assert.equal(r.length,17.32);}}
+    await page.selectOption('#sim-wheel-type','other');assert.equal(await page.locator('#sim-wheel').isVisible(),true,'Other asks for the diameter');
+    await page.fill('#sim-wheel','');await page.locator('#sim-wheel').pressSequentially('75');await page.waitForTimeout(1500);assert.equal((await project()).robot.wheelDiameterMm,75,'a typed number saves by itself');
+    assert.equal(await page.locator('.number-entry-done').count(),0,'no Done button');await page.selectOption('#sim-wheel-type','104');await page.waitForTimeout(300);
     await page.click('[data-garage="chassis:frontLeft"]');await page.waitForTimeout(300);assert.equal(await page.locator('[data-setup-page=mechanisms] #mech-drive-ports').isVisible(),true,'the kit sets its ports');const kitRow=page.locator('#mech-drive-ports select').first(),kitPort=await kitRow.locator('option').nth(2).getAttribute('value');await kitRow.selectOption(kitPort);await page.waitForTimeout(250);assert.equal(await kitRow.inputValue(),kitPort);await page.screenshot({path:path.join(out,'kit-controller.png')});
     // Back on a team's robot they return to the chassis.
     const team=all.find(o=>!o[0].startsWith('preset:'));await page.click('#sim-setup');await page.locator(`.sim-setup-option[data-setup-id="${team[0]}"]`).click();await page.waitForFunction(i=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).setupId===i,team[0]);await page.waitForTimeout(300);assert.equal(await page.locator('#mech-drive #sim-rpm').count(),1);assert.equal(await page.locator('#mech-drive #mech-drive-ports').count(),1,'the ports come back too');

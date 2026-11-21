@@ -194,8 +194,6 @@ body.sim-workspace{overflow:hidden}
 .sim-workspace #sim-plan-next{margin:10px 0 0}
 .sim-grab-cursor{stroke:var(--accent);stroke-width:.7;pointer-events:none;fill:none}
 #simulation-field[data-dragging=true]{cursor:none!important}
-.number-entry-done{position:fixed;right:22px;bottom:14px;z-index:1000;min-height:38px;box-shadow:0 3px 16px #0006}
-.number-entry-done[hidden]{display:none!important}
 .sim-workspace #simulation-view[data-tab=run] #field-help{display:none}
 .sim-workspace .sim-pin-row[hidden]{display:none!important}
 .sim-workspace #start-edge-plan,.sim-workspace #sim-start-step>.hint{display:none}
@@ -563,3 +561,4 @@ body.sim-workspace{overflow:hidden}
 .sim-route-space .sim-tested{margin-top:6px;font-size:11px}
 .driver-station #sim-plan-next.blocked{background:var(--warning-bg);border-color:var(--warning);color:var(--text)}
 #sim-route-step .button-row{margin-top:8px}
+#sim-wheel-box[hidden],#sim-wheel-type-box[hidden]{display:none!important}#sim-wheel-type-box{margin-bottom:10px}

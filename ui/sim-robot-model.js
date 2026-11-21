@@ -176,11 +176,33 @@
     return {floor,lift:floor-lo[2],chassis:chassis?{x:cx,y:cy,length:chassis.hi[0]-chassis.lo[0],width:chassis.hi[1]-chassis.lo[1],...(chassis.derived?{name:chassis.name,derived:true}:{})}:null,extent:{length:hi[0]-lo[0],width:hi[1]-lo[1]},
       parts:boxes.map(({lo:a,hi:b,box:_,...p})=>({...p,box:{x0:a[0]-cx,x1:b[0]-cx,y0:a[1]-cy,y1:b[1]-cy,z0:a[2]-floor,z1:b[2]-floor}}))};
   }
+  // The kit chassis (the bundled Strafer, tools/simulation/finish-robot.mjs) as one team has it. Its file holds three
+  // wheel sets (deckWheel.set: 96, 104 and 140 mm) and its Control Hub, Pinpoint and odometry pods as parts of their own
+  // (deckPart.key: hub, pinpoint, podX, podY). kit: {wheel: the diameter in mm (the nearest set is shown), hub, pinpoint,
+  // podX, podY: [forward, left, up] inches from where the CAD has each, or null for one the robot does not have,
+  // hubFaces: [logo, USB] when the hub is turned from logo up, USB forward}. The CAD's frame: front towards -x, the
+  // robot's left towards -y. A pod's carriage hangs on its four bars, so it sits on the floor under any wheel set.
+  const KIT_DIR={forward:[-1,0,0],backward:[1,0,0],left:[0,-1,0],right:[0,1,0],up:[0,0,1],down:[0,0,-1]};
+  function kitLook(scene,kit){
+    const {THREE:T}=three(),sets=new Set(),all=[];scene.traverse(o=>{all.push(o);if(o.userData.deckWheel?.set)sets.add(o.userData.deckWheel.set);});if(!sets.size)return;
+    const want=Number.isFinite(kit.wheel)?kit.wheel:104,set=[...sets].sort((a,b)=>Math.abs(a-want)-Math.abs(b-want)||a-b)[0];let floor=Infinity;
+    const low=o=>{o.geometry.computeBoundingBox();return o.geometry.boundingBox.min.z+o.position.z;};
+    for(const o of all){const w=o.userData.deckWheel;if(!w?.set)continue;if(w.set!==set)o.removeFromParent();else if(o.isMesh)floor=Math.min(floor,low(o));}
+    for(const o of all){const p=o.userData.deckPart;if(!p)continue;const d=kit[p.key];if(d===null){o.removeFromParent();continue;}
+      if(p.carriage&&o.isMesh&&Number.isFinite(floor))o.position.z+=floor-low(o);
+      if(p.key==='hub'&&o.isMesh&&kit.hubFaces&&KIT_DIR[kit.hubFaces[0]]&&KIT_DIR[kit.hubFaces[1]]&&kit.hubFaces.join()!=='up,forward'){
+        // Turned about its own middle: its logo (the CAD's up) and USB side (the CAD's front) to where the team says they face.
+        const basis=(a,b)=>{const Z=new T.Vector3(...KIT_DIR[a]),Y=new T.Vector3(...KIT_DIR[b]);return new T.Matrix4().makeBasis(Y.clone().cross(Z),Y,Z);};
+        const turn=basis(...kit.hubFaces).multiply(basis('up','forward').invert());o.geometry.computeBoundingBox();const c=o.geometry.boundingBox.getCenter(new T.Vector3());
+        if(Math.abs(turn.determinant()-1)<1e-6){o.quaternion.setFromRotationMatrix(turn);o.position.add(c.clone().sub(c.clone().applyMatrix4(turn)));}}
+      if(Array.isArray(d)){const [f,l,u]=d.map(v=>Number.isFinite(v)?v:0);o.position.x-=f;o.position.y-=l;o.position.z+=u;}}
+  }
   // The body in the robot frame: scaled to inches, oriented, bottom on the floor, centred on the footprint
   // (on its chassis part when the CAD names one, so intakes that stick out stay where they are).
   function place(geometry,m,footprint){
     const {THREE:T}=three(),[F,L,Up]=rows(m),s=UNITS[m.units]||1,rot=new T.Matrix4().set(F[0],F[1],F[2],0,L[0],L[1],L[2],0,Up[0],Up[1],Up[2],0,0,0,0,1);
     const mesh=geometry.isObject3D?geometry.clone(true):new T.Mesh(geometry,material()),inner=new T.Group(),holder=new T.Group();
+    if(m.kit&&geometry.isObject3D)kitLook(mesh,m.kit);
     const transform=new T.Group();transform.matrixAutoUpdate=false;transform.matrix.copy(new T.Matrix4().makeScale(s,s,s).premultiply(rot));transform.add(mesh);inner.add(transform);holder.add(inner);
     // Measure after the scale and rotation reach the world matrices.
     holder.updateMatrixWorld(true);
@@ -198,8 +220,8 @@
       if(spec.kind==='swerve'){const steer=new T.Group();steer.name='DeckSteer';steer.position.copy(location);steer.userData.deckSteer={x:location.x,y:location.y};wheel.parent.add(steer);steer.add(wheel);wheel.position.set(0,0,0);scene.updateMatrixWorld(true);for(const part of podParts)if(part.userData.deckSteerBody.pod===wheel.name)steer.attach(part);}
       wheel.userData.deckWheel={...spec,x:location.x,y:location.y,angle:0,driven:meta?.id!=='swechanum'||spec.kind==='swerve'};
     }
-    // A build whose Strafer has goBILDA's and REV's own parts on it (tools/simulation/finish-robot.mjs) needs no stand-ins.
-    if(meta?.id==='strafer'&&!scene.getObjectByName('goBILDA Pinpoint'))straferOdometry(scene,T);
+    // A build whose Strafer has its own Pinpoint and pods (deckPart, tools/simulation/finish-robot.mjs) needs no stand-ins.
+    {let own=false;scene.traverse(o=>{if(o.userData.deckPart)own=true;});if(meta?.id==='strafer'&&!own)straferOdometry(scene,T);}
     scene.userData.builtin=meta?.id;return scene;
   }
   // goBILDA's Strafer CAD comes without odometry. Its two 4-Bar pods (32 mm wheel) and Pinpoint are drawn where goBILDA's Pinpoint user guide puts them on this chassis: both pods on the rear

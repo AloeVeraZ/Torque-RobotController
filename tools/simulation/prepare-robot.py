@@ -18,7 +18,8 @@ from OCP.IFSelect import IFSelect_RetDone
 from OCP.RWMesh import RWMesh_CoordinateSystem
 
 source, name = sys.argv[1:3]
-assert name in ('strafer', 'swechanum', 'decode-field')
+# strafer-140 and mecanum-96-a/-b: goBILDA's 140 mm Strafer kit and its 96 mm wheel set's two wheels, for the kit's other wheel sets.
+assert name in ('strafer', 'strafer-140', 'mecanum-96-a', 'mecanum-96-b', 'swechanum', 'decode-field')
 root = Path(__file__).resolve().parents[2]
 doc = TDocStd_Document(TCollection_ExtendedString('Deck CAD'))
 reader = STEPCAFControl_Reader()

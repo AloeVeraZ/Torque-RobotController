@@ -107,6 +107,9 @@
     if(key==='pinpoint'&&(patch?.a||patch?.b)){const f=faces('pinpoint',patch.a||cur.a,patch.b||cur.b);cur.a=f.a;cur.b=f.b;}
     if(key==='otos'){const odo=structuredClone(C.odometryOf(r));let touched=false;for(const k of ['x','y'])if(finite(cur[k])){odo.otos[k]=cur[k];delete cur[k];touched=true;}
       if(patch?.b){odo.otos.heading=otosHeading(faces('otos','up',patch.b).b);touched=true;}if(touched)r.odometry=C.odometry(odo);}
+    // Turned, or changed for another kind, without being moved: its middle stays where it is, so its chip goes round it.
+    if(key!=='otos'&&(patch?.a||patch?.b||patch?.kind)&&!['x','y','z'].some(k=>patch[k]!==undefined)&&finite(cur.x)&&finite(cur.y)){const was=of(robot,C)[key],now=of({...r,sensorPlace:{...all,[key]:cur}},C)[key],o0=chipOffset(was),o1=chipOffset(now);
+      ['x','y','z'].forEach((k,i)=>{if(finite(cur[k]))cur[k]=round(cur[k]-o0[i]+o1[i]);});}
     all[key]=cur;r.sensorPlace=sanitize(all);if(!Object.keys(r.sensorPlace).length)delete r.sensorPlace;return r;}
   // A part clicked on the CAD: its box (robot inches, {lo:[x,y,z], hi:[x,y,z]}) gives where the device is: the box's middle,
   // and for an IMU inside a box the chip's place in it turned the way the team says the box faces.
@@ -119,6 +122,11 @@
   function marker(p){const K=KINDS[p.kind]||KINDS.controlHub,m=matrix(p.a,p.b),half=K.size.map(v=>v*MM/2),chip=[p.x,p.y,finite(p.z)?p.z:2],off=apply(m,K.chip.map(v=>v*MM)),o=chip.map((v,i)=>v-off[i]);
     const up=apply(m,[0,0,1]),along=apply(m,[0,1,0]),led=o.map((v,i)=>v+up[i]*(half[2]+.15));
     return {origin:o,chip,face:up,arrow:along,led,size:apply(m,K.size.map(v=>v*MM)).map(Math.abs),arrowLength:Math.max(2,half[1]+1.2)};}
+  // Every position is measured from the middle of the chassis (where its wheels' diagonals cross). A chip's is two
+  // offsets added: its device's middle from the chassis's middle, and the chip from its device's middle (KINDS chip,
+  // turned the way the device faces). chipOffset: the second, robot inches. middle: the first, from a kept chip position.
+  function chipOffset(p){const K=KINDS[p.kind]||KINDS.controlHub;return apply(matrix(p.a,p.b),K.chip.map(v=>v*MM));}
+  function middle(p){const o=chipOffset(p);return {x:finite(p.x)?round(p.x-o[0]):undefined,y:finite(p.y)?round(p.y-o[1]):undefined,z:finite(p.z)?round(p.z-o[2]):undefined};}
   // In words: "Logo up, USB ports forward".
   function words(p){const K=KINDS[p.kind]||KINDS.controlHub,cap=s=>s[0].toUpperCase()+s.slice(1);return `${cap(K.a.word)} ${p.a}${K.b.hidden?'':`, ${K.b.word} ${p.b}`}`;}
   // Where, in words: "3.25 in forward, 1.00 in left, 4.50 in up".
@@ -170,8 +178,14 @@
   function facesHtml(key,p){const K=KINDS[p.kind]||KINDS.controlHub,sel=(which,label,list,now,other)=>{const id=`sense-face-${key}-${which}`;
       return `<div><label for="${id}">${esc(label)}</label><select id="${id}" data-sense-face="${key}:${which}"${list.length<2?' disabled':''}>${list.map(d=>`<option value="${d}"${d===now?' selected':''}${which==='b'&&axis(d)===axis(other)?' disabled':''}>${d[0].toUpperCase()+d.slice(1)}</option>`).join('')}</select></div>`;};
     return `<div class="start-xy sim-sense-faces">${sel('a',K.a.label,K.a.only||FACES,p.a)}${K.b.hidden?'':sel('b',K.b.label,K.b.only||FACES,p.b,p.a)}</div>`;}
-  function posHtml(key,p,{placing,pick}={}){const num=(n,label,min,max)=>`<label>${label}<input type="number" step="0.25" min="${min}" max="${max}" data-slider="off" data-sense-pos="${key}:${n}" value="${finite(p[n])?esc(p[n]):''}"></label>`;
-    const btn=pick?`<button type="button" class="secondary sim-place" data-sense-place="${key}" aria-pressed="${placing===key}">${placing===key?'Click it on the model…':'Click it on the model'}</button>`:'';
-    return `<div class="sim-chassis-pos">${num('x','Forward · in',-36,36)}${num('y','Left · in',-36,36)}${num('z','Up · in',0,36)}<small>${esc(p.from==='cad'&&p.part?`From the CAD: “${p.part}”`:p.from==='cad'?'From the CAD':'')}</small>${btn}</div>`;}
-  return {FACES,KINDS,IMU_KINDS,KEYS,kindOfTag,rolesOf,faces,matrix,sanitize,of,place,fromBox,boxFits,marker,words,where,otosHeading,otosArrow,pinpointYawSign,warnings,chipNote,roadRunner,facesHtml,posHtml,esc};
+  // A device is placed by its middle, slid along the top of the chassis: forward and left from the chassis's middle, never
+  // up or down (it sits where it is bolted), and only by typed numbers: there is no clicking or dragging it on the model.
+  // The boxes are its middle's; data-sense-pos="key:x|y" takes the middle and
+  // the page keeps the chip (the middle plus chipOffset). The OTOS keeps its own offset, with its height over the tiles.
+  function posHtml(key,p,{placing,pick}={}){const at=key==='otos'?p:middle(p),num=(n,label,min,max)=>`<label>${label}<input type="number" step="0.25" min="${min}" max="${max}" data-slider="off" data-sense-pos="${key}:${n}" value="${finite(at[n])?esc(at[n]):''}"></label>`;
+    return `<div class="sim-chassis-pos">${num('x','Forward · in',-36,36)}${num('y','Left · in',-36,36)}${key==='otos'?num('z','Up · in',0,36):''}<small>${esc(p.from==='cad'&&p.part?`From the CAD: “${p.part}”`:p.from==='cad'?'From the CAD':'')}</small></div>`;}
+  // Said under the boxes: where the IMU chip comes out, as the two offsets added.
+  function chipSaid(p){if(!finite(p.x)||!finite(p.y))return '';const m=middle(p),o=chipOffset(p),n=v=>(v<0?'−':'+')+Math.abs(v).toFixed(2);
+    return `IMU chip from the chassis’s middle: forward ${m.x.toFixed(2)} ${n(o[0])} = ${p.x.toFixed(2)} in, left ${m.y.toFixed(2)} ${n(o[1])} = ${p.y.toFixed(2)} in (the device’s middle, plus the chip’s place inside it).`;}
+  return {FACES,KINDS,IMU_KINDS,KEYS,kindOfTag,rolesOf,faces,matrix,sanitize,of,place,fromBox,boxFits,marker,words,where,otosHeading,otosArrow,pinpointYawSign,warnings,chipNote,chipOffset,middle,chipSaid,roadRunner,facesHtml,posHtml,esc};
 });

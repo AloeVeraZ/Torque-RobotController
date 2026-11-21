@@ -585,19 +585,31 @@
   // robot: a mecanum kit bot that pushes pieces, on its Control Hub's IMU and drive motor encoders (adjustable: a team's own kit, so its size,
   // weight, wheels, power and wiring can be set to match). Their CAD, joints, wiring,
   // sensors and demo routes are in ui/sim-preset-robots.js.
+  // The kit chassis's CAD (the team's own Strafer assembly, tools/simulation/finish-robot.mjs) and what it can wear. Inches,
+  // x forward, y left, z up from the floor on its 104 mm wheels: the Control Hub's IMU chip, the Pinpoint's middle and each
+  // pod's wheel, where the CAD has them, so a typed position moves the part by how far it is from here. wheels: the three
+  // mecanum wheel sets the CAD has, each on the kit's axles (168 mm ahead of and behind the centre, 207 mm to each side):
+  // goBILDA's 96 mm set (3213-3606-0002, 37 mm wide), the kit's own 104 mm GripForce wheels (3209-0001-0007) and the
+  // 140 mm kit's (3209-0012-0002, 48 mm wide). length and width: over the wheels.
+  const KIT={imu:{x:.472,y:-.236,z:3.337},pinpoint:{x:6.614,y:-.157,z:3.343},podX:{x:1.949,y:-3.622},podY:{x:1.791,y:3.465},
+    wheels:[{mm:96,name:'96 mm mecanum · goBILDA 3213-3606-0002',length:17.01,width:17.77},{mm:104,name:'104 mm GripForce mecanum · Strafer kit 3209-0001-0007',length:17.32,width:17.79},{mm:140,name:'140 mm mecanum · Strafer kit 3209-0012-0002',length:18.74,width:18.19}],
+    // The set a wheel diameter shows as (the nearest), and the one it is exactly, if any.
+    wheel:mm=>KIT.wheels.reduce((best,w)=>Math.abs(w.mm-mm)<Math.abs(best.mm-mm)?w:best,KIT.wheels[1]),exact:mm=>KIT.wheels.find(w=>Math.abs(w.mm-mm)<.05)||null};
   const PRESETS={
     // goBILDA's own figures for the Strafer Chassis Kit with 104 mm GripForce mecanum wheels (3209-0001-0007): 4269 g assembled, four 5203 Yellow Jackets at 19.2:1 (312 RPM)
-    // turning the wheels 1:1 through miter gears. Its page gives no outside dimensions, so they are measured on goBILDA's own CAD of the kit (the STEP file it publishes): 17.32 in over the wheels, 17.79 in wide, and the wheel axles
-    // 168 mm ahead of and behind the centre and 207 mm to each side. Odometry is goBILDA's own layout for this chassis (Pinpoint user guide, pages 2 and 3): two 4-Bar pods on the rear axle line with the Pinpoint
-    // between them, so the X (forward) pod is 84 mm right of the centre and the Y (strafe) pod 168 mm behind it, the offsets its guide and the FTC SDK's Pinpoint sample give (-84, -168 mm). adjustable: where its motors are plugged in, which have their encoder cable, and whether it has odometry; nothing else.
+    // turning the wheels 1:1 through miter gears. Its page gives no outside dimensions, so they are measured on the CAD: 17.32 in over the wheels, 17.79 in wide, and the wheel axles
+    // 168 mm ahead of and behind the centre and 207 mm to each side. Its electronics are where the team's CAD of the kit has them (KIT): the Control Hub flat on the middle cross channel,
+    // logo up and USB forward; the Pinpoint on the front cross channel, sticker up, X arrow forward; both 4-Bar pods behind the middle channel, the X (forward) pod 92 mm right of the centre
+    // and the Y (strafe) pod 45.5 mm ahead of it. adjustable: its size, weight, wheels (wheels: the sets its CAD has) and power, where its motors are plugged in, which have their encoder
+    // cable, whether it has odometry, and where its hub, Pinpoint and pods sit.
     startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer chassis kit: 104 mm mecanum wheels on 312 RPM motors, Control Hub IMU and motor encoders, pushes pieces. Say where its motors are plugged in',adjustable:true,robot:{drivetrain:'mecanum',length:17.32,width:17.79,heightIn:7.25,massLb:9.41,driveRpm:312,wheelDiameterMm:104,
-      wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:-3.307,yOffset:-6.614}},
-      // Its electronics as goBILDA's and REV's own CAD has them on the Strafer (tools/simulation/finish-robot.mjs): the Control Hub flat on the
-      // middle cross channel, logo up and USB forward, its IMU chip under PROUD (ui/sim-sensor-place.js); the Pinpoint on the rear channel, sticker up.
-      hubLogo:'up',hubUsb:'forward',sensorPlace:{imu:{kind:'controlHub',x:-.63,y:-.709,z:3.334,from:'cad',part:'REV Control Hub'},pinpoint:{x:-6.614,y:0,z:3.317,from:'cad',part:'goBILDA Pinpoint',a:'up'}}}}};
+      wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:KIT.podX.y,yOffset:KIT.podY.x}},
+      hubLogo:'up',hubUsb:'forward',sensorPlace:{imu:{kind:'controlHub',...KIT.imu,from:'cad',part:'REV Control Hub'},pinpoint:{...KIT.pinpoint,from:'cad',part:'goBILDA Pinpoint',a:'up'}}},wheels:KIT.wheels,
+      // Where a setup saved before the kit's CAD had its own hub, Pinpoint and pods kept them: moved to where the CAD has them.
+      before:{imu:{x:-.63,y:-.709,z:3.334},pinpoint:{x:-6.614,y:0,z:3.317},xOffset:-3.307,yOffset:-6.614}}};
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
     return sanitize({...base,...p,enabled:true,capacity:p.capacity||{pollen:4,nectar:0},preload:{pollen:4},transfer:p.transfer||base.transfer,indexer:{...base.indexer,...p.indexer},shooter:{...base.shooter,...p.shooter},target:null});};
-  return {MORE_MAX,columnReach,partKindOf,chained,onOneMotor,liftSeconds,PRESETS,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
+  return {MORE_MAX,columnReach,partKindOf,chained,onOneMotor,liftSeconds,PRESETS,KIT,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
     sanitize,hoodAt,readyAt,engineSpec,flowerKind,deploys,servoFeeder,pusherOnly,feedCycle,engineIntakeMount,target,action,actions,turretAction,hasRamp,prepare,summary,hasTurret,locate,mountOf,adjacent,PARTNER,travel,shootSeconds,FIRE_MARGIN,Model,Runner};
 });
