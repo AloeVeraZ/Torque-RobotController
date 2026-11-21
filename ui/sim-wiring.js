@@ -145,9 +145,15 @@
       if(row.role==='pinpoint'){const p=odo.pinpoint;
         return `<div class="sim-chassis-module" data-module="pinpoint" data-module-title="Odometry · goBILDA Pinpoint" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>Odometry · goBILDA Pinpoint</b><small><code>${esc(row.name)}</code></small></div>
           <div class="sim-chassis-pos">${field('data-pinpoint-pos','xOffset','y','X pod · left · in',p.xOffset)}<small></small>${placeBtn('pinpoint:x','the X (forward) pod',opts)}</div>
-          <div class="sim-chassis-pos">${field('data-pinpoint-pos','yOffset','x','Y pod · forward · in',p.yOffset)}<small></small>${placeBtn('pinpoint:y','the Y (strafe) pod',opts)}</div>${port}</div>`;}
+          <div class="sim-chassis-pos">${field('data-pinpoint-pos','yOffset','x','Y pod · forward · in',p.yOffset)}<small></small>${placeBtn('pinpoint:y','the Y (strafe) pod',opts)}</div>${boardHtml('pinpoint',st,opts)}${port}</div>`;}
+      if(row.role==='otos')return `<div class="sim-chassis-module" data-module="otos" data-module-title="Odometry · SparkFun OTOS" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>Odometry · SparkFun OTOS</b><small><code>${esc(row.name)}</code></small></div>${boardHtml('otos',st,opts)}${port}</div>`;
       const title=row.role==='otos'?'Odometry · SparkFun OTOS':row.label;
       return `<div class="sim-chassis-module" data-module="${esc(k)}" data-module-title="${esc(title)}" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>${esc(title)}</b><small><code>${esc(row.name)}</code></small></div>${port}</div>`;}).join('');}
+  // Where a sensor board sits and which way it faces (ui/sim-sensor-place.js): typed inches or a part clicked on the CAD,
+  // and the two directions, picked as the Control Hub's logo and USB are. The marker on the model shows what was picked.
+  const SP=()=>globalThis.DeckSensorPlace||require('./sim-sensor-place.js');
+  function boardHtml(key,st,opts={}){const P=SP(),p=P.of(st.project?.robot||{})[key],K=P.KINDS[p.kind];
+    return `<div class="sim-sense-board" data-sense-board="${esc(key)}"><span class="sim-mech-label">${esc(key==='imu'?`Where the ${K.short} sits`:`The ${K.short} board`)}</span>${P.posHtml(key,p,{placing:opts.placing==='sense:'+key?key:null,pick:opts.pick})}${P.facesHtml(key,p)}<p class="hint" data-sense-said>${esc(P.words(p))} · ${esc(P.where(p))}</p>${P.warnings(p).map(t=>`<p class="cal-sense-note bad">${esc(t)}</p>`).join('')}</div>`;}
   function chassisRows(rows,st,read){return rows.map(row=>{const fromRead=(read||[]).some(d=>d.hub&&readFamily(d)===row.family),own=row.wired?`${row.hub}:${row.port}`:'',sensor=moduleEncoder(row,st)?encoderOf(row,st):null;
     const port=chassisSelect(`wire-chassis-${row.key}`,fromRead?'data-wire-assign':'data-wire-port',row.key,row.label,chassisChoices(row.family,st,read,row.key),own);
     const encoder=moduleEncoder(row,st)?chassisSelect(`wire-chassis-encoder-${row.key}`,'data-wire-chassis-encoder',row.key,`${row.label.replace(/, motor 1$/,' module')} absolute encoder`,chassisChoices('analog',st,read,sensor?`sensor.${sensor.id}`:row.key),sensor?.hub?`${sensor.hub}:${sensor.port}`:''):'';
@@ -157,13 +163,16 @@
     return `<div data-wire-row="${esc(row.key)}" title="Its name in the robot configuration: ${esc(row.name)}">${port}${enc}${encoder}${problemLines(problemsOf(st,row.key).filter(x=>x.port&&row.wired&&x.keys.length>1))}</div>`;}).join('');}
   // The hub's IMU on Chassis → Control Hub: the I2C bus it is on in the robot's configuration. The built-in one is on bus 0
   // unless the team moved it; with the robot's configuration read, the choices are the IMUs it has.
-  function imuHtml(st,read){const row=st.rows.find(r=>r.role==='imu');if(!row)return '';const id='wire-port-'+row.key,now=row.hub?`${row.hub}:${row.bus??0}`:'control:0';
+  function imuHtml(st,read,opts={}){const row=st.rows.find(r=>r.role==='imu');if(!row)return '';const id='wire-port-'+row.key,now=row.hub?`${row.hub}:${row.bus??0}`:'control:0';
     const imus=(read||[]).filter(d=>d.hub&&d.kind==='imu'&&d.bus!==undefined),fromRead=imus.length>0;
     const choices=fromRead?imus.map(d=>{const at=`${d.hub}:${d.bus}`;return {value:`${at}|${d.name}`,at,label:`${H().portLabel(d,'i2c',st.wiring)} · ${d.name}`};})
       :[{value:'control:0',at:'control:0',label:`${H().portLabel({hub:'control',bus:0},'i2c',st.wiring)} · built in`},...portChoices('i2c',st,{skip:row.key}).map(o=>({...o,at:o.value}))];
     if(!choices.some(o=>o.at===now))choices.unshift({value:fromRead?`${now}|${row.name}`:now,at:now,label:H().portLabel({hub:row.hub||'control',bus:row.bus??0},'i2c',st.wiring)});
     const bus=now.split(':')[1];
-    return `<div class="sim-imu-port" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>IMU</b><small><code>${esc(row.name)}</code></small></div><div class="start-xy"><div><label for="${esc(id)}">Plugged into</label><select id="${esc(id)}" ${fromRead?'data-wire-assign':'data-wire-port'}="${esc(row.key)}">${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div></div><p class="hint">${fromRead?`The robot’s configuration has “${esc(row.name)}” on I2C bus ${esc(bus)}.`:bus==='0'?`The Control Hub’s IMU is built in: its configuration names it “${esc(row.name)}” on I2C bus 0.`:`“${esc(row.name)}” on I2C bus ${esc(bus)}: the configuration must have it there too.`}</p></div>`;}
+    return `<div class="sim-imu-port" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>IMU</b><small><code>${esc(row.name)}</code></small></div><div class="start-xy"><div><label for="${esc(id)}">Plugged into</label><select id="${esc(id)}" ${fromRead?'data-wire-assign':'data-wire-port'}="${esc(row.key)}">${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div></div><p class="hint">${fromRead?`The robot’s configuration has “${esc(row.name)}” on I2C bus ${esc(bus)}.`:bus==='0'?`The Control Hub’s IMU is built in: its configuration names it “${esc(row.name)}” on I2C bus 0.`:`“${esc(row.name)}” on I2C bus ${esc(bus)}: the configuration must have it there too.`}</p>${imuKindHtml(st)}${boardHtml('imu',st,opts)}</div>`;}
+  // Which IMU it is: the Control Hub's own, an Expansion Hub's, a navX2-Micro or another IMU board. Configure sets it too.
+  function imuKindHtml(st){const P=SP(),now=P.of(st.project?.robot||{}).imu.kind;
+    return `<div class="start-xy"><div><label for="sense-imu-kind">Which IMU</label><select id="sense-imu-kind" data-sense-kind="imu">${P.IMU_KINDS.map(k=>`<option value="${k}"${k===now?' selected':''}>${esc(P.KINDS[k].name)}</option>`).join('')}</select></div></div>`;}
   // A module's absolute encoder on an analog port. A model Setup already gave it stays.
   function setChassisEncoder(wiring,row,at,name){const D=H(),w=D.wiringOf({wiring}),own=w.sensors.find(s=>s.for===row.key&&D.SENSOR_MODELS[s.model]?.family==='analog');
     if(!at)return own?removeSensor(wiring,own.id):D.sanitizeWiring(w);

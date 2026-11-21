@@ -491,8 +491,9 @@
     // y left, z up), and coloured markers for placed parts.
     // hover: told what is under the pointer while picking (or null), so the page can light up what a click would take.
     let picker=null,hover=null,down=null,moved=null,moveRaf=0;const ray=new T.Raycaster(),markerGroup=new T.Group();scene.add(markerGroup);
+    // A part's outline (its edges, drawn as lines) has no face and no part: the surface behind it is what was meant.
     function hitAt(e){const r=renderer.domElement.getBoundingClientRect();
-      ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);const hit=ray.intersectObject(body,true).find(h=>!h.object.userData.glow),ids=hit?.object.geometry?.attributes._part;
+      ray.setFromCamera(new T.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);const hits=ray.intersectObject(body,true).filter(h=>!h.object.userData.glow),hit=hits.find(h=>h.face&&h.object.isMesh)||hits[0],ids=hit?.object.geometry?.attributes._part;
       // local: the point in the CAD's own frame (the hit mesh's), for measuring the part there; face: its triangle's vertices.
       const local=hit?hit.object.worldToLocal(hit.point.clone()):null;return hit?{x:hit.point.x,y:hit.point.y,z:hit.point.z,part:ids&&hit.face?ids.getX(hit.face.a):null,local:[local.x,local.y,local.z],face:hit.face?[hit.face.a,hit.face.b,hit.face.c]:null,shift:e.shiftKey}:null;}
     renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
@@ -548,6 +549,10 @@
       // A marker is a dot, a see-through box when it has a size (an intake's hitbox), or a see-through cylinder from one point
       // to another (an intake's rollers, from one end wheel to the other).
       for(const m of list){
+        // An arrow (a sensor's USB end or Y arrow): a shaft and a cone from a point, drawn over the model.
+        if(m.arrow){const d=new T.Vector3(...m.arrow.dir).normalize(),len=Math.max(.5,m.arrow.length||3),q=new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),d),o=new T.Vector3(...m.arrow.from),mat=()=>new T.MeshBasicMaterial({color:m.color||0xffffff,depthTest:false,transparent:true,opacity:.95});
+          const shaft=new T.Mesh(new T.CylinderGeometry(.08,.08,len,10),mat()),head=new T.Mesh(new T.ConeGeometry(.3,.8,14),mat());shaft.quaternion.copy(q);shaft.position.copy(o).addScaledVector(d,len/2);head.quaternion.copy(q);head.position.copy(o).addScaledVector(d,len+.4);
+          shaft.renderOrder=head.renderOrder=12;markerGroup.add(shaft,head);continue;}
         if(m.from&&m.to){const a=new T.Vector3(...m.from),b=new T.Vector3(...m.to),d=b.clone().sub(a),len=Math.max(d.length(),.05),shape=new T.CylinderGeometry(m.radius||1,m.radius||1,len,28,1);
           const mark=new T.Mesh(shape,new T.MeshBasicMaterial({color:m.color||0xffffff,transparent:true,opacity:.35}));mark.position.copy(a.clone().add(b).multiplyScalar(.5));
           if(d.length()>1e-6)mark.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),d.normalize());mark.renderOrder=10;markerGroup.add(mark);

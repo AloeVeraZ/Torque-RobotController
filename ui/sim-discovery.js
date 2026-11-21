@@ -790,5 +790,13 @@
     if(out.length)return out;
     const f=feature(ctx,leaf);return f?[{center:scale(add(f.lo,f.hi),.5),radius:0,leaves:[leaf],name:nameOf(ctx,leaf),has:true,dist:0,box:true}]:[];
   }
-  return {prepare,feature,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,wheelsNear,driveWheels,odometryPods,WORDS};
+  // The part a click means when placing a sensor (Mechanisms → Chassis): the smallest assembly round the clicked part
+  // whose name says it is one (a hub, an IMU, a Pinpoint, an OTOS, a navX), else the clicked part itself. Its box in the
+  // CAD's frame, {lo, hi, leaves, name}, or null.
+  const SENSOR_NAMES=/control ?hub|expansion ?hub|\bhub\b|\bimu\b|pinpoint|\botos\b|navx|odometry computer|REV-31-1595|REV-31-1153|3110-0002/i;
+  function partBox(ctx,leaf){if(!Number.isInteger(leaf)||leaf<0||leaf>=ctx.leaves)return null;const nodes=ctx.parts.nodes||[];let at=ctx.tree?.leaf?.[leaf],set=[leaf],name=nameOf(ctx,leaf);
+    while(at>=0&&nodes[at]){const all=ctx.parts.leavesUnder(nodes[at]);if(all.length>Math.max(3,ctx.leaves*.2))break;if(SENSOR_NAMES.test(String(nodes[at].name||''))){set=all;name=String(nodes[at].name).replace(/\s*<\d+>$/,'');break;}at=nodes[at].parent;}
+    const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const k of set){const f=feature(ctx,k);if(!f)continue;for(let q=0;q<3;q++){lo[q]=Math.min(lo[q],f.lo[q]);hi[q]=Math.max(hi[q],f.hi[q]);}}
+    return lo.every(Number.isFinite)?{lo,hi,leaves:set,name}:null;}
+  return {prepare,feature,partBox,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,wheelsNear,driveWheels,odometryPods,WORDS};
 });

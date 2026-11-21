@@ -2380,7 +2380,21 @@ public class MyAuto implements DeckAutonomous {
     if(!configEditor||!xml||configEditor.edited())return;
     if(configEditor.current()!==name)configEditor.open(name,xml,portals);else if(editorRead!==setupRead||editorPortals!==portals)configEditor.refresh(name,xml,portals);editorRead=setupRead;editorPortals=portals;}
   const setupSave=async(name,xml)=>{await setupDo(()=>api.robotLink('configure',{host:setupConn.host,name,xml,replace:true}));liveDebug?.warm(90000,10000);};
-  function setupEditor(){if(configEditor||!setupRoot)return configEditor;const W=window.DeckWiring;configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:(name,xml)=>editorVirtual?virtualSave(name,xml):setupSave(name,xml),virtual:()=>editorVirtual,savedText:()=>editorVirtual?'Saved into this robot’s Setup: its names, ports and hubs. Nothing went to a real robot.':'',photo:tag=>api.devicePhoto(tag),names:()=>editorVirtual?[virtualName()]:setupRead?.configurations||[],pick:name=>editorVirtual?virtualOpen():void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:hubUsb,auto:()=>autoConfigure(),autoOff:()=>autoBusy||!setupConn,told:()=>autoTold,axon:axonTab,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(W.state(project),{ids:'rc-',only:['spm']})}</div>`:''}});return configEditor;}
+  function setupEditor(){if(configEditor||!setupRoot)return configEditor;const W=window.DeckWiring;configEditor=window.DeckConfigEditor.create({box:$('#rs-step-configure'),api:{save:(name,xml)=>editorVirtual?virtualSave(name,xml):setupSave(name,xml),virtual:()=>editorVirtual,savedText:()=>editorVirtual?'Saved into this robot’s Setup: its names, ports and hubs. Nothing went to a real robot.':'',photo:tag=>api.devicePhoto(tag),names:()=>editorVirtual?[virtualName()]:setupRead?.configurations||[],pick:name=>editorVirtual?virtualOpen():void setupSwitch(name),pinout:o=>window.DeckPinoutView.show({...o,photo:native?tag=>api.devicePhoto(tag):null,save:api.savePinout}),usb:hubUsb,auto:()=>autoConfigure(),autoOff:()=>autoBusy||!setupConn,told:()=>autoTold,axon:axonTab,roleOf:sensorRoleOf,setRole:setSensorRole,extra:()=>project.controller==='ftc'?`<div id="rc-spm">${W.hubsHtml(W.state(project),{ids:'rc-',only:['spm']})}</div>`:''}});return configEditor;}
+  // Configure → an I2C bus: an IMU marked as the robot's IMU, or a Pinpoint or OTOS as odometry + IMU (ui/sim-sensor-place.js).
+  // It names the device in Setup and, for an IMU, says which kind it is (the hub it is in, a navX); its position and which way
+  // it faces are set under Mechanisms → Chassis.
+  const SP=()=>window.DeckSensorPlace,devName=k=>project.robot.devices?.[k]?.name||({otos:'sensor_otos'}[k]||k);
+  function sensorRoleOf(d,h){const kind=SP().kindOfTag(d.tag,{parent:!!h?.parent}),name=String(d.name).trim(),loc=project.sensors.localization;if(!kind||!name)return '';
+    if(kind==='pinpoint')return loc==='fused'&&devName('pinpoint')===name?'odometry':'';if(kind==='otos')return loc==='optical'&&devName('otos')===name?'odometry':'';
+    return devName('imu')===name?'imu':'';}
+  function setSensorRole(d,h,role){const kind=SP().kindOfTag(d.tag,{parent:!!h?.parent}),name=String(d.name).trim();if(!kind||!name)return 'Name it first.';const K=SP().KINDS[kind],was=sensorRoleOf(d,h);
+    if(role==='imu'){deviceName('robot.imu',name);project.robot=C.robot(SP().place(project.robot,'imu',{kind}),project.controller);}
+    else if(role==='odometry'){deviceName('robot.'+kind,name);project.robot=C.robot(project.robot,project.controller);setLocalization(kind==='pinpoint'?'fused':'optical');}
+    else if(was==='imu'){const devices={...project.robot.devices};delete devices.imu;project.robot=C.robot({...project.robot,devices},project.controller);}
+    else if(was==='odometry'){setLocalization('encoders');}
+    save();robotPanel();mechanismsPanel();reload();
+    return role==='imu'?`“${name}” is the robot’s IMU (${K.short}). Say where it sits and which way it faces under Mechanisms → Chassis.`:role==='odometry'?`“${name}” tells where the robot is and which way it faces (${K.short}). Place it under Mechanisms → Chassis.`:`Setup no longer uses “${name}” for heading or position.`;}
   // A robot with no configuration yet gets one from what a scan found: every hub, and the Control Hub's own IMU.
   function configFromScan(portals){const imus=[];for(const p of portals){const parent=p.modules.find(m=>m.parent),tag=parent&&RobotConfig.IMU_TAGS[parent.imu];if(tag&&p.serial==='(embedded)')imus.push({name:'imu',tag,device:'imu',port:0,bus:0,module:{portal:p.serial,address:parent.address,name:'Control Hub'}});}return RobotConfig.newConfiguration(portals,imus);}
   // ---- Auto-configure: one press puts what is plugged in into the active configuration and goes to Camera. Every webcam plugged in, a Limelight that answers, every hub on the cable.
@@ -3188,7 +3202,7 @@ public class MyAuto implements DeckAutonomous {
   // click picks is seen before it is clicked. Worked out again only when the pointer moves onto another part.
   let hovered=null;
   // A model without part names (a mesh, not a STEP assembly) has nothing to measure: the point under the pointer is taken.
-  function hoverWheel(hit){const leaf=hit&&Number.isFinite(hit.part)?Math.round(hit.part):null;if(hit&&leaf===null){hovered=null;mechPreview?.hoverMark?.(null);status('#mech-model-help',`${wheelLabel(wheelPlacing)}: click to place it here (${hit.x.toFixed(1)} in forward, ${hit.y.toFixed(1)} in left).`);return;}if(leaf===hovered?.leaf)return void mechPreview?.hoverMark?.(hovered.set);
+  function hoverWheel(hit){if(wheelPlacing?.startsWith('sense:'))return hoverSensor(hit);const leaf=hit&&Number.isFinite(hit.part)?Math.round(hit.part):null;if(hit&&leaf===null){hovered=null;mechPreview?.hoverMark?.(null);status('#mech-model-help',`${wheelLabel(wheelPlacing)}: click to place it here (${hit.x.toFixed(1)} in forward, ${hit.y.toFixed(1)} in left).`);return;}if(leaf===hovered?.leaf)return void mechPreview?.hoverMark?.(hovered.set);
     if(leaf===null){hovered=null;mechPreview?.hoverMark?.(null);status('#mech-model-help',wheelPlacing?`Click the ${wheelLabel(wheelPlacing).toLowerCase()} on the model.`:'');return;}
     const k=wheelPlacing,others=/^(pod|pinpoint):/.test(k)?[]:Object.entries(project.robot.wheelPos||{}).filter(([key,p])=>key!==k&&Number.isFinite(p.bottom)).map(([,p])=>p.bottom),w=joints.wheelAt(hit,{bottoms:others});hovered={leaf,w,set:new Set(w?.leaves?.length?w.leaves:[leaf])};
     // The wheel or pod a click takes lights up; with no round part there, the part under the pointer, whose middle a click takes.
@@ -3197,7 +3211,15 @@ public class MyAuto implements DeckAutonomous {
   // between a wheel and a part above it (pods stand lower than the wheels, so they are not held to that). Then the next
   // wheel not placed yet waits for its click.
   const setOdometry=fn=>{const o=structuredClone(C.odometryOf(project.robot));fn(o);project.robot=C.robot({...project.robot,odometry:o},project.controller);save();mechanismsPanel();};
-  function placeWheel(hit){const k=wheelPlacing;if(!k||!hit)return;hovered=null;const pos={...project.robot.wheelPos},wheel=!/^(pod|pinpoint):/.test(k),others=wheel?Object.entries(pos).filter(([key,p])=>key!==k&&Number.isFinite(p.bottom)).map(([,p])=>p.bottom):[];
+  // A sensor board placed by clicking its part on the model: the box of the part (or of the hub, Pinpoint... assembly round
+  // it) says where it is (ui/sim-sensor-place.js fromBox). Which way it faces stays the team's pick.
+  function hoverSensor(hit){const key=wheelPlacing.slice(6),b=hit?joints.partBoxAt(hit):null;mechPreview?.hoverMark?.(b?new Set(b.leaves):null);
+    status('#mech-model-help',b?`${wheelLabel(wheelPlacing)}: click to take “${b.name}”.`:`Click the ${wheelLabel(wheelPlacing)} on the model.`);}
+  function placeSensor(hit){const key=wheelPlacing.slice(6),P=SP(),now=P.of(project.robot)[key],pt=hit&&[hit.x,hit.y,hit.z].every(Number.isFinite)?[hit.x,hit.y,hit.z]:null,b=(hit?joints.partBoxAt(hit):null)||(pt?{lo:pt,hi:pt,name:'the point clicked',point:true}:null);hovered=null;
+    if(!b){wheelsSaid='Click a part of the model.';return mechanismsPanel();}const at=P.fromBox(b,now.kind,now.a,now.b),label=wheelLabel(wheelPlacing);wheelPlacing=null;status('#mech-model-help',`${label}: “${b.name}”. Which way it faces is picked beside the model.`);
+    wheelsSaid=`${label}: “${b.name}”, ${P.where(at)}.${b.point||P.boxFits(b,now.kind)?'':` That part is not the size of a ${P.KINDS[now.kind].short}: check it is the right one.`}`;
+    project.robot=C.robot(P.place(project.robot,key,{...at,from:'cad',part:b.name}),project.controller);save();reload();mechanismsPanel();}
+  function placeWheel(hit){const k=wheelPlacing;if(!k||!hit)return;if(k.startsWith('sense:'))return placeSensor(hit);hovered=null;const pos={...project.robot.wheelPos},wheel=!/^(pod|pinpoint):/.test(k),others=wheel?Object.entries(pos).filter(([key,p])=>key!==k&&Number.isFinite(p.bottom)).map(([,p])=>p.bottom):[];
     const w=joints.wheelAt(hit,{bottoms:others})||(Number.isFinite(hit.x)?{x:+hit.x.toFixed(3),y:+hit.y.toFixed(3),box:true,name:'the point clicked',radius:0}:null);if(!w){wheelsSaid='Click a part of the model.';return mechanismsPanel();}
     const label=wheelLabel(k),what=`“${w.name}”${w.box?' (no round part there, so the middle of that part)':`, ${(2*w.radius).toFixed(2)} in across`}`;
     if(!wheel){const chain=SENSE_PLACING[project.sensors.localization]||[],next=chain[chain.indexOf(k)+1]||null;wheelPlacing=next;status('#mech-model-help',next?`Click the ${wheelLabel(next).toLowerCase()} on the model.`:'');const [kind,which]=k.split(':');
@@ -3208,7 +3230,7 @@ public class MyAuto implements DeckAutonomous {
     const next=wheelKeys().find(x=>x!==k&&!pos[x]);wheelPlacing=next||null;
     wheelsSaid=`${label}: ${what}, ${w.x.toFixed(2)} in forward and ${w.y.toFixed(2)} in left.${off}${next?` Now click the ${wheelLabel(next).toLowerCase()}.`:''}`;
     status('#mech-model-help',next?`Click the ${wheelLabel(next).toLowerCase()} on the model.`:'');setWheelPos(pos);}
-  const wheelLabel=k=>{const card=document.querySelector(`#mech-drive-ports [data-module="${CSS.escape(k)}"]`)?.dataset.moduleTitle;if(card&&!k.includes(":"))return card;const pod={par:'Forward odometry pod',perp:'Strafe odometry pod',par_left:'Left forward odometry pod',par_right:'Right forward odometry pod'};if(k==='pinpoint:x')return 'Pinpoint X (forward) pod';if(k==='pinpoint:y')return 'Pinpoint Y (strafe) pod';if(k.startsWith('pod:'))return pod[k.slice(4)]||'Odometry pod';
+  const wheelLabel=k=>{if(k.startsWith('sense:')){const P=SP();return P.KINDS[P.of(project.robot)[k.slice(6)].kind].short;}const card=document.querySelector(`#mech-drive-ports [data-module="${CSS.escape(k)}"]`)?.dataset.moduleTitle;if(card&&!k.includes(":"))return card;const pod={par:'Forward odometry pod',perp:'Strafe odometry pod',par_left:'Left forward odometry pod',par_right:'Right forward odometry pod'};if(k==='pinpoint:x')return 'Pinpoint X (forward) pod';if(k==='pinpoint:y')return 'Pinpoint Y (strafe) pod';if(k.startsWith('pod:'))return pod[k.slice(4)]||'Odometry pod';
     try{return (window.DeckWiring.state(project).rows.find(r=>r.key==='robot.'+k)?.label||k).replace(/ drive motor$/,'').replace(/, motor 1$/,'').replace(/ drive$/,'');}catch{return k;}};
   // + Add to Chassis: what tells the robot where it is, picked here as in Robot controller (the same setting). Each joins
   // the chassis as a part of its own, then its pods wait to be clicked on the model, one after the other.
@@ -3260,6 +3282,15 @@ public class MyAuto implements DeckAutonomous {
     return `<p class="${d>.5?'cal-sense-note bad':'hint'}" data-wheel-centre>${d>.5?`The wheels’ middle is ${x.toFixed(2)} in forward and ${y.toFixed(2)} in left of the robot’s centre: check the CAD’s placement in step 2, or a wheel clicked on the wrong part.`:`The wheels’ middle is on the robot’s centre (${d.toFixed(2)} in off).`}</p>`;}
   $('#mech-drive-ports').addEventListener('click',e=>{if(e.target.closest('[data-wheels-find]'))return void findWheels();const b=e.target.closest('[data-wheel-place]');if(!b)return;const k=b.dataset.wheelPlace;
     wheelPlacing=wheelPlacing===k?null:k;mechPlacing=null;if(wheelPlacing)joints.warmWheels();status('#mech-model-help',wheelPlacing?`Click the ${wheelLabel(k).toLowerCase()} on the model, anywhere on it. Drag to turn the view.`:'');mechanismsPanel();});
+  // Each sensor board's place and which way it faces (ui/sim-wiring.js boardHtml), on the chassis cards and the IMU's.
+  for(const box of [$('#mech-drive-ports'),$('#mech-controller-imu')]){if(!box)continue;
+    box.addEventListener('click',e=>{const b=e.target.closest('[data-sense-place]');if(!b)return;const k='sense:'+b.dataset.sensePlace;wheelPlacing=wheelPlacing===k?null:k;mechPlacing=null;
+      status('#mech-model-help',wheelPlacing?`Click the ${wheelLabel(k)} on the model. Its box says where it is; which way it faces is picked here.`:'');mechanismsPanel();});
+    box.addEventListener('change',e=>{const t=e.target.closest('[data-sense-pos],[data-sense-face],[data-sense-kind]');if(!t)return;e.stopPropagation();const P=SP();let patch;
+      if(t.dataset.sensePos){const [key,n]=t.dataset.sensePos.split(':'),v=parseFloat(t.value);patch=[key,{[n]:Number.isFinite(v)?v:null,from:'typed',part:null}];}
+      else if(t.dataset.senseFace){const [key,which]=t.dataset.senseFace.split(':');patch=[key,{[which]:t.value}];}
+      else patch=['imu',{kind:t.value}];
+      project.robot=C.robot(P.place(project.robot,...patch),project.controller);save();robotPanel();reload();mechanismsPanel();},true);}
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&wheelPlacing){wheelPlacing=null;status('#mech-model-help','');mechanismsPanel();}});
   // A drive motor's Encoder tick: its own encoder (a motor-encoder sensor on it), which Calibrate → Electronics checks against Configure.
   $('#mech-drive-ports').addEventListener('change',e=>{const t=e.target.closest('[data-wire-encoder]');if(!t)return;e.stopPropagation();const W=window.DeckWiring,H=window.DeckHardware,st=W.state(project),row=st.rows.find(r=>r.key===t.dataset.wireEncoder);if(!row)return;
@@ -3307,6 +3338,12 @@ public class MyAuto implements DeckAutonomous {
     $('#mech-model-key').replaceChildren(...[...m.intakes.map((i,n)=>[0x49cbb3,`Intake ${n+1}`,`${MECH.INTAKES[i.kind]} on the ${i.sides.join(' + ')}: ${i.pickup==='rollers'&&i.column?'it picks up where a piece touches the rollers (the cylinder)':'the box is where it picks up'}`]),
       ...m.shooters.map((s,n)=>[colors[s.pieces],`Shooter ${n+1}`,`${s.type==='turret'?'turret':'fixed shooter'} at the ${MECH.MOUNTS[s.mount].toLowerCase()}, shoots ${MECH.PIECES[s.pieces].toLowerCase()}`])]
       .map(([color,name,text])=>{const li=document.createElement('li'),dot=document.createElement('i'),b=document.createElement('b');dot.style.background='#'+color.toString(16).padStart(6,'0');b.textContent=name;li.append(dot,b,' · '+text);return li;}));
+    // Each sensor placed: its board, a lit dot on the face picked (the hub's logo, the Pinpoint's sticker...) and an arrow the way
+    // its USB end or Y arrow points, so a wrong pick shows on the model.
+    if(project.controller==='ftc'){const P=SP(),all=P.of(project.robot),loc=project.sensors.localization,on=['imu',...(loc==='fused'?['pinpoint']:loc==='optical'?['otos']:[])];
+      for(const key of on){const p=all[key];if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||key==='otos'&&!Number.isFinite(p.z)&&!p.from)continue;const mk=P.marker(p);
+        marks.push({x:mk.origin[0],y:mk.origin[1],z:mk.origin[2],size:mk.size,color:0x8e7cf0},{x:mk.led[0],y:mk.led[1],z:mk.led[2],radius:.35,color:0x3dd68c},
+          ...(P.KINDS[p.kind].b.hidden?[]:[{arrow:{from:mk.origin,dir:mk.arrow,length:mk.arrowLength},color:0xf2994a}]));}}
     mechPreview.markers(marks);
     $('#mech-model-help').hidden=!game;
     const pickColumn=point=>{if(!point)return;const [,k,end]=mechPlacing.split(':'),n=+k,axle=joints.rollerColumn(n),i=project.mechanisms.intakes[n];if(!i)return;let p=[point.x-cx,point.y,point.z];
@@ -3343,7 +3380,7 @@ public class MyAuto implements DeckAutonomous {
       // The wheels and modules, then what tells the robot where it is: each a part of the chassis, opened from its own tile under Chassis.
       const html=rows.length?`<div class="sim-chassis-find"><button type="button" class="text-button" data-wheels-find>Find every wheel in the CAD</button><span class="hint" data-wheels-said role="status">${W.esc(wheelsSaid)}</span></div>${W.chassisHtml(rows,st,read,opts)}${sense.length?W.senseHtml(sense,st,read,opts):''}${wheelCentre()}`:'';box.hidden=!html;if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}drivePicker();}
     // The Control Hub's IMU: which I2C bus it is on.
-    {const box=$('#mech-controller-imu'),html=ftc?W.imuHtml(st,null):'';if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
+    {const box=$('#mech-controller-imu'),html=ftc?W.imuHtml(st,null,{placing:wheelPlacing,pick:!!model?.holder}):'';if(box.dataset.html!==html){box.innerHTML=html;box.dataset.html=html;}}
     if(focus&&document.activeElement?.id!==focus)document.getElementById(focus)?.focus();}
   // What is being edited (a device or sensor row, a game part intake:N / shooter:N, or kin:<joint id>) glows on the
   // preview: on a click, focus or open in its card, or when its card scrolls to the middle of the page.

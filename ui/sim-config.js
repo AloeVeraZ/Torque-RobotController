@@ -88,9 +88,12 @@
   // inches up in the robot frame) and its radius (r): a wheel clicked next is checked against them.
   function wheelPos(raw){const out={};if(!raw||typeof raw!=='object')return out;for(const k of DEVICE_KEYS){if(/^steer|^(imu|pinpoint|otos|par|perp|par_left|par_right)$/.test(k))continue;const v=raw[k];
     if(v&&typeof v==='object'&&finite(v.x)&&finite(v.y)&&Math.abs(v.x)<=36&&Math.abs(v.y)<=36)out[k]={x:+v.x.toFixed(3),y:+v.y.toFixed(3),...(v.from==='cad'?{from:'cad'}:{}),...(finite(v.bottom)&&Math.abs(v.bottom)<=36?{bottom:+v.bottom.toFixed(3)}:{}),...(finite(v.r)&&v.r>0&&v.r<=12?{r:+v.r.toFixed(3)}:{})};}return out;}
-  function robot(raw={},controller){if(RETIRED[raw.drivetrain])raw={...raw,drivetrain:RETIRED[raw.drivetrain]};const own=devices(raw.devices),odo=odometry(raw.odometry),wire=wiring(raw.wiring);return {drivetrain:Object.hasOwn(drives,raw.drivetrain)?raw.drivetrain:'mecanum',wheelPos:wheelPos(raw.wheelPos),intakeIn:intake(raw),...(finite(raw.driveTicksPerIn)&&raw.driveTicksPerIn>0&&raw.driveTicksPerIn<100000?{driveTicksPerIn:raw.driveTicksPerIn}:{}),
+  // Where each IMU and odometry sensor sits and which way it faces (DeckSensorPlace.sanitize; kept as it came without it).
+  function sensorPlace(raw){const P=globalThis.DeckSensorPlace||(typeof require==='function'?require('./sim-sensor-place.js'):null);if(P){const v=P.sanitize(raw);return Object.keys(v).length?v:null;}
+    try{return raw&&typeof raw==='object'?JSON.parse(JSON.stringify(raw)):null;}catch{return null;}}
+  function robot(raw={},controller){if(RETIRED[raw.drivetrain])raw={...raw,drivetrain:RETIRED[raw.drivetrain]};const own=devices(raw.devices),odo=odometry(raw.odometry),wire=wiring(raw.wiring),place=sensorPlace(raw.sensorPlace);return {drivetrain:Object.hasOwn(drives,raw.drivetrain)?raw.drivetrain:'mecanum',wheelPos:wheelPos(raw.wheelPos),intakeIn:intake(raw),...(finite(raw.driveTicksPerIn)&&raw.driveTicksPerIn>0&&raw.driveTicksPerIn<100000?{driveTicksPerIn:raw.driveTicksPerIn}:{}),
     length:positive(raw.length,17.56),width:positive(raw.width,17.79),heightIn:positive(raw.heightIn,12),massLb:positive(raw.massLb,9.41),driveRpm:positive(raw.driveRpm,312),wheelDiameterMm:positive(raw.wheelDiameterMm,104),driveAmps:current(raw.driveAmps,controller),driveStyle:raw.driveStyle==='field'?'field':'robot',...hubMounting(raw),
-    appearance:['strafer','plain','custom'].includes(raw.appearance)?raw.appearance:raw.drivetrain==='swerve'?'plain':'strafer',...(Object.keys(own).length?{devices:own}:{}),...(Object.keys(odo).length?{odometry:odo}:{}),...(wire?{wiring:wire}:{})};}
+    appearance:['strafer','plain','custom'].includes(raw.appearance)?raw.appearance:raw.drivetrain==='swerve'?'plain':'strafer',...(Object.keys(own).length?{devices:own}:{}),...(Object.keys(odo).length?{odometry:odo}:{}),...(wire?{wiring:wire}:{}),...(place?{sensorPlace:place}:{})};}
   // A robot imported from CAD (appearance custom) collides as its chassis only: length × width.
   const chassisHitbox=r=>r?.appearance==='custom';
   function footprint(raw){const r=robot(raw);return {front:r.length/2+(chassisHitbox(r)?0:r.intakeIn),rear:r.length/2,half:r.width/2};}
@@ -98,5 +101,5 @@
     return {x0:0,y0:0,x1:positive(layout.width,144),y1:positive(layout.height,144)};}
   const sensorChoices=controller=>controller==='motionmodule'?['gyro','odometry','odometry3','optical']:['encoders','odometry','odometry3','fused','optical','gyro'];
   const localization=(controller,mode)=>sensorChoices(controller).includes(mode)?mode:controller==='motionmodule'?'gyro':'encoders';
-  return {HUB,hubMounting,DEVICE_KEYS,devices,deviceName,wiring,ODOMETRY,POD_TYPES,OTOS_SCALARS,odometry,odometryOf,drives,sensors,sensorChoices,localization,electrical,current,robot,intake,chassisHitbox,footprint,bounds,finite};
+  return {HUB,hubMounting,sensorPlace,DEVICE_KEYS,devices,deviceName,wiring,ODOMETRY,POD_TYPES,OTOS_SCALARS,odometry,odometryOf,drives,sensors,sensorChoices,localization,electrical,current,robot,intake,chassisHitbox,footprint,bounds,finite};
 });

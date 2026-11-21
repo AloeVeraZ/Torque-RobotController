@@ -34,7 +34,11 @@
     // Odometry as mounted (Setup → Robot controller → Odometry): pod positions and directions, the Pinpoint's pod
     // offsets, directions and pod type, and the OTOS's position, rotation and scalars.
     const C=globalThis.DeckSimConfig||require('./sim-config.js'),odo=C.odometryOf(robot);
-    return {localization,imu:sw?.imu?.name||named('imu','imu'),imuScale:odo.imu.scale*(odo.imu.reversed?-1:1),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
+    // Which IMU gives heading and where it sits (Setup: Configure marks it, Mechanisms → Chassis places it; ui/sim-sensor-place.js).
+    // Every export reads heading through the SDK's IMU interface, which a navX2-Micro does not have.
+    const SP=globalThis.DeckSensorPlace||require('./sim-sensor-place.js'),place=SP.of(robot,C);if(SP.KINDS[place.imu.kind].sdkImu===false)throw Error('Torque’s exports read heading through the FTC SDK’s IMU, and the SDK reads a navX2-Micro as a gyroscope, not an IMU. Pick the Control Hub’s IMU in Setup → Mechanisms → Chassis.');
+    const imuPlace={kind:place.imu.kind,said:`${SP.KINDS[place.imu.kind].short}: ${SP.words(place.imu)}${place.imu.placed?`, ${SP.where(place.imu)} of the robot’s centre`:''}`};
+    return {localization,imu:sw?.imu?.name||named('imu','imu'),imuPlace,imuScale:odo.imu.scale*(odo.imu.reversed?-1:1),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
       ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
@@ -145,7 +149,8 @@ ${sw?`        for (int i = 0; i < motors.length; i++) {
         for(DcMotorEx m:motors){m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);}
 ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.name)});`).join('\n')}
         imu=map.get(IMU.class,${javaString(h.imu)});
-        // How the Control Hub is mounted (Deck: Setup → Robot controller). If this is wrong, every turn and heading is wrong.
+        // How the IMU is mounted (Torque: Setup → Mechanisms → Chassis). If this is wrong, every turn and heading is wrong.
+        // ${h.imuPlace?.said||'Control Hub IMU'}.
         imu.initialize(new IMU.Parameters(${h.imuMount?.code||`new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.${h.hub.logo},RevHubOrientationOnRobot.UsbFacingDirection.${h.hub.usb})`}));
         pinpoint=${h.localization==='fused'?`map.get(GoBildaPinpointDriver.class,${javaString(h.pinpoint)})`:'null'};${pp?`
         // The Pinpoint's pods: X is the forward pod (its offset: inches left of the robot's centre), Y the strafe pod (inches
@@ -1875,7 +1880,8 @@ ${flywheels.length&&velocity?`
     const powers=exporter.legs(route).map(l=>n(l.power??route.defaultPower??tuning.maxPathSpeed??.8)).join(', ');
     routeJava=routeJava.replace(/public static final double\[\] MOTOR_POWER = \{[^}]*\}/,`public static final double[] MOTOR_POWER = {${powers}}`);
     const core=(globalThis.DeckFollowerSource||(typeof require==='function'?require('./sim-follower-source.js'):''));if(!core)throw Error('The bundled Deck controller source is missing.');
-    const out={[`${dir}/${className}.java`]:routeJava,[`${dir}/${opModeName}.java`]:opMode(options),[`${dir}/RouteActions.java`]:routeActions(options,list),[`${dir}/RobotActions.java`]:robotActions(options,list),[`${dir}/drive/Constants.java`]:constants(h,tuning,options),[`${dir}/drive/RobotDrive.java`]:robotDrive(h,options),['deck/pathing/DeckFollower.java']:core};
+    const rr=(globalThis.DeckSensorPlace||require('./sim-sensor-place.js')).roadRunner(h,{packageName:`${packageName}.drive`});
+    const out={[`${dir}/drive/RoadRunnerParams.java`]:rr,[`${dir}/${className}.java`]:routeJava,[`${dir}/${opModeName}.java`]:opMode(options),[`${dir}/RouteActions.java`]:routeActions(options,list),[`${dir}/RobotActions.java`]:robotActions(options,list),[`${dir}/drive/Constants.java`]:constants(h,tuning,options),[`${dir}/drive/RobotDrive.java`]:robotDrive(h,options),['deck/pathing/DeckFollower.java']:core};
     if(mech)out[`${dir}/Mechanisms.java`]=mechanismsSource(options,mech,target||{x:72,y:72},{length:robot?.length,width:robot?.width,wiring:robot?.wiring});
     if(parts.list.length)out[`${dir}/Parts.java`]=partsSource(options,parts.list,sensorSpecs);
     // The check TeleOp tests the drive motors and every mechanism device on the robot before the autonomous runs.
