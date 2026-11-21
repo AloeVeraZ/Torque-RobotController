@@ -74,7 +74,12 @@
     // Push plate: clear polycarbonate across the front, below the deck so it pushes pieces on the floor.
     part([CHASSIS,'Push plate'],'Push plate',K.poly,g=>box(g,[HX-.125,-outY+.1,.55],[HX,outY-.1,4.2]));
     part([CHASSIS,'Push plate'],'Hole pattern',C.hole,g=>holes(g,frame([HX+EPS,0,3.6],X,Y),11,{small:false}));
-    hubAndBattery([ELECTRONICS],-HX+.7,-HX+6.3,outY-railW/2-.25,-(outY-railW/2-.25)-1.4,PLATE_Z);
+    // Where the Strafer's own CAD has them (tools/simulation/finish-robot.mjs): the Control Hub flat in the middle, logo up and USB forward
+    // (143 × 103 × 29.5 mm, its length across the robot), the REV Slim Battery flat at the front left.
+    {const mm=1/25.4,hub=[ELECTRONICS,'Control Hub'],bat=[ELECTRONICS,'Battery'],hx=103*mm/2,hy=143*mm/2,top=PLATE_Z+29.5*mm;
+      part(hub,'REV Control Hub',K.hub,g=>box(g,[-hx,-hy,PLATE_Z],[hx,hy,top-.22]));part(hub,'Lid',K.black,g=>box(g,[-hx+.1,-hy+.5,top-.22],[hx-.4,hy-.7,top]));
+      part(hub,'USB ports',C.alu,g=>{for(const y of [-1.2,-.5,.4])box(g,[hx,y-.25,PLATE_Z+.25],[hx+.05,y+.25,PLATE_Z+.6]);});
+      part(bat,'REV Slim Battery',C.battery,g=>box(g,[2.2,3.82,PLATE_Z],[7.9,7.38,PLATE_Z+23*mm]));}
     odometryParts([ELECTRONICS],-end+48/25.4,PLATE_Z);
   }
   function mecanumJoints(name){const HX=MECANUM.L/2,HY=MECANUM.W/2,WX=HX-2.9,wy=HY-MECANUM_HALF;

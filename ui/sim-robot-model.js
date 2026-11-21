@@ -198,7 +198,8 @@
       if(spec.kind==='swerve'){const steer=new T.Group();steer.name='DeckSteer';steer.position.copy(location);steer.userData.deckSteer={x:location.x,y:location.y};wheel.parent.add(steer);steer.add(wheel);wheel.position.set(0,0,0);scene.updateMatrixWorld(true);for(const part of podParts)if(part.userData.deckSteerBody.pod===wheel.name)steer.attach(part);}
       wheel.userData.deckWheel={...spec,x:location.x,y:location.y,angle:0,driven:meta?.id!=='swechanum'||spec.kind==='swerve'};
     }
-    if(meta?.id==='strafer')straferOdometry(scene,T);
+    // A build whose Strafer has goBILDA's and REV's own parts on it (tools/simulation/finish-robot.mjs) needs no stand-ins.
+    if(meta?.id==='strafer'&&!scene.getObjectByName('goBILDA Pinpoint'))straferOdometry(scene,T);
     scene.userData.builtin=meta?.id;return scene;
   }
   // goBILDA's Strafer CAD comes without odometry. Its two 4-Bar pods (32 mm wheel) and Pinpoint are drawn where goBILDA's Pinpoint user guide puts them on this chassis: both pods on the rear

@@ -591,7 +591,10 @@
     // 168 mm ahead of and behind the centre and 207 mm to each side. Odometry is goBILDA's own layout for this chassis (Pinpoint user guide, pages 2 and 3): two 4-Bar pods on the rear axle line with the Pinpoint
     // between them, so the X (forward) pod is 84 mm right of the centre and the Y (strafe) pod 168 mm behind it, the offsets its guide and the FTC SDK's Pinpoint sample give (-84, -168 mm). adjustable: where its motors are plugged in, which have their encoder cable, and whether it has odometry; nothing else.
     startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer chassis kit: 104 mm mecanum wheels on 312 RPM motors, Control Hub IMU and motor encoders, pushes pieces. Say where its motors are plugged in',adjustable:true,robot:{drivetrain:'mecanum',length:17.32,width:17.79,heightIn:7.25,massLb:9.41,driveRpm:312,wheelDiameterMm:104,
-      wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:-3.307,yOffset:-6.614}}}}};
+      wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:-3.307,yOffset:-6.614}},
+      // Its electronics as goBILDA's and REV's own CAD has them on the Strafer (tools/simulation/finish-robot.mjs): the Control Hub flat on the
+      // middle cross channel, logo up and USB forward, its IMU chip under PROUD (ui/sim-sensor-place.js); the Pinpoint on the rear channel, sticker up.
+      hubLogo:'up',hubUsb:'forward',sensorPlace:{imu:{kind:'controlHub',x:-.63,y:-.709,z:3.334,from:'cad',part:'REV Control Hub'},pinpoint:{x:-6.614,y:0,z:3.317,from:'cad',part:'goBILDA Pinpoint',a:'up'}}}}};
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
     return sanitize({...base,...p,enabled:true,capacity:p.capacity||{pollen:4,nectar:0},preload:{pollen:4},transfer:p.transfer||base.transfer,indexer:{...base.indexer,...p.indexer},shooter:{...base.shooter,...p.shooter},target:null});};

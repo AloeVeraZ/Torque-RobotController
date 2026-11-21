@@ -2,14 +2,15 @@
   "strafer": {
     "id": "strafer",
     "name": "goBILDA Strafer 104 mm GripForce",
-    "credit": "CAD: goBILDA \u00b7 Strafer 3209-0001-0007. Curated wheel animation; visual model only.",
+    "credit": "CAD: goBILDA · Strafer 3209-0001-0007. Curated wheel animation; visual model only.",
     "source": "https://www.gobilda.com/strafer-chassis-kit-104mm-gripforce-mecanum-wheels/",
     "stepUrl": "https://www.gobilda.com/content/step_files/3209-0001-0007.zip",
     "stepSha256": "4f617af5259bc311f0b1ae5a62eb08db5f05554e8ee257e1e61beeaaa0c73deb",
     "orientation": "Source +Y is front, +Z is up; exported in the app robot frame. Wheels touch the floor.",
     "assetSha256": [
       "4a5e5d4d3ef1828d166f37f6ed7c253fcc44ddfa3334626301f00c7d8b6e9019",
-      "1413190cb8c8b1f3587778359ab446c07c8331b92d4d02508fb7daf2c2cce209"
+      "1413190cb8c8b1f3587778359ab446c07c8331b92d4d02508fb7daf2c2cce209",
+      "a7485e68a80a51cb4622db2656407920e127582387c3c5c552fc66733c857698"
     ],
     "assetNote": "Open CASCADE meshes the same STEP slightly differently on each operating system, so each prepared build's hash is listed: Windows x64, then Apple Silicon macOS."
   }

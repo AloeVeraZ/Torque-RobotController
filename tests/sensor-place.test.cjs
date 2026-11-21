@@ -39,21 +39,24 @@ test('the IMU keeps its place and turns it through the hub mounting; the OTOS th
 });
 
 test('a CAD box gives the position; the marker shows the face and arrow picked',()=>{
-  const box={lo:[1,-2,3],hi:[5.06,3.63,4.16]};// The hub's chip is under PROUD, near the label's lower right: 25 mm towards the USB end and 25 mm towards the sensor ports
-  // (the SDK's +Y and +X), 5 mm under the middle. Logo up, USB forward: 0.98 in forward, 0.98 in right, 0.2 in down.
-  assert.deepEqual(P.fromBox(box,'controlHub','up','forward'),{x:4.014,y:-.169,z:3.383});
-  assert.deepEqual(P.fromBox(box,'expansionHub','up','forward'),{x:4.014,y:-.169,z:3.383},'the Expansion Hub is the same board');
-  // Logo left, USB up: the sensor ports face X = Y × Z = up × left = backward, so the chip is 0.98 in back and 0.98 in up.
-  assert.deepEqual(P.fromBox(box,'controlHub','left','up'),{x:2.046,y:.618,z:4.564});
-  {const mk=P.marker({kind:'controlHub',x:4.014,y:-.169,z:3.383,a:'up',b:'forward'});assert.deepEqual(mk.chip,[4.014,-.169,3.383]);assert.deepEqual(mk.origin.map(v=>+v.toFixed(3)),[3.03,.815,3.58],'the case is drawn round the chip');}
+  const box={lo:[1,-2,3],hi:[5.06,3.63,4.16]};
+  // The hub's chip is under PROUD, near the label's lower right: 18 mm along the hub towards the I2C end (the SDK's +X)
+  // and 16 mm away from the USB side (-Y), 6 mm under the middle. Logo up, USB forward: X is right, so the chip is
+  // 0.71 in right, 0.63 in back and 0.24 in down.
+  assert.deepEqual(P.fromBox(box,'controlHub','up','forward'),{x:2.4,y:.106,z:3.344});
+  assert.deepEqual(P.fromBox(box,'expansionHub','up','forward'),{x:2.4,y:.106,z:3.344},'the Expansion Hub is the same board');
+  // Logo left, USB up: X = Y × Z = up × left = backward, so the chip is 0.71 in back, 0.63 in down and 0.24 in right.
+  assert.deepEqual(P.fromBox(box,'controlHub','left','up'),{x:2.321,y:.579,z:2.95});
+  {const mk=P.marker({kind:'controlHub',x:2.4,y:.106,z:3.344,a:'up',b:'forward'});assert.deepEqual(mk.chip,[2.4,.106,3.344]);assert.deepEqual(mk.origin.map(v=>+v.toFixed(3)),[3.03,.815,3.58],'the case is drawn round the chip');}
   assert.equal(P.boxFits(box,'controlHub'),true);assert.equal(P.boxFits({lo:[0,0,0],hi:[18,18,4]},'controlHub'),false,'the whole chassis is not a hub');
   const m=P.marker({kind:'controlHub',x:0,y:0,z:2,a:'left',b:'up'});assert.deepEqual(m.face,[0,1,0]);assert.deepEqual(m.arrow,[0,0,1]);assert.ok(m.led[1]>.5,'the lit dot is on the logo side');
   // The external boards, from their makers' files: the REV 9-Axis IMU's BNO055 is centred, 6 mm over its middle; the OTOS's
   // LSM6DSO at its centre, 1.2 mm over the board's middle; the Pinpoint's and navX's chips are not published, so the middle.
   assert.deepEqual(P.fromBox({lo:[0,0,0],hi:[1.634,.59,.661]},'externalImu','up','forward'),{x:.817,y:.295,z:.567});
   assert.deepEqual(P.fromBox({lo:[0,0,.3],hi:[1,1,.363]},'otos','up','forward'),{x:.5,y:.5,z:.379});
-  assert.deepEqual(P.fromBox({lo:[0,0,0],hi:[1.673,1.575,.614]},'pinpoint','up','left'),{x:.837,y:.787,z:.307});
-  for(const kind of ['pinpoint','navx'])assert.match(P.warnings({kind,a:'up',b:kind==='pinpoint'?'left':'forward'}).join(' '),/does not publish where the IMU chip is/,kind);
+  assert.deepEqual(P.fromBox({lo:[0,0,0],hi:[1.689,1.579,.618]},'pinpoint','up','left'),{x:.845,y:.789,z:.309});
+  for(const kind of ['pinpoint','navx'])assert.match(P.chipNote({kind}),/does not publish where the IMU chip is, so its centre is used/,kind);
+  assert.deepEqual(P.warnings({kind:'pinpoint',a:'up',b:'left'}),[],'the centre is not a warning');
   assert.deepEqual(P.warnings({kind:'otos',a:'up',b:'forward'}),[]);
   // Sticker up, a Pinpoint's X arrow points forward and its Y arrow left: goBILDA's own frame is the robot's.
   assert.deepEqual(P.matrix(...Object.values(P.faces('pinpoint','up'))),[[1,0,0],[0,1,0],[0,0,1]]);
