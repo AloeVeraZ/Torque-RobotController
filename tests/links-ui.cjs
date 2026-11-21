@@ -40,13 +40,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
       if(action==='read-usb')return ok({serial:SERIAL,active:{name:'robot'},configurations:['robot'],files:{robot:xml}});if(action==='check')return ok([{name:'Robot Controller app',ok:true,detail:'FTC SDK 12.0'}]);
       if(action==='scan')return ok({portals:[{serial:'(embedded)',modules:[{address:173,parent:true,imu:'BHI260'}],servoHubs:[]}],others:[]});
       if(action==='send'){g.__files={...(g.__files||{}),...(d.files||{})};return ok({built:true,seconds:9,log:'',errors:[]});}if(action==='onbot-read')return ok(null);
-      // IMU tuning: the robot runs it and reports, as a Driver Station sees it, where it is and then its result.
-      if(action==='tune-start'){(g.__tuneRuns??=[]).push(d.opMode);const x=g.__tune,w=BrowserWindow.getAllWindows(),say=v=>{for(const win of w)win.webContents.send('robot-link-tune',v);};
-        // Just built: the first time the robot does not list it yet, as a real one does for a few seconds after a build.
-        if((g.__tuneAsked=(g.__tuneAsked||0)+1)===1){setTimeout(()=>say({error:`The robot has no op mode “${d.opMode}”. Send to robot first, so it is built.`}),100);return ok(true);}
-        setTimeout(()=>say({state:'running',lines:['torque.state : 50%: round 1 of 3']}),200);setTimeout(()=>say({state:'running',lines:['torque.state : 60%: round 2 of 3',...x.rows.map(r=>'torque.row : '+r)]}),500);
-        setTimeout(()=>say({state:'running',lines:['torque.state : done','torque.result : '+x.result]}),900);return ok(true);}
-      if(action==='tune-stop')return ok(true);if(action==='debug-send'){g.__sent.push(d.line);return ok(true);}if(action==='debug-install')return ok({opMode:'TorqueDebug-x'});if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});
+      if(action==='debug-send'){g.__sent.push(d.line);return ok(true);}if(action==='debug-install')return ok({opMode:'TorqueDebug-x'});if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});
       if(action==='debug-start'){g.__starts=(g.__starts||0)+1;return ok(true);}if(action==='debug-stop'||action==='debug-claim')return ok(true);return {ok:false,error:'not in this test: '+action};});},{xml:XML,SERIAL});
     await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.waitForFunction(()=>document.querySelectorAll('#rs-configs .rs-config:has([data-cfg=edit])').length===1);await wait(800);
     // Calibrate does not wait for Debug: opened straight away over the cable, it starts Torque Debug by itself, with nothing pressed.
@@ -59,10 +53,12 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // The robot: each motor's power turns its wheel and its encoder counts it, but rightFront's and rightBack's encoder
     // cables are swapped. The left side turning turns the robot right. The claw servo moves nothing anyone reads, and the
     // beam reads LOW while a game piece is in it.
-    let leftBackWay=1;/* -1 once leftBack is found to be mounted the other way round: its raw power then turns the robot the other way */const pos=[0,0,0,0],pow=[0,0,0,0],resets=[],motorLines=[],servoLines=[];let t=0,yaw=0,pitch=0,beam=1;
-    (async()=>{while(run){const lines=await app.evaluate(()=>global.__sent.splice(0)).catch(()=>[]);for(const l of lines){const [c,n,v]=l.split('\t');if(c==='M')motorLines.push(l);if(c==='S'||c==='E')servoLines.push(l);const i=MOTORS.indexOf(n);if(c==='M'&&i>=0)pow[i]=+v;if(c==='R'&&i>=0){pos[i===2?3:i===3?2:i]=0;resets.push(n);}if(c==='X')pow.fill(0);}
+    let leftBackWay=1;/* -1 once leftBack is found to be mounted the other way round: its raw power then turns the robot the other way */const pos=[0,0,0,0],pow=[0,0,0,0],resets=[],motorLines=[],servoLines=[],turnLines=[];let t=0,yaw=0,pitch=0,beam=1,turning=null,turnNext=null;
+    (async()=>{while(run){const lines=await app.evaluate(()=>global.__sent.splice(0)).catch(()=>[]);for(const l of lines){const [c,n,v]=l.split('\t');if(c==='M')motorLines.push(l);if(c==='S'||c==='E')servoLines.push(l);const i=MOTORS.indexOf(n);if(c==='M'&&i>=0)pow[i]=+v;if(c==='R'&&i>=0){pos[i===2?3:i===3?2:i]=0;resets.push(n);}if(c==='X'){pow.fill(0);if(turning)turning.stopped=true;}if(c==='U'){turnLines.push(l);turning={job:n,id:+v,n:0,...turnNext};}}
+      // IMU turning in Torque Debug: where it is for a few frames, each power done so far, then its result.
+      let tt;if(turning){const x=turning,k=++x.n;tt={job:x.job,id:x.id,state:x.stopped?'stopped':k<4?'starting':k<8?'50%: round 1 of 3':'done',h:k*3,p:k<8?.3:0,fin:x.stopped||k>=10?1:0,rows:k<6?[]:x.rows||[],result:k>=10&&!x.stopped?x.result:null};if(tt.fin)turning=null;}
       for(let i=0;i<4;i++){const into=i===2?3:i===3?2:i;pos[into]+=Math.round(pow[i]*40);}yaw-=(pow[0]+leftBackWay*pow[1])*1.5;
-      await send({frame:{t:t+=40,loop:6,v:13,m:pos.map((p,i)=>[p,0,pow[i],0,0]),s:[[.5,1]],c:[],d:[beam],touch:[],l:[],a:[],i:[{age:10,v:{yaw,pitch,roll:0,wx:0,wy:0,wz:0}}],on:[1],b:[]}}).catch(()=>{});await wait(40);}})();
+      await send({frame:{t:t+=40,loop:6,v:13,m:pos.map((p,i)=>[p,0,pow[i],0,0]),s:[[.5,1]],c:[],d:[beam],touch:[],l:[],a:[],i:[{age:10,v:{yaw,pitch,roll:0,wx:0,wy:0,wz:0}}],on:[1],b:[],...(tt?{tt}:{})}}).catch(()=>{});await wait(40);}})();
     await soon('frames drawn',async()=>/robot clock/.test(await page.textContent('[data-debug-stats]')));
 
     // Electronics, laid out like Simulate's robot: the chassis, then the configuration's devices as tiles, the picked one on the right.
@@ -176,29 +172,42 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await drive('back','yes');await drive('left','no');assert.match(await page.textContent('[data-chassis-step="1"]'),/check that motor again in Electronics/);assert.equal(await page.locator('[data-chassis-step="1"]').getAttribute('data-state'),'todo','not done until all four are seen');
     await drive('left','yes');assert.ok(motorLines.some(l=>/^M\tleftFront\t-0\.30$/.test(l))&&motorLines.some(l=>/^M\trightBack\t-0\.30$/.test(l)),'sliding left: front left and back right backward');await drive('right','yes');
     await soon('the wheels are checked together',async()=>/✓/.test(await page.textContent('[data-mech-pick="chassis-1"]')));
-    // IMU tuning, required, after the wheels: Torque puts the standard tuning on the robot, starts it there itself and shows what it found. The robot in this test
-    // reports what a real one would: 50% and 55% land, 60% swings past; then the aggressive one: 75% and 80% land, 85% and 90% do not.
+    // IMU tuning, required, after the wheels: it runs in Torque Debug, the live readings already running, so nothing is sent to the robot. The robot in this
+    // test reports what a real one would: 50% and 55% land, 60% swings past; then the aggressive one: 75% and 80% land, 85% and 90% do not.
     assert.doesNotMatch(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head'),/Good to use|Calibrated/,'not good to use until the IMU is tuned');
-    await page.click('[data-mech-pick="chassis-2"]');assert.match(await page.textContent('[data-chassis-step="2"]'),/Required\..*Not tuned yet\./s);assert.equal(await page.isDisabled('[data-chassis=tune-aggressive]'),true,'the aggressive one after the standard one');
+    await page.click('[data-mech-pick="chassis-2"]');assert.match(await page.textContent('[data-chassis-step="2"]'),/Required\..*nothing is sent to the robot.*Not tuned yet\./s);assert.equal(await page.isDisabled('[data-chassis=tune-aggressive]'),true,'the aggressive one after the standard one');
+    // The heading live, and a short drive to watch it follow: every wheel for about a second, no ask.
+    await soon('the heading shows',async()=>/-?\d+\.\d/.test(await page.textContent('[data-chassis-heading]')));
+    motorLines.length=0;await page.click('[data-chassis=nudge][data-nudge=left]');await soon('every wheel driven at a quarter power',async()=>MOTORS.every(n=>motorLines.some(l=>l.startsWith(`M\t${n}\t`)&&Math.abs(+l.split('\t')[2])===.25)),5000).catch(e=>{throw Error(e.message+': '+motorLines.join(' | '));});await soon('and stopped',async()=>motorLines.some(l=>/^M\tleftFront\t0\.00$/.test(l)));
     const rnd=(power,seconds,ok,worst=1.1,over=2)=>({power,rate:200,coast:12,slowFrom:80,brake:.0017,worst,over,seconds,ok});
-    const tuned=(mode,backwards,rounds)=>app.evaluate((_,x)=>{global.__tune=x;},{rows:rounds.map(r=>`${Math.round(r.power*100)}% ${r.ok?'good':'no'}`),result:JSON.stringify({v:2,mode,backwards,least:.07,tolerance:3,repeats:3,problem:'',rounds})});
-    await tuned('standard',true,[rnd(.5,2.2,true),rnd(.55,1.9,true),rnd(.6,1.8,false,4.2,14)]);
-    await page.selectOption('[data-chassis-turn-want]','3');motorLines.length=0;await page.click('[data-chassis=tune-standard]');
+    const tuned=(mode,backwards,rounds)=>{turnNext={rows:rounds.map(r=>`${Math.round(r.power*100)}% ${r.ok?'good':'no'}`),result:JSON.stringify({v:2,mode,backwards,least:.07,tolerance:3,repeats:3,readMs:7.2,problem:'',rounds})};};
+    tuned('standard',true,[rnd(.5,2.2,true),rnd(.55,1.9,true),rnd(.6,1.8,false,4.2,14)]);
+    await soon('the nudge is over',async()=>!(await page.isDisabled('[data-chassis=tune-standard]')));
+    await page.selectOption('[data-chassis-turn-want]','3');await page.click('[data-chassis=tune-standard]');
+    await soon('it says where it is',async()=>/50%: round 1 of 3/.test(await page.textContent('[data-chassis-step="2"]')));
     await soon('the standard tuning finishes and shows what it found',async()=>/Standard tuning: 55% is the best power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    {const sent=await app.evaluate(()=>global.__files||{}),src=sent['TorqueImuTune.java']||'';assert.match(src,/@TeleOp\(name = "Torque IMU tuning", group = "Torque"\)/);assert.match(src,/TOLERANCE_DEGREES = 3\.0;/);assert.match(src,/DRIVE = \{"leftFront", "rightFront", "leftBack", "rightBack"\}/);
-      assert.deepEqual(await app.evaluate(()=>global.__tuneRuns),['Torque IMU tuning','Torque IMU tuning'],'Torque started it itself, again once the robot had loaded it');}
+    assert.equal(turnLines.length,1);assert.match(turnLines[0],/^U\tstandard\t\d+\t3\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\timu:imu\tL:UP:FORWARD\t1\tleftFront\t-?1\trightFront\t-?1\tleftBack\t-?1\trightBack\t-?1$/,'one line to Torque Debug: '+turnLines[0]);
+    assert.equal(await app.evaluate(()=>Object.keys(global.__files||{}).filter(f=>/Imu|Tune/i.test(f)).length),0,'nothing sent to the robot');
     {const p=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2'))),t=p.calibration.chassis.turnTune;assert.equal(t.standard.top,.55);assert.equal(t.standard.done,3);assert.equal(t.standard.rounds.length,3);assert.equal(t.backwards,true);assert.equal(p.robot.odometry?.imu?.reversed,true,'the heading is taken the other way round');}
-    await soon('good to use once the IMU is tuned',async()=>/Calibrated|Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));assert.equal(await page.locator('[data-chassis-step="2"] [data-imu-best]').count(),1);
-    // Aggressive: written with the heading as it is now (already turned round), so the robot finds it the right way round.
-    await tuned('aggressive',false,[rnd(.75,1.5,true),rnd(.8,1.4,true),rnd(.85,1.3,false,3.5,12),rnd(.9,1.2,false,5,20)]);await page.click('[data-chassis=tune-aggressive]');
+    assert.equal(await page.locator('[data-chassis-step="2"] [data-imu-best]').count(),1);
+    // Then the check: four quarter turns by what it found, and the student says whether it lands.
+    assert.doesNotMatch(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head'),/Good to use|Calibrated/,'not good to use until it is checked');
+    turnNext={rows:['Left 90°: 0.8° off','Back to 0°: 0.5° off','Right 90°: 1.1° off','Back to 0°: 0.4° off'],result:JSON.stringify({v:2,check:true,tolerance:3,readMs:7,turns:[]})};await page.click('[data-chassis=tune-check]');
+    await soon('it asks whether it landed',async()=>/Did it turn a quarter turn each way/.test(await page.textContent('[data-chassis-step="2"]')),20000);
+    assert.match(turnLines[1],/^U\tcheck\t\d+\t3\t0\.55\t0\.07\t80\t0\.0017\t[^\t]+\timu:imu\tL:UP:FORWARD\t-1\t/,'turned by what was found, the heading the other way round: '+turnLines[1]);
+    assert.match(await page.textContent('[data-chassis-step="2"]'),/Right 90°: 1\.1° off/);await page.click('[data-chassis=check-yes]');
+    await soon('good to use once the IMU is tuned and checked',async()=>/Calibrated|Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
+    // Aggressive: with the heading as it is now (already turned round), so the robot finds it the right way round.
+    tuned('aggressive',false,[rnd(.75,1.5,true),rnd(.8,1.4,true),rnd(.85,1.3,false,3.5,12),rnd(.9,1.2,false,5,20)]);await page.click('[data-chassis=tune-aggressive]');
     await soon('the aggressive tuning finishes',async()=>/Aggressive tuning: 80% is the most power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    assert.match(await app.evaluate(()=>global.__files['TorqueImuTuneHard.java']||''),/IMU_SCALE = -1\.0;/,'written with the heading turned round');
+    assert.match(turnLines[2],/^U\taggressive\t.*\timu:imu\tL:UP:FORWARD\t-1\t/,'the heading turned round');
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry?.imu?.reversed),true,'not turned back');
     assert.equal(await page.inputValue('[data-chassis-turn-use]'),'standard','the standard one until the team picks');await page.selectOption('[data-chassis-turn-use]','aggressive');
     await soon('the code turns by the aggressive one',async()=>/Now: up to 80% turn power/.test(await page.textContent('[data-chassis-step="2"]')));
+    turnNext={rows:['Left 90°: 1.2° off'],result:JSON.stringify({v:2,check:true,tolerance:3,turns:[]})};await page.click('[data-chassis=tune-check]');
+    await soon('asked again',async()=>/Did it turn a quarter turn each way/.test(await page.textContent('[data-chassis-step="2"]')),20000);await page.click('[data-chassis=check-yes]');
     await soon('calibrated once the IMU is tuned too',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
-    // Sending it stopped live readings (the robot has to be free to run it). They start again by themselves, and the robot says what it has again.
-    await wait(1500);await send({manifest:MAN});await wait(500);
+    await page.locator('[data-chassis-step="2"]').screenshot({path:path.join(root,'test-results/imu-tuning-ui.png')}).catch(()=>{});
     await page.click('[data-mech-pick="chassis-code"]');assert.match(await page.textContent('[data-chassis-code]'),/LEFT_FRONT_REVERSED = (true|false);\n/);
     assert.equal(await page.locator('[data-cal-mech-row="drive"]').count(),0,'the chassis is not listed again below');
     await page.screenshot({path:path.join(root,'test-results/chassis-ui.png'),fullPage:true}).catch(()=>{});

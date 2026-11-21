@@ -316,12 +316,12 @@
       '    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
       '    double read() {','        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading += wrap(yaw - lastYaw) * IMU_SCALE;','        lastYaw = yaw;','        return heading;','    }','',
       '    void set(double forward, double left, double turn) {',`        double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'        double top = 1;','        for (double p : power) top = Math.max(top, Math.abs(p));','        for (int i = 0; i < drive.length; i++) drive[i].setPower(power[i] / top);','    }','',
-      '    /** Turns to an angle and stops there: full turn power far out, less and less from SLOW_FROM_DEGREES in, braked by its own speed. */',
-      '    void turnTo(double target) {','        ElapsedTime time = new ElapsedTime();','        double before = read(), at = time.seconds();','        int there = 0;',
-      '        while (opModeIsActive() && time.seconds() < 6 && there < 12) {','            double now = read(), t = time.seconds(), rate = t > at ? (now - before) / (t - at) : 0, error = wrap(target - now), ahead = wrap(target - (now + rate * LAG_SECONDS));','            before = now; at = t;',
-      '            double power = 0;','            if (Math.abs(error) > DONE_DEGREES) {','                power = Math.abs(ahead) <= DONE_DEGREES * 0.4 ? 0 : Math.copySign(Math.max(LEAST_TURN, TOP_TURN * Math.min(1, Math.abs(ahead) / SLOW_FROM_DEGREES)), ahead) - BRAKE * rate;','                power = Math.max(-TOP_TURN, Math.min(TOP_TURN, power));','            }',
-      '            there = Math.abs(error) <= DONE_DEGREES && Math.abs(rate) < 8 ? there + 1 : 0;','            set(0, 0, power);',
-      '            telemetry.addData("Turning to", "%.0f", target);','            telemetry.addData("Heading", "%.1f", now);','            telemetry.addData("Left to turn", "%.1f", error);','            telemetry.addData("Turn power", "%.2f", power);','            telemetry.update();','            sleep(10);','        }',
+      ...TURN_JAVA,'',
+      '    /** Turns to an angle and stops there (the Turn law above), and waits a moment to see it stay. */',
+      '    void turnTo(double target) {','        Turn turn = new Turn(TOP_TURN, LEAST_TURN, SLOW_FROM_DEGREES, BRAKE, DONE_DEGREES, LAG_SECONDS);','        ElapsedTime time = new ElapsedTime();','        double thereAt = -1;',
+      '        while (opModeIsActive() && time.seconds() < 6) {','            double now = read(), t = time.seconds(), power = turn.step(target, now, t);','            set(0, 0, power);',
+      '            if (turn.there) { if (thereAt < 0) thereAt = t; else if (t - thereAt >= 0.3) break; } else thereAt = -1;',
+      '            telemetry.addData("Turning to", "%.0f", target);','            telemetry.addData("Heading", "%.1f", now);','            telemetry.addData("Left to turn", "%.1f", target - now);','            telemetry.addData("Turn power", "%.2f", power);','            telemetry.update();','            sleep(10);','        }',
       '        set(0, 0, 0);','        sleep(400);','    }','',
       '    @Override public void runOpMode() {','        drive = new DcMotor[DRIVE.length];','        for (int i = 0; i < drive.length; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',
       ...imu(o).map(l=>l.replace('        IMU imu = ','        imu = ')),
@@ -330,79 +330,77 @@
       '        for (double angle : ANGLES) { if (!opModeIsActive()) break; turnTo(angle); }',
       '        while (opModeIsActive()) { telemetry.addData("Done. Heading", "%.1f", read()); telemetry.update(); sleep(50); }','    }','}',''].join('\n');
     return {file:`org/firstinspires/ftc/teamcode/${name}.java`,opMode,source};}
+  // ---- turning to an angle: the one law every turn on the spot uses ------------------------------------------------------
+  // TorqueDebug.java's TorqueDebugTurn.step and the IMU turn test's Turn class are this, step for step (tests/turn-law.test.cjs).
+  // The heading a Control Hub IMU gives is a few ms old and often the same twice running (the IMU had nothing new), so a speed
+  // taken from one loop to the next jumps between nothing and double: the brake and the look-ahead then flip the power back and
+  // forth, and the robot jitters. Here the speed is taken over at least WINDOW seconds. The least power that turns the robot is
+  // only given from rest, and built up from half of it, so a robot near its angle eases off its stop instead of being kicked past
+  // it and back. Once it is inside `done` and still, it is there: the power stays off until it is pushed out by twice that.
+  // k: {top, least, slowFrom (degrees), brake (power for each degree a second), done (degrees), lag (seconds)}.
+  // s: turnState(), one for each turn. h: degrees, left positive; t: seconds. Returns the turn power, -top to top.
+  const TURN_LAW={ramp:.25,still:10,window:.05};
+  const turnState=()=>({at:NaN,h0:0,rate:0,last:NaN,sent:0,push:0,way:0,there:false});
+  function turnStep(s,target,h,t,k){
+    if(Number.isNaN(s.at)){s.h0=h;s.at=t;s.last=t;}
+    const dt=Math.max(0,t-s.last);s.last=t;
+    if(t-s.at>=TURN_LAW.window){s.rate=(h-s.h0)/(t-s.at);s.h0=h;s.at=t;}
+    const r=s.rate,err=target-h,ahead=target-(h+r*k.lag),slow=Math.abs(r)<TURN_LAW.still;
+    if(s.there){if(Math.abs(err)>2*k.done)s.there=false;}else if(Math.abs(err)<=k.done&&slow)s.there=true;
+    let want=0;
+    if(!s.there&&Math.abs(ahead)>.5*k.done){let mag=k.top*Math.min(1,Math.abs(ahead)/k.slowFrom);
+      if(Math.sign(ahead)!==s.way){s.way=Math.sign(ahead);s.push=0;}
+      s.push=slow?Math.min(1.5*k.least,Math.max(s.push,.5*k.least)+dt*2*k.least):Math.max(.5*k.least,s.push-dt*3*k.least);mag=Math.max(mag,s.push);
+      want=Math.max(-k.top,Math.min(k.top,Math.sign(ahead)*mag-k.brake*r));}
+    else s.push=0;
+    const sent=s.sent,step=dt/TURN_LAW.ramp;
+    s.sent=Math.abs(want)<Math.abs(sent)||want*sent<0?want:sent+Math.max(-step,Math.min(step,want-sent));
+    return s.sent;}
+  // The same, in Java, as a class the generated op modes carry.
+  const TURN_JAVA=['    /** Turning to an angle (Torque\'s turn law: ui/sim-chassis-teleop.js turnStep). One for each turn. */',
+    '    static final class Turn {',
+    '        static final double RAMP = 0.25, STILL = 10, WINDOW = 0.05;',
+    '        final double top, least, slowFrom, brake, done, lag;',
+    '        double at = Double.NaN, h0, rate, last = Double.NaN, sent, push, way;',
+    '        boolean there;',
+    '        Turn(double top, double least, double slowFrom, double brake, double done, double lag) { this.top = top; this.least = least; this.slowFrom = slowFrom; this.brake = brake; this.done = done; this.lag = lag; }',
+    '        double step(double target, double h, double t) {',
+    '            if (Double.isNaN(at)) { h0 = h; at = t; last = t; }',
+    '            double dt = Math.max(0, t - last); last = t;',
+    '            if (t - at >= WINDOW) { rate = (h - h0) / (t - at); h0 = h; at = t; }',
+    '            double r = rate, err = target - h, ahead = target - (h + r * lag); boolean slow = Math.abs(r) < STILL;',
+    '            if (there) { if (Math.abs(err) > 2 * done) there = false; } else if (Math.abs(err) <= done && slow) there = true;',
+    '            double want = 0;',
+    '            if (!there && Math.abs(ahead) > 0.5 * done) {',
+    '                double mag = top * Math.min(1, Math.abs(ahead) / slowFrom);',
+    '                if (Math.signum(ahead) != way) { way = Math.signum(ahead); push = 0; }',
+    '                push = slow ? Math.min(1.5 * least, Math.max(push, 0.5 * least) + dt * 2 * least) : Math.max(0.5 * least, push - dt * 3 * least); mag = Math.max(mag, push);',
+    '                want = Math.max(-top, Math.min(top, Math.signum(ahead) * mag - brake * r));',
+    '            } else push = 0;',
+    '            double step = dt / RAMP;',
+    '            sent = Math.abs(want) < Math.abs(sent) || want * sent < 0 ? want : sent + Math.max(-step, Math.min(step, want - sent));',
+    '            return sent;',
+    '        }',
+    '    }'];
   // ---- the IMU tuned on the robot ----------------------------------------------------------------------------------------
-  // Op modes that find how hard this robot can turn and still land on its angle. They run on the robot, where the turn loop
-  // really runs (every 10 ms, nothing in between), with the heading the robot's code uses: the Control Hub's IMU or the
-  // Pinpoint's. Torque sends them, starts them itself as a Driver Station does and reads what they find from their telemetry,
-  // so nobody runs them from Drive. Each first checks which way the heading counts (it turns left a little) and the least power
-  // that turns the robot. Then, at each turn power: a spin to see how fast it turns and how far it rolls on once the power is
-  // cut (which sets where it starts to slow and how hard it brakes at that power), then the same four quarter turns (left,
-  // back, right, back) REPEATS times over, each ramped up from rest. A power is good only if every one of those turns ends
-  // inside the tolerance without swinging far past.
+  // IMU tuning runs inside Torque Debug (src/onbot/TorqueDebug.java, TorqueDebugTurn), the op mode Electronics already runs: Torque
+  // sends one U line and the robot does the rest where the turn loop really runs, and says how it goes in each frame's "tt". Nothing
+  // is written to the robot. Each tuning first checks which way the heading counts (it turns left a little) and the least power that
+  // turns the robot. Then, at each turn power: a spin to see how fast it turns and how far it rolls on once the power is cut (which
+  // sets where it starts to slow and how hard it brakes at that power), then four quarter turns (left, back, right, back) three times
+  // over. A power is good only if every one of those turns ends inside the tolerance without swinging far past.
   //   standard: 50% to 75%; the best of the good ones (the quickest turns).  aggressive: 75% to 100%; the most power that is still good.
-  // The result is one telemetry line, torque.result, a JSON (turnResultOf); the op mode waits there until Torque stops it.
-  // o: as teleopOf takes, with heading: {kind: 'hub' | 'pinpoint', name}, tolerance (degrees either side) and mode.
-  const TURN_TUNE={standard:{className:'TorqueImuTune',opMode:'Torque IMU tuning',powers:[.5,.55,.6,.65,.7,.75],pick:'best'},aggressive:{className:'TorqueImuTuneHard',opMode:'Torque IMU tuning (aggressive)',powers:[.75,.8,.85,.9,.95,1],pick:'most'},repeats:3};
-  function turnTuneOf(o){if(!o||o.kind==='swerve'||!Array.isArray(o.motors)||!o.motors.length)return {error:'IMU tuning is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
-    const mode=o.mode==='aggressive'?'aggressive':'standard',M=TURN_TUNE[mode],ms=o.motors,kind=o.kind,pin=o.heading?.kind==='pinpoint',tol=Math.min(10,Math.max(.5,Number.isFinite(+o.tolerance)?+o.tolerance:2)),name=M.className,reps=TURN_TUNE.repeats;
-    const imports=[...COMMON,'com.qualcomm.robotcore.util.ElapsedTime','java.util.ArrayList','java.util.List','java.util.Locale',...(pin?['com.qualcomm.hardware.gobilda.GoBildaPinpointDriver']:[]),...(o.imu?.mount?.imports||[])];
-    const q=t=>t.replace(/"/g,'\\"');
-    const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,
-      `// IMU tuning, ${mode}: Torque starts this itself from Calibrate, Mechanisms, IMU tuning, and reads what it finds. It turns the robot on the spot`,`// at ${M.powers.map(p=>Math.round(p*100)+'%').join(', ')} turn power, ${reps} rounds of four quarter turns at each, and finds ${M.pick==='best'?'the best power whose turns all land':'the most power whose turns still all land'} inside the tolerance.`,
-      `@TeleOp(name = ${str(M.opMode)}, group = "Torque")`,`public class ${name} extends LinearOpMode {`,
-      `    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,
-      pin?`    static final String PINPOINT = ${str(o.heading.name||'pinpoint')};`:`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
-      '    // How close to the angle a turn has to end, either side, in degrees; how many rounds of four quarter turns at each power.',`    static final double TOLERANCE_DEGREES = ${dbl(tol)};`,`    static final int REPEATS = ${reps};`,
-      `    static final double[] POWERS = ${list(M.powers.map(dbl))};`,`    static final boolean MOST = ${M.pick==='most'};`,'    static final double RAMP_SECONDS = 0.25;','',
-      '    DcMotor[] drive;',pin?'    GoBildaPinpointDriver pinpoint;':'    IMU imu;','    double lastYaw, heading, sign = 1, sent, readMs;','    int reads;','    String state = "starting";','    final List<String> rows = new ArrayList<>(), json = new ArrayList<>();','',
-      '    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }','',
-      '    /** The heading as the sensor gives it, timed: a Control Hub IMU read goes over I2C and can take several ms, so what it says is already that old. */',
-      `    double raw() { long t0 = System.nanoTime(); ${pin?'pinpoint.update(); double v = pinpoint.getHeading(AngleUnit.DEGREES)':'double v = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES) * IMU_SCALE'}; double ms = (System.nanoTime() - t0) / 1e6; readMs = reads++ == 0 ? ms : 0.95 * readMs + 0.05 * ms; return v; }`,
-      '    /** How old a heading is by the time the power it decides reaches the wheels, in seconds: the read, and half a loop. */',
-      '    double lag() { return (readMs + 5) / 1000.0; }',
-      '    /** Degrees turned since it began, left positive: each change in the heading, the way round it was found to count, added up. */',
-      '    double read() { double yaw = raw(); heading += wrap(yaw - lastYaw) * sign; lastYaw = yaw; return heading; }','',
-      '    void turn(double power) {','        double forward = 0, left = 0, turn = power;',`        double[] p = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'        double top = 1;','        for (double v : p) top = Math.max(top, Math.abs(v));','        for (int i = 0; i < drive.length; i++) drive[i].setPower(p[i] / top);','        sent = power;','    }','',
-      '    /** Turn power moved towards what is wanted no faster than 0 to full in RAMP_SECONDS; cutting it is at once. */',
-      '    void ramp(double wanted, double dt) { double step = dt / RAMP_SECONDS; turn(Math.abs(wanted) < Math.abs(sent) || wanted * sent < 0 ? wanted : sent + Math.max(-step, Math.min(step, wanted - sent))); }','',
-      '    /** Waits until it has stopped turning (or two seconds). */',
-      '    void rest() {','        turn(0);','        ElapsedTime t = new ElapsedTime();','        double before = read(), at = 0;','        int still = 0;','        while (opModeIsActive() && t.seconds() < 2 && still < 8) { sleep(20); double now = read(), s = t.seconds(), rate = (now - before) / Math.max(1e-3, s - at); before = now; at = s; still = Math.abs(rate) < 4 ? still + 1 : 0; }','    }','',
-      '    /** What Torque reads: where it is, each power done so far, and at the end the result. */',
-      '    void say(String now) { state = now; telemetry.addData("torque.state", state); for (String r : rows) telemetry.addData("torque.row", r); telemetry.update(); }','',
-      '    /** One turn to an angle, ramped up from rest, slowing from slowFrom degrees out and braked by its own speed. Returns {how far off it ended, how far past it went, seconds to get there}. */',
-      '    double[] turnTo(double target, double top, double least, double slowFrom, double brake) {','        ElapsedTime time = new ElapsedTime();','        double start = read(), way = Math.signum(target - start), far = 0, b = start, a = 0, last = 0, arrive = -1;','        int there = 0;',
-      '        while (opModeIsActive() && time.seconds() < 5 && there < 10) {','            double now = read(), s = time.seconds(), r = s > a ? (now - b) / (s - a) : 0, error = target - now, ahead = target - (now + r * lag());','            b = now; a = s;','            far = Math.max(far, (now - target) * way);','            if (arrive < 0 && Math.abs(error) <= TOLERANCE_DEGREES) arrive = s;',
-      '            double want = 0;','            // The power goes by where it will be by the time the power reaches the wheels (the heading is already lag() old), so a slow IMU does not make it swing past.','            if (Math.abs(error) > TOLERANCE_DEGREES * 0.6 && Math.abs(ahead) > TOLERANCE_DEGREES * 0.4) want = Math.max(-top, Math.min(top, Math.copySign(Math.max(least, top * Math.min(1, Math.abs(ahead) / slowFrom)), ahead) - brake * r));',
-      '            ramp(want, s - last);','            last = s;','            there = Math.abs(error) <= TOLERANCE_DEGREES && Math.abs(r) < 6 ? there + 1 : 0;','            sleep(10);','        }',
-      '        // How long it took to get there: the first moment it was inside the tolerance (all of it, if it never was).','        double seconds = arrive < 0 ? time.seconds() : arrive;','        rest();','        return new double[]{Math.abs(target - read()), far, seconds};','    }','',
-      '    @Override public void runOpMode() {','        drive = new DcMotor[DRIVE.length];','        for (int i = 0; i < drive.length; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',
-      ...(pin?['        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, PINPOINT);','        pinpoint.resetPosAndIMU();']:imu(o).map(l=>l.replace('        IMU imu = ','        imu = '))),
-      '        say("ready");','        waitForStart();','        sleep(400);','        lastYaw = raw();','        heading = 0;','',
-      '        // Which way the heading counts: a turn to the left has to count up.','        say("Which way the heading counts");',
-      '        ElapsedTime time = new ElapsedTime();','        while (opModeIsActive() && time.seconds() < 0.8 && Math.abs(read()) < 10) { turn(0.3); sleep(10); }','        rest();',
-      '        if (Math.abs(heading) < 3) { finish(false, 0, "It did not turn at 30% power: is it on the floor, with its wheels free?"); return; }',
-      '        boolean backwards = heading < 0;','        if (backwards) { sign = -1; heading = -heading; }','',
-      '        // The least power that turns it.','        say("The least power that turns it");','        double least = 0.2;',
-      '        for (double p = 0.04; opModeIsActive() && p <= 0.3; p += 0.01) {','            double from = read();','            time.reset();','            while (opModeIsActive() && time.seconds() < 0.12) { turn(p); sleep(10); }','            if (Math.abs(read() - from) / 0.12 > 12) { least = Math.min(0.2, Math.max(0.04, 1.2 * p)); break; }','        }','        rest();','',
-      '        int fails = 0;','        for (double top : POWERS) {','            if (!opModeIsActive()) break;','            say(String.format(Locale.US, "%.0f%%: how fast it turns", top * 100));',
-      '            // A spin: ramped up, held, then cut.','            double before = read(), at = 0, rate = 0, last = 0;','            time.reset();',
-      '            while (opModeIsActive() && time.seconds() < 0.6) { double s = time.seconds(); ramp(top, s - last); last = s; sleep(10); double now = read(); if (s - at > 0.04) { rate = (now - before) / (s - at); before = now; at = s; } }',
-      '            double cutAt = read();','            rest();','            double coast = Math.abs(read() - cutAt);','            rate = Math.abs(rate);',
-      '            if (rate < 20) { rows.add(String.format(Locale.US, "%.0f%% too slow to measure", top * 100)); continue; }',
-      '            // Where it starts to slow: what it rolls on once cut, with room to spare, and a little turning for the readings to catch up.','            // Aggressive leaves it later, so it comes in faster and stops harder; the rounds show whether it still lands.',`            double slowFrom = Math.min(150, Math.max(${mode==='aggressive'?'20':'30'}, ${mode==='aggressive'?'1.6 * coast + 0.12 * rate':'2.5 * coast + 0.25 * rate'})), brake = 0.45 * top / rate, worst = 0, over = 0, seconds = 0;`,'            int turns = 0;',
-      '            for (int round = 1; round <= REPEATS && opModeIsActive(); round++) {','                say(String.format(Locale.US, "%.0f%%: round %d of %d", top * 100, round, REPEATS));','                double base = read();',
-      '                for (double offset : new double[]{90, 0, -90, 0}) {','                    if (!opModeIsActive()) break;','                    double[] r = turnTo(base + offset, top, least, slowFrom, brake);','                    worst = Math.max(worst, r[0]); over = Math.max(over, r[1]); seconds += r[2]; turns++;','                }',
-      '                if (over > 45) break;','            }',
-      '            boolean ok = turns == 4 * REPEATS && worst <= TOLERANCE_DEGREES && over <= Math.max(3 * TOLERANCE_DEGREES, 6);','            double each = turns > 0 ? seconds / turns : 0;',
-      '            rows.add(String.format(Locale.US, "%.0f%% %s: %.1f deg off, %.1f deg past, %.2f s a turn", top * 100, ok ? "good" : "no", worst, over, each));',
-      `            json.add(String.format(Locale.US, "{${q('"power"')}:%.2f,${q('"rate"')}:%.1f,${q('"coast"')}:%.1f,${q('"slowFrom"')}:%.0f,${q('"brake"')}:%.5f,${q('"worst"')}:%.2f,${q('"over"')}:%.2f,${q('"seconds"')}:%.2f,${q('"ok"')}:%s}", top, rate, coast, slowFrom, brake, worst, over, each, ok));`,
-      '            // More power only swings further: two in a row that do not land, or one that swings far past, ends it.','            fails = ok ? 0 : fails + 1;','            if (over > 45 || (MOST && fails >= 2)) break;','        }',
-      '        finish(backwards, least, "");','    }','',
-      '    /** The result, as one line Torque reads, and the op mode waits until Torque (or the Driver Station) stops it. */',
-      '    void finish(boolean backwards, double least, String problem) {','        turn(0);',
-      `        String result = "{${q('"v"')}:2,${q('"mode"')}:${q(`"${mode}"`)},${q('"backwards"')}:" + backwards + ",${q('"least"')}:" + String.format(Locale.US, "%.3f", least) + ",${q('"tolerance"')}:" + TOLERANCE_DEGREES + ",${q('"repeats"')}:" + REPEATS + ",${q('"readMs"')}:" + String.format(Locale.US, "%.2f", readMs) + ",${q('"problem"')}:${q('"')}" + problem.replace("${q('"')}", "'") + "${q('"')},${q('"rounds"')}:[" + String.join(",", json) + "]}";`,
-      '        while (opModeIsActive()) { telemetry.addData("torque.state", "done"); telemetry.addData("torque.result", result); telemetry.update(); sleep(100); }','    }','}',''].join('\n');
-    return {file:`${name}.java`,opMode:M.opMode,mode,source,tolerance:tol};}
+  // check: four quarter turns with the numbers the code turns by, to see them land.
+  const TURN_TUNE={standard:{powers:[.5,.55,.6,.65,.7,.75],pick:'best'},aggressive:{powers:[.75,.8,.85,.9,.95,1],pick:'most'},repeats:3};
+  // The U line. o: {job: 'standard' | 'aggressive' | 'check', id, tolerance, turn (turnOf's numbers, for check), heading: {kind: 'hub' | 'pinpoint',
+  // name}, mount: {logo, usb} or {quaternion: {w, x, y, z}}, scale (the yaw's factor: its scale, -1 when it counts backwards), motors:
+  // [{name, power}] (each drive motor's power for a turn to the left, its direction in it)}. Returns the line, or {error}.
+  function turnLineOf(o){if(!o||!Array.isArray(o.motors)||!o.motors.length)return {error:'IMU tuning is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
+    const job=['standard','aggressive','check'].includes(o.job)?o.job:'standard',tol=Math.min(10,Math.max(.5,Number.isFinite(+o.tolerance)?+o.tolerance:2)),k={top:.25,least:.07,slowFrom:60,brake:.002,lag:.02,...(o.turn||{})};
+    const fx=(v,d=4)=>String(+(+v||0).toFixed(d)),m=o.mount?.quaternion?`Q:${['w','x','y','z'].map(a=>fx(o.mount.quaternion[a],6)).join(':')}`:`L:${FACE[o.mount?.logo]||'UP'}:${FACE[o.mount?.usb]||'FORWARD'}`;
+    const src=o.heading?.kind==='pinpoint'?`pin:${o.heading.name||'pinpoint'}`:`imu:${o.heading?.name||'imu'}`;
+    if(o.motors.some(x=>/[\t\n]/.test(x.name||'')))return {error:'A drive motor’s name has a tab in it.'};
+    return {line:['U',job,String(Math.round(+o.id||0)),fx(tol,2),fx(k.top,3),fx(k.least,3),fx(k.slowFrom,1),fx(k.brake,5),fx(k.lag,4),src,m,fx(o.scale??1,6),...o.motors.flatMap(x=>[x.name,fx(x.power,3)])].join('\t'),job,tolerance:tol};}
   // What the robot found (the torque.result line), as Torque uses it: {mode, backwards, least, tolerance, repeats, problem, rounds:
   // [{power, rate, coast, slowFrom, brake, worst, over, seconds, ok}], best: the round to turn by (standard: the quickest of the good
   // ones; aggressive: the most power that was good), or null}. null when it is not a result.
@@ -446,6 +444,6 @@
     if(Object.hasOwn(WHEELED,o.kind)){const need=o.kind==='kiwi'?3:o.kind==='tank'?2:4;if((o.motors||[]).length<need)return {error:`This chassis needs ${need} drive motors: Setup has ${(o.motors||[]).length}.`};return done(wheels(o,{...m,lock:'none'}));}
     if(/^diffSwerve/.test(o.kind||''))return {error:'A differential swerve needs its own calibration (each module’s angle from its two motors) before Torque can write its TeleOp: that is not built yet.'};
     return {error:'Torque writes this TeleOp for swerve, mecanum, X-drive, butterfly, kiwi and tank chassis.'};}
-  const api={teleopOf,turnTestOf,TURN_TEST,turnTuneOf,turnResultOf,TURN_TUNE,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};
+  const api={teleopOf,turnTestOf,TURN_TEST,turnLineOf,turnResultOf,TURN_TUNE,turnStep,turnState,TURN_LAW,TURN_JAVA,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.DeckChassisTeleop=api;
 })(typeof globalThis==='object'?globalThis:this);

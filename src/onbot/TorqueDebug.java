@@ -176,6 +176,11 @@ public class TorqueDebug extends LinearOpMode {
     final java.util.HashMap<String, double[]> steerLearned = new java.util.HashMap<>();
     void endLoop(boolean cr, int index) { for (TorqueDebugLoop l : loops) if (l.cr == cr && l.index == index) { if (l.steer) steerLearned.put(l.actuator, new double[] { l.gainP, l.gainN }); loops.remove(l); } loop = loops.isEmpty() ? null : loops.get(loops.size() - 1); }
 
+    /** IMU turning running here (the U command), or the last one, until another starts or Torque stops everything. */
+    volatile TorqueDebugTurn imuTurn;
+    TorqueDebugTurn turnRunning() { TorqueDebugTurn t = imuTurn; return t != null && !t.finished && !t.stopped ? t : null; }
+    volatile double loopMsNow = 20;
+
     // ---- one webcam of the configuration's at a time, the first until told otherwise (W): its picture goes to the Driver Station's Camera Stream
     final List<WebcamName> webcams = new ArrayList<>();
     final List<String> webcamNames = new ArrayList<>();
@@ -271,6 +276,8 @@ public class TorqueDebug extends LinearOpMode {
                 for (int i = 0; i < motors.size(); i++) if (now - motorAt[i] > WATCHDOG_MS && loopOn(false, i) == null) motorPower[i] = 0;
                 for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && loopOn(true, i) == null && burstOn(i) == null) crPower[i] = 0;
                 runLoop(); runBursts();
+                TorqueDebugTurn tt = turnRunning();
+                if (tt != null) for (int j = 0; j < tt.motors.length; j++) { int i = tt.motors[j]; motorPower[i] = clamp(tt.powers[j] * tt.powerNow, -1, 1); motorAt[i] = now; }
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
                 for (int i = 0; i < crservos.size(); i++) {
                     CRServo c = crservos.get(i);
@@ -286,11 +293,12 @@ public class TorqueDebug extends LinearOpMode {
                 for (int i = 0; i < lights.size(); i++) if (lightOn[i] != lightSent[i]) { setLight(i, lightOn[i]); lightSent[i] = lightOn[i]; }
                 // One motor's current and one I2C sensor a loop, in turn.
                 if (!motors.isEmpty()) { int m = turn % motors.size(); motorAmps[m] = motors.get(m).getCurrent(CurrentUnit.AMPS); stall(m, now); }
-                if (!i2c.isEmpty()) { int k = turn % i2c.size(); i2cLast[k] = i2cOn[k] == 0 || i2cOn[k] == -1 ? null : readI2c(k); i2cAt[k] = now; }
+                // The sensor an IMU turning reads is its own while it runs: it reads it far more often than this would.
+                if (!i2c.isEmpty()) { int k = turn % i2c.size(); if (tt == null || k != tt.i2cIndex) { i2cLast[k] = i2cOn[k] == 0 || i2cOn[k] == -1 ? null : readI2c(k); i2cAt[k] = now; } }
                 if (battery != null && turn % 25 == 0) volts12 = battery.getVoltage();
                 turn++; loops++;
                 long t = System.nanoTime();
-                if (loops % 20 == 0) { loopMs = (t - loopStart) / 20e6; loopStart = t; }
+                if (loops % 20 == 0) { loopMs = (t - loopStart) / 20e6; loopStart = t; loopMsNow = loopMs; }
                 if (connected && now - lastFrame >= FRAME_MS) { lastFrame = now; latest.set(frame((t - start) / 1e6, loopMs, volts12, now)); synchronized (wake) { wake.notifyAll(); } }
                 if (turn % 10 == 0) { telemetry.addData("Torque Debug", connected ? "Torque connected" : "Waiting for Torque on port " + PORT); telemetry.addData("Loop", "%.1f ms", loopMs); telemetry.update(); }
             }
@@ -318,6 +326,11 @@ public class TorqueDebug extends LinearOpMode {
     //                             shortest way round a circle of that many units; gains in power per raw unit
     //   T target                  move the running loop's target
     //   G name 0|1                a light off or on
+    //   U job id tolerance top least slowFrom brake lag heading mount scale (motor power)...
+    //                             IMU turning, run here (TorqueDebugTurn): job standard | aggressive (a tuning) or check (four
+    //                             quarter turns by top..lag); heading imu:<name> or pin:<name>; mount L:<logo>:<usb> or
+    //                             Q:w:x:y:z (how the hub sits, for the IMU); scale the heading's factor; then each drive motor
+    //                             and its power for a turn to the left. Its state goes out in each frame as "tt".
     //   X                         stop: every output off, loops ended, servos limp unless latched
     //   V auto | V ms gain        the camera's exposure: automatic, or manual with a gain
     //   D decimation              how far the AprilTag processor reads against how fast
@@ -329,7 +342,7 @@ public class TorqueDebug extends LinearOpMode {
         try {
             switch (f[0]) {
                 case "P": break;
-                case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { endLoop(false, i); motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
+                case "M": { int i = motorNames.indexOf(f[1]); if (i >= 0) { TorqueDebugTurn t = turnRunning(); if (t != null) for (int j : t.motors) if (j == i) t.stop(); endLoop(false, i); motorPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); motorAt[i] = System.currentTimeMillis(); motorCut[i] = false; motorOverSince[i] = 0; } break; }
                 case "B": startBurst(f); break;
                 case "C": { int i = crNames.indexOf(f[1]); if (i >= 0) { endLoop(true, i); endBurst(i); crPower[i] = clamp(Double.parseDouble(f[2]), -1, 1); crAt[i] = System.currentTimeMillis(); crTold[i] = true; } break; }
                 case "S": { int i = servoNames.indexOf(f[1]); if (i >= 0) { servoPos[i] = clamp(Double.parseDouble(f[2]), 0, 1); servoOn[i] = true; } break; }
@@ -338,11 +351,41 @@ public class TorqueDebug extends LinearOpMode {
                 case "R": { int i = motorNames.indexOf(f[1]); if (i >= 0) { DcMotorEx m = motors.get(i); m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER); m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); } break; }
                 case "G": { int i = lightNames.indexOf(f[1]); if (i >= 0) lightOn[i] = "1".equals(f[2]); break; }
                 case "Q": startLoop(f); break;
+                case "U": startTurn(f); break;
                 case "T": if (loop != null) { loop.target = Double.parseDouble(f[1]); loop.integral = 0; loop.from = Double.NaN; loop.wait = 0; loop.fire = 0; loop.rest = false; } break;
                 case "X": stopOutputs(false); break;
                 case "V": case "D": case "K": case "W": cameraCommands.add(f); break;
                 default: break;
             }
+        } catch (RuntimeException ignored) { }
+    }
+
+    /** The U command: an IMU turning, on its own thread. One that cannot start says why in its state. */
+    void startTurn(String[] f) {
+        TorqueDebugTurn old = imuTurn; if (old != null) old.stop();
+        String job = f[1]; int id = (int) Double.parseDouble(f[2]); double tol = clamp(Double.parseDouble(f[3]), 0.5, 10);
+        String source = f[9], mount = f[10]; final double scale = Double.parseDouble(f[11]);
+        final boolean pin = source.startsWith("pin:"); final String sensor = source.substring(4);
+        int k = -1; for (int i = 0; i < i2c.size(); i++) if (i2cNames.get(i).equals(sensor) && i2cKinds.get(i).equals(pin ? "pinpoint" : "imu")) k = i;
+        final HardwareDevice device = k < 0 ? null : i2c.get(k);
+        final List<Integer> drive = new ArrayList<>(); final List<Double> powers = new ArrayList<>(); String missing = "";
+        for (int i = 12; i + 1 < f.length; i += 2) { int m = motorNames.indexOf(f[i]); if (m < 0) missing = f[i]; else { drive.add(m); powers.add(clamp(Double.parseDouble(f[i + 1]), -1, 1)); } }
+        final String[] mnt = mount.split(":");
+        TorqueDebugTurnHub robot = new TorqueDebugTurnHub(this, device, pin, drive, mnt);
+        TorqueDebugTurn t = new TorqueDebugTurn(robot, job, id, tol);
+        t.top = clamp(Double.parseDouble(f[4]), 0.1, 1); t.least = clamp(Double.parseDouble(f[5]), 0.02, 0.3); t.slowFrom = clamp(Double.parseDouble(f[6]), 10, 180);
+        t.brake = clamp(Double.parseDouble(f[7]), 0, 0.02); t.lag = clamp(Double.parseDouble(f[8]), 0, 0.3); t.scale = scale == 0 || Double.isNaN(scale) ? 1 : scale;
+        t.i2cIndex = k; t.motors = new int[drive.size()]; t.powers = new double[drive.size()];
+        for (int j = 0; j < drive.size(); j++) { t.motors[j] = drive.get(j); t.powers[j] = powers.get(j); }
+        imuTurn = t;
+        if (device == null || !missing.isEmpty() || drive.isEmpty()) { t.state = "problem: " + (device == null ? "No " + (pin ? "Pinpoint" : "IMU") + " called " + sensor + " in this configuration." : drive.isEmpty() ? "No drive motors were given." : "No motor called " + missing + " in this configuration."); t.finished = true; return; }
+        Thread run = new Thread(t, "Torque IMU turning"); run.setDaemon(true); run.start();
+    }
+    /** Tells the IMU how the hub sits on the robot: L:<logo>:<usb> (the hub square to the robot) or Q:w:x:y:z (tilted, as Torque measured it). */
+    static void mountImu(IMU imu, String[] m) {
+        try {
+            if (m.length >= 5 && "Q".equals(m[0])) imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(new org.firstinspires.ftc.robotcore.external.navigation.Quaternion(Float.parseFloat(m[1]), Float.parseFloat(m[2]), Float.parseFloat(m[3]), Float.parseFloat(m[4]), 0))));
+            else imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.valueOf(m.length > 1 ? m[1] : "UP"), RevHubOrientationOnRobot.UsbFacingDirection.valueOf(m.length > 2 ? m[2] : "FORWARD"))));
         } catch (RuntimeException ignored) { }
     }
 
@@ -496,6 +539,7 @@ public class TorqueDebug extends LinearOpMode {
 
     void stopOutputs(boolean all) {
         loop = null; loops.clear(); bursts.clear();
+        TorqueDebugTurn t = imuTurn; if (t != null) t.stop();
         java.util.Arrays.fill(motorPower, 0);
         java.util.Arrays.fill(crPower, 0);
         java.util.Arrays.fill(lightOn, false);
@@ -682,6 +726,8 @@ public class TorqueDebug extends LinearOpMode {
         if (l != null) b.append(",\"q\":{\"actuator\":").append(str(l.actuator)).append(",\"target\":").append(num(l.target)).append(",\"error\":").append(num(l.error)).append(",\"out\":").append(num(l.out)).append('}');
         if (!bursts.isEmpty()) { b.append(",\"bu\":["); boolean first = true; for (TorqueDebugBurst x : bursts) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"n\":").append(x.id).append(",\"done\":").append(x.phase == 2 ? 1 : 0).append(",\"v\":").append(num(x.speed)).append(",\"c\":").append(num(x.coast)).append(",\"d\":").append(num(x.delay)).append(",\"t\":").append(num(x.travel)).append('}'); } b.append(']'); }
         if (!loops.isEmpty()) { b.append(",\"ql\":["); boolean first = true; for (TorqueDebugLoop x : loops) { if (!first) b.append(','); first = false; b.append("{\"a\":").append(str(x.actuator)).append(",\"e\":").append(num(x.error)).append(",\"o\":").append(num(x.out)).append(",\"s\":").append(num(x.speed)); if (x.steer) b.append(",\"b\":[").append(num(x.boostP)).append(',').append(num(x.boostN)).append(',').append(num(x.gainP)).append(',').append(num(x.gainN)).append("],\"x\":[").append(x.stops).append(',').append(num(x.stopErr)).append(',').append(num(x.stopWay)).append(',').append(x.stopFull ? 1 : 0).append(']'); b.append('}'); } b.append(']'); }
+        TorqueDebugTurn tt = imuTurn;
+        if (tt != null) b.append(",\"tt\":").append(tt.json());
         if (!webcams.isEmpty()) { if (camLast == null || now - camAt >= 100) { camLast = cameraJson(); camAt = now; } b.append(",\"cam\":").append(camLast); }
         return b.append('}').toString();
     }
@@ -968,4 +1014,260 @@ final class TorqueDebugLoop {
     boolean steer, rest, moved, run; double leadP, leadN, cP, cN, vP, vN, slope, vmax, zone, rP, rN, still, lag, ease;
     double st, speed, wait, lagLeft, fire, firePow, fireDir, from = Double.NaN, aim, gainP = 1, gainN = 1, boostP, boostN, tryT, tryM = Double.NaN, cmdV, cmdLead, inT, vm, runT, runDir, pend, stopErr, stopWay; int stops; boolean pendFull, stopFull; long lastNanos;
     final double[] raw = new double[3], hT = new double[5], hM = new double[5], pipeFrom = new double[TorqueDebug.PIPE], pipeAt = new double[TorqueDebug.PIPE], pipeV = new double[TorqueDebug.PIPE]; int rawN, hN, pipeHead, pipeN;
+}
+
+/**
+ * IMU turning, run here (the U command): Calibrate → Mechanisms tunes how hard the robot can turn and still land on its angle,
+ * and checks the numbers it found, inside this op mode, so nothing is sent to the robot and the live readings keep coming.
+ * It runs on a thread of its own, where it can wait for the robot as an op mode would; it reads the heading itself as often as
+ * the sensor answers, and the op mode's loop puts its turn power on the drive motors. It stops the moment Torque stops talking
+ * (the watchdog), STOP is pressed, or a motor is driven by hand.
+ *
+ * Every turn uses the turn law (step; ui/sim-chassis-teleop.js turnStep is the reference, step for step).
+ * Jobs: standard (50% to 75%) and aggressive (75% to 100%) tunings, as the IMU tuning op modes did before, and check: four
+ * quarter turns with the numbers given. The result is one JSON line, as turnResultOf reads it.
+ */
+final class TorqueDebugTurn implements Runnable {
+    /** What it turns: the robot as TorqueDebug gives it (a test gives a simulated one). heading(): degrees, left positive, as the sensor counts it (wrapping at ±180 is fine). */
+
+    static final double RAMP = 0.25, STILL = 10, WINDOW = 0.05;
+    static final double[] STANDARD = {0.5, 0.55, 0.6, 0.65, 0.7, 0.75}, AGGRESSIVE = {0.75, 0.8, 0.85, 0.9, 0.95, 1};
+    static final int REPEATS = 3;
+
+    // The law: the numbers it turns by, and its state for one turn.
+    double top = 0.25, least = 0.07, slowFrom = 60, brake = 0.002, done = 2, lag = 0.02;
+    double at = Double.NaN, h0, rate, last = Double.NaN, sent, push, way;
+    boolean there;
+
+    final TorqueDebugTurnRobot robot;
+    final String job;
+    final int id;
+    final double tolerance;
+    /** Each drive motor (its place in TorqueDebug's motors) and its power for a turn to the left. */
+    int[] motors = new int[0];
+    double[] powers = new double[0];
+    /** Which I2C device the heading comes from, so the op mode's own round of reads leaves it alone. */
+    int i2cIndex = -1;
+    volatile boolean stopped, finished;
+    volatile String state = "starting", result;
+    volatile double headingNow, powerNow;
+    final java.util.concurrent.CopyOnWriteArrayList<String> rows = new java.util.concurrent.CopyOnWriteArrayList<>();
+    final List<String> json = new ArrayList<>();
+    double heading, lastRaw, sign = 1, readMs;
+    /** The heading's factor: its scale, and -1 when Calibrate found it counts a turn to the left as one to the right. */
+    double scale = 1;
+    int reads;
+
+    TorqueDebugTurn(TorqueDebugTurnRobot robot, String job, int id, double tolerance) { this.robot = robot; this.job = job; this.id = id; this.tolerance = tolerance; done = tolerance; }
+
+    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }
+
+    /** A new turn: the law starts again. */
+    void begin() { at = Double.NaN; last = Double.NaN; rate = 0; sent = 0; push = 0; way = 0; there = false; }
+
+    /** One step of the turn law towards target (degrees), with the heading h now and t seconds. Returns the turn power. */
+    double step(double target, double h, double t) {
+        if (Double.isNaN(at)) { h0 = h; at = t; last = t; }
+        double dt = Math.max(0, t - last); last = t;
+        if (t - at >= WINDOW) { rate = (h - h0) / (t - at); h0 = h; at = t; }
+        double r = rate, err = target - h, ahead = target - (h + r * lag); boolean slow = Math.abs(r) < STILL;
+        if (there) { if (Math.abs(err) > 2 * done) there = false; } else if (Math.abs(err) <= done && slow) there = true;
+        double want = 0;
+        if (!there && Math.abs(ahead) > 0.5 * done) {
+            double mag = top * Math.min(1, Math.abs(ahead) / slowFrom);
+            if (Math.signum(ahead) != way) { way = Math.signum(ahead); push = 0; }
+            push = slow ? Math.min(1.5 * least, Math.max(push, 0.5 * least) + dt * 2 * least) : Math.max(0.5 * least, push - dt * 3 * least); mag = Math.max(mag, push);
+            want = Math.max(-top, Math.min(top, Math.signum(ahead) * mag - brake * r));
+        } else push = 0;
+        double step = dt / RAMP;
+        sent = Math.abs(want) < Math.abs(sent) || want * sent < 0 ? want : sent + Math.max(-step, Math.min(step, want - sent));
+        return sent;
+    }
+
+    boolean alive() { return !stopped && robot.alive(); }
+    void stop() { stopped = true; }
+    void power(double p) { powerNow = p; robot.power(p); }
+    void pause(long ms) throws InterruptedException { robot.pause(ms); }
+
+    /** The heading since the job began, left positive, timed: a Control Hub IMU read goes over I2C and can take several ms. */
+    double read() {
+        long t0 = System.nanoTime(); double raw = robot.heading(); double ms = (System.nanoTime() - t0) / 1e6;
+        readMs = reads++ == 0 ? ms : 0.95 * readMs + 0.05 * ms;
+        if (reads == 1) lastRaw = raw;
+        heading += wrap(raw - lastRaw) * sign * scale; lastRaw = raw; headingNow = heading;
+        return heading;
+    }
+    /** How old a heading is by the time the power it decides reaches the wheels, here: the read, and the op mode's loop. */
+    double lagHere() { return (readMs + 0.5 * robot.loopMs() + 5) / 1000.0; }
+
+    void say(String now) { state = now; }
+
+    /** Waits until it has stopped turning (or two seconds). */
+    void rest() throws InterruptedException {
+        power(0);
+        double t0 = robot.seconds(), before = read(), from = t0;
+        int still = 0;
+        while (alive() && robot.seconds() - t0 < 2 && still < 6) {
+            pause(20);
+            double now = read(), t = robot.seconds();
+            if (t - from >= 0.04) { still = Math.abs((now - before) / (t - from)) < 4 ? still + 1 : 0; before = now; from = t; }
+        }
+    }
+
+    /** One turn to an angle by the law, from rest. Returns {how far off it ended, how far past it went, seconds to get there}. */
+    double[] turnTo(double target) throws InterruptedException {
+        begin(); lag = lagHere();
+        double t0 = robot.seconds(), start = read(), dir = Math.signum(target - start), far = 0, arrive = -1, thereAt = -1, t = 0;
+        while (alive() && t < 5) {
+            double h = read(); t = robot.seconds() - t0;
+            far = Math.max(far, (h - target) * dir);
+            if (arrive < 0 && Math.abs(target - h) <= tolerance) arrive = t;
+            power(step(target, h, t));
+            if (there) { if (thereAt < 0) thereAt = t; else if (t - thereAt >= 0.25) break; } else thereAt = -1;
+            pause(10);
+        }
+        power(0);
+        double seconds = arrive < 0 ? t : arrive;
+        rest();
+        return new double[]{Math.abs(target - read()), far, seconds};
+    }
+
+    @Override public void run() {
+        try { robot.setUp(); if ("check".equals(job)) check(); else tune("aggressive".equals(job)); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        catch (RuntimeException e) { if (result == null) finish(false, 0, "It stopped: " + e.getClass().getSimpleName()); }
+        finally { power(0); try { robot.tearDown(); } catch (RuntimeException ignored) { } if (result == null && !state.startsWith("problem:")) state = stopped ? "stopped" : "ended"; finished = true; }
+    }
+
+    /** Four quarter turns with the numbers it was given: what a team sees its code do. */
+    void check() throws InterruptedException {
+        pause(300); read(); heading = 0;
+        double base = 0; StringBuilder turns = new StringBuilder();
+        String[] names = {"Left 90°", "Back to 0°", "Right 90°", "Back to 0°"};
+        double[] offsets = {90, 0, -90, 0};
+        for (int i = 0; i < offsets.length && alive(); i++) {
+            say(names[i]);
+            double[] r = turnTo(base + offsets[i]);
+            rows.add(String.format(java.util.Locale.US, "%s: %.1f° off, %.1f° past, %.2f s", names[i], r[0], r[1], r[2]));
+            if (turns.length() > 0) turns.append(',');
+            turns.append(String.format(java.util.Locale.US, "{\"target\":%.0f,\"off\":%.2f,\"over\":%.2f,\"seconds\":%.2f}", offsets[i], r[0], r[1], r[2]));
+        }
+        if (!alive()) return;
+        result = String.format(java.util.Locale.US, "{\"v\":2,\"check\":true,\"tolerance\":%s,\"readMs\":%.2f,\"turns\":[%s]}", tolerance, readMs, turns);
+        state = "done";
+    }
+
+    void tune(boolean aggressive) throws InterruptedException {
+        double[] list = aggressive ? AGGRESSIVE : STANDARD;
+        pause(300); read(); heading = 0;
+
+        // Which way the heading counts: a turn to the left has to count up.
+        say("Which way the heading counts");
+        double t0 = robot.seconds();
+        while (alive() && robot.seconds() - t0 < 0.8 && Math.abs(read()) < 10) { power(0.3); pause(10); }
+        rest();
+        if (!alive()) return;
+        if (Math.abs(heading) < 3) { finish(false, 0, "It did not turn at 30% power: is it on the floor, with its wheels free?"); return; }
+        boolean backwards = heading < 0;
+        if (backwards) { sign = -1; heading = -heading; }
+
+        // The least power that turns it.
+        say("The least power that turns it");
+        double least = 0.2;
+        for (double p = 0.04; alive() && p <= 0.3; p += 0.01) {
+            double from = read(); t0 = robot.seconds();
+            while (alive() && robot.seconds() - t0 < 0.12) { power(p); pause(10); }
+            if (Math.abs(read() - from) / 0.12 > 12) { least = Math.min(0.2, Math.max(0.04, 1.2 * p)); break; }
+        }
+        rest();
+
+        int fails = 0;
+        for (double power : list) {
+            if (!alive()) return;
+            say(String.format(java.util.Locale.US, "%.0f%%: how fast it turns", power * 100));
+            // A spin: ramped up, held, then cut; its speed over the last of it.
+            double before = read(), from = robot.seconds(), spin = 0, sentNow = 0, lastT = from;
+            t0 = from;
+            while (alive() && robot.seconds() - t0 < 0.6) {
+                double t = robot.seconds(); sentNow = Math.min(power, sentNow + (t - lastT) / RAMP); lastT = t; power(sentNow); pause(10);
+                double now = read(); t = robot.seconds();
+                if (t - from >= 0.05) { spin = (now - before) / (t - from); before = now; from = t; }
+            }
+            double cutAt = read();
+            rest();
+            double coast = Math.abs(read() - cutAt), speed = Math.abs(spin);
+            if (speed < 20) { rows.add(String.format(java.util.Locale.US, "%.0f%% too slow to measure", power * 100)); continue; }
+            // Where it starts to slow: what it rolls on once cut, with room to spare, and a little turning for the readings to catch up.
+            // Aggressive leaves it later, so it comes in faster and stops harder; the rounds show whether it still lands.
+            top = power; this.least = least;
+            slowFrom = Math.min(150, Math.max(aggressive ? 20 : 30, aggressive ? 1.6 * coast + 0.12 * speed : 2.5 * coast + 0.25 * speed));
+            brake = 0.45 * power / speed;
+            double worst = 0, over = 0, seconds = 0;
+            int turns = 0;
+            for (int round = 1; round <= REPEATS && alive(); round++) {
+                say(String.format(java.util.Locale.US, "%.0f%%: round %d of %d", power * 100, round, REPEATS));
+                double base = read();
+                for (double offset : new double[]{90, 0, -90, 0}) {
+                    if (!alive()) break;
+                    double[] r = turnTo(base + offset);
+                    worst = Math.max(worst, r[0]); over = Math.max(over, r[1]); seconds += r[2]; turns++;
+                }
+                if (over > 45) break;
+            }
+            if (!alive()) return;
+            boolean ok = turns == 4 * REPEATS && worst <= tolerance && over <= Math.max(3 * tolerance, 6);
+            double each = turns > 0 ? seconds / turns : 0;
+            rows.add(String.format(java.util.Locale.US, "%.0f%% %s: %.1f° off, %.1f° past, %.2f s a turn", power * 100, ok ? "good" : "no", worst, over, each));
+            json.add(String.format(java.util.Locale.US, "{\"power\":%.2f,\"rate\":%.1f,\"coast\":%.1f,\"slowFrom\":%.0f,\"brake\":%.5f,\"worst\":%.2f,\"over\":%.2f,\"seconds\":%.2f,\"ok\":%s}", power, speed, coast, slowFrom, brake, worst, over, each, ok));
+            // More power only swings further: two in a row that do not land, or one that swings far past, ends it.
+            fails = ok ? 0 : fails + 1;
+            if (over > 45 || (aggressive && fails >= 2)) break;
+        }
+        finish(backwards, least, "");
+    }
+
+    void finish(boolean backwards, double least, String problem) {
+        power(0);
+        result = "{\"v\":2,\"mode\":\"" + ("aggressive".equals(job) ? "aggressive" : "standard") + "\",\"backwards\":" + backwards + ",\"least\":" + String.format(java.util.Locale.US, "%.3f", least)
+            + ",\"tolerance\":" + tolerance + ",\"repeats\":" + REPEATS + ",\"readMs\":" + String.format(java.util.Locale.US, "%.2f", readMs)
+            + ",\"problem\":" + TorqueDebug.str(problem) + ",\"rounds\":[" + String.join(",", json) + "]}";
+        state = "done";
+    }
+
+    /** What goes in each frame: the job, where it is, the heading and power now, each power done so far, and the result once there is one. */
+    String json() {
+        StringBuilder b = new StringBuilder("{\"job\":").append(TorqueDebug.str(job)).append(",\"id\":").append(id).append(",\"state\":").append(TorqueDebug.str(state))
+            .append(",\"h\":").append(TorqueDebug.num(headingNow)).append(",\"p\":").append(TorqueDebug.num(powerNow)).append(",\"fin\":").append(finished ? 1 : 0).append(",\"rows\":[");
+        boolean first = true; for (String r : rows) { if (!first) b.append(','); first = false; b.append(TorqueDebug.str(r)); }
+        b.append("],\"result\":").append(result == null ? "null" : TorqueDebug.str(result));
+        return b.append('}').toString();
+    }
+}
+
+/** What an IMU turning turns: the robot as TorqueDebug gives it (TorqueDebugTurnHub), or a simulated one in a test. heading(): degrees, left positive, as the sensor counts it (wrapping at ±180 is fine). */
+interface TorqueDebugTurnRobot { double heading(); void power(double turn); boolean alive(); void pause(long ms) throws InterruptedException; double seconds(); double loopMs(); void setUp(); void tearDown(); }
+
+/** The real robot for an IMU turning: its heading sensor, read here; the op mode's loop puts the turn power on the drive motors. */
+final class TorqueDebugTurnHub implements TorqueDebugTurnRobot {
+    final TorqueDebug debug; final HardwareDevice device; final boolean pin; final List<Integer> drive; final String[] mount;
+    final DcMotor.ZeroPowerBehavior[] before;
+    TorqueDebugTurnHub(TorqueDebug debug, HardwareDevice device, boolean pin, List<Integer> drive, String[] mount) { this.debug = debug; this.device = device; this.pin = pin; this.drive = drive; this.mount = mount; before = new DcMotor.ZeroPowerBehavior[drive.size()]; }
+    public double heading() {
+        if (pin) { GoBildaPinpointDriver p = (GoBildaPinpointDriver) device; p.update(); return p.getHeading(AngleUnit.DEGREES); }
+        return ((IMU) device).getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+    }
+    public void power(double turn) { }
+    public boolean alive() { return debug.running && debug.connected && !debug.isStopRequested(); }
+    public void pause(long ms) throws InterruptedException { Thread.sleep(ms); }
+    public double seconds() { return System.nanoTime() / 1e9; }
+    public double loopMs() { return debug.loopMsNow; }
+    public void setUp() {
+        // It turns the way the robot's own code does: braking at zero power, the IMU told how the hub really sits.
+        for (int j = 0; j < drive.size(); j++) { DcMotorEx m = debug.motors.get(drive.get(j)); before[j] = m.getZeroPowerBehavior(); m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE); }
+        if (!pin) TorqueDebug.mountImu((IMU) device, mount);
+    }
+    public void tearDown() {
+        for (int j = 0; j < drive.size(); j++) if (before[j] != null) debug.motors.get(drive.get(j)).setZeroPowerBehavior(before[j]);
+        if (!pin) TorqueDebug.mountImu((IMU) device, new String[]{"L", "UP", "FORWARD"});
+    }
 }

@@ -53,7 +53,7 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
   assert.equal(out.file,'org/firstinspires/ftc/teamcode/TorqueTurnTest.java');assert.equal(out.opMode,'Torque IMU turn test');assert.match(out.source,/@Autonomous\(name = "Torque IMU turn test", group = "Torque"\)/);
   assert.match(out.source,/static final double IMU_SCALE = -1\.02;/,'the way round and the scale Calibrate measured');assert.match(out.source,/static final double\[\] ANGLES = \{90\.0, 0\.0, -90\.0, 0\.0, 180\.0, 0\.0\};/);
   assert.match(out.source,/lastYaw = imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.DEGREES\);\n\s+heading = 0;/,'where it stands at START is 0°');assert.match(out.source,/heading \+= wrap\(yaw - lastYaw\) \* IMU_SCALE;/);
-  assert.match(out.source,/Math\.copySign\(Math\.max\(LEAST_TURN, TOP_TURN \* Math\.min\(1, Math\.abs\(ahead\) \/ SLOW_FROM_DEGREES\)\), ahead\) - BRAKE \* rate/,'slower as it nears the angle, braked by its own speed, by where it will be once the late heading catches up');assert.match(out.source,/LAG_SECONDS = 0\.02;/);assert.doesNotMatch(out.source,/gamepad|getCurrentPosition|Pinpoint/,'nothing but the IMU');
+  assert.match(out.source,/Turn turn = new Turn\(TOP_TURN, LEAST_TURN, SLOW_FROM_DEGREES, BRAKE, DONE_DEGREES, LAG_SECONDS\);/,'every turn by the one turn law');assert.match(out.source,/static final class Turn \{/);assert.match(out.source,/power = turn\.step\(target, now, t\)/);assert.match(out.source,/LAG_SECONDS = 0\.02;/);assert.doesNotMatch(out.source,/gamepad|getCurrentPosition|Pinpoint/,'nothing but the IMU');
   assert.deepEqual(T.turnTestOf({...o,angles:[45,'x',-45]}).source.match(/ANGLES = \{([^}]*)\}/)[1],'45.0, -45.0');assert.match(T.turnTestOf(kiwi).error,/do not steer/);assert.match(T.turnTestOf(null).error,/do not steer/);
   // What the follower on the robot does too: its turn feedback is held under a power that falls with what is left to turn.
   assert.match(require('../ui/sim-follower-source.js'),/double turnCap=Math\.max\(\.08,Math\.min\(1,\.05\+\.4\*Math\.sqrt\(Math\.abs\(headingError\)\)\)\);turn=clamp\(turn,-turnCap,turnCap\);/);
@@ -64,24 +64,16 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
     try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
     finally{fs.rmSync(dir,{recursive:true,force:true});}}});
 
-test('IMU tuning: op modes Torque starts itself, standard (50-75%) and aggressive (75-100%), three rounds at each power, the result in telemetry',t=>{
-  const o={...mecanum,imu:{name:'imu',scale:-1},config:'robot',date:'2026-11-20'},std=T.turnTuneOf({...o,heading:{kind:'hub'},tolerance:2}),hard=T.turnTuneOf({...o,heading:{kind:'pinpoint',name:'GBPP'},tolerance:1.5,mode:'aggressive'});
-  assert.deepEqual([std.file,std.opMode,std.mode],['TorqueImuTune.java','Torque IMU tuning','standard']);assert.deepEqual([hard.file,hard.opMode,hard.mode],['TorqueImuTuneHard.java','Torque IMU tuning (aggressive)','aggressive']);
-  assert.match(std.source,/@TeleOp\(name = "Torque IMU tuning", group = "Torque"\)/,'not in the Autonomous list');assert.doesNotMatch(std.source,/@Autonomous/);
-  assert.match(std.source,/POWERS = \{0\.5, 0\.55, 0\.6, 0\.65, 0\.7, 0\.75\};/);assert.match(hard.source,/POWERS = \{0\.75, 0\.8, 0\.85, 0\.9, 0\.95, 1\.0\};/);assert.match(std.source,/REPEATS = 3;/);assert.match(std.source,/MOST = false;/);assert.match(hard.source,/MOST = true;/);
-  assert.match(std.source,/2\.5 \* coast \+ 0\.25 \* rate/);assert.match(hard.source,/1\.6 \* coast \+ 0\.12 \* rate/,'aggressive leaves its slowing later');
-  assert.match(std.source,/IMU_SCALE = -1\.0;/);assert.match(std.source,/TOLERANCE_DEGREES = 2\.0;/);assert.match(hard.source,/pinpoint\.update\(\); double v = pinpoint\.getHeading\(AngleUnit\.DEGREES\);/);assert.match(std.source,/double lag\(\) \{ return \(readMs \+ 5\) \/ 1000\.0; \}/,'each heading read is timed');assert.match(std.source,/ahead = target - \(now \+ r \* lag\(\)\)/,'and the power goes by where it will be');assert.match(std.source,/readMs/);assert.doesNotMatch(hard.source,/IMU_SCALE/);
-  assert.match(std.source,/telemetry\.addData\("torque\.result", result\)/,'the result goes back in telemetry');assert.doesNotMatch(std.source,/FileWriter|sdcard/,'nothing written among the team’s files');
-  assert.equal(T.turnTuneOf({...o,tolerance:99}).tolerance,10);assert.match(T.turnTuneOf(kiwi).error,/do not steer/);
+test('IMU tuning: one line to Torque Debug, which runs it on the robot, and the result it sends back',()=>{
+  const motors=[{name:'fl',power:-1},{name:'fr',power:1},{name:'bl',power:-1},{name:'br',power:1}];
+  const std=T.turnLineOf({job:'standard',id:7,tolerance:2,heading:{kind:'hub',name:'imu'},mount:{logo:'up',usb:'forward'},scale:-1,motors});
+  assert.equal(std.line,['U','standard','7','2','0.25','0.07','60','0.002','0.02','imu:imu','L:UP:FORWARD','-1','fl','-1','fr','1','bl','-1','br','1'].join('\t'));
+  const chk=T.turnLineOf({job:'check',id:8,tolerance:1.5,turn:{top:.6,least:.08,slowFrom:70,brake:.0017,lag:.012},heading:{kind:'pinpoint',name:'GBPP'},mount:{quaternion:{w:.7071068,x:0,y:.7071068,z:0}},motors});
+  assert.equal(chk.line.split('\t').slice(0,12).join(' '),'U check 8 1.5 0.6 0.08 70 0.0017 0.012 pin:GBPP Q:0.707107:0:0.707107:0 1');
+  assert.equal(T.turnLineOf({motors,tolerance:99}).tolerance,10);assert.equal(T.turnLineOf({motors,job:'nonsense'}).job,'standard');assert.match(T.turnLineOf({motors:[]}).error,/do not steer/);
   // What it sends back: the standard one keeps the quickest of the good powers, the aggressive one the most power that was good.
   const round=(power,seconds,ok,worst=1)=>({power,rate:200,coast:12,slowFrom:80,brake:.0017,worst,over:2,seconds,ok}),res=(mode,rounds)=>JSON.stringify({v:2,mode,backwards:false,least:.07,tolerance:2,repeats:3,problem:'',rounds});
   assert.equal(T.turnResultOf(res('standard',[round(.5,2.2,true),round(.55,1.9,true),round(.6,1.95,true),round(.65,1.8,false)])).best.power,.55);
   assert.equal(T.turnResultOf(res('standard',[round(.5,2,true,1.5),round(.55,2.01,true,.9)])).best.power,.55,'as quick within 0.02 s, the more accurate');
   assert.equal(T.turnResultOf(res('aggressive',[round(.75,1.5,true),round(.8,1.4,true),round(.85,1.45,false),round(.9,1.3,true)])).best.power,.9);
-  assert.equal(T.turnResultOf(res('aggressive',[round(.75,1.5,false)])).best,null);assert.equal(T.turnResultOf('not json'),null);assert.equal(T.turnResultOf(null),null);
-  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
-  if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
-  for(const [name,x] of [['standard on the hub IMU',std],['aggressive on a Pinpoint',hard],['tank',T.turnTuneOf({...o,kind:'tank',heading:{kind:'hub'}})]]){
-    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-tune-')),file=path.join(dir,x.file||'TorqueImuTune.java');fs.writeFileSync(file,x.source);
-    try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
-    finally{fs.rmSync(dir,{recursive:true,force:true});}}});
+  assert.equal(T.turnResultOf(res('aggressive',[round(.75,1.5,false)])).best,null);assert.equal(T.turnResultOf('not json'),null);assert.equal(T.turnResultOf(null),null);});

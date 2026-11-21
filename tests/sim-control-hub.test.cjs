@@ -80,18 +80,3 @@ test('an export without measured tuning uses the Deck controller defaults, never
   assert.match(constants,/config\.maxForward=60\.0; config\.maxStrafe=50\.0;/);assert.match(constants,/config\.positionD=0\.01;/);assert.match(constants,/config\.headingD=0\.12;/);
 });
 
-// IMU tuning (Calibrate → Mechanisms): the op modes Torque starts itself, on the virtual hub. Each says what it found in its torque.result line.
-for(const mode of ['standard','aggressive'])
-  test(`IMU tuning, ${mode}, runs on the virtual hub and finds a power that lands every time`,{skip},async()=>{
-    const T=require('../ui/sim-chassis-teleop.js');let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-tune-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
-    try{await e.load({field:'empty',start:{x:72,y:72,heading:0},robot:{...robot,driveRpm:312},zones:[],sensors:{localization:'encoders'}});
-      const motors=[['frontLeft','front_left',true],['frontRight','front_right',false],['backLeft','back_left',true],['backRight','back_right',false]].map(([key,name,reversed])=>({key,name,reversed}));
-      const t=T.turnTuneOf({kind:'mecanum',motors,robot:{hubLogo:'up',hubUsb:'forward'},imu:{name:'imu',scale:1},heading:{kind:'hub'},tolerance:2,mode}),cls=t.file.replace('.java','');
-      const r=await e.run({kind:'opmode',files:{[`org/firstinspires/ftc/teamcode/${t.file}`]:`package org.firstinspires.ftc.teamcode;\n\n${t.source}`},opMode:`org.firstinspires.ftc.teamcode.${cls}`});assert.equal(r.ok,true,r.error||error);
-      for(let i=0;i<60*60*8&&e.mode==='program'&&!e.telemetry?.['torque.result'];i++)await e.programTick();
-      const res=T.turnResultOf(e.telemetry?.['torque.result']);assert.ok(res,'it gave a result');assert.equal(res.mode,mode);assert.equal(res.backwards,false);assert.equal(res.rounds.length,6);
-      assert.ok(res.best,'a power landed: '+JSON.stringify(res.rounds));assert.ok(res.rounds.every(x=>x.worst<=2&&x.ok),JSON.stringify(res.rounds));
-      if(mode==='aggressive')assert.equal(res.best.power,1,'the most power that landed');else assert.ok(res.best.power>=.5&&res.best.power<=.75);
-      assert.ok(res.best.seconds<(mode==='aggressive'?1.8:2.6),'to get there: '+res.best.seconds);
-    }finally{e.dispose();}
-  });

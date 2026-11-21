@@ -4283,27 +4283,8 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     // A drive motor that rolled its wheel backwards: reversed in Simulate, where the simulation and every export read it.
     // The chassis TeleOp goes to the robot the way Send to robot's code does: saved in OnBot Java and built there.
     sendTeleop:t=>sendTeleopFile(t),moreCode:()=>calMoreCode(),sendCode:async t=>{await sendJava('TorqueCalibration.java',t);return 'On the robot, in OnBot Java, as TorqueCalibration.java: your own code can read it.';},saveFile:(name,text)=>native?api.simFile('code-save',{name,text}):Promise.reject(Error('saving needs the desktop app')),
-    // The chassis' quarter turn found which way round the Control Hub's IMU counts a turn to the left.
-    // IMU tuning: the autonomous Torque writes goes to the robot as its code does, and what it wrote there is read back over the same link.
-    // IMU tuning (ui/sim-chassis-teleop.js turnTuneOf): put on the robot if its copy is not this one, then started there by Torque over the link the hub answered
-    // on, as a Driver Station starts an op mode. Its telemetry is followed (update) until it gives its result line, and it is stopped then.
+    // IMU tuning runs in Torque Debug (the live readings); it asks only whether a robot is connected.
     connected:()=>!!setupConn,
-    runTurnTune:async(t,update)=>{const host=calHost();if(liveDebug?.running())await liveDebug.stop();robotSending++;
-      try{let theirs=null;try{theirs=await api.robotLink('onbot-read',{host,file:t.file});}catch{}
-        if(String(theirs||'').replace(/\r\n/g,'\n').trim()!==t.source.trim()){update({stage:'Putting it on the robot and building it there…'});await sendJava(t.file,t.source);}}
-      finally{robotSending--;}
-      update({stage:'Starting it on the robot…'});
-      // Just after a build the robot reloads its op modes: for a few seconds it does not list the new one yet (or still runs another), so it is asked again.
-      return await new Promise((resolve,reject)=>{let done=false,off=null,tries=0;const end=f=>{if(done)return;done=true;off?.();f();};
-        const again=e=>{const m=String(e?.message||e);if(++tries<10&&/has no op mode|did not list|is running on the robot|did not INIT|did not START|Another Driver Station/i.test(m)){update({stage:`Built. Waiting for the robot to load it… (${tries})`});setTimeout(start,3000);return true;}return false;};
-        const start=()=>{if(done)return;api.robotLink('tune-start',{host,opMode:t.opMode}).catch(e=>{if(!again(e))end(()=>reject(e));});};
-        off=api.onRobotTune(u=>{if(done)return;if(u.error){if(!again(u.error))end(()=>reject(Error(u.error)));return;}
-          if(u.ended)return end(()=>reject(Error(u.ended==='lost'?'the connection to the robot dropped.':u.ended==='stopped'?'it was stopped.':'it stopped before it finished.')));
-          const lines=u.lines||[],val=k=>lines.filter(l=>l.startsWith(k+' : ')).map(l=>l.slice(k.length+3)),state=val('torque.state').at(-1),result=val('torque.result').at(-1),rows=val('torque.row');
-          if(state)update({state:state==='ready'?'Started: it turns by itself now.':state==='done'?'Done.':state,...(rows.length?{rows}:{})});
-          if(result)end(()=>{void api.robotLink('tune-stop').catch(()=>{});resolve(result);});});
-        start();});},
-    stopTurnTune:()=>api.robotLink('tune-stop'),
     setImuReversed:on=>{const o={...project.robot.odometry},im={...o.imu};if(on)im.reversed=true;else delete im.reversed;if(Object.keys(im).length)o.imu=im;else delete o.imu;project.robot=C.robot({...project.robot,odometry:o},project.controller);save();},
     setReversed:(key,on)=>{project.robot.devices={...project.robot.devices,[key]:{...project.robot.devices?.[key],reversed:!!on}};calKeepRead(()=>applyWiring(structuredClone(project.robot.wiring)));},
     setSteerZero:zero=>{const st=window.DeckWiring.state(project),w=structuredClone(project.robot.wiring);for(const x of w.sensors||[]){const row=st.rows.find(q=>q.key==='sensor.'+x.id);if(row&&Number.isFinite(zero[row.name]))x.zeroVolts=zero[row.name];}calKeepRead(()=>applyWiring(w));}}):null;
