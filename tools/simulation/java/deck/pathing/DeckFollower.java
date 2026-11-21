@@ -213,7 +213,9 @@ public final class DeckFollower {
         double turn=config.headingP*headingError-config.headingD*(v.heading-omega);
         // Nearing its angle it turns slower: the feedback is held under a power that falls with what is left to turn. A real robot's weight
         // carries it on and its IMU answers a little late, so at full power it swings past the angle and hunts either side of it.
-        double turnCap=Math.max(.08,Math.min(1,.05+.4*Math.sqrt(Math.abs(headingError))));turn=clamp(turn,-turnCap,turnCap);
+        // Only where it settles onto an angle: holding, a turn on the spot, and the last 12 in of a path. Driving the rest of a curve it keeps its
+        // full turning, or it falls behind the curve (12° and more off its tangent).
+        if(mode!=Mode.FOLLOWING||total-progress<12){double turnCap=Math.max(.08,Math.min(1,.05+.4*Math.sqrt(Math.abs(headingError))));turn=clamp(turn,-turnCap,turnCap);}
         // A turn on the spot (the turn at a pin, or holding a heading) uses the law the IMU turn test proves on the robot: its top turn power
         // far out, less and less as it nears the angle, braked by its own turning speed, and nothing once it is there.
         // Once it is inside turnDone and still, it is there: nothing more until it is pushed out by twice that (a kick each time it is a hair off swings it past and back, over and over).
