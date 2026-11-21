@@ -19,24 +19,40 @@
   // directions and which ones it may take (a board that must lie flat takes up or down only).
   // REV's hubs are both 103 × 143 × 29.5 mm (docs.revrobotics.com, Control Hub and Expansion Hub basics). FTC's IMU page
   // puts the chip "approximately under the word PROUD, near the lower right corner"; no one publishes it in millimetres.
-  // An IMU reads turning, which is the same everywhere on a rigid robot, so the chip is taken at the box's middle.
+  // Read upright, the label has the USB end on its right and the long row of sensor ports (I2C...) along its bottom: the
+  // SDK's +Y and +X. "PROUDLY SUPPORTING" sits about 71% across the lid and 79% down it (FTC's Logo UP, USB FORWARD photo,
+  // orthogonal-1.png), so the chip is about 25 mm towards the USB end and 25 mm towards the sensor ports from the middle,
+  // on the main board about 10 mm over the base (-5 mm). Measured from a photo: good to about 5 mm. The Expansion Hub is
+  // the same board and label. An IMU reads turning, which is the same everywhere on a rigid robot, so this only says
+  // where the chip is: positions here are the chip's, a CAD click on the case lands on it.
+  // The other boards' chips (each from its maker's board file or drawing where there is one):
+  //   SparkFun OTOS: 25.4 × 25.4 × 1.6 mm board; the LSM6DSO IMU on top and the PAA5160 optical sensor under it are both
+  //     at the board's centre (SparkFun's Eagle file, U2 and U1 at 12.7, 12.7 mm). The IMU sits about 1.2 mm over the
+  //     board's middle. Its X arrow points at the Qwiic connector J1, its Y arrow away from the 6-pin header.
+  //   REV 9-Axis IMU (REV-31-3332, BNO055): 41.5 × 15 × 16.8 mm; the chip is centred (20.8 mm from the end, 7.5 mm from
+  //     the edge) and 14.4 mm over the mounting face, 6 mm over the middle (REV's drawing, REV-31-3332-DR). X runs along
+  //     the long edge to the REV logo end.
+  //   goBILDA Pinpoint: housing 42.5 (X arrow, away from the connectors) × 40 (Y arrow, along them) × 15.6 mm. Its "STM
+  //     IMU" is sealed inside, and goBILDA publishes neither the part nor where it is: taken at the housing's middle.
+  //   navX2-Micro (LSM6DSM IMU): Kauai Labs publishes neither the board's size nor where the chip is: taken at the middle
+  //     of a board about 33 × 23 mm.
   // Expansion Hubs bought after December 2021 have no IMU; Control Hubs from September 2022 have the BHI260AP.
   // The navX2-Micro is not an SDK IMU (NavxMicroNavigationSensor is a gyroscope; its OmniMount sets which axis is up on the
   // board itself), so the exports, which read heading through the SDK's IMU, cannot use it. The Pinpoint is mounted
   // sticker side up (goBILDA's guide); where it sits does not matter, only its pods' offsets do. The OTOS sits 10 mm over
   // the tiles, lens down; its heading offset is where its X arrow points.
   const KINDS={
-    controlHub:{name:'Control Hub · built-in IMU',short:'Control Hub IMU',role:'imu',tags:['ControlHubImuBHI260AP','LynxEmbeddedIMU'],size:[103,143,29.5],chip:[0,0,0],
+    controlHub:{name:'Control Hub · built-in IMU',short:'Control Hub IMU',role:'imu',tags:['ControlHubImuBHI260AP','LynxEmbeddedIMU'],size:[103,143,29.5],chip:[25,25,-5],
       a:{label:'Logo faces',word:'logo'},b:{label:'USB ports face',word:'USB ports'}},
-    expansionHub:{name:'Expansion Hub · built-in IMU',short:'Expansion Hub IMU',role:'imu',tags:['LynxEmbeddedIMU','ControlHubImuBHI260AP'],size:[103,143,29.5],chip:[0,0,0],
+    expansionHub:{name:'Expansion Hub · built-in IMU',short:'Expansion Hub IMU',role:'imu',tags:['LynxEmbeddedIMU','ControlHubImuBHI260AP'],size:[103,143,29.5],chip:[25,25,-5],
       a:{label:'Logo faces',word:'logo'},b:{label:'USB ports face',word:'USB ports'}},
-    navx:{name:'Kauai Labs navX2-Micro',short:'navX2-Micro',role:'imu',sdkImu:false,tags:['KauaiLabsNavxMicro'],size:[33,23,4],chip:[0,0,0],
+    navx:{name:'Kauai Labs navX2-Micro',short:'navX2-Micro',role:'imu',sdkImu:false,maker:'Kauai Labs',tags:['KauaiLabsNavxMicro'],size:[33,23,4],chip:[0,0,0],chipKnown:false,
       a:{label:'Top (chips) faces',word:'top'},b:{label:'Its Y arrow points',word:'Y arrow'}},
-    externalImu:{name:'REV external IMU',short:'External IMU',role:'imu',tags:['RevExternalImu'],size:[27,27,4],chip:[0,0,0],
-      a:{label:'Top (chips) faces',word:'top'},b:{label:'Its Y arrow points',word:'Y arrow'}},
-    pinpoint:{name:'goBILDA Pinpoint · odometry + IMU',short:'goBILDA Pinpoint',role:'odometry',tags:['goBILDAPinpoint'],size:[33,33,8],chip:[0,0,0],
-      a:{label:'Sticker faces',word:'sticker',only:['up','down']},b:{label:'Its X arrow points',word:'X arrow',only:['forward'],hidden:true}},
-    otos:{name:'SparkFun OTOS · odometry + IMU',short:'SparkFun OTOS',role:'odometry',tags:['SparkFunOTOS'],size:[25.4,25.4,8],chip:[0,0,0],
+    externalImu:{name:'REV 9-Axis IMU (REV-31-3332)',short:'REV 9-Axis IMU',role:'imu',tags:['RevExternalImu'],size:[41.5,15,16.8],chip:[0,0,6],
+      a:{label:'Top (chip side) faces',word:'top'},b:{label:'Its Y arrow points',word:'Y arrow'}},
+    pinpoint:{name:'goBILDA Pinpoint · odometry + IMU',short:'goBILDA Pinpoint',role:'odometry',maker:'goBILDA',tags:['goBILDAPinpoint'],size:[42.5,40,15.6],chip:[0,0,0],chipKnown:false,
+      a:{label:'Sticker faces',word:'sticker',only:['up','down']},b:{label:'Its Y arrow points',word:'Y arrow',only:['left'],hidden:true}},
+    otos:{name:'SparkFun OTOS · odometry + IMU',short:'SparkFun OTOS',role:'odometry',tags:['SparkFunOTOS'],size:[25.4,25.4,1.6],chip:[0,0,1.2],
       a:{label:'Top faces (the lens looks at the floor)',word:'top',only:['up']},b:{label:'Its Y arrow points',word:'Y arrow',only:['forward','backward','left','right']}}};
   const IMU_KINDS=Object.keys(KINDS).filter(k=>KINDS[k].role==='imu');
   // A configuration device's kind. parent: it is on the Control Hub itself (the portal's parent hub), not an Expansion Hub.
@@ -94,11 +110,11 @@
     const K=KINDS[kind],chip=K?apply(matrix(...Object.values(faces(kind,a,b))),K.chip.map(v=>v*MM)):[0,0,0];return {x:round(mid[0]+chip[0]),y:round(mid[1]+chip[1]),z:round(mid[2]+chip[2])};}
   // How big the CAD box is against what the kind measures, so a click on a screw or the whole chassis is caught.
   function boxFits(box,kind){const K=KINDS[kind];if(!K||!box)return true;const got=[0,1,2].map(i=>Math.abs(box.hi[i]-box.lo[i])).sort((p,q)=>q-p),want=K.size.map(v=>v*MM).sort((p,q)=>q-p);return got[0]<=want[0]*2.2&&got[0]>=want[0]*.35;}
-  // The marker on the model: the device's middle, the way its a face looks (a lit dot, like a status LED, on that face) and
+  // The marker on the model: the device's case round its chip (origin: the case's middle; chip: where the IMU is), the way its a face looks (a lit dot, like a status LED, on that face) and
   // the way its b arrow points. Robot inches.
-  function marker(p){const K=KINDS[p.kind]||KINDS.controlHub,m=matrix(p.a,p.b),half=K.size.map(v=>v*MM/2),o=[p.x,p.y,finite(p.z)?p.z:2];
+  function marker(p){const K=KINDS[p.kind]||KINDS.controlHub,m=matrix(p.a,p.b),half=K.size.map(v=>v*MM/2),chip=[p.x,p.y,finite(p.z)?p.z:2],off=apply(m,K.chip.map(v=>v*MM)),o=chip.map((v,i)=>v-off[i]);
     const up=apply(m,[0,0,1]),along=apply(m,[0,1,0]),led=o.map((v,i)=>v+up[i]*(half[2]+.15));
-    return {origin:o,face:up,arrow:along,led,size:apply(m,K.size.map(v=>v*MM)).map(Math.abs),arrowLength:Math.max(2,half[1]+1.2)};}
+    return {origin:o,chip,face:up,arrow:along,led,size:apply(m,K.size.map(v=>v*MM)).map(Math.abs),arrowLength:Math.max(2,half[1]+1.2)};}
   // In words: "Logo up, USB ports forward".
   function words(p){const K=KINDS[p.kind]||KINDS.controlHub,cap=s=>s[0].toUpperCase()+s.slice(1);return `${cap(K.a.word)} ${p.a}${K.b.hidden?'':`, ${K.b.word} ${p.b}`}`;}
   // Where, in words: "3.25 in forward, 1.00 in left, 4.50 in up".
@@ -108,6 +124,7 @@
   // What to tell the team about a pick: a mounting the maker does not support, an IMU the exports cannot read.
   function warnings(p){const out=[];if(p.kind==='pinpoint'&&p.a==='down')out.push('goBILDA says to mount the Pinpoint sticker side up. Upside down, its heading counts the wrong way round: turn it over, or check the quarter turn in Calibrate.');
     if(KINDS[p.kind]?.sdkImu===false)out.push('The FTC SDK reads a navX2-Micro as a gyroscope, not as an IMU, so Torque’s exports and Calibrate cannot use it for heading: they need the Control Hub’s IMU. The navX sets which way is up on the board itself (OmniMount).');
+    if(KINDS[p.kind]?.chipKnown===false)out.push(`${KINDS[p.kind].maker||'Its maker'} does not publish where the IMU chip is inside the ${KINDS[p.kind].short}: its place is the middle of the ${p.kind==='pinpoint'?'housing':'board'}. Heading does not depend on it.`);
     if(p.kind==='expansionHub')out.push('Expansion Hubs bought after December 2021 have no IMU: the Manage page on the robot says whether this one does.');return out;}
   // ---- Road Runner ----
   // The values Road Runner 1.0's quickstart takes, from a TeamCode export's hardware (DeckFtc.hardware): MecanumDrive.PARAMS'

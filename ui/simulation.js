@@ -3342,7 +3342,7 @@ public class MyAuto implements DeckAutonomous {
     // its USB end or Y arrow points, so a wrong pick shows on the model.
     if(project.controller==='ftc'){const P=SP(),all=P.of(project.robot),loc=project.sensors.localization,on=['imu',...(loc==='fused'?['pinpoint']:loc==='optical'?['otos']:[])];
       for(const key of on){const p=all[key];if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||key==='otos'&&!Number.isFinite(p.z)&&!p.from)continue;const mk=P.marker(p);
-        marks.push({x:mk.origin[0],y:mk.origin[1],z:mk.origin[2],size:mk.size,color:0x8e7cf0},{x:mk.led[0],y:mk.led[1],z:mk.led[2],radius:.35,color:0x3dd68c},
+        marks.push({x:mk.origin[0],y:mk.origin[1],z:mk.origin[2],size:mk.size,color:0x8e7cf0},{x:mk.chip[0],y:mk.chip[1],z:mk.chip[2],radius:.25,color:0xffffff},{x:mk.led[0],y:mk.led[1],z:mk.led[2],radius:.35,color:0x3dd68c},
           ...(P.KINDS[p.kind].b.hidden?[]:[{arrow:{from:mk.origin,dir:mk.arrow,length:mk.arrowLength},color:0xf2994a}]));}}
     mechPreview.markers(marks);
     $('#mech-model-help').hidden=!game;
