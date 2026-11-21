@@ -85,7 +85,7 @@ public final class Constants {
         config.acceleration=${n(Math.max(20,Math.min(t.maxForward*3,(t.maxAcceleration??t.maxForward*2)*.65)))}; config.tank=${h.drive.kind==='tank'};
         config.maxPathSpeed=${n(t.maxPathSpeed??.8)};${(tn=>tn?`
         // Turning on the spot, as Calibrate set it${tn.measured?' from what it measured on the robot':''}.
-        config.turnTop=${n(tn.top)}; config.turnLeast=${n(tn.least)}; config.turnSlow=Math.toRadians(${n(tn.slowFrom)}); config.turnBrake=${n(+(tn.brake*180/Math.PI).toFixed(4))}; config.turnDone=Math.toRadians(${n(Math.min(1.2,tn.done))});`:'')(options.turn)}
+        config.turnTop=${n(tn.top)}; config.turnLeast=${n(tn.least)}; config.turnSlow=Math.toRadians(${n(tn.slowFrom)}); config.turnBrake=${n(+(tn.brake*180/Math.PI).toFixed(4))}; config.turnDone=Math.toRadians(${n(+(Math.max(1,tn.done)*.7).toFixed(2))});`:'')(options.turn)}
         ElapsedTime clock = new ElapsedTime();
         return new DeckFollower(hardware, hardware, config, () -> clock.nanoseconds());
     }
@@ -368,7 +368,7 @@ public class ${options.opModeName} extends LinearOpMode {
         while (opModeIsActive() && timer.seconds() < 5) {
             follower.update();
             report(leg, legs, "Turning");
-            boolean on = Math.abs(angle(heading - follower.pose().heading())) < Math.toRadians(1.5);
+            boolean on = Math.abs(angle(heading - follower.pose().heading())) < Math.toRadians(${n(Math.max(1,options.turn?.done??1.5))});
             if (!on) settledSince = -1;
             else if (settledSince < 0) settledSince = timer.seconds();
             else if (timer.seconds() - settledSince > 0.15) break;

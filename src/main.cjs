@@ -586,6 +586,7 @@ handle('robot-link',async(action,data)=>{
     const debug=robotLink.runDebug(host,{socket,opMode:typeof data?.opMode==='string'?data.opMode:null,onManifest:manifest=>emit('robot-link-debug',{manifest}),onFrame:frame=>emit('robot-link-debug',{frame}),onCamera:bytes=>emit('robot-link-debug',{camera:Uint8Array.from(bytes)})});robotDebug=debug;debug.usb=host==='usb';debug.auto=data?.auto===true;
     debug.ended.then(why=>{if(!debug.told)emit('robot-link-debug',{ended:why});},e=>{if(!debug.told)emit('robot-link-debug',{error:e.message});}).finally(()=>{if(robotDebug===debug)robotDebug=null;if(socket)void socket.close();});
     return true;}
+  if(action==='onbot-read')return robotLink.readFile(data?.host,String(data?.file||''));
   if(action==='read')return robotLink.readRobot(data?.host,{scan:data?.scan===true});
   if(action==='read-usb')return readThrough(await robotLink.readUsb());
   // The robot's own dashboard (Program & Manage, OnBot Java, Blocks) through the USB cable, in a window of its own.

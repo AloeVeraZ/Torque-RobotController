@@ -4281,6 +4281,9 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     // The chassis TeleOp goes to the robot the way Send to robot's code does: saved in OnBot Java and built there.
     sendTeleop:t=>sendTeleopFile(t),moreCode:()=>calMoreCode(),sendCode:async t=>{await sendJava('TorqueCalibration.java',t);return 'On the robot, in OnBot Java, as TorqueCalibration.java: your own code can read it.';},saveFile:(name,text)=>native?api.simFile('code-save',{name,text}):Promise.reject(Error('saving needs the desktop app')),
     // The chassis' quarter turn found which way round the Control Hub's IMU counts a turn to the left.
+    // IMU tuning: the autonomous Torque writes goes to the robot as its code does, and what it wrote there is read back over the same link.
+    sendTurnTune:async t=>{if(liveDebug?.running())await liveDebug.stop();robotSending++;try{await sendJava(t.file,t.source);return `On the robot. In Drive, run “${t.opMode}” under Auto, then come back and press Read the result.`;}finally{robotSending--;}},
+    readTurnResult:()=>api.robotLink('onbot-read',{host:calHost(),file:'TorqueTurnResult.java'}),
     setImuReversed:on=>{const o={...project.robot.odometry},im={...o.imu};if(on)im.reversed=true;else delete im.reversed;if(Object.keys(im).length)o.imu=im;else delete o.imu;project.robot=C.robot({...project.robot,odometry:o},project.controller);save();},
     setReversed:(key,on)=>{project.robot.devices={...project.robot.devices,[key]:{...project.robot.devices?.[key],reversed:!!on}};calKeepRead(()=>applyWiring(structuredClone(project.robot.wiring)));},
     setSteerZero:zero=>{const st=window.DeckWiring.state(project),w=structuredClone(project.robot.wiring);for(const x of w.sensors||[]){const row=st.rows.find(q=>q.key==='sensor.'+x.id);if(row&&Number.isFinite(zero[row.name]))x.zeroVolts=zero[row.name];}calKeepRead(()=>applyWiring(w));}}):null;

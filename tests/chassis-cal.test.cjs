@@ -206,7 +206,7 @@ test('the heading the code turns by: a quarter turn to the left by hand says whi
 
 test('turning on the spot: gentle until the robot is tuned, then set from what it did',()=>{
   assert.deepEqual(K.turnOf({}),{top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,measured:false});assert.deepEqual(K.turnOf(null),K.turnOf({}));
-  assert.equal(K.turnOf({turnTune:{top:.4}}).measured,false,'a power picked is not a measurement');assert.equal(K.turnOf({turnTune:{top:9,least:-1,slowFrom:1}}).top,.6,'held to sane limits');assert.equal(K.turnOf({turnTune:{least:-1}}).least,.03);
+  assert.equal(K.turnOf({turnTune:{top:.4}}).measured,false,'a power picked is not a measurement');assert.equal(K.turnOf({turnTune:{top:9,least:-1,slowFrom:1}}).top,1,'held to sane limits');assert.equal(K.turnOf({turnTune:{least:-1}}).least,.03);
   const g=K.turnGains({top:.4,least:[.08,.1],rate:200,coast:18});assert.deepEqual(g,{top:.4,least:.12,slowFrom:95,brake:.0009,done:1.5,rate:200,coast:18});
   assert.equal(K.turnOf({turnTune:{...g,at:'2026-11-20'}}).measured,true);assert.equal(K.turnGains({top:.4,least:[.08,.1],rate:400,coast:40}).slowFrom,110,'never further out than 110°');
   assert.match(K.turnGains({top:.4,least:[.08,NaN],rate:200,coast:18}).problem,/did not turn the way it was asked/);assert.match(K.turnGains({top:.4,least:[.08,.1],rate:9,coast:1}).problem,/too slow to measure/);

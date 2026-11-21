@@ -63,3 +63,20 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-turn-')),file=path.join(dir,'TorqueTurnTest.java');fs.writeFileSync(file,T.turnTestOf(x).source);
     try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
     finally{fs.rmSync(dir,{recursive:true,force:true});}}});
+
+test('IMU tuning: an autonomous that finds, on the robot, the fastest turn power that still lands inside the tolerance',t=>{
+  const o={...mecanum,imu:{name:'imu',scale:-1},config:'robot',date:'2026-11-20'},hub=T.turnTuneOf({...o,heading:{kind:'hub'},tolerance:2}),pin=T.turnTuneOf({...o,heading:{kind:'pinpoint',name:'GBPP'},tolerance:1.5});
+  assert.equal(hub.file,'TorqueTurnTune.java');assert.equal(hub.opMode,'Torque IMU tuning');assert.match(hub.source,/@Autonomous\(name = "Torque IMU tuning", group = "Torque"\)/);assert.match(hub.source,/TOLERANCE_DEGREES = 2\.0;/);assert.match(hub.source,/POWERS = \{0\.5, 0\.6, 0\.7, 0\.8, 0\.9, 1\.0\};/);
+  assert.match(hub.source,/IMU_SCALE = -1\.0;/);assert.match(hub.source,/getYaw\(AngleUnit\.DEGREES\) \* IMU_SCALE/);assert.match(hub.source,/if \(backwards\) \{ sign = -1; heading = -heading; \}/,'it finds which way the heading counts by turning left');
+  assert.match(pin.source,/static final String PINPOINT = "GBPP";/);assert.match(pin.source,/pinpoint\.update\(\); return pinpoint\.getHeading\(AngleUnit\.DEGREES\);/,'the Pinpoint when that is the heading');assert.doesNotMatch(pin.source,/IMU imu|IMU_SCALE/);assert.match(pin.source,/TOLERANCE_DEGREES = 1\.5;/);
+  assert.match(hub.source,/\/sdcard\/FIRST\/java\/src\/TorqueTurnResult\.java/);assert.equal(T.turnTuneOf({...o,tolerance:99}).tolerance,10);assert.match(T.turnTuneOf(kiwi).error,/do not steer/);
+  // What the robot writes, read back.
+  const text='// x\npublic final class TorqueTurnResult {\n    public static final String JSON = "{\\"v\\":1,\\"backwards\\":false,\\"least\\":0.084,\\"tolerance\\":2.0,\\"found\\":1,\\"rounds\\":[{\\"power\\":0.50,\\"rate\\":210.0,\\"coast\\":12.0,\\"slowFrom\\":83,\\"brake\\":0.00107,\\"worst\\":1.20,\\"over\\":3.00,\\"seconds\\":1.60,\\"ok\\":true},{\\"power\\":0.60,\\"rate\\":260.0,\\"coast\\":17.0,\\"slowFrom\\":108,\\"brake\\":0.00104,\\"worst\\":1.90,\\"over\\":5.50,\\"seconds\\":1.30,\\"ok\\":true},{\\"power\\":0.70,\\"rate\\":300.0,\\"coast\\":25.0,\\"slowFrom\\":138,\\"brake\\":0.00105,\\"worst\\":6.10,\\"over\\":22.00,\\"seconds\\":1.10,\\"ok\\":false}]}";\n}\n',r=T.turnResultOf(text);
+  assert.equal(r.rounds.length,3);assert.equal(r.best.power,.6,'the fastest of those that landed');assert.equal(r.backwards,false);assert.equal(r.least,.084);assert.equal(r.tolerance,2);assert.equal(T.turnResultOf('class X {}'),null);assert.equal(T.turnResultOf(null),null);
+  assert.equal(T.turnResultOf(text.replace(/\\"ok\\":true/g,'\\"ok\\":false')).best,null);
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
+  if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
+  for(const [name,x] of [['hub IMU',hub],['Pinpoint',pin],['tank',T.turnTuneOf({...o,kind:'tank',heading:{kind:'hub'}})],['what it writes',{source:text}]]){
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-tune-')),file=path.join(dir,name==='what it writes'?'TorqueTurnResult.java':'TorqueTurnTune.java');fs.writeFileSync(file,x.source);
+    try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
+    finally{fs.rmSync(dir,{recursive:true,force:true});}}});
