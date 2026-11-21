@@ -80,6 +80,11 @@ public final class DeckFollower {
     public static final class Config {
         public double maxForward=60, maxStrafe=50, maxTurn=5, maxPathSpeed=.6, acceleration=70;
         public double positionP=.09, positionD=.01, headingP=2, headingD=.12;
+        // A turn on the spot: the most power, the least that still turns the robot, how far out (radians) it starts to slow, how hard its own
+        // turning speed brakes it (power for each radian a second), and how close (radians) counts as there. Calibrate measures these on the robot.
+        public double turnTop=.25, turnLeast=.07, turnSlow=Math.toRadians(60), turnBrake=.115, turnDone=Math.toRadians(1);
+        // How old the heading is by the time the power reaches the wheels, in seconds: a Control Hub IMU read goes over I2C and is slow.
+        public double turnLag=.02;
         public boolean tank;
     }
     public interface Curve { Point get(double t); }
@@ -106,6 +111,8 @@ public final class DeckFollower {
         public static Path path(Path... p) { return new Path(Arrays.asList(p)); }
     }
     public enum Mode { IDLE, FOLLOWING, HOLDING }
+    // Holding a heading: whether it is there (inside turnDone and still), and the least power built up from rest, and which way.
+    private boolean holdThere;private double holdPush,holdWay;
     /** Continuous modifiers may change at a tangent boundary without a needless full stop. */
     public static boolean continuous(Path a,Path b) {
         Pose end=a.endPose();Point start=b.get(0),before=a.get(.99),after=b.get(.01);
@@ -162,7 +169,7 @@ public final class DeckFollower {
         for(int i=n-2;i>=0;i--)limits[i]=Math.min(limits[i],Math.sqrt(limits[i+1]*limits[i+1]+.7*config.acceleration*(samples.get(i+1).s-samples.get(i).s)));
         target=path.endPose();total=arc;progress=reference=settled=0;speed=velocity().linSpeed();nearest=0;lastTime=-1;mode=Mode.FOLLOWING;
     }
-    public void hold(Pose p) { target=p;mode=Mode.HOLDING;speed=0;settled=0; }
+    public void hold(Pose p) { target=p;mode=Mode.HOLDING;speed=0;settled=0;holdThere=false;holdPush=0;holdWay=0; }
     public void stop() { mode=Mode.IDLE;speed=0;drive.stop(); }
     private Pose sample(double s) {
         int lo=0,hi=samples.size()-1;while(lo<hi){int m=(lo+hi)/2;if(samples.get(m).s<s)lo=m+1;else hi=m;}
@@ -189,7 +196,7 @@ public final class DeckFollower {
             reference=Math.min(total,Math.min(reference+speed*dt,progress+Math.max(2,speed*.12)));
             aim=sample(reference);Pose ahead=sample(Math.min(total,reference+.25));double dx=ahead.x-aim.x,dy=ahead.y-aim.y,len=Math.hypot(dx,dy);
             if(len>1e-8&&reference<total){vx=dx/len*speed;vy=dy/len*speed;omega=angle(ahead.heading-aim.heading)/len*speed;}
-            if(total-progress<.6&&p.distance(target)<.8){settled+=dt;if(settled>.1){mode=Mode.HOLDING;aim=target;vx=vy=omega=0;}}else settled=0;
+            if(total-progress<.6&&p.distance(target)<.8){settled+=dt;if(settled>.1){mode=Mode.HOLDING;aim=target;vx=vy=omega=0;holdThere=false;holdPush=0;holdWay=0;}}else settled=0;
         }
         double ex=aim.x-p.x,ey=aim.y-p.y,c=Math.cos(p.heading),s=Math.sin(p.heading);
         // Position error becomes a correction speed: proportional near the path, square-root beyond
@@ -204,9 +211,21 @@ public final class DeckFollower {
         if(config.tank&&following()&&Math.abs(forward+ffForward)>.02)desiredHeading+=Math.signum(forward+ffForward)*clamp(Math.atan2(-ex*s+ey*c,4),-.35,.35);
         double headingError=angle(desiredHeading-p.heading);
         double turn=config.headingP*headingError-config.headingD*(v.heading-omega);
+        // Nearing its angle it turns slower: the feedback is held under a power that falls with what is left to turn. A real robot's weight
+        // carries it on and its IMU answers a little late, so at full power it swings past the angle and hunts either side of it.
+        double turnCap=Math.max(.08,Math.min(1,.05+.4*Math.sqrt(Math.abs(headingError))));turn=clamp(turn,-turnCap,turnCap);
+        // A turn on the spot (the turn at a pin, or holding a heading) uses the law the IMU turn test proves on the robot: its top turn power
+        // far out, less and less as it nears the angle, braked by its own turning speed, and nothing once it is there.
+        // Once it is inside turnDone and still, it is there: nothing more until it is pushed out by twice that (a kick each time it is a hair off swings it past and back, over and over).
+        // The least power is only given from rest, built up from half of it, and eased off quickly once it turns, so it does not shove the robot past its angle.
+        if(mode==Mode.HOLDING){double ahead=angle(desiredHeading-(p.heading+v.heading*config.turnLag)),left=Math.abs(ahead),off=Math.abs(headingError);boolean slow=Math.abs(v.heading)<Math.toRadians(10);
+            if(holdThere){if(off>2*config.turnDone)holdThere=false;}else if(off<=config.turnDone&&slow)holdThere=true;
+            if(holdThere||left<=config.turnDone*.5){turn=0;holdPush=0;}
+            else{if(Math.signum(ahead)!=holdWay){holdWay=Math.signum(ahead);holdPush=0;}holdPush=slow?Math.min(1.5*config.turnLeast,Math.max(holdPush,.5*config.turnLeast)+dt*2*config.turnLeast):Math.max(.5*config.turnLeast,holdPush-dt*3*config.turnLeast);
+                turn=clamp(Math.copySign(Math.max(holdPush,config.turnTop*Math.min(1,left/Math.max(1e-6,config.turnSlow))),ahead)-config.turnBrake*v.heading,-config.turnTop,config.turnTop);}}
         // Overcome the motor deadband at a nearly stationary heading error. Without this,
         // a light/fast drivetrain can stop just outside the turn-settling tolerance.
-        if(Math.abs(headingError)>.015&&Math.abs(v.heading)<.1&&Math.abs(turn+ffTurn)<.045)turn=Math.copySign(.045,headingError)-ffTurn;
+        if(mode!=Mode.HOLDING&&Math.abs(headingError)>.015&&Math.abs(v.heading)<.1&&Math.abs(turn+ffTurn)<.045)turn=Math.copySign(.045,headingError)-ffTurn;
         if(config.tank){strafe=0;ffStrafe=0;}
         // Correction has priority over path speed: when the wheels saturate, the robot slows down
         // along the path rather than drifting off it. Feedback alone is capped at the power limit.
