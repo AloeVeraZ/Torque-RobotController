@@ -575,9 +575,12 @@
     function partBoxAt(hit){const c=ctx();if(!c||!hit||!finite(hit.part))return null;const b=D().partBox(c,Math.round(hit.part));if(!b)return null;
       const pts=[];for(const x of [b.lo[0],b.hi[0]])for(const y of [b.lo[1],b.hi[1]])for(const z of [b.lo[2],b.hi[2]])pts.push(toRobot([x,y,z]));
       return {lo:[0,1,2].map(i=>Math.min(...pts.map(p=>p[i]))),hi:[0,1,2].map(i=>Math.max(...pts.map(p=>p[i]))),name:b.name,leaves:b.leaves};}
+    // The IMUs and odometry computers in the CAD (DeckDiscovery.sensorsInCad), each box in robot inches.
+    function sensorsFromCad(){const c=ctx();if(!c)return [];return D().sensorsInCad(c).map(b=>{const pts=[];for(const x of [b.lo[0],b.hi[0]])for(const y of [b.lo[1],b.hi[1]])for(const z of [b.lo[2],b.hi[2]])pts.push(toRobot([x,y,z]));
+      return {kind:b.kind,name:b.name,leaves:b.leaves,lo:[0,1,2].map(i=>Math.min(...pts.map(p=>p[i]))),hi:[0,1,2].map(i=>Math.max(...pts.map(p=>p[i])))};});}
     function podsFromCad(){const c=ctx();if(!c)return [];return D().odometryPods(c,{up:up(),inch:1/unit()}).map(p=>{const at=toRobot(p.center),ax=dirToRobot(p.axis);return {x:+at[0].toFixed(3),y:+at[1].toFixed(3),forward:Math.abs(ax[1])>Math.abs(ax[0]),name:p.name,leaves:p.leaves};});}
     function cadWheels(){const c=ctx();if(!c)return [];return D().driveWheels(c,{up:up(),inch:1/unit()}).wheels.map((g,i)=>({id:`cadwheel${i+1}`,name:g.name,origin:g.r.center,radius:g.r.radius,drive:{signal:'wheel'},parts:g.leaves.map(k=>`#${k}`)}));}
-    return {render,picker,discover,add,isMechanism,fitIntake,rollerColumn,fitColumn,found:()=>lastFound,toRobot,wheelAt,partBoxAt,cadWheels,warmWheels,podsFromCad,opened:()=>open,pose(id,value){values={...values,[id]:value};showPose();},
+    return {render,picker,discover,add,isMechanism,fitIntake,rollerColumn,fitColumn,found:()=>lastFound,toRobot,wheelAt,partBoxAt,sensorsFromCad,cadWheels,warmWheels,podsFromCad,opened:()=>open,pose(id,value){values={...values,[id]:value};showPose();},
       // For the range of motion test (sim-motion-test.js): a piece of it in the worker, and showing a pose on the model.
       motion:{ask:options=>ask('motion',options),canShow:()=>!!preview(),show(v){if(demo){cancelAnimationFrame(demo);demo=0;}values=v;showPose();},mark(a,b){const p=preview();if(!p)return;if(a===undefined)return highlight();p.highlight(new Set([a,b]),0xe5484d);}},
       // Shows a part at a value on the preview (a named position, from the Mechanisms list).

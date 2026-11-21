@@ -40,6 +40,11 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/sensor-
     assert.match(await page.textContent(`${imu} [data-sense-said]`),/^Logo left, USB ports \w+ · /);
     assert.equal((await project()).robot.hubLogo,'left','a CAD pick leaves which way it faces alone');
     await page.waitForTimeout(600);await page.screenshot({path:path.join(out,'imu-placed.png')});
+    // Or found by itself: the Control Hub and the Pinpoint by their parts' names, the IMU at the hub's chip; which way it faces stays as picked.
+    await page.click(`${imu} [data-sensors-find]`);await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.sensorPlace?.imu?.part==='Control Hub');
+    {const r=(await project()).robot;assert.equal(r.sensorPlace.imu.from,'cad');assert.equal(r.hubLogo,'left','found, not turned');assert.match(await page.textContent(`${imu} .sim-chassis-find [role=status]`),/^Found the IMU in “Control Hub”/);
+      // The Test robot's hub stands on edge at the back left: its chip is inside that box.
+      const p=r.sensorPlace.imu;assert.ok(p.x<-2&&p.x>-8.2&&p.y>5&&p.y<6.8,JSON.stringify(p));assert.equal(r.sensorPlace.pinpoint?.part,'Pinpoint');}
     // B. A Pinpoint and an OTOS on the chassis.
     await page.evaluate(()=>{const s=document.querySelector('#sim-localization');s.value='fused';s.dispatchEvent(new Event('change'));});await page.waitForTimeout(400);
     await page.click('[data-garage="chassis:pinpoint"]');await page.waitForSelector('#mech-drive-ports [data-sense-board="pinpoint"]');

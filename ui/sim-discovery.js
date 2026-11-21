@@ -798,5 +798,17 @@
     while(at>=0&&nodes[at]){const all=ctx.parts.leavesUnder(nodes[at]);if(all.length>Math.max(3,ctx.leaves*.2))break;if(SENSOR_NAMES.test(String(nodes[at].name||''))){set=all;name=String(nodes[at].name).replace(/\s*<\d+>$/,'');break;}at=nodes[at].parent;}
     const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const k of set){const f=feature(ctx,k);if(!f)continue;for(let q=0;q<3;q++){lo[q]=Math.min(lo[q],f.lo[q]);hi[q]=Math.max(hi[q],f.hi[q]);}}
     return lo.every(Number.isFinite)?{lo,hi,leaves:set,name}:null;}
-  return {prepare,feature,partBox,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,wheelsNear,driveWheels,odometryPods,WORDS};
+  // The IMUs and odometry computers in a CAD, by their parts' names or part numbers: each the highest assembly so named that
+  // is not a big share of the robot, its box in the CAD's frame. Returns [{kind, name, lo, hi, leaves}]; kind as
+  // DeckSensorPlace names it (controlHub, expansionHub, navx, externalImu, pinpoint, otos).
+  const SENSOR_KINDS=[['controlHub',/control ?hub|REV-31-1595|REV-31-1152/i],['expansionHub',/expansion ?hub|REV-31-1153/i],['pinpoint',/pinpoint|odometry computer|3110-0002/i],
+    ['otos',/\botos\b|optical tracking odometry|SEN-24904/i],['navx',/navx/i],['externalImu',/REV-31-3332|9[- ]?axis imu|external imu/i]];
+  function sensorsInCad(ctx){const nodes=ctx.parts.nodes||[],out=[],taken=new Set();
+    for(const [kind,re] of SENSOR_KINDS)for(const n of nodes){if(!re.test(String(n.name||'')))continue;const all=ctx.parts.leavesUnder(n);if(!all.length||all.length>Math.max(3,ctx.leaves*.2)||all.some(k=>taken.has(k)))continue;
+      // The highest one so named: its parent named the same way holds it.
+      const up=nodes[n.parent];if(up&&re.test(String(up.name||''))&&ctx.parts.leavesUnder(up).length<=Math.max(3,ctx.leaves*.2))continue;
+      const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(const k of all){const f=feature(ctx,k);if(!f)continue;for(let q=0;q<3;q++){lo[q]=Math.min(lo[q],f.lo[q]);hi[q]=Math.max(hi[q],f.hi[q]);}}
+      if(!lo.every(Number.isFinite))continue;for(const k of all)taken.add(k);out.push({kind,name:String(n.name).replace(/\s*<\d+>$/,''),lo,hi,leaves:all});}
+    return out;}
+  return {prepare,feature,partBox,sensorsInCad,roundAbout,fitAt,fitCircle,ransacCircle,eigen,swingToFloor,discover,coaxial,teethOfName,wheelsNear,driveWheels,odometryPods,WORDS};
 });

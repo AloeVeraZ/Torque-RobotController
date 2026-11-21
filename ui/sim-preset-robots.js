@@ -93,7 +93,9 @@
     // It comes with odometry on (its pods and Pinpoint are on its CAD); a kit without them unticks it in Chassis and runs on its motor encoders and the hub's IMU.
     startermecanum:{...MECANUM,cad:'strafer',draw:starterMecanum,joints:mecanumJoints,heightIn:7.25,wheelDiameterMm:104,localization:'fused',imuSource:'device',
       wiring:{devices:{'robot.frontLeft':{model:'gobilda-5203-312',hub:'control',port:0},'robot.frontRight':{model:'gobilda-5203-312',hub:'control',port:1},
-        'robot.backLeft':{model:'gobilda-5203-312',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-312',hub:'control',port:3},'robot.imu':{hub:'control',bus:0},'robot.pinpoint':{hub:'control',bus:1}}}}};
+        'robot.backLeft':{model:'gobilda-5203-312',hub:'control',port:2},'robot.backRight':{model:'gobilda-5203-312',hub:'control',port:3},'robot.imu':{hub:'control',bus:0},'robot.pinpoint':{hub:'control',bus:1}},
+      // All three on: the motors, each one's encoder cable (its Encoder tick in Chassis) and the Pinpoint; each comes off in Chassis.
+      sensors:['frontLeft','frontRight','backLeft','backRight'].map(k=>({id:k.replace(/[A-Z]/,c=>'_'+c.toLowerCase())+'MotorEncoder',model:'motor-encoder',for:'robot.'+k,use:'position'}))}}};
   // ---- demo routes -------------------------------------------------------------------------------------------------
   // BIOBUZZ red autonomous routes that show what each robot does (Deck inches from the audience-left corner, headings
   // counter-clockwise from +x), validated headlessly in tests/sim-preset-robots.test.cjs: no zone touched, ending at the
