@@ -362,3 +362,13 @@ body.driver-station > header .header-right > button.controller { min-height: 44p
 /* (By id: an older rule lists these beside an id, which pins their corner at id strength.) */
 .driver-station :is(#controller-1, #controller-2) { border-radius: var(--radius-pill); }
 .driver-station :is(.cal-chip, .sim-reliable > .sim-reliable-close, .ce-back, #close-page, #manager-close, #controller-1) { border-radius: var(--radius-pill); }
+
+/* A list's done-count is one capsule on one line, on every tab; a long robot name wraps beside it instead. */
+.driver-station .cal-elec-listhead { align-items: flex-start; }
+.driver-station .cal-elec-listhead > b { min-width: 0; overflow-wrap: anywhere; }
+.driver-station .cal-elec-listhead > .rs-pill { flex: none; white-space: nowrap; }
+/* A camera's page scrolls as one page: its settings column no longer scrolls on its own inside it. */
+#cal-camera .cal-cam-side { overflow: visible; contain: none; align-self: start; }
+/* Scrollbars stay inside the box they scroll: the track stops short of a rounded box's corners. */
+.driver-station :is(.cal-card, .cal-mech, .panel, #cal-camera, #cal-mech-pane, .cal-elec-main > *, dialog, .menu)::-webkit-scrollbar-track { margin-block: calc(var(--radius-panel) / 2); }
+.driver-station :is(textarea, select, .wifi-popover, .sim-tile)::-webkit-scrollbar-track { margin-block: 4px; }
