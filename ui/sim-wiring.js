@@ -121,9 +121,13 @@
   // only what it is plugged into, and what tells a module's angle says where that is. read: the hub's read-out, when there is one.
   const moduleEncoder=(row,st)=>row.role==='steer'||(/^diffSwerve/.test(st.project?.robot?.drivetrain||'')&&!/B$/.test(row.key)&&row.role==='drive');
   const encoderOf=(row,st)=>st.wiring.sensors.find(s=>s.for===row.key&&H().SENSOR_MODELS[s.model]?.family==='analog')||null;
+  // Where a device can be plugged in: every port of its kind, always. Setup comes before Configure, so what the robot's
+  // configuration has (read) never takes a port away: its devices are listed first, by name (picking one also gives this
+  // row that name), then every other port, for a device the configuration does not have yet.
   function chassisChoices(family,st,read,skip){const list=(read||[]).filter(d=>d.hub&&readFamily(d)===family);
-    // An I2C device sits on a bus, not a port. Each choice names the configured device too: picking one also gives this row that name.
-    return list.length?list.filter(d=>family!=='i2c'||d.kind!=='imu'||/imu/i.test(skip||'')).map(d=>{const at=`${d.hub}:${family==='i2c'?d.bus:d.port}`;return {value:`${at}|${d.name}`,at,label:`${H().portLabel(d,family,st.wiring)} · ${d.name}`};}):portChoices(family,st,{skip}).map(o=>({...o,at:o.value}));}
+    // An I2C device sits on a bus, not a port.
+    const named=list.filter(d=>family!=='i2c'||d.kind!=='imu'||/imu/i.test(skip||'')).map(d=>{const at=`${d.hub}:${family==='i2c'?d.bus:d.port}`;return {value:`${at}|${d.name}`,at,label:`${H().portLabel(d,family,st.wiring)} · ${d.name}`};});
+    return [...named,...portChoices(family,st,{skip}).filter(o=>!named.some(n=>n.at===o.value)).map(o=>({...o,at:o.value}))];}
   function chassisSelect(id,attr,key,label,choices,now){return `<div class="sim-chassis-row"><label for="${esc(id)}">${esc(label)}</label><select id="${esc(id)}" ${attr}="${esc(key)}"><option value="">Not assigned</option>${choices.map(o=>`<option value="${esc(o.value)}"${o.at===now?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div>`;}
   // Grouped by wheel or module: a drive motor, then what belongs to it (its steering, a differential module's second motor).
   // opts: placing, the key (wheel, pod:<key>, pinpoint:x|y) the next click on the model places; pick, a model to click on.

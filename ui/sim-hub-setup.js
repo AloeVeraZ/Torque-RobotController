@@ -99,7 +99,7 @@
       doneRow.add(row.key);
       if(pref(row)>pref(twin)){out.dropped.push({id:twin.id,label:twin.label,name:a.name,kept:row.label});Object.assign(a,{key:row.key,label:row.label,was:row.name,sensor:row.id});}
       else out.dropped.push({id:row.id,label:row.label,name:a.name,kept:twin.label});}
-    for(const row of rows)if(!doneRow.has(row.key)&&row.role!=='imu')out.missing.push({key:row.key,label:row.label,name:row.name});
+    for(const row of rows)if(!doneRow.has(row.key)&&row.role!=='imu')out.missing.push({key:row.key,label:row.label,name:row.name,role:row.role,family:row.family,...(row.wired?{hub:row.hub,port:row.family==='i2c'?row.bus:row.port}:{})});
     // Chassis only: the robot's mechanism devices are none of Setup's business, so only a leftover drive-like motor is listed.
     for(const dev of devices){if(doneDev.has(dev)||!['motor','servo','crservo',...SENSOR_KINDS].includes(dev.kind)||chassis&&!(dev.kind==='motor'&&dirsOf(words(dev.name))))continue;
       const fit=!chassis&&SENSOR_KINDS.has(dev.kind)?sensorFor(dev,rows):null,at=placeOf(dev,hubs);
@@ -142,7 +142,10 @@
       ...result.sensors.map(s=>({level:'ok',text:`New sensor on ${s.forLabel} → “${s.name}”${where(s)}`})),
       ...(result.localization?[{level:'ok',text:`Position sensor: ${result.localization==='fused'?'goBILDA Pinpoint':'SparkFun OTOS'} (the robot has one)`}]:[]),
       ...(result.dropped||[]).map(d=>({level:'ok',text:`${d.label} was a second copy of “${d.name}”: removed, it is ${d.kept}`})),
-      ...result.missing.map(m=>({level:'missing',text:`${m.label} (“${m.name}”) is not on the robot: Send to robot can add it`})),
+      // What Setup has that the robot's configuration does not: where to add it. Setup is not held back by it.
+      ...result.missing.map(m=>{const FAMILY={motor:'a motor on motor port',servo:'a servo on servo port',analog:'an analog device on analog port',digital:'a digital device on digital port',i2c:'an I2C device on I2C bus'},what=FAMILY[m.family],
+          at=what&&m.hub?` Add it in Configure as ${what} ${m.port} of the ${g('DeckHardware').hubName(m.hub,{hubs:result.hubs})}${m.family==='i2c'&&m.port!==0?' (bus 0 has the built-in IMU)':''}, or let Send to robot add it.`:m.family==='i2c'?' Add it in Configure as an I2C device on a bus other than 0 (bus 0 has the built-in IMU), or let Send to robot add it.':' Send to robot can add it.';
+        return {level:'missing',text:`${m.label} (“${m.name}”) is not in the robot’s configuration yet.${at}`};}),
       ...result.unused.map(u=>({level:'unused',text:`“${u.name}” (${u.kind}${u.where?', '+u.where:''}) is on the robot; nothing in Setup uses it`})),
       ...result.notes.map(t=>({level:'missing',text:t}))];}
   // The configuration with every hub the robot reported that it does not list, so all of them get Setup's ids together.

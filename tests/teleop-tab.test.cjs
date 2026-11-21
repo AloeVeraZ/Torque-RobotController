@@ -298,7 +298,10 @@ test('how a robot can follow its route comes from what Calibrate checked, never 
   // Mechanisms: every wheel seen to roll forward.
   assert.equal(L.sensingOf({chassis:{pods:Object.fromEntries(drive.map(d=>[d.key,{drive:true}]))}},drive).wheels,true);assert.equal(L.sensingOf({chassis:{pods:{frontLeft:{drive:true}}}},drive).wheels,false);
   // Nothing in the app's pages reads Debug's findings to decide this any more.
-  const page=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');assert.doesNotMatch(page,/liveDebug\?\.sensing|Debug saw|Debug found (?:the|no)|Debug ruled|seen in Debug/);assert.match(page,/Not checked yet: move each drive motor in Calibrate → Electronics\./);
+  const page=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');assert.doesNotMatch(page,/liveDebug\?\.sensing|Debug saw|Debug found (?:the|no)|Debug ruled|seen in Debug/);assert.match(page,/Checked later: move each drive motor in Calibrate → Electronics\./);
+  // What Calibrate or the robot's configuration found is advice on the card. It never takes a choice away or changes it: Setup comes first.
+  const panel=page.slice(page.indexOf('function kitSensingPanel('),page.indexOf("$('#sim-kit-sensing').onclick"));assert.doesNotMatch(panel,/setLocalization\(|disabled=v===false/);assert.match(panel,/b\.disabled=false/);
+  assert.match(panel,/add it as an I2C device on bus \$\{bus\} \(bus 0 has the Control Hub’s IMU\)/);
 });
 
 test('a chassis is good to use once its wheels are checked: it asks for no distance measuring and no field map',()=>{
