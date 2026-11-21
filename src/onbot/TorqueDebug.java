@@ -271,13 +271,15 @@ public class TorqueDebug extends LinearOpMode {
                 long now = System.currentTimeMillis();
                 for (String line; (line = commands.poll()) != null; ) apply(line);
                 // The watchdog: Deck went quiet or hung up.
-                if (!connected || now - heard > WATCHDOG_MS) stopOutputs(false);
+                // An IMU turning only pauses for that (its power is held off below): a moment of Wi-Fi that drops a few pings does not end a six-minute tuning.
+                if (!connected || now - heard > WATCHDOG_MS) { TorqueDebugTurn keep = imuTurn; imuTurn = null; stopOutputs(false); imuTurn = keep; }
                 // A power Deck stopped repeating has expired (a slider let go without its 0 arriving).
                 for (int i = 0; i < motors.size(); i++) if (now - motorAt[i] > WATCHDOG_MS && loopOn(false, i) == null) motorPower[i] = 0;
                 for (int i = 0; i < crservos.size(); i++) if (now - crAt[i] > WATCHDOG_MS && loopOn(true, i) == null && burstOn(i) == null) crPower[i] = 0;
                 runLoop(); runBursts();
                 TorqueDebugTurn tt = turnRunning();
-                if (tt != null) for (int j = 0; j < tt.motors.length; j++) { int i = tt.motors[j]; motorPower[i] = clamp(tt.powers[j] * tt.powerNow, -1, 1); motorAt[i] = now; }
+                boolean fresh = connected && now - heard <= WATCHDOG_MS;
+                if (tt != null) for (int j = 0; j < tt.motors.length; j++) { int i = tt.motors[j]; motorPower[i] = fresh ? clamp(tt.powers[j] * tt.powerNow, -1, 1) : 0; motorAt[i] = now; }
                 for (int i = 0; i < motors.size(); i++) motors.get(i).setPower(motorCut[i] ? 0 : motorPower[i]);
                 for (int i = 0; i < crservos.size(); i++) {
                     CRServo c = crservos.get(i);
@@ -379,7 +381,8 @@ public class TorqueDebug extends LinearOpMode {
         for (int j = 0; j < drive.size(); j++) { t.motors[j] = drive.get(j); t.powers[j] = powers.get(j); }
         imuTurn = t;
         if (device == null || !missing.isEmpty() || drive.isEmpty()) { t.state = "problem: " + (device == null ? "No " + (pin ? "Pinpoint" : "IMU") + " called " + sensor + " in this configuration." : drive.isEmpty() ? "No drive motors were given." : "No motor called " + missing + " in this configuration."); t.finished = true; return; }
-        Thread run = new Thread(t, "Torque IMU turning"); run.setDaemon(true); run.start();
+        t.after = old == null ? null : old.thread;
+        Thread run = new Thread(t, "Torque IMU turning"); run.setDaemon(true); t.thread = run; run.start();
     }
     /** Tells the IMU how the hub sits on the robot: L:<logo>:<usb> (the hub square to the robot) or Q:w:x:y:z (tilted, as Torque measured it). */
     static void mountImu(IMU imu, String[] m) {
@@ -1024,7 +1027,7 @@ final class TorqueDebugLoop {
  * (the watchdog), STOP is pressed, or a motor is driven by hand.
  *
  * Every turn uses the turn law (step; ui/sim-chassis-teleop.js turnStep is the reference, step for step).
- * Jobs: tune (50% to 100% turn power, every power tried; the quickest that lands is kept), and check: four
+ * Jobs: watch (the heading only, while the robot is turned by hand), tune (50% to 100% turn power, every power tried; the quickest that lands is kept), and check: four
  * quarter turns with the numbers given. The result is one JSON line, as turnResultOf reads it.
  */
 final class TorqueDebugTurn implements Runnable {
@@ -1050,6 +1053,8 @@ final class TorqueDebugTurn implements Runnable {
     /** Which I2C device the heading comes from, so the op mode's own round of reads leaves it alone. */
     int i2cIndex = -1;
     volatile boolean stopped, finished;
+    /** Its thread, and the one before it, which has to finish (and let the IMU go) before this one sets it up. */
+    Thread thread, after;
     volatile String state = "starting", result;
     volatile double headingNow, powerNow;
     final java.util.concurrent.CopyOnWriteArrayList<String> rows = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -1134,10 +1139,18 @@ final class TorqueDebugTurn implements Runnable {
     }
 
     @Override public void run() {
-        try { robot.setUp(); if ("check".equals(job)) check(); else tune(); }
+        try {
+            if (after != null) after.join(3000);
+            robot.setUp(); if ("check".equals(job)) check(); else if ("watch".equals(job)) watch(); else tune(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         catch (RuntimeException e) { if (result == null) finish(false, 0, "It stopped: " + e.getClass().getSimpleName()); }
         finally { power(0); try { robot.tearDown(); } catch (RuntimeException ignored) { } if (result == null && !state.startsWith("problem:")) state = stopped ? "stopped" : "ended"; finished = true; }
+    }
+
+    /** The heading only, from 0 as it starts, while someone turns the robot by hand: which way the sensor counts a turn to the left. Nothing moves. */
+    void watch() throws InterruptedException {
+        pause(200); read(); heading = 0; headingNow = 0; say("Turn it by hand");
+        while (alive()) { read(); pause(20); }
     }
 
     /** Four quarter turns with the numbers it was given: what a team sees its code do. */
@@ -1253,7 +1266,7 @@ final class TorqueDebugTurnHub implements TorqueDebugTurnRobot {
         return ((IMU) device).getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
     }
     public void power(double turn) { }
-    public boolean alive() { return debug.running && debug.connected && !debug.isStopRequested(); }
+    public boolean alive() { return debug.running && debug.connected && System.currentTimeMillis() - debug.heard < 2500 && !debug.isStopRequested(); }
     public void pause(long ms) throws InterruptedException { Thread.sleep(ms); }
     public double seconds() { return System.nanoTime() / 1e9; }
     public double loopMs() { return debug.loopMsNow; }

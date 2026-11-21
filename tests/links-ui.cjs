@@ -56,7 +56,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     let leftBackWay=1;/* -1 once leftBack is found to be mounted the other way round: its raw power then turns the robot the other way */const pos=[0,0,0,0],pow=[0,0,0,0],resets=[],motorLines=[],servoLines=[],turnLines=[];let t=0,yaw=0,pitch=0,beam=1,turning=null,turnNext=null;
     (async()=>{while(run){const lines=await app.evaluate(()=>global.__sent.splice(0)).catch(()=>[]);for(const l of lines){const [c,n,v]=l.split('\t');if(c==='M')motorLines.push(l);if(c==='S'||c==='E')servoLines.push(l);const i=MOTORS.indexOf(n);if(c==='M'&&i>=0)pow[i]=+v;if(c==='R'&&i>=0){pos[i===2?3:i===3?2:i]=0;resets.push(n);}if(c==='X'){pow.fill(0);if(turning)turning.stopped=true;}if(c==='U'){turnLines.push(l);turning={job:n,id:+v,n:0,...turnNext};}}
       // IMU turning in Torque Debug: where it is for a few frames, each power done so far, then its result.
-      let tt;if(turning){const x=turning,k=++x.n;tt={job:x.job,id:x.id,state:x.stopped?'stopped':k<4?'starting':k<8?'50%: round 1 of 3':'done',h:k*3,p:k<8?.3:0,fin:x.stopped||k>=10?1:0,rows:k<6?[]:x.rows||[],result:k>=10&&!x.stopped?x.result:null};if(tt.fin)turning=null;}
+      let tt;if(turning){const x=turning,k=++x.n;tt={job:x.job,id:x.id,state:x.stopped?'stopped':x.job==='watch'?'Turn it by hand':k<4?'starting':k<8?'50%: round 1 of 3':'done',h:x.job==='watch'?-Math.min(k*3,45):k*3,p:k<8&&x.job!=='watch'?.3:0,fin:x.stopped||(x.job!=='watch'&&k>=10)?1:0,rows:k<6?[]:x.rows||[],result:k>=10&&!x.stopped?x.result:null};if(tt.fin)turning=null;}
       for(let i=0;i<4;i++){const into=i===2?3:i===3?2:i;pos[into]+=Math.round(pow[i]*40);}yaw-=(pow[0]+leftBackWay*pow[1])*1.5;
       await send({frame:{t:t+=40,loop:6,v:13,m:pos.map((p,i)=>[p,0,pow[i],0,0]),s:[[.5,1]],c:[],d:[beam],touch:[],l:[],a:[],i:[{age:10,v:{yaw,pitch,roll:0,wx:0,wy:0,wz:0}}],on:[1],b:[],...(tt?{tt}:{})}}).catch(()=>{});await wait(40);}})();
     await soon('frames drawn',async()=>/robot clock/.test(await page.textContent('[data-debug-stats]')));
@@ -183,18 +183,26 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     const tuned=(mode,backwards,rounds)=>{turnNext={rows:rounds.map(r=>`${Math.round(r.power*100)}% ${r.ok?'good':'no'}`),result:JSON.stringify({v:2,mode,backwards,least:.07,tolerance:3,repeats:3,readMs:7.2,problem:'',rounds})};};
     tuned('standard',true,[rnd(.5,2.2,true),rnd(.55,1.9,true),rnd(.6,1.8,false,4.2,14)]);
     await soon('the nudge is over',async()=>!(await page.isDisabled('[data-chassis=tune-tune]')));
+    const devsBefore=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices);
+    // First the robot is turned left by hand: this IMU counts that as a turn to the right, so it is turned round. Enter starts the tuning.
     await page.selectOption('[data-chassis-turn-want]','3');await page.click('[data-chassis=tune-tune]');
+    await soon('it asks for a turn by hand',async()=>/First, turn the robot by hand/.test(await page.textContent('[data-chassis-step="2"]')));
+    await soon('the hand line went',async()=>turnLines.length>=1);
+    assert.match(turnLines[0],/^U\twatch\t.*\timu:imu\tL:UP:FORWARD\t1\t/,'the heading alone, nothing moves: '+turnLines[0]);
+    await soon('it was turned',async()=>+(await page.textContent('[data-chassis-handturn]'))<=-20);await page.keyboard.press('Enter');
     await soon('it says where it is',async()=>/50%: round 1 of 3/.test(await page.textContent('[data-chassis-step="2"]')));
     await soon('the standard tuning finishes and shows what it found',async()=>/Tuning: 55% is the quickest power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    assert.equal(turnLines.length,1);assert.match(turnLines[0],/^U\ttune\t\d+\t3\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\timu:imu\tL:UP:FORWARD\t1\tleftFront\t-?1\trightFront\t-?1\tleftBack\t-?1\trightBack\t-?1$/,'one line to Torque Debug: '+turnLines[0]);
+    assert.equal(turnLines.length,2);assert.match(turnLines[1],/^U\ttune\t\d+\t3\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\timu:imu\tL:UP:FORWARD\t-1\tleftFront\t-?1\trightFront\t-?1\tleftBack\t-?1\trightBack\t-?1$/,'one line to Torque Debug, by the heading turned round: '+turnLines[1]);
     assert.equal(await app.evaluate(()=>Object.keys(global.__files||{}).filter(f=>/Imu|Tune/i.test(f)).length),0,'nothing sent to the robot');
-    {const p=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2'))),t=p.calibration.chassis.turnTune;assert.equal(t.standard.top,.55);assert.equal(t.standard.done,3);assert.equal(t.standard.rounds.length,3);assert.equal(t.backwards,true);assert.equal(p.robot.odometry?.imu?.reversed,true,'the heading is taken the other way round');}
+    {const p=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2'))),t=p.calibration.chassis.turnTune;assert.equal(t.standard.top,.55);assert.equal(t.standard.done,3);assert.equal(t.standard.rounds.length,3);assert.equal(!!t.backwards,false);assert.equal(p.robot.odometry?.imu?.reversed,true,'the IMU, turned round by the hand turn');
+      // It found a turn to the left counted backwards, after the IMU was known right: the motors are on the wrong sides, and are swapped.
+      assert.equal(p.robot.devices.frontLeft.name,devsBefore.frontRight.name,'the left and right motors swapped');assert.match(await page.textContent('[data-chassis-step="2"]'),/Asked to turn left, it turned right/);}
     assert.equal(await page.locator('[data-chassis-step="2"] [data-imu-best]').count(),1);
     // Then the check: four quarter turns by what it found, and the student says whether it lands.
     assert.doesNotMatch(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head'),/Good to use|Calibrated/,'not good to use until it is checked');
     turnNext={rows:['Left 90°: 0.8° off','Back to 0°: 0.5° off','Right 90°: 1.1° off','Back to 0°: 0.4° off'],result:JSON.stringify({v:2,check:true,tolerance:3,readMs:7,turns:[]})};await page.click('[data-chassis=tune-check]');
     await soon('it asks whether it landed',async()=>/Did it turn left first/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    assert.match(turnLines[1],/^U\tcheck\t\d+\t3\t0\.55\t0\.07\t80\t0\.0017\t[^\t]+\timu:imu\tL:UP:FORWARD\t-1\t/,'turned by what was found, the heading the other way round: '+turnLines[1]);
+    assert.match(turnLines[2],/^U\tcheck\t\d+\t3\t0\.55\t0\.07\t80\t0\.0017\t[^\t]+\timu:imu\tL:UP:FORWARD\t-1\t/,'turned by what was found, the heading the other way round: '+turnLines[2]);
     assert.match(await page.textContent('[data-chassis-step="2"]'),/Right 90°: 1\.1° off/);await page.click('[data-chassis=check-yes]');
     await soon('good to use once the IMU is tuned and checked',async()=>/Calibrated|Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
     // It turned right first: the left and right motors were swapped in Setup and the tuning took the heading to count backwards. Torque puts

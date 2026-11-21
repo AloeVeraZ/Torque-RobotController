@@ -419,7 +419,8 @@
       const tt=turnOf(r),want=TURN_WANTS.includes(r.turnWant)?r.turnWant:2,prof=turnProfiles(r),srcWord=c.loc==='fused'?'the Pinpoint':'the Control Hub’s IMU',canRun=live()&&!tuneRun&&!runs.size;
       const table=x=>x?.rounds?.length?`<table class="cal-elec-slots cal-hand-table"><thead><tr><th scope="col">Turn power</th><th scope="col"></th><th scope="col">Off at worst</th><th scope="col">Past at worst</th><th scope="col">To get there</th></tr></thead><tbody>${x.rounds.map(y=>`<tr${x.at&&Number.isFinite(x.top)&&Math.abs(y.power-x.top)<.001?' data-imu-best':''}><th scope="row">${Math.round(y.power*100)}%</th><td>${y.ok?'<span class="rs-pill ok">Good</span>':'<span class="rs-pill">No</span>'}</td><td>${f(y.worst,1)}°</td><td>${f(y.over,1)}°</td><td>${f(y.seconds,2)} s</td></tr>`).join('')}</tbody></table>`:'';
       const said=x=>!x?'':x.none?`<p class="cal-sense-note bad">None of its powers landed within ±${f(x.done,1)}° every time.${x.problem?' '+esc(x.problem):' Allow a few more degrees and run it again.'}</p>`:`<p class="cal-sense-result"><span class="rs-pill ok">Best: ${Math.round(x.top*100)}%</span> ${f(x.worst,1)}° off at worst over ${x.repeats||3} rounds, ${f(x.seconds,2)} s to get there.</p>`;
-      const doing=job=>tuneRun?.job===job?`<div class="button-row"><span class="hint" role="status" data-chassis-tune-state>${esc(tuneRun.state||'Starting…')}</span><button type="button" class="secondary" data-chassis="tune-stop">Stop</button></div>${tuneRun.rows?.length?`<ul class="cal-sense-rows" data-chassis-tune-rows>${tuneRun.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul>`:''}`:'';
+      const doing=job=>job==='tune'&&tuneRun?.job==='watch'?handBody():tuneRun?.job===job?`<div class="button-row"><span class="hint" role="status" data-chassis-tune-state>${esc(tuneRun.state||'Starting…')}</span><button type="button" class="secondary" data-chassis="tune-stop">Stop</button></div>${tuneRun.rows?.length?`<ul class="cal-sense-rows" data-chassis-tune-rows>${tuneRun.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul>`:''}`:'';
+      const handBody=()=>`<div class="cal-hand-turn"><p><b>First, turn the robot by hand.</b> Turn it to its left (counter-clockwise, seen from above), about a quarter turn. That tells Torque which way the IMU counts, whatever the motors do. Then press Enter (or Done) and the tuning runs by itself.</p><p class="cal-sense-result">Turned: <b data-chassis-handturn>${f(tuneRun.h,1)}</b>°</p><div class="button-row"><button type="button" class="primary" data-chassis="hand-done">Done · Enter</button><button type="button" class="secondary" data-chassis="tune-stop">Cancel</button></div></div>`;
       const runRow=(mode,label,minutes,on)=>doing(mode)||`<div class="button-row"><button type="button" class="${prof.standard?'secondary':'primary'}" data-chassis="tune-${mode}"${canRun&&on?'':' disabled'}>${prof.standard?'Run it again':label} · about ${minutes} min</button></div>`;
       const nudge=[['forward','Forward'],['back','Backward'],['left','Turn left'],['right','Turn right']].map(([k,l])=>`<button type="button" class="secondary" data-chassis="nudge" data-nudge="${k}"${canRun?'':' disabled'}>${l}</button>`).join('');
       const checkRes=prof.lastCheck,checkBody=doing('check')||(checkAsk?`<ul class="cal-sense-rows">${checkAsk.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul><p><b>Its first turn was to its left: counter-clockwise, seen from above. Did it turn left first, then a quarter turn each way, and stop there without wobbling?</b></p><div class="button-row"><button type="button" class="primary" data-chassis="check-yes">Yes, left first, and it lands</button><button type="button" class="secondary" data-chassis="check-mirror">It turned right first</button><button type="button" class="secondary" data-chassis="check-no">It does not land</button></div>`
@@ -429,7 +430,7 @@
         <div class="cal-imu-live"><p class="cal-sense-result">Heading (${esc(srcWord)}): <b data-chassis-heading>${esc(headingText())}</b>°${tuneRun?` · turn power <span data-chassis-tpower>${f(tuneRun.p,2)}</span>`:''}</p>
         <p class="hint">Drive it a little and watch the heading: turning left counts up. Each moves it for about a second.</p><div class="button-row">${nudge}</div></div>
         <div class="cal-fields"><div class="cal-field"><label for="cal-turn-want">A turn has to end within</label><select id="cal-turn-want" data-chassis-turn-want${tuneRun?' disabled':''}>${TURN_WANTS.map(v=>`<option value="${v}"${v===want?' selected':''}>±${v}°</option>`).join('')}</select></div></div>
-        <h4 class="cal-group-title">Tuning · 50% to 100% turn power</h4><p class="hint">Turns at 50%, 60% and 70%, then every 5% up to full power: three rounds of four quarter turns at each. A power that misses does not stop it. It keeps the quickest power whose turns all land.</p>${runRow('tune','Run the tuning',6,true)}${said(prof.standard)}${table(prof.standard)}
+        <h4 class="cal-group-title">Tuning · 50% to 100% turn power</h4><p class="hint">You turn it left by hand first; then it turns itself at 50%, 60% and 70%, then every 5% up to full power: three rounds of four quarter turns at each. A power that misses does not stop it. At the end it keeps the best of them all: the quickest whose turns all land.</p>${runRow('tune','Run the tuning',6,true)}${said(prof.standard)}${table(prof.standard)}
         ${prof.standard&&!prof.standard.none?`        <h4 class="cal-group-title">Check it</h4><p class="hint">Four quarter turns (left, back, right, back) by the numbers the code turns with. Watch it, then say whether it lands.</p>${checkBody}${checkRes?.rows?.length&&!checkAsk&&!tuneRun?`<ul class="cal-sense-rows">${checkRes.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul>`:''}`:''}
         ${imuSaid?`<p class="hint" role="status" data-chassis-imu-said>${esc(imuSaid)}</p>`:''}
         <p class="hint">${tt.measured?`Now: up to ${Math.round(tt.top*100)}% turn power, slowing from ${f(tt.slowFrom,0)}° out, ending within ±${f(tt.done,1)}°. ${prof.backwards?'The heading counted a turn to the left as a turn to the right, so the code takes it the other way round.':'The heading counts the right way.'}${Number.isFinite(tt.readMs)?` A heading read takes ${f(tt.readMs,1)} ms on the robot, and the turning allows for it.${tt.readMs>=6&&c.loc!=='fused'?' That is the Control Hub’s IMU being slow over I2C (common in FTC): the heading arrives late. A goBILDA Pinpoint gives the heading much faster, which is why many teams use one.':''}`:''} Send the autonomous and the TeleOp again after tuning.`:'Not tuned yet.'}</p>`;
@@ -624,14 +625,17 @@
     // The same result read twice changes nothing more (the way round is only turned over once for a run).
     // What a tuning found on the robot, into this robot's calibration as its standard or aggressive profile. Each run is written with the
     // heading as it is now, so a run that says it counts backwards means the way round is turned over from what it is now.
-    function takeTurnResult(text){const T=globalThis.DeckChassisTeleop,res=T.turnResultOf(text),r=rec(),c=ch();if(!res)return 'It finished without a result.';
+    function takeTurnResult(text,hand){const T=globalThis.DeckChassisTeleop,res=T.turnResultOf(text),r=rec(),c=ch();if(!res)return 'It finished without a result.';
+      // After the hand turn the IMU is known to be the right way round: a robot that turned right when asked to turn left has its left and right motors swapped.
+      let swapped=null;if(res.backwards&&hand){swapped=opts.swapSides?.()||'';res.backwards=false;}
       if(res.backwards&&hubHeading(c))opts.setImuReversed?.(!c.odo?.imu?.reversed);
       const b=res.best,at=new Date().toISOString(),tol=Number.isFinite(res.tolerance)?res.tolerance:2,prof={...turnProfiles(r)};
       const lag=Number.isFinite(res.readMs)?+((res.readMs+5)/1000).toFixed(4):undefined;
       prof[res.mode]=b?{top:b.power,least:res.least,slowFrom:b.slowFrom,brake:b.brake,done:tol,...(lag?{lag,readMs:res.readMs}:{}),rate:b.rate,coast:b.coast,worst:b.worst,seconds:b.seconds,repeats:res.repeats,rounds:res.rounds,at}:{done:tol,rounds:res.rounds,repeats:res.repeats,none:true,problem:res.problem,at};
       if(res.mode==='standard'&&!b)delete prof.use;if(res.backwards)prof.backwards=!prof.backwards;prof.v2=true;delete prof.checked;delete prof.lastCheck;delete prof.aggressive;delete prof.use;r.turnTune=prof;
       const pinBack=res.backwards&&!hubHeading(c)?' The Pinpoint counted a turn to the left as a turn to the right: check how it is mounted.':'';
-      return (b?`Tuning: ${Math.round(b.power*100)}% is the quickest power that landed within ±${tol}° every time.`:res.problem||'Tuning: none of its powers landed every time.')+pinBack;}
+      const mirror=swapped!==null?` Asked to turn left, it turned right: ${swapped?`its left and right drive motors were swapped in Setup (${swapped}); they are on their own sides now.`:'its turning is the wrong way round. Check which motor is on which wheel in Electronics.'}`:'';
+      return (b?`Tuning: ${Math.round(b.power*100)}% is the quickest power that landed within ±${tol}° every time.`:res.problem||'Tuning: none of its powers landed every time.')+pinBack+mirror;}
     // IMU turning in Torque Debug (DeckChassisTeleop.turnLineOf): one U line, and the robot does the rest while the live readings
     // keep coming; each frame's "tt" says how it goes, and its result (a tuning, or the check's four turns) ends it.
     function turnLine(job){const c=ch(),r=rec(),T=globalThis.DeckChassisTeleop,want=TURN_WANTS.includes(r.turnWant)?r.turnWant:2,prof=turnProfiles(r),tn=turnOf(r);
@@ -641,19 +645,27 @@
       const pin=c.loc==='fused';
       return T.turnLineOf({job,id:++tuneN,tolerance:job==='check'?tn.done:want,turn:job==='check'?tn:undefined,heading:pin?{kind:'pinpoint',name:c.pinpoint}:{kind:'hub',name:c.imu},mount,scale:pin?(prof.backwards?-1:1):imuFactor(c),
         motors:c.motors.map((m,i)=>({name:m.name,power:turn[i]*(m.reversed?-1:1)}))});}
-    function runTurn(job){if(tuneRun||runs.size||!live())return;told='';imuSaid='';checkAsk=null;const t=turnLine(job);if(t.error){imuSaid=t.error;return paint();}
-      tuneRun={job,id:tuneN,state:'Starting on the robot…',rows:[],p:0,h:NaN,at:performance.now(),seen:false};send(t.line);follow();
+    function runTurn(job,{hand=false}={}){if(job==='tune'&&!hand)job='watch';if(tuneRun||runs.size||!live())return;told='';imuSaid='';checkAsk=null;const t=turnLine(job);if(t.error){imuSaid=t.error;return paint();}
+      tuneRun={job,id:tuneN,state:'Starting on the robot…',rows:[],p:0,h:NaN,at:performance.now(),seen:false,hand};send(t.line);follow();
       // Live readings stopping, or the robot never taking it up (a Torque Debug from before IMU turning), ends it here.
       tuneRun.timer=setInterval(()=>{const run=tuneRun;if(!run){return;}if(!live())return endTurn('The live readings stopped, so the robot stopped turning.');
         if(!run.seen&&performance.now()-run.at>4000)endTurn('The robot did not start it. Stop the live readings and start them again: Torque puts its newest Torque Debug on the robot first.');},500);paint();}
+    // The hand turn: a turn to the left by hand counts up when the IMU is the right way round. Counting down, it is turned round now (whatever
+    // the motors do), and the tuning starts by itself, by the heading as it is now.
+    function handDone(){const run=tuneRun;if(!run||run.job!=='watch')return;const h=run.h;
+      if(!(Math.abs(h)>=20)){imuSaid=Number.isFinite(h)?`It has turned ${f(h,1)}°: turn it further, about a quarter turn to its left, then press Enter.`:'No heading from the robot yet: wait a moment, then turn it.';const el=box.querySelector('[data-chassis-imu-said]');if(el)el.textContent=imuSaid;else paint();return;}
+      const c=ch(),r=rec(),prof={...turnProfiles(r)};clearInterval(run.timer);tuneRun=null;
+      if(h<0){if(c.loc==='fused'){prof.backwards=!prof.backwards;r.turnTune=prof;}else opts.setImuReversed?.(!c.odo?.imu?.reversed);imuSaid='The IMU counted that turn to the left as a turn to the right: it is turned round now. Tuning…';}else imuSaid='The IMU counts the right way. Tuning…';
+      opts.save();runTurn('tune',{hand:true});}
     function endTurn(why){if(!tuneRun)return;clearInterval(tuneRun.timer);tuneRun=null;if(why)imuSaid=why;save();}
     // A frame's "tt": the run this page started (by its id) going on, or done.
     function turnFrame(x){const run=tuneRun;if(!run||!x||x.id!==run.id)return;run.seen=true;run.state=/^problem: /.test(x.state||'')?x.state.slice(9):x.state==='starting'?'Starting on the robot…':x.state;run.rows=Array.isArray(x.rows)?x.rows:run.rows;run.p=x.p;run.h=x.h;
+      if(run.job==='watch'){const el=box.querySelector('[data-chassis-handturn]');if(el)el.textContent=f(run.h,1);if(x.fin)endTurn(/^problem: /.test(x.state||'')?x.state.slice(9):'');return;}
       if(!x.fin){const st=box.querySelector('[data-chassis-tune-state]');if(st&&st.textContent!==run.state)st.textContent=run.state;const pw=box.querySelector('[data-chassis-tpower]');if(pw)pw.textContent=f(run.p,2);
         const ul=box.querySelector('[data-chassis-tune-rows]');if(ul){const h=run.rows.map(y=>`<li>${esc(y)}</li>`).join('');if(ul.innerHTML!==h)ul.innerHTML=h;}else if(run.rows.length&&!queued){queued=true;requestAnimationFrame(()=>{queued=false;paint();});}return;}
       if(!x.result)return endTurn(/^problem: /.test(x.state||'')?x.state.slice(9):x.state==='stopped'?'Stopped.':'It stopped before it finished.');
       if(run.job==='check'){let res=null;try{res=JSON.parse(x.result);}catch{}const r=rec(),prof={...turnProfiles(r)};prof.lastCheck={rows:run.rows.slice(),turns:res?.turns||[],at:new Date().toISOString()};r.turnTune=prof;checkAsk={rows:run.rows.slice()};return endTurn('');}
-      imuSaid=takeTurnResult(x.result);endTurn();}
+      imuSaid=takeTurnResult(x.result,run.hand);endTurn();}
     // Asked to turn left, it turned right, yet landed every turn: the heading and the wheels agree with each other but not with the robot. The
     // likely cause is the left and right drive motors swapped in Setup (forward still works that way, turning is mirrored), and the tuning
     // then took the heading to count backwards. So the motors are put on their own sides and the heading is turned back round; then check it again.
@@ -681,6 +693,7 @@
       if(e.target.dataset?.chassisTurnUse!==undefined){const r=rec(),p={...turnProfiles(r)};if(e.target.value==='aggressive'&&p.aggressive?.at&&!p.aggressive.none)p.use='aggressive';else delete p.use;r.turnTune=p;save();return;}
       if(e.target.dataset?.chassisTurnWant!==undefined){const r=rec(),v=+e.target.value;if(TURN_WANTS.includes(v)){r.turnWant=v;save();}return;}
       const which=e.target.dataset?.chassisTol;if(!which)return;const r=rec();r.tol={...tolOf(r),[which]:+e.target.value};for(const x of Object.values(r.pods||{})){delete x.left;delete x.right;}save();});
+    document.addEventListener('keydown',e=>{if(e.key!=='Enter'||tuneRun?.job!=='watch'||!box?.offsetParent||e.target?.matches?.('input,textarea,select'))return;e.preventDefault();handDone();});
     box?.addEventListener('input',e=>{const r=rec();if(e.target.id==='cal-spot-x')r.draftX=e.target.value;if(e.target.id==='cal-spot-y')r.draftY=e.target.value;});
     box?.addEventListener('click',e=>{const b=e.target.closest('[data-chassis]');if(!b)return;const r=rec(),a=b.dataset.chassis;
       if(a==='go'){const c=ch(),q=podsOf(c,steerOf(c)).find(x=>x.key===b.dataset.pod);return q?go(q,b.dataset.kind):undefined;}
@@ -699,7 +712,7 @@
       if(a==='steer'){const v=debug.values(),zero={};for(const m of steerOf(ch())){if(!Number.isFinite(v['a:'+m.name]))return void(b.textContent='No readings yet: try again');zero[m.name]=+v['a:'+m.name].toFixed(4);}
         r.steer={at:new Date().toISOString(),zero};for(const x of Object.values(r.pods||{})){delete x.left;delete x.right;}opts.setSteerZero?.(zero);return save();}
       if(a==='tune-tune'||a==='tune-check')return runTurn(a.slice(5));if(a==='tune-stop'){send('X');return endTurn('Stopped.');}
-      if(a==='check-yes'||a==='check-no')return answerCheck(a==='check-yes');if(a==='check-mirror')return mirrored();if(a==='nudge')return nudge(b.dataset.nudge);
+      if(a==='check-yes'||a==='check-no')return answerCheck(a==='check-yes');if(a==='check-mirror')return mirrored();if(a==='hand-done')return handDone();if(a==='nudge')return nudge(b.dataset.nudge);
       if(a==='roll-start'){rollFrom={...debug.values()};follow();return paint();}
       if(a==='roll-cancel'){rollFrom=null;return paint();}
       if(a==='roll-done'){const c=chassisOf({...p(),calibration:{}},opts.C,{cpr:opts.cpr?.()||537.7});r.roll={...rollOf(c,rollFrom,debug.values()),at:new Date().toISOString()};rollFrom=null;return save();}
