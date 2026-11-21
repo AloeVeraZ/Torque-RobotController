@@ -42,6 +42,8 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
       if(action==='send'){g.__files={...(g.__files||{}),...(d.files||{})};return ok({built:true,seconds:9,log:'',errors:[]});}if(action==='onbot-read')return ok(null);
       // IMU tuning: the robot runs it and reports, as a Driver Station sees it, where it is and then its result.
       if(action==='tune-start'){(g.__tuneRuns??=[]).push(d.opMode);const x=g.__tune,w=BrowserWindow.getAllWindows(),say=v=>{for(const win of w)win.webContents.send('robot-link-tune',v);};
+        // Just built: the first time the robot does not list it yet, as a real one does for a few seconds after a build.
+        if((g.__tuneAsked=(g.__tuneAsked||0)+1)===1){setTimeout(()=>say({error:`The robot has no op mode “${d.opMode}”. Send to robot first, so it is built.`}),100);return ok(true);}
         setTimeout(()=>say({state:'running',lines:['torque.state : 50%: round 1 of 3']}),200);setTimeout(()=>say({state:'running',lines:['torque.state : 60%: round 2 of 3',...x.rows.map(r=>'torque.row : '+r)]}),500);
         setTimeout(()=>say({state:'running',lines:['torque.state : done','torque.result : '+x.result]}),900);return ok(true);}
       if(action==='tune-stop')return ok(true);if(action==='debug-send'){g.__sent.push(d.line);return ok(true);}if(action==='debug-install')return ok({opMode:'TorqueDebug-x'});if(action==='debug-current')return ok({current:true,opMode:'TorqueDebug-x'});
@@ -184,7 +186,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await page.selectOption('[data-chassis-turn-want]','3');motorLines.length=0;await page.click('[data-chassis=tune-standard]');
     await soon('the standard tuning finishes and shows what it found',async()=>/Standard tuning: 55% is the best power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
     {const sent=await app.evaluate(()=>global.__files||{}),src=sent['TorqueImuTune.java']||'';assert.match(src,/@TeleOp\(name = "Torque IMU tuning", group = "Torque"\)/);assert.match(src,/TOLERANCE_DEGREES = 3\.0;/);assert.match(src,/DRIVE = \{"leftFront", "rightFront", "leftBack", "rightBack"\}/);
-      assert.deepEqual(await app.evaluate(()=>global.__tuneRuns),['Torque IMU tuning'],'Torque started it itself');}
+      assert.deepEqual(await app.evaluate(()=>global.__tuneRuns),['Torque IMU tuning','Torque IMU tuning'],'Torque started it itself, again once the robot had loaded it');}
     {const p=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2'))),t=p.calibration.chassis.turnTune;assert.equal(t.standard.top,.55);assert.equal(t.standard.done,3);assert.equal(t.standard.rounds.length,3);assert.equal(t.backwards,true);assert.equal(p.robot.odometry?.imu?.reversed,true,'the heading is taken the other way round');}
     await soon('good to use once the IMU is tuned',async()=>/Calibrated|Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));assert.equal(await page.locator('[data-chassis-step="2"] [data-imu-best]').count(),1);
     // Aggressive: written with the heading as it is now (already turned round), so the robot finds it the right way round.

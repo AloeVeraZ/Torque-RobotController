@@ -4293,13 +4293,16 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
         if(String(theirs||'').replace(/\r\n/g,'\n').trim()!==t.source.trim()){update({stage:'Putting it on the robot and building it there…'});await sendJava(t.file,t.source);}}
       finally{robotSending--;}
       update({stage:'Starting it on the robot…'});
-      return await new Promise((resolve,reject)=>{let done=false,off=null;const end=f=>{if(done)return;done=true;off?.();f();};
-        off=api.onRobotTune(u=>{if(done)return;if(u.error)return end(()=>reject(Error(u.error)));
+      // Just after a build the robot reloads its op modes: for a few seconds it does not list the new one yet (or still runs another), so it is asked again.
+      return await new Promise((resolve,reject)=>{let done=false,off=null,tries=0;const end=f=>{if(done)return;done=true;off?.();f();};
+        const again=e=>{const m=String(e?.message||e);if(++tries<10&&/has no op mode|did not list|is running on the robot|did not INIT|did not START|Another Driver Station/i.test(m)){update({stage:`Built. Waiting for the robot to load it… (${tries})`});setTimeout(start,3000);return true;}return false;};
+        const start=()=>{if(done)return;api.robotLink('tune-start',{host,opMode:t.opMode}).catch(e=>{if(!again(e))end(()=>reject(e));});};
+        off=api.onRobotTune(u=>{if(done)return;if(u.error){if(!again(u.error))end(()=>reject(Error(u.error)));return;}
           if(u.ended)return end(()=>reject(Error(u.ended==='lost'?'the connection to the robot dropped.':u.ended==='stopped'?'it was stopped.':'it stopped before it finished.')));
           const lines=u.lines||[],val=k=>lines.filter(l=>l.startsWith(k+' : ')).map(l=>l.slice(k.length+3)),state=val('torque.state').at(-1),result=val('torque.result').at(-1),rows=val('torque.row');
           if(state)update({state:state==='ready'?'Started: it turns by itself now.':state==='done'?'Done.':state,...(rows.length?{rows}:{})});
           if(result)end(()=>{void api.robotLink('tune-stop').catch(()=>{});resolve(result);});});
-        api.robotLink('tune-start',{host,opMode:t.opMode}).catch(e=>end(()=>reject(e)));});},
+        start();});},
     stopTurnTune:()=>api.robotLink('tune-stop'),
     setImuReversed:on=>{const o={...project.robot.odometry},im={...o.imu};if(on)im.reversed=true;else delete im.reversed;if(Object.keys(im).length)o.imu=im;else delete o.imu;project.robot=C.robot({...project.robot,odometry:o},project.controller);save();},
     setReversed:(key,on)=>{project.robot.devices={...project.robot.devices,[key]:{...project.robot.devices?.[key],reversed:!!on}};calKeepRead(()=>applyWiring(structuredClone(project.robot.wiring)));},

@@ -85,7 +85,7 @@ public final class Constants {
         config.acceleration=${n(Math.max(20,Math.min(t.maxForward*3,(t.maxAcceleration??t.maxForward*2)*.65)))}; config.tank=${h.drive.kind==='tank'};
         config.maxPathSpeed=${n(t.maxPathSpeed??.8)};${(tn=>tn?`
         // Turning on the spot, as Calibrate set it${tn.measured?' from what it measured on the robot':''}.
-        config.turnTop=${n(tn.top)}; config.turnLeast=${n(tn.least)}; config.turnSlow=Math.toRadians(${n(tn.slowFrom)}); config.turnBrake=${n(+(tn.brake*180/Math.PI).toFixed(4))}; config.turnDone=Math.toRadians(${n(+(Math.max(1,tn.done)*.7).toFixed(2))});`:'')(options.turn)}
+        config.turnTop=${n(tn.top)}; config.turnLeast=${n(tn.least)}; config.turnSlow=Math.toRadians(${n(tn.slowFrom)}); config.turnBrake=${n(+(tn.brake*180/Math.PI).toFixed(4))}; config.turnDone=Math.toRadians(${n(+(Math.max(1,tn.done)*.7).toFixed(2))}); config.turnLag=${n(+(tn.lag??.02).toFixed(4))};`:'')(options.turn)}
         ElapsedTime clock = new ElapsedTime();
         return new DeckFollower(hardware, hardware, config, () -> clock.nanoseconds());
     }
