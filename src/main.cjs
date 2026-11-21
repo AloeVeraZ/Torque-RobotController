@@ -463,7 +463,7 @@ handle('axon',async(action,data)=>{
 // robot-link-check events, then one {ended} (or {error}) when it stops.
 // debug-install / debug-start / debug-send / debug-stop: Torque Debug (Calibrate → Camera and Debug). Its device
 // list and readings arrive as robot-link-debug events ({manifest}, {frame}), then one {ended} (or {error}).
-let sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null,servoTest=null,servoLive=null;
+let robotTune=null,sentOpMode=null,robotCheck=null,robotDebug=null,debugBusy=null,servoTest=null,servoLive=null;
 // The Servo Test's slider: the pulse now, written to the robot's plan with a count the op mode watches. Writes never overlap
 // (a newer pulse waits for the one going out, and only the newest goes), and the plan is written again every second so the op
 // mode knows Torque is still there: 3 s without a new count and it turns the port off by itself.
@@ -491,7 +491,7 @@ async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='us
   if(built.built&&usb)debugWatch(before,serial);
   return {...built,opMode,...(built.fixed?.length?{fixedNote:robotLink.fixNote(built.fixed)}:{}),...(built.built?{}:{problem:robotLink.buildProblem(built.errors)})};}
 // What waits while that runs: a save or a restart would look like a crash to the guard, and a build is not to be interrupted. Reading the hub's files and ports does neither.
-const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
+const DEBUG_HOLDS=new Set(['tune-start','check-start','debug-start','debug-current','debug-install','rc-start','read','read-all','hubs','scan','delete-config','check','activate','configure','send']);
 // Wiring notes read over the cable, for when Wi-Fi cannot read them (robotLink.notesThrough), and failing that those Drive's Configure Robot keeps. An entry here, empty or not, is what was last saved or read.
 let notesRobot=null;const notesStore={file:()=>path.join(app.getPath('userData'),'configuration-notes.json'),key:(robot,name)=>`${String(robot).slice(0,80)}\n${String(name).slice(0,80)}`,
   all(file){try{const v=JSON.parse(fs.readFileSync(file,'utf8'));return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch{return {};}},
@@ -553,6 +553,14 @@ handle('robot-link',async(action,data)=>{
   if(action==='rc-start'){if(data?.host==='usb')await robotLink.usbController((await robotLink.usbForward()).serial);return true;}
   // Is the robot's Torque Debug this one? The app has to be up to say.
   if(action==='debug-current'){if(data?.host==='usb')await robotLink.usbLink(usbOptions);return robotLink.debugCurrent(data?.host);}
+  // tune-start / tune-stop: Calibrate's IMU tuning, an op mode of Torque's run as a Driver Station runs one (INIT, START), over the cable or the robot's
+  // Wi-Fi. Its telemetry goes to the page as robot-link-tune until it says it is done, and Torque stops it then.
+  if(action==='tune-stop'){const t=robotTune;if(t){t.stop();await Promise.race([t.ended.catch(()=>{}),delay(5000)]);}return true;}
+  if(action==='tune-start'){if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);if(robotTune)throw Error('IMU tuning is already running.');if(robotDebug)throw Error('Live readings are still running. Stop them first.');if(robotCheck)throw Error('The guided check is running. Stop it first.');
+    if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
+    const tune=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-tune',update),limit:12*60e3});robotTune=tune;
+    tune.ended.then(why=>emit('robot-link-tune',{ended:why}),e=>emit('robot-link-tune',{error:e.message})).finally(()=>{if(robotTune===tune)robotTune=null;});
+    return true;}
   if(action==='check-start'){if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const check=robotLink.runCheck(data?.host,data?.opMode,{onUpdate:update=>emit('robot-link-check',update)});robotCheck=check;check.usb=data?.host==='usb';
     check.ended.then(why=>{if(!check.told)emit('robot-link-check',{ended:why});},e=>{if(!check.told)emit('robot-link-check',{error:e.message});}).finally(()=>{if(robotCheck===check)robotCheck=null;});
@@ -582,7 +590,7 @@ handle('robot-link',async(action,data)=>{
   if(action==='servo-test-hubs'){if(data?.host!=='usb')throw Error('The Servo Test runs over the USB cable only.');await robotLink.usbForward();return (await robotLink.rcHubs('usb')).map(h=>({address:h.moduleAddress,name:h.name,parent:h.parentSerial==='(embedded)'||h.moduleAddress===173,firmware:h.firmwareVersion}));}
   // The slider moved: 0 (no pulse) to 2500 µs, sent at once.
   if(action==='servo-test-set'){const us=Math.round(Number(data?.us));if(!(us>=0&&us<=2500))throw Error('A pulse must be 0 to 2500 µs.');if(!servoLive)return false;servoLive.us=us;servoLiveWrite();return true;}
-  if(action==='debug-start'){
+  if(action==='debug-start'){if(robotTune)throw Error('IMU tuning is running on the robot. Let it finish, or stop it.');
     if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
     // The page may have changed while the cable's link came up, and Live debug only runs while Calibrate or Setup shows.

@@ -204,16 +204,15 @@ test('the heading the code turns by: a quarter turn to the left by hand says whi
   const tr=K.tracker(ch);tr.zero({'i:imu:yaw':10,'m:frontLeft:pos':0,'m:frontRight:pos':0,'m:backLeft:pos':0,'m:backRight:pos':0});
   near(tr.update({'i:imu:yaw':-80,'m:frontLeft:pos':0,'m:frontRight:pos':0,'m:backLeft:pos':0,'m:backRight:pos':0}).h,91.8,.1,'a reading that falls is a turn to the left');});
 
-test('turning on the spot: gentle until the robot is tuned, then set from what it did',()=>{
-  assert.deepEqual(K.turnOf({}),{top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,measured:false});assert.deepEqual(K.turnOf(null),K.turnOf({}));
-  assert.equal(K.turnOf({turnTune:{top:.4}}).measured,false,'a power picked is not a measurement');assert.equal(K.turnOf({turnTune:{top:9,least:-1,slowFrom:1}}).top,1,'held to sane limits');assert.equal(K.turnOf({turnTune:{least:-1}}).least,.03);
-  const g=K.turnGains({top:.4,least:[.08,.1],rate:200,coast:18});assert.deepEqual(g,{top:.4,least:.12,slowFrom:95,brake:.0009,done:1.5,rate:200,coast:18});
-  assert.equal(K.turnOf({turnTune:{...g,at:'2026-11-20'}}).measured,true);assert.equal(K.turnGains({top:.4,least:[.08,.1],rate:400,coast:40}).slowFrom,110,'never further out than 110°');
-  assert.match(K.turnGains({top:.4,least:[.08,NaN],rate:200,coast:18}).problem,/did not turn the way it was asked/);assert.match(K.turnGains({top:.4,least:[.08,.1],rate:9,coast:1}).problem,/too slow to measure/);
-  // The sent code takes them: the IMU turn test's constants, and the follower's turn on the spot.
-  const T=require('../ui/sim-chassis-teleop.js'),F=require('../ui/sim-ftc.js'),mec={kind:'mecanum',motors:[{key:'frontLeft',name:'a'}],imu:{name:'imu'}};
-  assert.match(T.turnTestOf(mec).source,/TOP_TURN = 0\.25, LEAST_TURN = 0\.07, SLOW_FROM_DEGREES = 60\.0, DONE_DEGREES = 1\.5, BRAKE = 0\.002;/);assert.match(T.turnTestOf(mec).source,/The gentle defaults/);
-  assert.match(T.turnTestOf({...mec,turn:K.turnOf({turnTune:{...g,at:'x'}})}).source,/Measured on this robot[\s\S]*TOP_TURN = 0\.4, LEAST_TURN = 0\.12, SLOW_FROM_DEGREES = 95\.0/);
-  const src=require('../ui/sim-follower-source.js');assert.match(src,/public double turnTop=\.25, turnLeast=\.07, turnSlow=Math\.toRadians\(60\), turnBrake=\.115, turnDone=Math\.toRadians\(1\);/);
-  assert.match(src,/if\(mode==Mode\.HOLDING\)\{double left=Math\.abs\(headingError\);turn=left<=config\.turnDone\?0:clamp\(Math\.copySign\(Math\.max\(config\.turnLeast,config\.turnTop\*Math\.min\(1,left\/Math\.max\(1e-6,config\.turnSlow\)\)\),headingError\)-config\.turnBrake\*v\.heading,-config\.turnTop,config\.turnTop\);\}/);
+test('turning on the spot: gentle until the robot is tuned, then the standard or the aggressive tuning, as the team picks',()=>{
+  assert.deepEqual(K.turnOf({}),{top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,measured:false,which:''});assert.deepEqual(K.turnOf(null),K.turnOf({}));assert.equal(K.imuDone({}),false);
+  const std={top:.6,least:.08,slowFrom:70,brake:.0017,done:2,at:'2026-11-20'},hard={top:.9,least:.08,slowFrom:45,brake:.0016,done:2,at:'2026-11-20'};
+  assert.deepEqual(K.turnOf({turnTune:{standard:std}}),{top:.6,least:.08,slowFrom:70,brake:.0017,done:2,measured:true,which:'standard'});assert.equal(K.imuDone({turnTune:{standard:std}}),true);
+  assert.equal(K.turnOf({turnTune:{standard:std,aggressive:hard}}).top,.6,'the standard one until the team picks the aggressive one');assert.equal(K.turnOf({turnTune:{standard:std,aggressive:hard,use:'aggressive'}}).which,'aggressive');
+  assert.equal(K.turnOf({turnTune:{standard:std,aggressive:{none:true,done:2,at:'x'},use:'aggressive'}}).top,.6,'an aggressive tuning where nothing landed is never used');
+  assert.equal(K.imuDone({turnTune:{standard:{none:true,done:2,at:'x'}}}),false,'a standard tuning where nothing landed is not done');assert.equal(K.imuDone({turnTune:{top:.4,at:'x'}}),true,'a tuning from before counts as the standard one');
+  assert.equal(K.turnOf({turnTune:{standard:{...std,top:9,least:-1}}}).top,1,'held to sane limits');
+  const T=require('../ui/sim-chassis-teleop.js'),mec={kind:'mecanum',motors:[{key:'frontLeft',name:'a'}],imu:{name:'imu'}};
+  assert.match(T.turnTestOf(mec).source,/TOP_TURN = 0\.25, LEAST_TURN = 0\.07, SLOW_FROM_DEGREES = 60\.0, DONE_DEGREES = 1\.5, BRAKE = 0\.002;/);assert.match(T.turnTestOf({...mec,turn:K.turnOf({turnTune:{standard:std}})}).source,/Measured on this robot[\s\S]*TOP_TURN = 0\.6, LEAST_TURN = 0\.08, SLOW_FROM_DEGREES = 70\.0, DONE_DEGREES = 2\.0/);
+  const src=require('../ui/sim-follower-source.js');assert.match(src,/public double turnTop=\.25, turnLeast=\.07,/);assert.match(src,/if\(mode==Mode\.HOLDING\)\{double left=Math\.abs\(headingError\);turn=left<=config\.turnDone\?0:/);
   const fsrc=require('node:fs').readFileSync(require('node:path').join(__dirname,'../ui/sim-ftc.js'),'utf8');assert.match(fsrc,/config\.turnTop=\$\{n\(tn\.top\)\}; config\.turnLeast=\$\{n\(tn\.least\)\}; config\.turnSlow=Math\.toRadians\(\$\{n\(tn\.slowFrom\)\}\)/);});

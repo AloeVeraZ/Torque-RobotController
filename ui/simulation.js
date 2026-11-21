@@ -4282,8 +4282,22 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     sendTeleop:t=>sendTeleopFile(t),moreCode:()=>calMoreCode(),sendCode:async t=>{await sendJava('TorqueCalibration.java',t);return 'On the robot, in OnBot Java, as TorqueCalibration.java: your own code can read it.';},saveFile:(name,text)=>native?api.simFile('code-save',{name,text}):Promise.reject(Error('saving needs the desktop app')),
     // The chassis' quarter turn found which way round the Control Hub's IMU counts a turn to the left.
     // IMU tuning: the autonomous Torque writes goes to the robot as its code does, and what it wrote there is read back over the same link.
-    sendTurnTune:async t=>{if(liveDebug?.running())await liveDebug.stop();robotSending++;try{await sendJava(t.file,t.source);return `On the robot. In Drive, run “${t.opMode}” under Auto, then come back and press Read the result.`;}finally{robotSending--;}},
-    readTurnResult:()=>api.robotLink('onbot-read',{host:calHost(),file:'TorqueTurnResult.java'}),
+    // IMU tuning (ui/sim-chassis-teleop.js turnTuneOf): put on the robot if its copy is not this one, then started there by Torque over the link the hub answered
+    // on, as a Driver Station starts an op mode. Its telemetry is followed (update) until it gives its result line, and it is stopped then.
+    connected:()=>!!setupConn,
+    runTurnTune:async(t,update)=>{const host=calHost();if(liveDebug?.running())await liveDebug.stop();robotSending++;
+      try{let theirs=null;try{theirs=await api.robotLink('onbot-read',{host,file:t.file});}catch{}
+        if(String(theirs||'').replace(/\r\n/g,'\n').trim()!==t.source.trim()){update({stage:'Putting it on the robot and building it there…'});await sendJava(t.file,t.source);}}
+      finally{robotSending--;}
+      update({stage:'Starting it on the robot…'});
+      return await new Promise((resolve,reject)=>{let done=false,off=null;const end=f=>{if(done)return;done=true;off?.();f();};
+        off=api.onRobotTune(u=>{if(done)return;if(u.error)return end(()=>reject(Error(u.error)));
+          if(u.ended)return end(()=>reject(Error(u.ended==='lost'?'the connection to the robot dropped.':u.ended==='stopped'?'it was stopped.':'it stopped before it finished.')));
+          const lines=u.lines||[],val=k=>lines.filter(l=>l.startsWith(k+' : ')).map(l=>l.slice(k.length+3)),state=val('torque.state').at(-1),result=val('torque.result').at(-1),rows=val('torque.row');
+          if(state)update({state:state==='ready'?'Started: it turns by itself now.':state==='done'?'Done.':state,...(rows.length?{rows}:{})});
+          if(result)end(()=>{void api.robotLink('tune-stop').catch(()=>{});resolve(result);});});
+        api.robotLink('tune-start',{host,opMode:t.opMode}).catch(e=>end(()=>reject(e)));});},
+    stopTurnTune:()=>api.robotLink('tune-stop'),
     setImuReversed:on=>{const o={...project.robot.odometry},im={...o.imu};if(on)im.reversed=true;else delete im.reversed;if(Object.keys(im).length)o.imu=im;else delete o.imu;project.robot=C.robot({...project.robot,odometry:o},project.controller);save();},
     setReversed:(key,on)=>{project.robot.devices={...project.robot.devices,[key]:{...project.robot.devices?.[key],reversed:!!on}};calKeepRead(()=>applyWiring(structuredClone(project.robot.wiring)));},
     setSteerZero:zero=>{const st=window.DeckWiring.state(project),w=structuredClone(project.robot.wiring);for(const x of w.sensors||[]){const row=st.rows.find(q=>q.key==='sensor.'+x.id);if(row&&Number.isFinite(zero[row.name]))x.zeroVolts=zero[row.name];}calKeepRead(()=>applyWiring(w));}}):null;
@@ -4316,10 +4330,11 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     route:()=>{const l=L(),r=l.route;let actions=0;try{actions=r?exporter.actions(r).length:0;}catch{}
       return {name:l.name,paths:l.pins.length,actions,seconds:routeEstimate()?.time??null,stamp:routeStamp(r),problem:!r||r.unclear?.length?noRoute():'',report:lastReport&&project.practice.mode!=='teleop'?{title:lastReport.title,level:lastReport.level}:null};},
     supported:()=>{if(project.controller==='motionmodule')return 'A MotionModule robot takes its autonomous as autonomous.py: export it in Simulate → Run & review.';
+      if(chassisCal?.needsImu?.())return 'Tune the IMU first: Calibrate → Mechanisms → the chassis → IMU tuning. The autonomous turns by what it finds.';
       try{window.DeckSimFtc.hardware(project.robot,project.sensors.localization,swerveNow());return '';}catch(e){return e.message;}},
     name:{get:()=>L().autoName||'',set:v=>{const l=L();if(v)l.autoName=v;else delete l.autoName;save();}},
     // A test of the heading alone, from the chassis as Calibrate has it (its motors and which way they turn, the hub's mounting, and the IMU's way round and scale).
-    turnTest:()=>{const T=window.DeckChassisTeleop,input=chassisCal?.teleopInput?.();if(project.controller!=='ftc'||!T?.turnTestOf)return null;return input?T.turnTestOf({...input,date:new Date().toLocaleDateString('en-CA')}):{error:'This setup has no chassis yet.'};},
+    turnTest:()=>{const T=window.DeckChassisTeleop,input=chassisCal?.teleopInput?.();if(project.controller!=='ftc'||!T?.turnTestOf)return null;if(chassisCal?.needsImu?.())return {error:'Tune the IMU first: Calibrate → Mechanisms → the chassis → IMU tuning.'};return input?T.turnTestOf({...input,date:new Date().toLocaleDateString('en-CA')}):{error:'This setup has no chassis yet.'};},
     sendTurnTest:async t=>{if(liveDebug?.running())await liveDebug.stop();robotSending++;try{await sendJava(t.file,t.source);return `Built on the robot. In Drive it is “${t.opMode}”, under Auto.`;}finally{robotSending--;}},
     code:async()=>{await ready();const out=teamCode(L().route,true);return {files:out.files,name:out.name,source:out.source,opMode:(/@Autonomous\(name = "((?:\\.|[^"\\])*)"/.exec(out.source)||[])[1]||''};},
     // Live readings use the robot's one program slot: they are stopped first.
