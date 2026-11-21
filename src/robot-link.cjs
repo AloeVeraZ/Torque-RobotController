@@ -31,7 +31,9 @@ async function session(host,task,{timeout=8000,socket=null}={}){
   const until=(test,ms,message)=>new Promise((done,fail)=>{if(test(ds.state))return done(ds.state);const stop=ds.on('state',s=>{if(test(s)){clearTimeout(t);stop();done(s);}}),t=setTimeout(()=>{stop();fail(Error(message));},ms);});
   const sent=(command,ms=timeout)=>new Promise((done,fail)=>{const began=Date.now(),end=error=>{clearInterval(t);stop();error?fail(error):done();};
     const stop=ds.on('command-failed',c=>{if(c===command)end(Error(`The robot did not take ${command.name}.`));});
-    const t=setInterval(()=>{if(!ds.pending.includes(command))end();else if(Date.now()-began>ms)end(Error(`The robot did not take ${command.name}.`));},20);});
+    // A command the station gave up on (the link dropped, or there was no robot to ask) has left its list too: that is not the robot taking it.
+    const t=setInterval(()=>{if(command.failed)end(Error(`The robot did not take ${command.name}.`));else if(!ds.pending.includes(command))end();else if(Date.now()-began>ms)end(Error(`The robot did not take ${command.name}.`));},20);
+    if(command.failed)end(Error(`The robot did not take ${command.name}.`));});
   try{
     ds.start();
     const s=await until(s=>['connected','rejected','incompatible'].includes(s.connection),host==='usb'?Math.max(timeout,30000):timeout,host==='usb'?'The Robot Controller app on the Control Hub did not answer over the USB cable. Restart the robot, then try again.':`No FTC robot answered at ${host}. Join the robot's Wi-Fi and check the Robot Controller app is running.`);
@@ -233,6 +235,8 @@ function runServoTest(host,{onUpdate=()=>{},limit=3*60e3,timeout=8000,socket=nul
       if(attempt>=4)throw Error(ready.state&&ready.state!=='ready'?ready.state:'The Servo Test on the robot did not take the plan.');
       await new Promise(r=>setTimeout(r,retryMs));if(stopping)return 'stopped';
     }
+    // Stopped while it was getting ready (the page was left, Stop was pressed): it is not started.
+    if(stopping){ds.stopOpMode();await until(st=>st.opModeState==='stopped',3000,'').catch(()=>{});return 'stopped';}
     ds.startOpMode(SERVO_TEST_OP);await until(st=>st.opModeState==='running'||st.opModeState==='stopped',10000,'The robot did not START the Servo Test.');
     const report=()=>onUpdate(read());report();
     const off=ds.on('state',st=>{report();if(st.connection!=='connected')finish('lost');else if(st.opModeState==='stopped')finish('ended');}),timer=setTimeout(()=>finish('time'),limit);
@@ -328,7 +332,12 @@ function request(host,method,route,body,{timeout=15000,port=8080}={}){
     // One request a connection: the robot's server (and an ADB forward to it) hangs up on a kept-alive one. It also hangs
     // up on a request without a User-Agent for some pages (/js/rcInfo.json).
     const req=http.request({host,port,method,path:route,headers:{Connection:'close','User-Agent':'Deck Driver Station',...(data?{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8','Content-Length':data.length}:{})}},res=>{
-      const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,text:Buffer.concat(chunks).toString('utf8')}));});
+      // A reply cut off part way (the Wi-Fi dropped, the cable came out) is no reply: with nothing here it never ended, and
+      // everything waiting on it (a send, a read, the next thing asked of the robot) waited with it. One that ends short of the
+      // length it gave is refused too: a cut-off copy of the team's file must not be kept as its backup and then written over.
+      const chunks=[],cut=()=>reject(Object.assign(Error(`The robot stopped answering part way through (http://${host}:${port}). Check the connection, then try again.`),{code:'ECONNRESET'}));
+      res.on('data',c=>chunks.push(c));res.on('error',cut);res.on('aborted',cut);res.on('close',()=>{if(!res.complete)cut();});
+      res.on('end',()=>{const all=Buffer.concat(chunks),length=res.headers['content-length'];if(!res.complete||length!==undefined&&method!=='HEAD'&&Number(length)!==all.length)return cut();resolve({status:res.statusCode,text:all.toString('utf8')});});});
     req.setTimeout(timeout,()=>req.destroy(Object.assign(Error('timed out'),{code:'ETIMEDOUT'})));
     req.on('error',e=>reject(Object.assign(Error(`Could not reach the robot's OnBot Java at http://${host}:${port} (${e.code||e.message}). Join the robot's Wi-Fi, and check the Robot Controller app is running.`),{code:e.code})));
     if(data)req.write(data);req.end();
@@ -439,6 +448,9 @@ async function send(host,files,{keep=[],remove=[],backupDir,onProgress=()=>{},cl
     if(theirs!==null&&keep.includes(file)){kept.push(path.basename(file));continue;}
     if(theirs!==null&&theirs.replace(/\r\n/g,'\n')!==text.replace(/\r\n/g,'\n')&&backupDir){
       const stamp=new Date().toISOString().replace(/[:.]/g,'-'),dir=path.join(backupDir,client.host.replace(/[^\w.-]/g,'_'));fs.mkdirSync(dir,{recursive:true});
+      // The copy kept is the team's only one once the robot's is written over: it is read a second time, and both must agree
+      // (a reply cut short by a dropped connection does not always show as one).
+      if(await client.read(file)!==theirs)throw Error(`The robot gave two different copies of ${path.basename(file)}, so the connection is not steady. Nothing was written over it: try again.`);
       const copy=path.join(dir,`${stamp}-${path.basename(file)}`);fs.writeFileSync(copy,theirs);backups.push(copy);}
     await client.save(file,text);written.push(path.basename(file));
   }
@@ -589,6 +601,8 @@ async function usbLink(options){const ports=await usbForward(options);await Prom
 // The hub's own name (FTC-zWL4, 9999-C-RC), as the Driver Station's Network shows it; the Robot Controller's web server says.
 async function usbRobotName(options){try{const {port}=await usbForward(options);const i=JSON.parse(await getLocal(port,'/js/rcInfo.json',3000));return typeof i.deviceName==='string'?i.deviceName:'';}catch{return '';}}
 // Updates the Robot Controller app on the hub plugged in (src/rc-update.cjs), then waits for it to answer again.
-async function usbUpdateController({run,...options}={}){const {serial}=await usbForward({run});
+// expect: the hub the team was asked about (a "remove and update" is agreed for one hub, and done to that one only).
+async function usbUpdateController({run,expect,...options}={}){const {serial}=await usbForward({run});
+  if(expect&&expect!==serial)throw Error('A different Control Hub is plugged in now. Nothing was changed on it: press Update again for this one.');
   return require('./rc-update.cjs').update({serial,adb:(args,o)=>adb(args,{run,...o}),controller:s=>usbController(s,{run,wait:90000}),...options});}
 module.exports={readFile,robotNetOf,adbCandidates,SERVO_TEST_FILE,SERVO_TEST_OP,SERVO_PLAN,servoTestSource,servoTestCurrent,servoPlanText,servoPlan,runServoTest,inspectDriverHub,javaTypes,splitPublicTypes,fixBuild,fixNote,usbPriority,usbTakeOver,usbWifiClients,usbRobotName,usbUpdateController,adb,runDebug,debugCurrent,debugIdle,connectRetry,DEBUG_FILE,OLD_DEBUG_FILE,debugName,isDebugOpMode,controllerListening,usbController,usbControllerUp,usbDebugGuard,usbCrashes,crashLines,notesThrough,notesOf:RobotConfig.notesOf,debugSource,rcHubs,openHubs:RobotConfig.openHubs,usbForward,usbLink,usbRelay,stopUsbRelay,usbForget,usbStatus,usbRecover,usbCheck,connectionCheck,deleteConfiguration,scanRobot,scanDevices,readConfigurations,activateConfiguration,readUsb,adbPath,blocksHardware,readRobot,writeConfiguration,runCheck,session,OnBotJava,send,buildErrors,buildProblem,formEncode,checkHost};

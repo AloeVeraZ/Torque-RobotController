@@ -77,3 +77,17 @@ test('IMU tuning: one line to Torque Debug, which runs it on the robot, and the 
   assert.equal(T.turnResultOf(res('standard',[round(.5,2,true,1.5),round(.55,2.01,true,.9)])).best.power,.55,'as quick within 0.02 s, the more accurate');
   assert.equal(T.turnResultOf(res('aggressive',[round(.75,1.5,true),round(.8,1.4,true),round(.85,1.45,false),round(.9,1.3,true)])).best.power,.9);
   assert.equal(T.turnResultOf(res('aggressive',[round(.75,1.5,false)])).best,null);assert.equal(T.turnResultOf('not json'),null);assert.equal(T.turnResultOf(null),null);});
+
+// Names come from the team's own robot configuration and mechanism list: whatever they typed, the file must still build.
+test('names with a line break, a backslash-u or two mechanisms that read alike still give a TeleOp that compiles',t=>{
+  const mechanisms=[{label:'Claw',kind:'servo',device:'claw',mode:'flip',a:'a',posA:.2,posB:.8},{label:'Claw on',kind:'motor',device:'claw\\up "2"',mode:'toggle',a:'b',power:1},{label:'lift\\up\nand down',kind:'motor',device:'lift',mode:'hold',a:'x',b:'y',power:.5}];
+  const o={...mecanum,config:'comp\\ubot\n"final" */',mechanisms},s=T.teleopOf(o).source;
+  assert.doesNotMatch(s,/(?<!\\)\\u(?![0-9a-fA-F]{4})/,'no backslash-u the compiler would read as a broken character');
+  assert.match(s,/boolean clawOn = false, clawWas = false;/);assert.match(s,/boolean clawOnBOn = false, clawOnBWas = false;/,'the second is renamed: its own name was the first one’s variable');
+  assert.ok(s.includes('hardwareMap.get(DcMotor.class, "claw\\\\up \\"2\\"")'),'the device name reaches the robot as it was typed');
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
+  if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
+  for(const [name,x] of [['TeleOp',T.teleopOf(o)],['turn test',T.turnTestOf({...o,turn:{top:.3}})]]){
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-chassis-')),file=path.join(dir,path.basename(x.file));fs.writeFileSync(file,x.source);
+    try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
+    finally{fs.rmSync(dir,{recursive:true,force:true});}}});

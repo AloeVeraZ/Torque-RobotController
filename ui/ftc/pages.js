@@ -15,8 +15,15 @@ const configFile=name=>({name,resourceId:0,location:'LOCAL_STORAGE',isDirty:fals
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const connected=()=>ctx.session.state.connection==='connected';
 // Sends a command and waits for the robot's <command>_RESP.
-function ask(name,extra='',ms=8000){const s=ctx.session;return new Promise((done,fail)=>{
-  const off=s.on('command',c=>{if(c.name===name+'_RESP'){clearTimeout(t);off();done(c.extra);}}),t=setTimeout(()=>{off();fail(Error(`The robot did not answer ${name}.`));},ms);s.command(name,extra);});}
+// A command the station gave up on (the connection dropped, or there is no robot) fails at once, not when the time runs out.
+const DROPPED='The connection to the robot dropped.';
+function ask(name,extra='',ms=8000){const s=ctx.session;return new Promise((done,fail)=>{let cmd=null;
+  const end=(e,v)=>{clearTimeout(t);off();offFail();e?fail(e):done(v);},gone=()=>Object.assign(Error(`The robot did not answer ${name}. ${DROPPED}`),{dropped:true}),
+    off=s.on('command',c=>{if(c.name===name+'_RESP')end(null,c.extra);}),offFail=s.on('command-failed',c=>{if(c===cmd)end(gone());}),t=setTimeout(()=>end(Error(`The robot did not answer ${name}.`)),ms);
+  cmd=s.command(name,extra);if(cmd?.failed)end(gone());});}
+// Waits until the robot has taken a command (it acknowledged it). What the robot then does with it is checked by the caller.
+function taken(cmd,ms,message){const s=ctx.session;return new Promise((done,fail)=>{const began=Date.now(),gone=()=>Object.assign(Error(`${message} ${DROPPED}`),{dropped:true});
+  const look=()=>{if(cmd.failed)end(gone());else if(!s.pending.includes(cmd))end();else if(Date.now()-began>ms)end(Error(message));},end=e=>{clearInterval(t);e?fail(e):done();},t=setInterval(look,20);look();});}
 function until(test,ms,message){const s=ctx.session;return new Promise((done,fail)=>{if(test(s.state))return done();const off=s.on('state',v=>{if(test(v)){clearTimeout(t);off();done();}}),t=setTimeout(()=>{off();fail(Error(message));},ms);});}
 
 // ---- the page shell: a title bar with Back, actions on the right, a status line and the body ----------------------------
@@ -81,18 +88,21 @@ async function newConfiguration(){
 // Writes xml under name (the robot makes it active), then reads it back to be sure the robot has it.
 async function save(name,xml){
   if(xml.includes(';'))throw Error('A name has ; & < > " or \' in it, which the robot cannot take.');if(new TextEncoder().encode(xml).length>60000)throw Error('This configuration is too large to send.');
-  const want=C.parse(xml).devices;ctx.session.command('CMD_SAVE_CONFIGURATION',`${JSON.stringify(configFile(name))};${xml}`);
-  await until(s=>s.activeConfig?.name===name,15000,`The robot did not save “${name}”. Check the Robot Controller app, then try again.`);
-  for(let i=0;i<5;i++){let got=null;try{got=C.parse(await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(configFile(name)))).devices;}catch{}
+  const want=C.parse(xml).devices,unsaved=`The robot did not save “${name}”. Check the Robot Controller app, then try again.`;
+  // The robot must have taken the save itself: when the configuration being edited is the active one, its name alone says nothing,
+  // and reading back the old file (which matches in names and ports) would call a save that never arrived "Saved".
+  await taken(ctx.session.command('CMD_SAVE_CONFIGURATION',`${JSON.stringify(configFile(name))};${xml}`),15000,unsaved);
+  await until(s=>s.activeConfig?.name===name,15000,unsaved);
+  for(let i=0;i<5;i++){let got=null;try{got=C.parse(await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(configFile(name)))).devices;}catch(e){if(e?.dropped)throw Error(`The connection to the robot dropped before “${name}” could be read back. Open it again to check it was saved.`);}
     if(got&&got.length===want.length&&want.every(d=>got.some(g=>g.name===d.name&&g.tag===d.tag&&g.port===d.port&&g.bus===d.bus)))return;await delay(300);}
   throw Error(`The robot saved “${name}” differently from what was sent. Open it again to check.`);
 }
-async function activate(f){await run(`Activating “${f.name}”…`,async()=>{ctx.session.command('CMD_ACTIVATE_CONFIGURATION',JSON.stringify(f));
+async function activate(f){await run(`Activating “${f.name}”…`,async()=>{await taken(ctx.session.command('CMD_ACTIVATE_CONFIGURATION',JSON.stringify(f)),10000,`The robot did not make “${f.name}” active.`);
   await until(s=>s.activeConfig?.name===f.name,10000,`The robot did not make “${f.name}” active.`);changed=true;ctx.toast(`“${f.name}” is active. The robot restarts when you leave Configure Robot.`,4000);});renderList();}
 async function remove(f){
   const active=ctx.session.state.activeConfig?.name===f.name;
   if(!await ask2({title:`Delete “${f.name}”?`,text:`The robot deletes this configuration file. This cannot be undone.${active?' It is the active configuration, so the robot will have none until you activate another.':''}`,ok:'Delete'}))return;
-  await run(`Deleting “${f.name}”…`,async()=>{ctx.session.command('CMD_DELETE_CONFIGURATION',JSON.stringify(f));
+  await run(`Deleting “${f.name}”…`,async()=>{await taken(ctx.session.command('CMD_DELETE_CONFIGURATION',JSON.stringify(f)),10000,`The robot did not delete “${f.name}”.`);
     for(let i=0;i<10;i++){await delay(250);await readList();if(!files.some(x=>x.name===f.name))break;}
     if(files.some(x=>x.name===f.name))throw Error(`The robot did not delete “${f.name}”.`);if(active)changed=true;ctx.toast(`Deleted “${f.name}”.`);});renderList();}
 

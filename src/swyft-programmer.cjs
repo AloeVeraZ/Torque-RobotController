@@ -116,6 +116,9 @@ class SwyftService{
   // ---- jobs, one at a time on the loop
   job(kind,text,run){
     if(!this.running)throw Error('Open the SWYFT programmer first.');if(this.busy)throw Error('The programmer is busy with something else.');
+    // With no programmer there is nothing to do it to, and it is not kept for later: kept, it was done without a word to whatever
+    // was plugged in next, which may be a different servo.
+    if(!this.prog)throw Error('The SWYFT programmer is not connected. Nothing was sent.');
     return new Promise((done,fail)=>{this.busy={kind,text};this.publish();
       const finish=fn=>value=>{this.busy=null;this.publish();fn(value);};this.jobs.push({run,done:finish(done),fail:finish(fail)});});
   }

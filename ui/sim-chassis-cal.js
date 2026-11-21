@@ -491,10 +491,13 @@
     const NO_READINGS='NO_READINGS',noReadings=()=>{if(!live()||performance.now()-seenAt>3000)throw Error(NO_READINGS);};
     // Readings that stop in a tune's first seconds usually mean the robot's program was restarted under it (Torque puts a
     // newer Torque Debug on the robot by itself): the tune waits for them to come back, steadily, and starts again.
-    const flowing=async run=>{let since=0;for(const t0=performance.now();performance.now()-t0<75000;){await new Promise(r=>setTimeout(r,150));if(runs.get(run.pod)!==run)return false;
+    // Not after the connection to the robot was lost, though: a cable that came out and went back in must not start the servo
+    // turning again with nobody pressing for it. That tune is over, and says so.
+    const lostSince=t=>{const end=debug?.state?.().ended;return !!end&&end.why==='lost'&&end.at>=t;};
+    const flowing=async(run,began)=>{let since=0;for(const t0=performance.now();performance.now()-t0<75000;){await new Promise(r=>setTimeout(r,150));if(runs.get(run.pod)!==run||lostSince(began))return false;
       if(live()&&performance.now()-seenAt<500){since||=performance.now();if(performance.now()-since>2500)return true;}else since=0;}return false;};
     async function tune(q,long=false){for(let attempt=0;;attempt++){const t0=performance.now();try{await tuneBody(q,long);return;}catch(e){const run=runs.get(q.key);if(!run||run.kind!=='tune')return;const st=q.steer;if(st)send(`C\t${st.servo}\t0`);freeFloor(q.key);taps.delete(q.key);
-      if(e?.message===NO_READINGS&&attempt<2&&performance.now()-t0<25000){run.note='Waiting for the robot’s readings to come back…';paint();if(await flowing(run))continue;if(runs.get(q.key)!==run)return;}
+      if(e?.message===NO_READINGS&&attempt<2&&performance.now()-t0<25000&&!lostSince(t0)){run.note='Waiting for the robot’s readings to come back…';paint();if(await flowing(run,t0))continue;if(runs.get(q.key)!==run)return;}
       runs.delete(q.key);
       const kept=!!podRec(q.key).pid;told=q.label+': '+(e?.message===NO_READINGS?`The robot stopped sending readings partway, so tuning stopped${kept?' (the gains found so far are kept)':''}. Press Start live readings if it shows, then Tune it again.`:`Tuning stopped: ${e?.message||e}.${kept?' The gains found so far are kept.':''} Tune it again.`);paint();return;}}}
     // One pod at a time has the floor. A servo drawing current pushes every pod's encoder voltage up (1.5° at full power,

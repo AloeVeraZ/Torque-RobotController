@@ -138,3 +138,13 @@ test('checkChanges takes only known settings of the right kind',()=>{
   assert.throws(()=>checkChanges({}),/No changes/);assert.throws(()=>checkChanges({p:1.5}),/wrong kind/);
 });
 
+
+// Asked with no programmer plugged in, a write used to wait unseen and was then done to whatever was plugged in next.
+test('a write asked with no programmer connected is refused at once and never reaches a servo plugged in later',async()=>{
+  const link=new SimLink(),{s,transport}=service(link);transport.plugged=false;s.start();await wait(200);
+  assert.equal(s.state().programmer.ready,false);
+  assert.throws(()=>s.write({maxPower:123,reverse:true}),/not connected\. Nothing was sent/);assert.equal(s.state().busy,null);
+  // Another servo, plugged in afterwards, keeps its own settings.
+  link.settings={...REAL,maxPower:500,reverse:false};transport.plugged=true;await until(()=>s.state().servo.present);await wait(300);
+  assert.equal(link.settings.maxPower,500);assert.equal(link.settings.reverse,false);assert.equal(link.writes.length,0,'nothing was written to it');
+});

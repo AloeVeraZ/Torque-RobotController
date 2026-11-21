@@ -80,3 +80,22 @@ test('an export without measured tuning uses the Deck controller defaults, never
   assert.match(constants,/config\.maxForward=60\.0; config\.maxStrafe=50\.0;/);assert.match(constants,/config\.positionD=0\.01;/);assert.match(constants,/config\.headingD=0\.12;/);
 });
 
+
+// A robot that meets something the plan did not know about (another robot, a wall) must not push at it for the rest of the
+// autonomous: two seconds with no progress and everything is off, and stays off.
+test('a robot blocked on its way stops within a few seconds and stays stopped; an unblocked one never trips it',{skip},async()=>{
+  let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
+  try{
+    const block=[{id:'block',type:'rect',x:70,y:30,width:6,height:60}],info=await e.load({field:'empty',start,robot,zones:block,sensors:{localization:'odometry'}});
+    // The route is planned as if nothing were there: straight through the block.
+    const route=P.plan({start,zones:[],pins:[{x:120,y:30}],clearance:2,style:'spline'},info.footprint,[],info.bounds),layout={name:'Blocked',field:'empty',width:144,height:144,start,zones:[]};
+    const routeJava=X.java(route,layout,{polygon:P.polygon,className:'PlannedRoute',packageName:'org.firstinspires.ftc.teamcode'});
+    const out=F.files({route,layout,tuning:info.tuning,robot:info.robot,localization:'odometry',setupName:'Control Hub mecanum',routeJava});
+    assert.equal((await e.run({kind:'opmode',files:out.files,opMode:out.opMode})).ok,true,error);
+    let stoppedAt=-1;for(let i=0;i<600&&e.mode==='program';i++){await e.programTick();if(/^Stopped: no progress/.test(e.telemetry?.Phase||'')){stoppedAt=i;break;}}
+    assert.ok(stoppedAt>0,`it stopped itself (last phase ${e.telemetry?.Phase}) ${error}`);assert.ok(stoppedAt<6*60,`within six seconds of starting, at tick ${stoppedAt}`);
+    const at=e.truth();assert.ok(at.x<70,`it never got through: ${JSON.stringify(at)}`);
+    for(let i=0;i<180&&e.mode==='program';i++)await e.programTick();
+    const later=e.truth();assert.ok(Math.hypot(later.x-at.x,later.y-at.y)<.5,'it stays where it stopped');assert.match(e.telemetry?.Phase||'',/^Stopped: no progress/,'and does not carry on with the route');
+  }finally{e.dispose();}
+});

@@ -321,6 +321,9 @@ class AxonService{
   // ---- jobs, one at a time on the loop
   job(kind,text,run){
     if(!this.running)throw Error('Open the Axon programmer first.');if(this.busy)throw Error('The programmer is busy with something else.');
+    // With no programmer there is nothing to do it to, and it is not kept for later: kept, it was done without a word to whatever
+    // was plugged in next (a firmware write to a different servo).
+    if(!this.prog)throw Error('The Axon programmer is not connected. Nothing was sent.');
     return new Promise((done,fail)=>{this.busy={kind,text,percent:null};this.publish();
       const finish=fn=>value=>{this.busy=null;this.publish();fn(value);};this.jobs.push({run,done:finish(done),fail:finish(fail)});});
   }
@@ -449,7 +452,12 @@ class AxonService{
     if(this.servo?.viaBoot&&!recovery&&confirmed!==code)throw Error(`The model to write (${S.modelByCode(code)?.title||code}) is not the one confirmed (${S.modelByCode(confirmed)?.title||'none'}). Nothing was written.`);
     const model=S.modelByCode(code),file=this.fileFor(code,mode);if(!model||!file)throw Error('Torque has no firmware for that servo.');
     const source=this.chosen.get(`${code}/${mode}`)||(this.firmwareStatus(code,mode).have?this.firmwarePath(file):null);
-    if(!source&&this.fetchFile&&!arguments[0].fetched)return (this.prefetching||Promise.resolve()).then(()=>this.firmwareStatus(code,mode).have?null:this.fetchQuiet(file)).then(()=>this.flash({...arguments[0],fetched:true}));
+    // The firmware is fetched first when it is not here yet, which can take a minute. What was agreed to was this servo: if it
+    // was swapped or unplugged meanwhile, nothing is written to whatever is there now.
+    if(!source&&this.fetchFile&&!arguments[0].fetched){const key=S.servoKey(this.servo||{}),epoch=this.bootEpoch||0,prog=this.prog;
+      return (this.prefetching||Promise.resolve()).then(()=>this.firmwareStatus(code,mode).have?null:this.fetchQuiet(file)).then(()=>{
+        if(this.prog!==prog||S.servoKey(this.servo||{})!==key||(this.bootEpoch||0)!==epoch)throw Error('The servo or the programmer changed while its firmware was downloading. Nothing was written: check the servo shown, then press again.');
+        return this.flash({...arguments[0],fetched:true});});}
     if(!source)throw Object.assign(Error(`${file.fileName} is needed first.`),{code:'FIRMWARE_NEEDED'});
     const image=S.readFirmware(source);if(image.family!==model.family)throw Error(`That firmware is for a ${image.family.toUpperCase()} servo, but this is a ${model.title}.`);
     // Every model has its own firmware (a MINI's is not a MAX's, in either generation), and each file names its model in its header.

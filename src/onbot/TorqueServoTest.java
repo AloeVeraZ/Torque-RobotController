@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,9 +24,11 @@ import java.util.List;
  *   port 0          the hub's servo port (0-5)
  *   enable 1        1: the port is turned on; 0: the pulses are written but the port stays off (nothing moves)
  *   live 1          live: the pulse below is played until STOP, and the plan is read again every 50 ms (Torque's slider)
- *   seq 17          live: Torque's count, raised at least once a second; unchanged for 3 s means Torque is gone: port off
+ *   seq 17          live: Torque's count, raised at least once a second; unchanged for 3 s means Torque is gone: port off.
+ *                   Nothing is played until it first changes after INIT
  *   us 1500         live: the pulse now, in µs (1-2500), or 0 for no pulse (port off)
  *   1500 1500       otherwise: a pulse in µs (500-2500) and how long to hold it in ms (20-10000), one line a step, played once
+ *                   (the plan file is deleted at START)
  * It says where it is in telemetry ("torque.state", "torque.step", "torque.pulse", and the hub's own reading of the port as
  * "torque.hub"), and turns the port off at the end, on STOP, or if anything fails. It opens no network port and streams nothing:
  * the Driver Station's own telemetry is all that goes back.
@@ -90,6 +93,9 @@ public class TorqueServoTest extends LinearOpMode {
         telemetry.update();
         waitForStart();
         if (!usable || hub == null) return;
+        // A list of steps is played once: it is taken off the robot as it starts, so this op mode started later by hand from a
+        // Driver Station finds no plan and moves nothing. (A live plan left behind moves nothing either: see live.)
+        if (!plan.live) new File(PLAN).delete();
         int port = plan.port;
         try {
             new LynxSetServoConfigurationCommand(hub, port, 20000).send();
@@ -99,9 +105,17 @@ public class TorqueServoTest extends LinearOpMode {
         } catch (LynxNackException | RuntimeException e) {
             telemetry.addData("torque.state", "error %s", e.getMessage());
         } finally {
-            try { new LynxSetServoEnableCommand(hub, port, false).send(); } catch (LynxNackException | RuntimeException ignored) { }
+            // STOP interrupts this thread, and a command sent while interrupted is not sent: the interrupt is set aside until the
+            // port is off (asked up to three times), then put back.
+            boolean interrupted = Thread.interrupted();
+            for (int i = 0; i < 3; i++) {
+                try { new LynxSetServoEnableCommand(hub, port, false).send(); break; }
+                catch (InterruptedException e) { interrupted = true; }
+                catch (LynxNackException | RuntimeException ignored) { }
+            }
             telemetry.addData("torque.hub", "%s", reading(hub, port));
             telemetry.update();
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 
@@ -125,8 +139,10 @@ public class TorqueServoTest extends LinearOpMode {
 
     /** Torque's slider: the newest pulse in the plan, until STOP. 0 is no pulse; Torque gone for 3 s is no pulse too. */
     void live(LynxModule hub, int port, Plan first) throws InterruptedException, LynxNackException {
+        // Nothing is played until Torque's count moves on from the one read at INIT: a plan left on the robot by an earlier test
+        // (this op mode started by hand from a Driver Station) is never played.
         String seq = first.seq;
-        long heard = System.currentTimeMillis();
+        long heard = System.currentTimeMillis() - TORQUE_GONE_MS - 1;
         int applied = -1;
         boolean on = false;
         Plan now = first;

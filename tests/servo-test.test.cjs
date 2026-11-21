@@ -39,3 +39,13 @@ test('live: the hub, the pulse now and a count the op mode watches, 0 to 2500 µ
   assert.match(src,/next\.live && !next\.seq\.isEmpty\(\) && next\.hasUs/,'a plan caught half written is skipped');
   assert.match(src,/h\.getModuleAddress\(\) == plan\.hub/,'it finds an Expansion Hub by its address');
 });
+
+// Started by hand from a Driver Station (it is listed like any TeleOp), with whatever plan the last test left on the robot.
+test('a plan left on the robot is never played: a live one waits for Torque’s count to move, a list of steps is taken off as it starts',()=>{
+  const src=L.servoTestSource();
+  assert.match(src,/long heard = System\.currentTimeMillis\(\) - TORQUE_GONE_MS - 1;/,'live: gone until the count first changes');
+  assert.match(src,/if \(!plan\.live\) new File\(PLAN\)\.delete\(\);/,'steps: played once');
+  assert.ok(src.indexOf('new File(PLAN).delete()')>src.indexOf('waitForStart();'),'only at START: an INIT asked again still finds the plan');
+  // STOP interrupts the op mode's thread: the port is still turned off.
+  assert.match(src,/boolean interrupted = Thread\.interrupted\(\);[\s\S]*LynxSetServoEnableCommand\(hub, port, false\)\.send\(\); break;[\s\S]*catch \(InterruptedException e\)[\s\S]*Thread\.currentThread\(\)\.interrupt\(\);/);
+});

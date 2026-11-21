@@ -29,3 +29,20 @@ for(const localization of ['encoders','odometry','odometry3','fused','optical'])
   let i=0;for(;i<3600&&e.mode==='program';i++){await e.programTick();if(e.telemetry?.Phase==='Done')break;}assert.ok(i<3600,error||'OnBot routine did not finish');const t=e.truth();assert.ok(Math.hypot(t.x-40,t.y-110)<(localization==='encoders'?3:1.5),JSON.stringify(t));assert.ok(Math.abs(Math.atan2(Math.sin(t.heading),Math.cos(t.heading)))<.08);assert.equal(e.violations.size,0);
  }finally{e.dispose();}
 });
+
+// A continuous-servo turret keeps whatever power it was last given. Sent to an angle on an action path (the route does not
+// wait there), it must still be steered to that angle and stopped, and one whose reading never changes must not turn for ever.
+test('a continuous-servo turret is steered every loop, also on an action path, and stopped when its reading does not move',()=>{
+  const C=require('../ui/sim-config.js'),Mech=require('../ui/sim-mechanisms.js'),s0={x:30,y:30,heading:0};
+  const route=P.plan({start:s0,zones:[],pins:[{x:75,y:40,path:{kind:'action',action:'Turret to 30°'}},{x:105,y:85,action:'Shoot'}],style:'spline',clearance:1,defaultPower:.8},{front:8,rear:8,half:8}),layout={name:'Turret',field:'empty',width:144,height:144,start:s0,zones:[]};
+  const mechanisms=Mech.sanitize({enabled:true,intakes:[{kind:'ramp',sides:['front'],motor:'intake',servo:'ramp'}],shooters:[{type:'turret',motor:'shooter',indexer:'indexer',indexerKind:'pusher',turretMotor:'turret',hood:'hood'}],turret:{kind:'crservo'}});
+  const out=F.onBotJava({route,layout,tuning:{maxForward:60,maxStrafe:50},robot:{...C.robot({},'ftc'),length:16,width:16},localization:'optical',mechanisms,target:{x:72,y:72},setupName:'Turret',routeJava:X.java(route,layout,{polygon:P.polygon})}),src=out.source;
+  assert.match(src,/CRServo turret/,'this robot’s turret is a continuous servo');
+  assert.match(src,/public void update\(\) \{\s*if \(steering\) steerTurrets\(\);\s*\}/);assert.match(src,/public void update\(\) \{\s*mech\.update\(\);/,'the route calls it every loop');
+  assert.match(src,/steering = true;\s*steerTurrets\(\);/);assert.match(src,/public void stop\(\) \{\s*steering = false;/,'and nothing steers after the stop');
+  assert.match(src,/now - \w+SeenAt > TURRET_STALL_SECONDS/);assert.match(src,/setPower\(there \|\| \w+Dead \|\|/);
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'deck-onbot-turret-')),jdk=path.join(__dirname,'../.cache/simulation-runtime/jdk'),home=fs.readdirSync(jdk).map(f=>path.join(jdk,f)).map(f=>fs.existsSync(path.join(f,'Contents/Home'))?path.join(f,'Contents/Home'):f).find(f=>fs.existsSync(path.join(f,'bin/javac.exe'))||fs.existsSync(path.join(f,'bin/javac'))),javac=path.join(home,'bin',process.platform==='win32'?'javac.exe':'javac');
+  try{for(const [name,source] of [[out.name,src],[path.basename(out.check.file||'PlannedRouteCheck.java'),out.check.source]]){const file=path.join(dir,name);fs.writeFileSync(file,source);
+    const r=spawnSync(javac,['--release','8','-encoding','UTF-8','-classpath',[path.join(__dirname,'../sim-runtime/driver/classes'),dir].join(path.delimiter),'-d',dir,file],{encoding:'utf8',windowsHide:true});assert.equal(r.status,0,`${name}:\n${r.stderr}`);}}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

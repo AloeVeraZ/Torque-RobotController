@@ -42,6 +42,8 @@
     let auto=false;
     const send=line=>{if(!native||!running)return Promise.resolve(false);if(auto&&!/^[VDKW]\t/.test(line)){auto=false;void api.robotLink('debug-claim').catch(()=>{});}return api.robotLink('debug-send',{line}).catch(()=>false);};
     const listeners=new Set(),cameraListeners=new Set(),endListeners=new Set();
+    // Why live debug last ended and when (performance.now()), for a page that has to tell a lost connection from a restart.
+    let lastEnd=null;
     host.innerHTML=`<div class="cal-debug-top"><div class="cal-debug-title"><h2 id="cal-debug-title">Live debug</h2><div class="cal-debug-state"><i class="dot" data-debug-dot></i><span data-debug-status role="status">Not connected</span></div></div>
         <div class="button-row cal-debug-actions"><button type="button" class="primary cal-debug-main" data-debug-start>Start live debug</button><button type="button" class="secondary cal-debug-again" data-debug-install hidden>Put Torque Debug on again</button></div></div>
       <ol class="cal-debug-steps" data-debug-steps aria-label="What Start live debug does"><li data-step="on" data-state="todo"><b>On the robot</b><span></span></li><li data-step="run" data-state="todo"><b>Started</b><span></span></li><li data-step="live" data-state="todo"><b>Live</b><span></span></li></ol>
@@ -215,7 +217,8 @@
         {const m=manifest,counted=(m?.motors||[]).filter(n=>Math.abs(v[`m:${n}:pos`]||0)>=5&&sensing.motors[n]!==true),told=(m?.i2c||[]).map((d,i)=>[d.n,frame.on?.[i]]).filter(([n,on])=>(on===1||on===0)&&sensing.i2c[n]&&sensing.i2c[n].on!==on);
           if(counted.length||told.length)sensed(x=>{for(const n of counted)x.motors[n]=true;for(const [n,on] of told)x.i2c[n].on=on;return x;});}
         if(pulse)pulse.frames.push(frame);for(const fn of listeners)fn(frame,v);paint(false);return;}
-      if(e.ended||e.error){checkStop();flowing=false;paint(true);running=false;starting=false;auto=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();for(const fn of endListeners)fn(e);
+      // Whatever was held is let go: a slider still pressed when the link drops must not send its power again when it is back.
+      if(e.ended||e.error){lastEnd={why:e.error?'error':e.ended,at:performance.now()};checkStop();zeroHolds();dialing=null;flowing=false;paint(true);running=false;starting=false;auto=false;status(e.error?e.error:{stopped:'Stopped',ended:'Torque Debug stopped on the robot',lost:'Lost the robot connection',time:'Stopped after an hour'}[e.ended]||'Stopped',e.error?'error':'');buttons();checkPaint();onChange();for(const fn of endListeners)fn(e);
         if(e.error&&NOT_BUILT.test(e.error)&&!rebuilt&&!lastAuto){rebuilt=true;void buildAndStart(false);}}}
     // lastAuto: the start that failed was one nobody pressed (Camera's, Calibrate's). Those are run by who asked for them, who try again their own way, so only a pressed start is built and started again here.
     let rebuilt=false,lastAuto=false;
@@ -350,7 +353,7 @@
       checkPaint();onSensing();}
     // Start only (Calibrate's steps): a press while it is already starting or putting Torque Debug on the robot never stops it.
     function begin(){if(running||starting||going||installing)return;return start();}
-    return {reloadStored,begin,found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting:starting||going,installing,auto,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
+    return {reloadStored,begin,found:()=>found.slice(),sensing:()=>JSON.parse(JSON.stringify(sensing)),recheck,ready:()=>onRobot===true,known:()=>onRobot!==null,event,layout,start,run,install,stop,unplugged,wanted,prepare,warm:(ms,hold=0)=>{warmUntil=Date.now()+ms;holdUntil=Date.now()+hold;},send,pulse:pulseWatch,record,running:()=>running,shown:()=>!!host.offsetParent,state:()=>({running,starting:starting||going,installing,auto,ended:lastEnd,...said}),latest:()=>({manifest,frame}),values:()=>values(frame),onCamera(fn){cameraListeners.add(fn);return ()=>cameraListeners.delete(fn);},onEnd(fn){endListeners.add(fn);return ()=>endListeners.delete(fn);},listen(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   }
   root.DeckLiveDebug={create,analogMeaning,i2cState,strayI2c,strayI2cWords,strayAnalog,strayAnalogWords};
 })(typeof globalThis==='object'?globalThis:this);

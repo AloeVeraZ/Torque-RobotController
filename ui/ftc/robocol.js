@@ -125,7 +125,7 @@ class DriverStation {
     // Four times a second while searching, so a robot that has just come up answers within a quarter second; once a second when connected.
     this.timers.push(setInterval(()=>{if(!this.connected()||++this.beat%4===0)this.discover();},250),setInterval(()=>this.tick(),40));
   }
-  stop(){for(const t of this.timers)clearInterval(t);this.timers=[];this.update({connection:'idle'});}
+  stop(){for(const t of this.timers)clearInterval(t);this.timers=[];this.update({connection:'idle'});this.drop();}
   discover(){this.transmit(encodePeerDiscovery({seq:this.nextSeq(),peerType:PeerType.PEER,...this.identity}));}
   connected(){return this.state.connection==='connected';}
   tick(){
@@ -148,21 +148,27 @@ class DriverStation {
     const keep=[];
     for(const c of this.pending){
       if(c.acknowledged){this.transmit(encodeCommand({...c,seq:c.seq}));continue;}
-      if(c.attempts>10){this.emit('command-failed',c);continue;}
+      if(c.attempts>10){this.fail(c);continue;}
       if(!c.sentAt||now-c.sentAt>200){c.attempts++;c.sentAt=now;this.transmit(encodeCommand(c));}
       keep.push(c);
     }
     this.pending=keep;
   }
+  // The robot never took this command and it is not asked again: whoever waits on it hears command-failed, and it says failed.
+  fail(c){c.failed=true;if(this.state.pendingAction&&(c.name==='CMD_INIT_OP_MODE'||c.name==='CMD_RUN_OP_MODE'))this.update({pendingAction:null});this.emit('command-failed',c);}
+  // Nothing asked of the robot before the link dropped is asked again once it is back. A START pressed as the cable came out,
+  // or a configuration saved as the Wi-Fi went, would otherwise reach the robot whenever it next answered, with nobody pressing anything.
+  drop(){const lost=this.pending.filter(c=>!c.acknowledged);this.pending=[];for(const c of lost)this.fail(c);}
   disconnected(){
-    this.pending=this.pending.filter(c=>!c.acknowledged);
     this.update({connection:'searching',ping:null,robotState:'UNKNOWN',battery:null,rcBattery:null,pendingAction:null,opModeState:'stopped',activeOpMode:STOP_OP_MODE});
-    this.emit('disconnected');
+    this.drop();this.emit('disconnected');
   }
-  command(name,extra=''){const c={name,extra,timestamp:this.nextStamp(),seq:this.nextSeq(),acknowledged:false,attempts:0,sentAt:0};this.pending.push(c);this.flush();return c;}
-  initOpMode(name){this.update({pendingAction:'init'});return this.command('CMD_INIT_OP_MODE',name);}
-  startOpMode(name){this.update({pendingAction:'start'});return this.command('CMD_RUN_OP_MODE',name);}
-  stopOpMode(){this.update({pendingAction:'stop'});return this.command('CMD_INIT_OP_MODE',STOP_OP_MODE);}
+  // With no robot connected there is nobody to ask, and the command is not kept for later: it comes back failed.
+  command(name,extra=''){const c={name,extra,timestamp:this.nextStamp(),seq:this.nextSeq(),acknowledged:false,attempts:0,sentAt:0};if(!this.connected()){this.fail(c);return c;}this.pending.push(c);this.flush();return c;}
+  opModeCommand(action,name,extra){if(this.connected())this.update({pendingAction:action});return this.command(name,extra);}
+  initOpMode(name){return this.opModeCommand('init','CMD_INIT_OP_MODE',name);}
+  startOpMode(name){return this.opModeCommand('start','CMD_RUN_OP_MODE',name);}
+  stopOpMode(){return this.opModeCommand('stop','CMD_INIT_OP_MODE',STOP_OP_MODE);}
   restartRobot(){return this.command('CMD_RESTART_ROBOT');}
   requestFrame(){return this.command('CMD_REQUEST_FRAME');}
   requestAbout(){return this.command('CMD_REQUEST_ABOUT_INFO');}

@@ -192,6 +192,8 @@ ${checklist}
  */
 @Autonomous(name = ${javaString(`${o.layout.name||'Planned route'} (Pedro)`)}, group = "Deck Driver Station")
 public class ${o.opMode} extends LinearOpMode {
+    /** Seconds without moving half an inch, away from the end of a leg, before everything is stopped. */
+    private static final double STUCK_SECONDS = 2.0;
     private Follower follower;
     private RouteActions actions;
     private final RouteActions.Step step = new RouteActions.Step();
@@ -253,8 +255,15 @@ public class ${o.opMode} extends LinearOpMode {
                 Pose end = legs[i].endPose();
                 follower.follow(limited(legs[i], ${R}.MAX_PATH_SPEED[i]));
                 step.wait = 0;
+                // A robot that stops getting anywhere is stopped, not driven on: blocked, or its localizer no longer changing
+                // because a sensor stopped answering (an odometry cable out). Within 1.5 in of the end it is only settling, and moves on.
+                Pose mark = follower.pose();
+                ElapsedTime progress = new ElapsedTime();
+                boolean stuck = false;
                 while (opModeIsActive() && follower.following()) {
                     follower.update();
+                    if (!near(mark, 0.5)) { mark = follower.pose(); progress.reset(); }
+                    else if (progress.seconds() > (near(end, 1.5) ? 3 : STUCK_SECONDS)) { stuck = !near(end, 1.5); break; }
                     if (!moving.isEmpty() && !movingDone) {
                         // A set time runs the action from the start of its path; the last call stops it.
                         double t = movingTimer.seconds();
@@ -266,6 +275,18 @@ public class ${o.opMode} extends LinearOpMode {
                     }
                     report(i, legs.length, moving.isEmpty() ? "Driving" : "Action path");
                     if (${R}.THROUGH[i] && near(end, 1.5) && follower.completion() > 0.9) break;
+                }
+                if (stuck) {
+                    // Everything stops and stays stopped: the drive, then the mechanisms. Nothing more of the route runs.
+                    try { stopDriving(); } finally { actions.stop(); }
+                    while (opModeIsActive()) {
+                        telemetry.addData("Leg", (i + 1) + " of " + legs.length);
+                        telemetry.addData("Phase", "Stopped: no progress for " + STUCK_SECONDS + " s");
+                        telemetry.addLine("The robot stopped moving along its path: it is blocked, or the localizer stopped answering (check the odometry cables). Everything is off.");
+                        telemetry.update();
+                        idle();
+                    }
+                    break;
                 }
                 boolean pathEnds = i == legs.length - 1 || ${R}.PATH[i + 1] != movingPath || ${R}.MOVING_ACTIONS[i + 1].isEmpty();
                 if (!moving.isEmpty() && pathEnds) {

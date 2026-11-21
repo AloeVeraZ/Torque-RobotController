@@ -6,6 +6,8 @@
 // waits for the team to agree. /sdcard/FIRST (configurations, OnBot Java, Blocks) is not touched either way.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const PACKAGE='com.qualcomm.ftcrobotcontroller',ASSET='FtcRobotController-release.apk';
+// How long a download may go without a byte arriving before it is given up.
+const IDLE_MS=60000;
 const LATEST='https://api.github.com/repos/FIRST-Tech-Challenge/FtcRobotController/releases/latest';
 // Releases checked by hand: a GitHub answer naming one of these must match it, so a tampered answer cannot swap the file.
 const KNOWN={'v12.0':{sha256:'0f5a94fad17e7e114a7839328f41e92bda7e7a419a6b732df53446a48b5cd972',versionCode:63,versionName:'12.0'}};
@@ -36,14 +38,22 @@ async function apk(rel,{fetch=globalThis.fetch,cache,progress=()=>{}}){
   if(fs.existsSync(file)&&await hashOf(file)===rel.sha256)return file;
   if(!rel.url)throw Error('The Robot Controller download is not on this computer, and there is no internet to fetch it. Connect to the internet, then try again.');
   fs.mkdirSync(dir,{recursive:true});const part=file+'.part';
-  const r=await fetch(rel.url,{headers:{'User-Agent':'Torque'},redirect:'follow',signal:AbortSignal.timeout(300000)});
-  if(!r.ok||!r.body)throw Error(`The Robot Controller download failed (${r.status}). Check the internet connection, then try again.`);
-  const total=Number(r.headers.get('content-length'))||rel.size||0,out=fs.createWriteStream(part),h=crypto.createHash('sha256');let got=0,said=-1;
-  try{for await(const chunk of r.body){h.update(chunk);got+=chunk.length;if(!out.write(chunk))await new Promise(ok=>out.once('drain',ok));
+  // The download is given up only when nothing has arrived for a minute: a slow connection that keeps going is let finish.
+  const quiet=new AbortController();let idle=null;const heard=()=>{clearTimeout(idle);idle=setTimeout(()=>quiet.abort(Error('nothing arrived for a minute')),IDLE_MS);};heard();
+  let out=null,digest='';
+  try{const r=await fetch(rel.url,{headers:{'User-Agent':'Torque'},redirect:'follow',signal:quiet.signal});
+    if(!r.ok||!r.body)throw Object.assign(Error(`The Robot Controller download failed (${r.status}). Check the internet connection, then try again.`),{said:true});
+    const total=Number(r.headers.get('content-length'))||rel.size||0,h=crypto.createHash('sha256');let got=0,said=-1;out=fs.createWriteStream(part);
+    // A disk that fills up (or any other failed write) ends the download: without this the wait for the file to take more never ends.
+    const broke=new Promise((_,fail)=>out.once('error',fail));broke.catch(()=>{});
+    for await(const chunk of r.body){heard();h.update(chunk);got+=chunk.length;if(!out.write(chunk))await Promise.race([new Promise(ok=>out.once('drain',ok)),broke]);
       const pct=total?Math.floor(got*100/total):-1;if(pct!==said&&pct%5===0){said=pct;progress(total?`Downloading ${pct}%`:'Downloading…');}}
-    await new Promise((ok,fail)=>out.end(e=>e?fail(e):ok()));}
-  catch(e){out.destroy();fs.rmSync(part,{force:true});throw Error(`The Robot Controller download stopped: ${e.message}`);}
-  if(h.digest('hex')!==rel.sha256){fs.rmSync(part,{force:true});throw Error('The downloaded Robot Controller app did not match FIRST\'s published checksum, so it was not installed. Try again.');}
+    await Promise.race([new Promise((ok,fail)=>out.end(e=>e?fail(e):ok())),broke]);
+    digest=h.digest('hex');}
+  catch(e){out?.destroy();try{fs.rmSync(part,{force:true});}catch{}if(e?.said)throw e;
+    throw Error(e?.code==='ENOSPC'?'This computer’s disk is full, so the Robot Controller app could not be downloaded. Free some space, then try again.':`The Robot Controller download stopped: ${quiet.signal.aborted?'nothing arrived for a minute':e.message}. Check the internet connection, then try again.`);}
+  finally{clearTimeout(idle);}
+  if(digest!==rel.sha256){fs.rmSync(part,{force:true});throw Error('The downloaded Robot Controller app did not match FIRST\'s published checksum, so it was not installed. Try again.');}
   fs.renameSync(part,file);fs.writeFileSync(path.join(dir,'sha256'),rel.sha256);return file;
 }
 // install: adb install's words into a sentence a team can act on.
@@ -58,15 +68,17 @@ async function update({serial,adb,controller,cache,replace=false,progress=()=>{}
   progress('Checking for the latest version…');const rel=await latest({fetch,cache});const target=versionOf(rel.tag);
   if(now&&!now.debug&&!newer(target,now.versionName))return {upToDate:true,versionName:now.versionName};
   const mustReplace=!!now&&(now.debug||KNOWN[rel.tag]&&now.versionCode>KNOWN[rel.tag].versionCode);
-  if(mustReplace&&!replace)return {needsReplace:true,from:now.versionName,to:target,message:`This hub runs a Robot Controller ${now.versionName} built in Android Studio, so Android cannot update it in place. Updating to ${target} removes that app first, and with it any team code built in Android Studio. Configurations, OnBot Java and Blocks programs stay on the hub.`};
+  if(mustReplace&&!replace)return {needsReplace:true,serial,from:now.versionName,to:target,message:`This hub runs a Robot Controller ${now.versionName} built in Android Studio, so Android cannot update it in place. Updating to ${target} removes that app first, and with it any team code built in Android Studio. Configurations, OnBot Java and Blocks programs stay on the hub.`};
   const file=await apk(rel,{fetch,cache,progress});
-  if(mustReplace){progress('Removing the old app…');await adb(['-s',serial,'uninstall',PACKAGE],{timeout:60000}).catch(()=>{});}
+  // Once the old app is off the hub, a failure says so: the hub has no Robot Controller until Update is pressed again.
+  let removed=false;const gone=text=>removed?`${text} The old app was already removed, so the hub has no Robot Controller app now: plug it in and press Update again.`:text;
+  if(mustReplace){progress('Removing the old app…');removed=await adb(['-s',serial,'uninstall',PACKAGE],{timeout:60000}).then(t=>/\bSuccess\b/.test(String(t)),()=>false);}
   progress(`Installing Robot Controller ${target}…`);
   let said='';try{said=await adb(['-s',serial,'install','-r','-g',file],{timeout:240000});}catch(e){said=String(e.message||e);}
-  if(!/\bSuccess\b/.test(said)){const why=installProblem(said);if(why!=='replace')throw Error(why);
-    if(!replace)return {needsReplace:true,from:now?.versionName||'',to:target,message:`Android will not update this hub's Robot Controller in place. Updating to ${target} removes the old app first, and with it any team code built in Android Studio. Configurations, OnBot Java and Blocks programs stay on the hub.`};
-    await adb(['-s',serial,'uninstall',PACKAGE],{timeout:60000}).catch(()=>{});said=await adb(['-s',serial,'install','-r','-g',file],{timeout:240000}).catch(e=>String(e.message));
-    if(!/\bSuccess\b/.test(said))throw Error(installProblem(said)==='replace'?'The Control Hub would not take the Robot Controller app. Restart the robot, then try again.':installProblem(said));}
+  if(!/\bSuccess\b/.test(said)){const why=installProblem(said);if(why!=='replace')throw Error(gone(why));
+    if(!replace)return {needsReplace:true,serial,from:now?.versionName||'',to:target,message:`Android will not update this hub's Robot Controller in place. Updating to ${target} removes the old app first, and with it any team code built in Android Studio. Configurations, OnBot Java and Blocks programs stay on the hub.`};
+    removed=await adb(['-s',serial,'uninstall',PACKAGE],{timeout:60000}).then(t=>/\bSuccess\b/.test(String(t)),()=>false)||removed;said=await adb(['-s',serial,'install','-r','-g',file],{timeout:240000}).catch(e=>String(e.message));
+    if(!/\bSuccess\b/.test(said))throw Error(gone(installProblem(said)==='replace'?'The Control Hub would not take the Robot Controller app. Restart the robot, then try again.':installProblem(said)));}
   progress('Starting the Robot Controller…');await controller(serial);
   const after=installed(await sh(`dumpsys package ${PACKAGE}`).catch(()=>''));
   return {installed:true,versionName:after?.versionName||target};

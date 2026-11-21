@@ -296,7 +296,7 @@ async function usbRelink(socket,view,first=250){
 // The Robot Controller app, updated over the cable (src/rc-update.cjs). The Driver Station link drops while the app is
 // replaced and comes back once it is running again (usbRelink).
 ipcMain.handle('ftc-rc-update',async(e,options)=>{fromDs(e);if(!(bridge instanceof UsbFtcSocket))throw Error('Plug the Control Hub into this computer with a USB-C data cable to update its Robot Controller app. Torque updates it over the cable.');
-  const contents=e.sender;return robotLink.usbUpdateController({replace:options?.replace===true,cache:path.join(app.getPath('userData'),'rc-apk'),progress:text=>{try{contents.send('ftc-rc-progress',String(text));}catch{}}});});
+  const contents=e.sender;return robotLink.usbUpdateController({replace:options?.replace===true,expect:typeof options?.serial==='string'&&options.serial?options.serial:undefined,cache:path.join(app.getPath('userData'),'rc-apk'),progress:text=>{try{contents.send('ftc-rc-progress',String(text));}catch{}}});});
 // Program & Manage: the Robot Controller's own web interface (port 8080) over the existing website bridge.
 async function openManager(){
   if(!(bridge instanceof FtcSocket))throw Error('Program & Manage is available for FTC robots.');await closeManager();
@@ -497,12 +497,17 @@ const DEBUG_HOLDS=new Set(['check-start','debug-start','debug-current','debug-in
 let notesRobot=null;const notesStore={file:()=>path.join(app.getPath('userData'),'configuration-notes.json'),key:(robot,name)=>`${String(robot).slice(0,80)}\n${String(name).slice(0,80)}`,
   all(file){try{const v=JSON.parse(fs.readFileSync(file,'utf8'));return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch{return {};}},
   get(robot,name){const k=notesStore.key(robot,name),own=notesStore.all(notesStore.file());return k in own?own[k]:notesStore.all(path.join(app.getPath('userData'),'wiring-notes.json'))[k]||null;},
-  set(robot,name,notes){const k=notesStore.key(robot,name),file=notesStore.file(),own=notesStore.all(file);if(JSON.stringify(own[k]??null)===JSON.stringify(notes))return;own[k]=notes;try{fs.writeFileSync(file,JSON.stringify(own));}catch{}}};
+  set(robot,name,notes){const k=notesStore.key(robot,name),file=notesStore.file(),own=notesStore.all(file);if(JSON.stringify(own[k]??null)===JSON.stringify(notes))return;own[k]=notes;try{fs.writeFileSync(file+'.tmp',JSON.stringify(own));fs.renameSync(file+'.tmp',file);}catch{}}};
 const readThrough=read=>{if(read?.deviceName)notesRobot=read.deviceName;return robotLink.notesThrough(read,notesStore);};
 // The Control Hub left the cable: what was kept for it goes, and whatever runs through it has ended, now rather than when it times out.
 function hubUnplugged(serial){robotLink.usbForget(serial);
   if(robotDebug?.usb){const debug=robotDebug;robotDebug=null;debug.told=true;debug.stop('lost');emit('robot-link-debug',{ended:'lost'});}
-  if(robotCheck?.usb){const check=robotCheck;robotCheck=null;check.told=true;check.stop('lost');emit('robot-link-check',{ended:'lost'});}}
+  if(robotCheck?.usb){const check=robotCheck;robotCheck=null;check.told=true;check.stop('lost');emit('robot-link-check',{ended:'lost'});}
+  // The Servo Test runs over the cable only: its link has gone with it (the op mode turns the port off by itself 3 s after Torque stops writing).
+  servoTest?.stop('lost');}
+// Sleep freezes this app, and whatever it drives on the robot stops by the op mode's own watchdog. On waking nothing carries on by itself:
+// what ran from Calibrate or Setup has ended, and is started again only by a press.
+function endRobotWork(why){robotDebug?.stop(why);robotCheck?.stop(why);servoTest?.stop(why);}
 // The USB watch (src/usb-watch.cjs), while a tab that works with the Control Hub shows. Its changes arrive as usb-watch events. What is on the hub's own USB ports follows it
 // (src/hub-usb.cjs): the same events carry the list as hubUsb, and a change there is one more event, why 'hub-usb'. It runs while ADB can talk to the hub and stops when the watch does.
 const hubFollower=new HubUsb.HubUsbFollower({onChange:list=>{if(usbWatch?.wanted)emit('usb-watch',{...usbWatch.state(),why:'hub-usb',hubUsb:list});}});
@@ -571,11 +576,13 @@ handle('robot-link',async(action,data)=>{
     if(!await robotLink.servoTestCurrent('usb')){say('building');const built=await robotLink.send('usb',{[robotLink.SERVO_TEST_FILE]:robotLink.servoTestSource()},{fix:false,backupDir:path.join(app.getPath('userData'),'robot-backups')});
       if(!built.built)throw Error(robotLink.buildProblem(built.errors));}
     const live=data.live===true;if(live)servoLive={port:data.port??0,hub:data.hub??0,enable:data.enable!==false,us:Math.round(Number(data.us)||0),seq:0,writing:false,again:false,timer:null};
-    say('plan');await robotLink.servoPlan(live?{port:servoLive.port,hub:servoLive.hub,enable:servoLive.enable,live:true,us:servoLive.us,seq:0}:data);
-    const socket=await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open();
-    if(state.page!=='calibrate'){await socket.close();throw Error('Torque left this page before the test started.');}
+    let socket;
+    try{say('plan');await robotLink.servoPlan(live?{port:servoLive.port,hub:servoLive.hub,enable:servoLive.enable,live:true,us:servoLive.us,seq:0}:data);
+      socket=await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open();
+      if(state.page!=='calibrate'){await socket.close();throw Error('Torque left this page before the test started.');}}
+    catch(e){servoLive=null;throw e;}
     say('starting');const test=robotLink.runServoTest('usb',{socket,live,steps:live?0:data.steps.length,onUpdate:update=>emit('robot-link-servo',{update})});servoTest=test;
-    if(live)servoLive.timer=setInterval(servoLiveWrite,1000);
+    if(live){servoLive.timer=setInterval(servoLiveWrite,1000);servoLiveWrite();}
     test.ended.then(why=>emit('robot-link-servo',{ended:why}),e=>emit('robot-link-servo',{error:e.message})).finally(()=>{if(servoTest===test)servoTest=null;if(servoLive){clearInterval(servoLive.timer);servoLive=null;}void socket.close();});
     return true;}
   if(action==='servo-test-stop'){servoTest?.stop();return true;}
@@ -635,13 +642,16 @@ handle('controller-source',source=>{if(!['controller','keyboard'].includes(sourc
 handle('controller-automatic',()=>{controllerHub.automatic();sendControllers(true);return controllerState();});
 handle('controller-calibration',({slot,zone})=>{if(![1,2].includes(slot))throw Error('Choose controller 1 or controller 2.');const pad=controllerHub.state().slots[slot-1];if(!pad||pad.mapping!=='standard')throw Error('Connect a mapped controller first.');const next=Object.assign(Object.create(null),calibrations,{[pad.id]:deadzone(zone)});fs.writeFileSync(calibrationFile+'.tmp',JSON.stringify(next),{mode:0o600});fs.renameSync(calibrationFile+'.tmp',calibrationFile);calibrations=next;controllerHub.blocked.add(`${pad.index}:${pad.id}`);sendControllers(true);return controllerState();});
 handle('auth',({id,username,password,cancel})=>{if(!auth||auth.id!==id)throw Error('This sign-in prompt expired.');const pending=auth;auth=null;if(cancel)pending.callback();else pending.callback(String(username||'').slice(0,256),String(password||'').slice(0,1024));fitView();});
-handle('fullscreen',()=>win.setFullScreen(!win.isFullScreen()));handle('quit',()=>app.quit());
+handle('fullscreen',()=>win.setFullScreen(!win.isFullScreen()));// Quitting stops the programmer's helper at once: part way through a firmware write that leaves a servo needing Recover. The
+// window's own close asks first; anything that quits by itself waits for the write.
+const flashingServo=()=>Object.values(axons).some(a=>a.flashing);
+handle('quit',()=>{if(flashingServo())throw Error('An Axon servo is being updated. Wait for it to finish, then quit.');app.quit();});
 handle('update-info',async()=>{auto.dismissed=true;finding?.abort();await closeRobot();return updater.info();});
 // The update icon's background check reads the version and channel without closing the robot page (update-info is the
 // Updates popup opening, which does close it).
 handle('update-state',()=>updater.info());handle('update-check',()=>updater.check());
 handle('update-channel',(channel,confirmed)=>updater.setChannel(channel,confirmed));
-handle('update-download',()=>updater.downloadAndInstall(async download=>{await closeRobot();const prepared=await prepareInstall(download,{appPath:app.getAppPath(),executable:process.execPath});await launchInstall(prepared);setTimeout(()=>app.quit(),200);return {restarting:true};}));
+handle('update-download',()=>{if(flashingServo())throw Error('An Axon servo is being updated. Wait for it to finish, then update Torque.');return updater.downloadAndInstall(async download=>{if(flashingServo())throw Error('An Axon servo is being updated. Wait for it to finish, then update Torque.');await closeRobot();const prepared=await prepareInstall(download,{appPath:app.getAppPath(),executable:process.execPath});await launchInstall(prepared);setTimeout(()=>app.quit(),200);return {restarting:true};});});
 app.on('login',(event,contents,details,info,callback)=>{
   if(contents!==robotView?.webContents)return;event.preventDefault();if(auth)auth.callback();auth={id:randomUUID(),callback};robotKeyboard?.hide({focus:false});robotView.setVisible(false);emit('auth',{id:auth.id,host:active?.url||'',realm:info.realm||'',retry:!details.firstAuthAttempt});
   void setRobotFullscreen(false);
@@ -658,7 +668,7 @@ function recoverSandboxedLibrary(dir){
   }catch{}
 }
 app.whenReady().then(async()=>{
-  powerMonitor.on('suspend',()=>{suspended=true;blockHeldControllers();sendControllers(true);void interruptRobot('Device sleeping. Your robot address is saved. After waking and reconnecting Wi-Fi, choose Try again.');});
+  powerMonitor.on('suspend',()=>{suspended=true;endRobotWork('lost');blockHeldControllers();sendControllers(true);void interruptRobot('Device sleeping. Your robot address is saved. After waking and reconnecting Wi-Fi, choose Try again.');});
   powerMonitor.on('resume',()=>{suspended=false;lastControllerInput=0;if(controllerHub)ingestPads([]);sendControllers(true);void (async()=>{if(interruption)await interruption;await refreshNetwork();if(state.recovering)update({error:'Device resumed. Your robot address is saved. Check Wi-Fi, then choose Try again. Robot controls stay neutral until released.'});})().catch(e=>emit('notice',e.message));});
   device=await detectHardware();
   recoverSandboxedLibrary(app.getPath('userData'));
@@ -668,12 +678,19 @@ app.whenReady().then(async()=>{
   calibrationFile=path.join(app.getPath('userData'),'controller-calibration.json');try{for(const [id,zone]of Object.entries(JSON.parse(fs.readFileSync(calibrationFile,'utf8')))){if(id.length<=2048)calibrations[id]=deadzone(zone);}}catch{}
   zoomFile=path.join(app.getPath('userData'),'robot-zoom.json');try{for(const [key,factor]of Object.entries(JSON.parse(fs.readFileSync(zoomFile,'utf8'))))if(key.length<=2048&&zoomSteps.includes(factor))zooms[key]=factor;}catch{}
   updater=new Updater({directory:app.getPath('userData'),version:meta.version,repo:meta.repository.url,channel:meta.updateChannel,base:build.electron===process.versions.electron?build.base:'',onProgress:p=>emit('update-progress',p)});
-  try{library=new Library(path.join(app.getPath('userData'),'robots.json'));}catch(e){state.error=`Saved library could not be read: ${e.message}`;library=new Library(path.join(app.getPath('userData'),`robots-recovered-${Date.now()}.json`));}
+  // A library that cannot be read is set aside under another name and a new one started in its place: started under a new
+  // name each launch instead, whatever was added afterwards was gone at the next launch.
+  const libraryFile=path.join(app.getPath('userData'),'robots.json');
+  try{library=new Library(libraryFile);}catch(e){state.error=`Saved library could not be read: ${e.message}`;
+    try{fs.renameSync(libraryFile,path.join(app.getPath('userData'),`robots-unreadable-${Date.now()}.json`));library=new Library(libraryFile);}catch{library=new Library(path.join(app.getPath('userData'),`robots-recovered-${Date.now()}.json`));}}
   const d=screen.getPrimaryDisplay().workAreaSize;
   win=new BrowserWindow({show:process.env.DECK_HEADLESS!=='1',width:Math.min(1280,d.width),height:Math.min(800,d.height),minWidth:360,minHeight:480,title:'Torque',icon:path.join(__dirname,'../ui/icon.png'),backgroundColor:'#080808',autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),additionalArguments:[...controllerArguments,'--deck-controller-shell',...(process.env.DECK_TEST_SETUP==='1'?['--deck-test-setup']:[])],partition:'persist:launcher',sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
   robotKeyboard=new RobotKeyboard({WebContentsView,ipcMain,window:()=>win,robot:()=>managerView||robotView,allowed:()=>touchKeyboard&&!!win&&!win.isDestroyed()&&state.page==='drive'&&!overlay&&!auth&&!state.error,changed:()=>fitView(),released:()=>{for(const pad of controllerHub.state().slots)if(pad)controllerHub.blocked.add(`${pad.index}:${pad.id}`);}});
   controllerSession(win.webContents.session);const controllerTimer=setInterval(()=>{if(lastControllerInput&&performance.now()-lastControllerInput>500)ingestPads([]);sendControllers();},100);controllerTimer.unref();
-  win.webContents.on('render-process-gone',()=>{lastControllerInput=0;ingestPads([]);sendControllers(true);simulation.stop();});
+  // The page is what stops a live debug, a guided check or a Servo Test, and this process is what keeps them alive on the robot
+  // (the heartbeat, the servo's count). A page that crashed or was loaded again can no longer stop anything, so they end here.
+  win.webContents.on('render-process-gone',()=>{lastControllerInput=0;ingestPads([]);sendControllers(true);simulation.stop();endRobotWork('stopped');});
+  win.webContents.on('did-start-navigation',(e,url,inPlace,mainFrame)=>{if((e?.isMainFrame??mainFrame)&&!(e?.isSameDocument??inPlace))endRobotWork('stopped');});
   simulation=new SimulationHost({utilityProcess,dataDir:app.getPath('userData'),emit:message=>emit('sim-event',message)});
   // Install and update checks launch the packaged app with DECK_SMOKE_FILE and read back what started.
   if(process.env.DECK_SMOKE_FILE)win.webContents.once('did-finish-load',()=>{fs.writeFileSync(process.env.DECK_SMOKE_FILE,JSON.stringify({version:meta.version,electron:process.versions.electron,base:build.base||'',appPath:app.getAppPath(),pid:process.pid}));setTimeout(()=>app.exit(0),200);});

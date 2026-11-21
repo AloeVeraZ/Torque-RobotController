@@ -59,6 +59,33 @@ test('autonomous with autoTransition reports its end, and lost robots return to 
   cut=false;await until(()=>ds.state.connection==='connected',3000);
 });
 
+// The cable comes out, the driver presses START in the two seconds before the screen says so, and half a minute later the cable goes
+// back in. The robot must not start then: what was asked before the link dropped is never asked again.
+test('a START pressed as the link drops is not sent to the robot when it comes back',()=>{
+  let now=1000,link=true;const sent=[],failed=[];
+  const ds=new R.DriverStation({send:b=>{if(link)sent.push(R.decode(b));},monotonic:()=>now,clock:()=>now});ds.on('command-failed',c=>failed.push(c));
+  const discovery=()=>ds.receive(R.encodePeerDiscovery({seq:1,peerType:R.PeerType.PEER})),ack=()=>{for(const c of [...ds.pending])if(!c.acknowledged)ds.receive(R.encodeCommand({...c,acknowledged:true}));};
+  ds.update({connection:'searching'});discovery();ack();assert.equal(ds.connected(),true);assert.equal(ds.pending.length,0);
+  link=false;now+=1500;ds.tick();assert.equal(ds.connected(),true,'the screen still says connected');
+  const start=ds.startOpMode('Red Auto');assert.equal(ds.state.pendingAction,'start');
+  for(let i=0;i<20;i++){now+=40;ds.tick();}
+  assert.equal(ds.state.connection,'searching');assert.deepEqual(ds.pending,[],'nothing is kept for later');assert.deepEqual(failed,[start]);assert.equal(start.failed,true);assert.equal(ds.state.pendingAction,null);
+  // Asked while there is no robot: not kept either, and it says so.
+  const restart=ds.restartRobot(),init=ds.initOpMode('Red Auto');assert.equal(restart.failed,true);assert.equal(init.failed,true);assert.deepEqual(ds.pending,[]);assert.equal(ds.state.pendingAction,null);
+  now+=30000;link=true;sent.length=0;discovery();for(let i=0;i<30;i++){now+=40;ds.tick();}
+  assert.equal(ds.connected(),true);
+  assert.deepEqual(sent.filter(p=>p.type===R.Msg.COMMAND&&!p.acknowledged).map(p=>p.name).filter((n,i,a)=>a.indexOf(n)===i).sort(),['CMD_REQUEST_ACTIVE_CONFIG','CMD_REQUEST_OP_MODE_LIST'],'only what a station asks on connecting');
+});
+test('a robot that drops as START is pressed stays stopped when it is back; so does one asked to save or restart',async t=>{
+  let cut=false;const {ds,sim,stop}=pair({},()=>cut);t.after(stop);ds.start();
+  await until(()=>ds.state.opModes.length===4);const before=sim.commands.length;
+  cut=true;await wait(400);ds.startOpMode('Red Auto');ds.command('CMD_SAVE_CONFIGURATION','{"name":"ghost"};<Robot type="FirstInspires-FTC" />');ds.restartRobot();
+  await until(()=>ds.state.connection==='searching',3500);
+  cut=false;await until(()=>ds.state.connection==='connected'&&ds.state.opModes.length===4,3000);await wait(700);
+  assert.equal(sim.opState,'stopped');assert.equal(sim.opMode,R.STOP_OP_MODE);assert.equal(sim.restarts,0);assert.ok(!sim.configurations.some(c=>c.name==='ghost'));
+  assert.deepEqual(sim.commands.slice(before).map(c=>c.name).filter(n=>!/^CMD_REQUEST_/.test(n)),[]);
+});
+
 test('a robot with another station connected rejects this one; older robocol versions are matched',async t=>{
   const a=pair({reject:true});t.after(a.stop);a.ds.start();await until(()=>a.ds.state.connection==='rejected');
   const b=pair({version:123});t.after(b.stop);b.ds.start();await until(()=>b.ds.state.connection==='connected');assert.equal(b.ds.identity.version,123);assert.equal(b.ds.state.adaptedVersion,true);

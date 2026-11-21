@@ -80,7 +80,7 @@ async function updateRobotController(){
   if(!host.updateRobotController||updating)return;updating=true;const act=$('#system-action'),bar=$('#progress');act.disabled=true;act.textContent='Updating…';
   const show=text=>{bar.hidden=false;$('#progress-text').textContent=text;const p=/(\d+)%/.exec(text);if(p){$('#progress-bar').max=100;$('#progress-bar').value=Number(p[1]);}else $('#progress-bar').removeAttribute('value');};
   try{show('Checking the Robot Controller app…');let r=await host.updateRobotController({},show);
-    if(r?.needsReplace){bar.hidden=true;if(!await confirmDialog(`Update to Robot Controller ${r.to}?`,r.message,'Remove and update'))return;show('Starting the update…');r=await host.updateRobotController({replace:true},show);}
+    if(r?.needsReplace){bar.hidden=true;if(!await confirmDialog(`Update to Robot Controller ${r.to}?`,r.message,'Remove and update'))return;show('Starting the update…');r=await host.updateRobotController({replace:true,serial:r.serial},show);}
     if(r?.upToDate)toast(`The Robot Controller app is up to date (${r.versionName}).`,4000);
     else if(r?.installed)toast(`Robot Controller ${r.versionName} is installed. The robot reconnects by itself.`,6000);}
   catch(e){showDialog('Update Robot Controller',e.message);}

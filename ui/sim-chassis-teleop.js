@@ -28,7 +28,9 @@
   // Every part of controller 1 the chassis uses: those buttons, the whole stick that drives it, and the side-to-side of the
   // stick that turns it (that stick's up and down is free for a mechanism).
   function chassisParts(raw,swerve=true){const m=mapOf(raw),out=[`${m.drive}_stick_x`,`${m.drive}_stick_y`];if(m.turn==='left'||m.turn==='right')out.push(`${m.turn}_stick_x`);return [...out,...chassisButtons(raw,swerve)];}
-  const n=(v,d=5)=>Number.isFinite(+v)?String(+(+v).toFixed(d)):'0',list=a=>`{${a.join(', ')}}`,str=s=>`"${String(s).replace(/[\\"]/g,'\\$&')}"`;
+  const n=(v,d=5)=>Number.isFinite(+v)?String(+(+v).toFixed(d)):'0',list=a=>`{${a.join(', ')}}`,str=s=>`"${String(s).replace(/[\\"]/g,'\\$&').replace(/[\u0000-\u001f]/g,'')}"`;
+  // A name inside a comment: on one line, and with no \u for the compiler to read as a character (it reads those in comments too).
+  const cm=s=>String(s||'').replace(/\*\//g,'* /').replace(/\\(?=u)/g,'\\ ').replace(/[\r\n]+/g,' ').trim();
   const dbl=v=>{const t=n(v);return /[.e]/.test(t)?t:t+'.0';};
   const FACE={up:'UP',down:'DOWN',forward:'FORWARD',backward:'BACKWARD',left:'LEFT',right:'RIGHT'};
   // The lines every drivetrain shares: the sticks as forward, left and turn, the slow button, the heading and its reset.
@@ -39,7 +41,7 @@
       ...(m.reset==='none'?[]:[`            if (gamepad1.${m.reset}) imu.resetYaw();`]),
       '            double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS) * IMU_SCALE;',
       ...(m.field==='yes'?['            // Field centric: the stick is turned back by the robot\'s heading, so forward stays away from the driver.','            double f = forward * Math.cos(heading) + left * Math.sin(heading);','            left = -forward * Math.sin(heading) + left * Math.cos(heading);','            forward = f;']:[])];}
-  const head=(o,imports)=>[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,'// Everything in capitals was checked or measured on the real robot. Send it again after calibrating again.',`@TeleOp(name = ${str(o.opMode||OP_MODE)}, group = "Torque")`,`public class ${o.className||NAME} extends LinearOpMode {`];
+  const head=(o,imports)=>[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${cm(o.config)}" configuration`:''}.`,'// Everything in capitals was checked or measured on the real robot. Send it again after calibrating again.',`@TeleOp(name = ${str(o.opMode||OP_MODE)}, group = "Torque")`,`public class ${o.className||NAME} extends LinearOpMode {`];
   // ---- mechanisms -------------------------------------------------------------------------------------------------------
   // What a mechanism does in the TeleOp, by what drives it, on any part of the controller.
   //   A motor or a continuous servo: runs while a button is held (and backwards on another), is switched on and off by a
@@ -109,7 +111,9 @@
   // The Java for the mechanisms: {imports, init (before waitForStart), loop (every loop)}.
   // list: [{label, device (its name in the robot configuration), kind: 'motor'|'crservo'|'servo', reversed, states, mode, a, b, c, power, posA, posB, posC}].
   function mechCode(list,pad='gamepad1'){const imports=[],init=[],loop=[],names=new Set(),say=b=>BUTTONS[b]||AXES[b]||b,low=t=>String(t||'').toLowerCase();
-    const ident=(label,i)=>{const w=String(label||'').replace(/[^A-Za-z0-9]+/g,' ').trim().split(' ').filter(Boolean);let id=w.map((x,k)=>k?x[0].toUpperCase()+x.slice(1).toLowerCase():x.toLowerCase()).join('');if(!id||/^[0-9]/.test(id)||RESERVED.has(id))id='mech'+(i+1);while(names.has(id))id+='B';names.add(id);return id;};
+    const ident=(label,i)=>{const w=String(label||'').replace(/[^A-Za-z0-9]+/g,' ').trim().split(' ').filter(Boolean);let id=w.map((x,k)=>k?x[0].toUpperCase()+x.slice(1).toLowerCase():x.toLowerCase()).join('');if(!id||/^[0-9]/.test(id)||RESERVED.has(id))id='mech'+(i+1);
+      // Each mechanism also has variables named after it (clawOn, clawWas, clawNow, clawGo): no other mechanism may be called one of those.
+      const all=x=>[x,x+'On',x+'Was',x+'Now',x+'Go'];while(all(id).some(x=>names.has(x)))id+='B';for(const x of all(id))names.add(x);return id;};
     (list||[]).forEach((m,i)=>{if(!m||m.mode==='off'||!MODES[m.mode]||!m.device||!m.a||m.a==='none')return;const servo=m.kind==='servo',cls=servo?'Servo':m.kind==='crservo'?'CRServo':'DcMotor',pw=dbl(Math.max(.05,Math.min(1,+m.power||1))),analog=ANALOG.has(m.mode);
       if(!modesFor(servo?'servo':m.kind==='crservo'?'crservo':'motor').includes(m.mode))return;if(analog?!Object.hasOwn(AXES,m.a):!Object.hasOwn(BUTTONS,m.a))return;
       const hasB=!analog&&m.b&&m.b!=='none',hasC=m.mode==='positions'&&m.c&&m.c!=='none',u=usesOf(m.mode,m.states);if((m.mode==='updown'||m.mode==='positions')&&!hasB)return;
@@ -117,7 +121,7 @@
       imports.push('com.qualcomm.robotcore.hardware.'+cls);
       const what={hold:`hold ${say(m.a)} to run it${hasB?`, ${say(m.b)} to run it backwards`:''}`,toggle:`${say(m.a)} switches it on and off${hasB?`; ${say(m.b)} runs it backwards while held`:''}`,updown:`${say(m.a)} moves it ${low(u[0])}, ${say(m.b)} ${low(u[1])}; it brakes when let go`,
         axis:`it follows ${low(say(m.a))}`,positions:`${say(m.a)} sends it to ${low(u[0])} (${pA}), ${say(m.b)} to ${low(u[1])} (${pB})${hasC?`, ${say(m.c)} to ${low(u[2])} (${pC})`:''}`,flip:`${say(m.a)} flips it between ${pA} and ${pB}`,momentary:`at ${pB} while ${say(m.a)} is held, at ${pA} when it is let go`,follow:`${low(say(m.a))} puts it anywhere between ${pA} and ${pB}`}[m.mode];
-      init.push(`        // ${String(m.label||m.device).replace(/[\r\n]+/g,' ')}: ${what}.`,`        ${cls} ${v} = hardwareMap.get(${cls}.class, ${str(m.device)});`);
+      init.push(`        // ${cm(m.label||m.device)}: ${what}.`,`        ${cls} ${v} = hardwareMap.get(${cls}.class, ${str(m.device)});`);
       if(!servo&&m.reversed)init.push(`        ${v}.setDirection(DcMotorSimple.Direction.REVERSE);`);
       if(m.mode==='updown'||m.mode==='axis'&&m.kind==='motor')init.push(`        ${v}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);`);
       if(m.mode==='toggle'||m.mode==='flip')init.push(`        boolean ${v}On = false, ${v}Was = false;`);
@@ -305,7 +309,7 @@
   function turnTestOf(o){if(!o||o.kind==='swerve'||!Array.isArray(o.motors)||!o.motors.length)return {error:'The IMU turn test is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
     const tn={top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,lag:.02,...(o.turn||{})},ms=o.motors,kind=o.kind,angles=(Array.isArray(o.angles)&&o.angles.length?o.angles:TURN_TEST.angles).map(Number).filter(Number.isFinite).slice(0,12),name=o.className||TURN_TEST.className,opMode=o.opMode||TURN_TEST.opMode;
     const imports=[...COMMON.filter(i=>!/\.TeleOp$/.test(i)),'com.qualcomm.robotcore.eventloop.opmode.Autonomous','com.qualcomm.robotcore.util.ElapsedTime',...(o.imu?.mount?.imports||[])];
-    const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,
+    const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${cm(o.config)}" configuration`:''}.`,
       '// A test of the heading alone: it uses only the IMU. Put the robot down facing the way that is 0° and press START:','// it rolls forward a little, then turns to each angle below, slowing as it nears each one. Left is positive.',
       `@Autonomous(name = ${str(opMode)}, group = "Torque")`,`public class ${name} extends LinearOpMode {`,
       `    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,
@@ -313,15 +317,17 @@
       '    // The angles it turns to, in order: degrees from where it stood at START, left positive.',`    static final double[] ANGLES = ${list(angles.map(dbl))};`,
       '    // Turning: the most power, the least that still moves it, how far out it starts to slow, how close counts as there,','    // and how hard it brakes against its own speed (power for each degree a second).',
       `    // ${tn.measured?'Measured on this robot by Calibrate (Tune the turning).':'The gentle defaults: Calibrate → Mechanisms → Tune the turning measures this robot.'}`,`    static final double TOP_TURN = ${dbl(tn.top)}, LEAST_TURN = ${dbl(tn.least)}, SLOW_FROM_DEGREES = ${dbl(tn.slowFrom)}, DONE_DEGREES = ${dbl(tn.done)}, BRAKE = ${dbl(tn.brake)};`,'    // How old the heading is by the time the power reaches the wheels: the IMU read (over I2C on a Control Hub) and half a loop.',`    static final double LAG_SECONDS = ${dbl(+(tn.lag).toFixed(4))};`,'    static final double FORWARD_POWER = 0.25, FORWARD_SECONDS = 0.6;','',
-      '    DcMotor[] drive;','    IMU imu;','    double lastYaw, heading;','',
+      '    DcMotor[] drive;','    IMU imu;','    double lastYaw, heading;','    // Set when a turn was told to go and the heading did not change: the test ends there.','    boolean blind;','',
       '    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }','',
       '    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
       '    double read() {','        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading += wrap(yaw - lastYaw) * IMU_SCALE;','        lastYaw = yaw;','        return heading;','    }','',
       '    void set(double forward, double left, double turn) {',`        double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'        double top = 1;','        for (double p : power) top = Math.max(top, Math.abs(p));','        for (int i = 0; i < drive.length; i++) drive[i].setPower(power[i] / top);','    }','',
       ...TURN_JAVA,'',
       '    /** Turns to an angle and stops there (the Turn law above), and waits a moment to see it stay. */',
-      '    void turnTo(double target) {','        Turn turn = new Turn(TOP_TURN, LEAST_TURN, SLOW_FROM_DEGREES, BRAKE, DONE_DEGREES, LAG_SECONDS);','        ElapsedTime time = new ElapsedTime();','        double thereAt = -1;',
-      '        while (opModeIsActive() && time.seconds() < 6) {','            double now = read(), t = time.seconds(), power = turn.step(target, now, t);','            set(0, 0, power);',
+      '    void turnTo(double target) {','        Turn turn = new Turn(TOP_TURN, LEAST_TURN, SLOW_FROM_DEGREES, BRAKE, DONE_DEGREES, LAG_SECONDS);','        ElapsedTime time = new ElapsedTime();','        double thereAt = -1, from = read();',
+      '        while (opModeIsActive() && time.seconds() < 6) {','            double now = read(), t = time.seconds(), power = turn.step(target, now, t);',
+      '            // A turn of 20° or more that has not moved the heading 5° in 1.5 s: the IMU is not answering or the robot cannot turn.','            // Turning on by a heading that never changes would spin it for the whole test.',
+      '            if (t > 1.5 && Math.abs(target - from) >= 20 && Math.abs(now - from) < 5) { blind = true; break; }','            set(0, 0, power);',
       '            if (turn.there) { if (thereAt < 0) thereAt = t; else if (t - thereAt >= 0.3) break; } else thereAt = -1;',
       '            telemetry.addData("Turning to", "%.0f", target);','            telemetry.addData("Heading", "%.1f", now);','            telemetry.addData("Left to turn", "%.1f", target - now);','            telemetry.addData("Turn power", "%.2f", power);','            telemetry.update();','            sleep(10);','        }',
       '        set(0, 0, 0);','        sleep(400);','    }','',
@@ -329,8 +335,8 @@
       ...imu(o).map(l=>l.replace('        IMU imu = ','        imu = ')),
       '        waitForStart();','        // Where it stands now is 0°, whatever the IMU says.','        lastYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading = 0;',
       '        ElapsedTime time = new ElapsedTime();','        while (opModeIsActive() && time.seconds() < FORWARD_SECONDS) { read(); set(FORWARD_POWER, 0, 0); sleep(10); }','        set(0, 0, 0);','        sleep(300);',
-      '        for (double angle : ANGLES) { if (!opModeIsActive()) break; turnTo(angle); }',
-      '        while (opModeIsActive()) { telemetry.addData("Done. Heading", "%.1f", read()); telemetry.update(); sleep(50); }','    }','}',''].join('\n');
+      '        for (double angle : ANGLES) { if (!opModeIsActive() || blind) break; turnTo(angle); }',
+      '        while (opModeIsActive()) {','            if (blind) telemetry.addLine("Stopped: the heading did not change while turning. Check the IMU (Calibrate, Electronics) and that the wheels can turn the robot.");','            telemetry.addData(blind ? "Heading" : "Done. Heading", "%.1f", read());','            telemetry.update();','            sleep(50);','        }','    }','}',''].join('\n');
     return {file:`org/firstinspires/ftc/teamcode/${name}.java`,opMode,source};}
   // ---- turning to an angle: the one law every turn on the spot uses ------------------------------------------------------
   // TorqueDebug.java's TorqueDebugTurn.step and the IMU turn test's Turn class are this, step for step (tests/turn-law.test.cjs).

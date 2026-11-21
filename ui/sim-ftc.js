@@ -73,7 +73,7 @@
   // Tuning the simulator has not measured falls back to the Deck controller's own Config defaults, so no NaN
   // reaches the Java.
   const DEFAULT_TUNING={maxForward:60,maxStrafe:50,maxTurn:5,translationalP:.09/.35,translationalD:.01,headingP:2/.7,headingD:.12};
-  function constants(h,raw,options){const t={...raw};for(const [k,v] of Object.entries(DEFAULT_TUNING))if(!Number.isFinite(t[k]))t[k]=v;return `package ${options.packageName}.drive;
+  function constants(h,raw,options){const t={...raw};for(const [k,v] of Object.entries(DEFAULT_TUNING))if(!Number.isFinite(t[k])||(/^max/.test(k)&&!(t[k]>0)))t[k]=v;return `package ${options.packageName}.drive;
 import deck.pathing.DeckFollower;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -137,7 +137,7 @@ ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that co
     private final SparkFunOTOS otos;
     private final ElapsedTime clock = new ElapsedTime();
     private final int[] before = new int[${motors.length}], podBefore = new int[${pods.length}];
-    private double oldImu, lastTime;${timed?'\n    private double toldForward, toldStrafe;':''}
+    private double oldImu, lastTime, trusted;${timed?'\n    private double toldForward, toldStrafe;':''}
     double limit=${n(.6)};
     private MotionState state=MotionState.ofVelocity(Pose.zero(),Velocity.zero());
     public RobotDrive(HardwareMap map) {
@@ -175,7 +175,7 @@ ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.nam
     public void setPose(Pose p){
         for(int i=0;i<motors.length;i++)before[i]=motors[i].getCurrentPosition();
         for(int i=0;i<pods.length;i++)podBefore[i]=pods[i].getCurrentPosition();
-        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=clock.seconds();
+        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=trusted=clock.seconds();
         if(pinpoint!=null)pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,p.x(),p.y(),AngleUnit.RADIANS,p.heading()));
         if(otos!=null)otos.setPosition(new SparkFunOTOS.Pose2D(p.x(),p.y(),p.heading()));
         state=MotionState.ofVelocity(p,Velocity.zero());
@@ -201,7 +201,15 @@ ${pods.length?`            double[] pod=new double[pods.length];for(int i=0;i<po
             left=${pods.map((p,i)=>p.axis==='strafe'?`pod[${i}]*${n(1/p.ticksPerInch)}-(${n(p.x)})*dh`:null).filter(Boolean).join('+')};`:''}
             double mid=p.heading()+dh/2;next=new Pose(p.x()+forward*Math.cos(mid)-left*Math.sin(mid),p.y()+forward*Math.sin(mid)+left*Math.cos(mid),p.heading()+dh);
         }
-        state=MotionState.ofVelocity(next,new Velocity((next.x()-p.x())/dt,(next.y()-p.y())/dt,DeckFollower.angle(next.heading()-p.heading())/dt));
+        // A reading that is not a number (a sensor that failed mid-read) is no reading: the pose stays where it was, and the
+        // autonomous stops the robot if it stays there.
+        if(!(Double.isFinite(next.x())&&Double.isFinite(next.y())&&Double.isFinite(next.heading())))next=new Pose(p.x(),p.y(),p.heading());
+${h.localization==='fused'||h.localization==='optical'?`        // A position further off than the robot could have driven since the last good one (3 in, and 100 in/s for at most a
+        // quarter second) is no reading either: a Pinpoint or OTOS that lost power or reset reads 0,0, and a robot that believed
+        // it would drive hard at wherever that says it is not. The hub's IMU carries the heading meanwhile.
+        else if(Math.hypot(next.x()-p.x(),next.y()-p.y())>3+100*Math.min(.25,now-trusted))next=new Pose(p.x(),p.y(),p.heading()+dh);
+        else trusted=now;
+`:''}        state=MotionState.ofVelocity(next,new Velocity((next.x()-p.x())/dt,(next.y()-p.y())/dt,DeckFollower.angle(next.heading()-p.heading())/dt));
     }
 ${sw?`    public void drive(DrivePowers p,boolean manual){
         double now=clock.seconds(),dt=steerTime<0?0.013:Math.max(0.001,Math.min(0.1,now-steerTime));steerTime=now;if(!podsRead)readPods();podsRead=false;
@@ -226,6 +234,7 @@ ${sw?`    public void drive(DrivePowers p,boolean manual){
     public void stop(){for(DcMotorEx m:motors)m.setPower(0);for(CRServo s:steer)s.setPower(0);steerTime=-1;}`:`    public void drive(DrivePowers p,boolean manual){
         double[] powers=new double[]{${kind==='tank'?motors.map(([key])=>`p.forward()${/left/i.test(key)?'-':'+'}p.turn()`).join(','):'p.forward()-p.strafe()-p.turn(),p.forward()+p.strafe()+p.turn(),p.forward()+p.strafe()-p.turn(),p.forward()-p.strafe()+p.turn()'}};
         double scale=1;for(double w:powers)scale=Math.max(scale,Math.abs(w)/Math.max(.000001,limit));
+        if(Double.isNaN(scale)){stop();return;}
         for(int i=0;i<motors.length;i++)motors[i].setPower(limit<=0?0:powers[i]/scale);${timed?'\n        toldForward=limit<=0?0:p.forward()/scale;toldStrafe=limit<=0?0:p.strafe()/scale;':''}
     }
     public void stop(){for(DcMotorEx m:motors)m.setPower(0);${timed?'toldForward=0;toldStrafe=0;':''}}`}
@@ -251,6 +260,8 @@ import ${options.packageName}.drive.Constants;
  */
 @Autonomous(name = ${javaString(options.autoName||`${options.layoutName||'Planned route'} (Deck)`)}, group = "Torque")
 public class ${options.opModeName} extends LinearOpMode {
+    /** Seconds without getting half an inch further along a leg before everything is stopped. */
+    private static final double STUCK_SECONDS = 2.0;
     private DeckFollower follower;
     private RouteActions actions;
     private final RouteActions.Step step = new RouteActions.Step();
@@ -296,8 +307,17 @@ public class ${options.opModeName} extends LinearOpMode {
                 follower.follow(legs[i]);
                 step.wait = 0;
                 boolean through = i + 1 < legs.length && ${R}.WAIT_SECONDS[i] == 0 && ${R}.ACTIONS[i].isEmpty() && Double.isNaN(${R}.TURN_AFTER[i]) && DeckFollower.continuous(legs[i],legs[i+1]);
+                // A robot that stops getting anywhere along the leg is stopped, not driven on: blocked by a wall or another robot,
+                // or its position no longer changing because a sensor stopped answering (an odometry cable out), which would
+                // otherwise drive it blind for the rest of the autonomous. Within an inch of the end it is only settling, and moves on.
+                double best = follower.remainingDistance();
+                ElapsedTime progress = new ElapsedTime();
+                boolean stuck = false;
                 while (opModeIsActive() && follower.following()) {
                     follower.update();
+                    double left = follower.remainingDistance();
+                    if (left < best - 0.5) { best = left; progress.reset(); }
+                    else if (progress.seconds() > (left > 1.0 ? STUCK_SECONDS : 3)) { stuck = left > 1.0; break; }
                     if (!moving.isEmpty() && !movingDone) {
                         // A set time runs the action from the start of its path; the last call stops it.
                         double t = movingTimer.seconds();
@@ -309,6 +329,18 @@ public class ${options.opModeName} extends LinearOpMode {
                     }
                     report(i, legs.length, moving.isEmpty() ? "Driving" : "Action path");
                     if (through && follower.remainingDistance() < 1.5 && near(legs[i].endPose(),1.5)) break;
+                }
+                if (stuck) {
+                    // Everything stops and stays stopped: the drive, then the mechanisms. Nothing more of the route runs.
+                    try { follower.stop(); } finally { actions.stop(); }
+                    while (opModeIsActive()) {
+                        telemetry.addData("Leg", (i + 1) + " of " + legs.length);
+                        telemetry.addData("Phase", "Stopped: no progress for " + STUCK_SECONDS + " s");
+                        telemetry.addLine("The robot stopped moving along its path: it is blocked, or a position sensor stopped answering (check the odometry cables). Everything is off.");
+                        telemetry.update();
+                        idle();
+                    }
+                    break;
                 }
                 boolean pathEnds = i == legs.length - 1 || ${R}.PATH[i + 1] != movingPath || ${R}.MOVING_ACTIONS[i + 1].isEmpty();
                 if (!moving.isEmpty() && pathEnds) {
@@ -509,7 +541,7 @@ ${list.map(a=>`
 `).join('')}
     /** Called every loop by the autonomous: moving parts finish their moves on their own. */
     public void update() {
-${options.parts?.list?.length?'        parts.update();\n':''}    }
+${mech?'        mech.update();\n':''}${options.parts?.list?.length?'        parts.update();\n':''}    }
 
     /** Called when the autonomous ends or is stopped: stop every mechanism. */
     public void stop() {
@@ -958,12 +990,12 @@ ${stops.filter(Boolean).join('\n')}
           '     *  the turret is at INIT. Power is TURRET_GAIN per degree off, at most TURRET_CR_POWER; aimed within TURRET_CR_AIMED_DEGREES.',
           '     *  Through gears the servo turns more than the turret: multiply by the servo turns per turret turn. A reading that runs',
           '     *  past the turret\'s whole range (the sign is wrong) stops it. */',
-          `    public static final double TURRET_GAIN = 0.02, TURRET_CR_POWER = 1.0, TURRET_CR_AIMED_DEGREES = 2.0, FEEDBACK_VOLTS = 3.3;`,
+          `    public static final double TURRET_GAIN = 0.02, TURRET_CR_POWER = 1.0, TURRET_CR_AIMED_DEGREES = 2.0, FEEDBACK_VOLTS = 3.3, TURRET_STALL_SECONDS = 1.5;`,
           ...crTurrets.map(({x,s:sensor})=>`    public static final String ${x.constant}_SENSOR = ${javaString(sensor?.name||x.name+'Position')};\n    public static final double ${x.constant}_VOLTS_PER_DEGREE = ${(sensor?.voltsPerUnit||-3.3/360).toPrecision(6)};`)]:[]));
     }
     // Device fields and setup.
     const type=x=>x.device==='servo'?'Servo':x.device==='crservo'&&(x.role==='turret'||x.role==='turret2')?'CRServo':x.role==='flywheel'||x.role==='turret'||x.role==='turret2'?'DcMotorEx':'DcMotorSimple';
-    const fields=[...d.map(x=>`    private ${type(x)} ${x.field};`),...sensed.map(({x})=>`    private AnalogInput ${x.field}Sensor;`),...crTurrets.map(({x})=>`    private AnalogInput ${x.field}Sensor;\n    private double ${x.field}Degrees = 0, ${x.field}Volts = 0, ${x.field}Zero = 0, ${x.field}Wraps = 0;`)];
+    const fields=[...d.map(x=>`    private ${type(x)} ${x.field};`),...sensed.map(({x})=>`    private AnalogInput ${x.field}Sensor;`),...crTurrets.map(({x})=>`    private AnalogInput ${x.field}Sensor;\n    private double ${x.field}Degrees = 0, ${x.field}Volts = 0, ${x.field}Zero = 0, ${x.field}Wraps = 0, ${x.field}Seen = 0, ${x.field}SeenAt = -1, ${x.field}DeadAt = 0;\n    private boolean ${x.field}Dead = false;`),...(crTurrets.length?['    private boolean steering = false;']:[])];
     const init=[];
     for(const x of d){
       if(x.role==='roller')init.push(`        ${x.field} = map.get(DcMotorSimple.class, ${x.constant});`,`        ${x.field}.setDirection(direction(${x.constant}_REVERSED));`,`        if (${x.field} instanceof DcMotor) ((DcMotor) ${x.field}).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);`);
@@ -985,6 +1017,7 @@ ${stops.filter(Boolean).join('\n')}
     /** Turret ${x.index+1} to an angle (degrees from the robot's front, counterclockwise), within its range: aimed() steers it there. */
     private void ${name}(double degrees) {
         ${x.field}Degrees = Math.max(TURRET_MIN_DEGREES, Math.min(TURRET_MAX_DEGREES, degrees));
+        steering = true;
         steerTurrets();
     }`;
       return x.device==='servo'?`
@@ -1148,11 +1181,19 @@ ${turrets.map(x=>`        if (shooter == ${x.index}) turn${x.field[0].toUpperCas
     }
 ${turnMethods}
 `:''}
-${crTurrets.length?`    /** Steers each continuous-servo turret toward its angle: proportional power, stopped once it is there. */
+${crTurrets.length?`    /** Steers each continuous-servo turret toward its angle: proportional power, stopped once it is there. A turret told to
+     *  turn whose reading does not change for TURRET_STALL_SECONDS is stopped, and not steered again until it is sent somewhere
+     *  else (10 degrees or more away): its feedback wire is out or it is jammed, and a continuous servo steered blind keeps
+     *  turning and winds its wires up. */
     private void steerTurrets() {
+        double now = clock.seconds();
 ${crTurrets.map(({x})=>`        {
-            double off = ${x.field}Degrees - turretAngle${x.index}();
-            ${x.field}.setPower(Math.abs(off) <= TURRET_CR_AIMED_DEGREES || Math.abs(off) > TURRET_MAX_DEGREES - TURRET_MIN_DEGREES + 30 ? 0 : Math.max(-TURRET_CR_POWER, Math.min(TURRET_CR_POWER, off * TURRET_GAIN * (${x.constant}_REVERSED ? -1 : 1))));
+            double angle = turretAngle${x.index}(), off = ${x.field}Degrees - angle;
+            boolean there = Math.abs(off) <= TURRET_CR_AIMED_DEGREES;
+            if (${x.field}Dead && Math.abs(${x.field}Degrees - ${x.field}DeadAt) >= 10) { ${x.field}Dead = false; ${x.field}SeenAt = -1; }
+            if (there || ${x.field}SeenAt < 0 || Math.abs(angle - ${x.field}Seen) > 1) { ${x.field}Seen = angle; ${x.field}SeenAt = now; }
+            else if (!${x.field}Dead && now - ${x.field}SeenAt > TURRET_STALL_SECONDS) { ${x.field}Dead = true; ${x.field}DeadAt = ${x.field}Degrees; }
+            ${x.field}.setPower(there || ${x.field}Dead || Math.abs(off) > TURRET_MAX_DEGREES - TURRET_MIN_DEGREES + 30 ? 0 : Math.max(-TURRET_CR_POWER, Math.min(TURRET_CR_POWER, off * TURRET_GAIN * (${x.constant}_REVERSED ? -1 : 1))));
         }`).join('\n')}
     }
 ${crTurrets.map(({x})=>`
@@ -1232,7 +1273,10 @@ ${feedLines.join('\n')}
 
     public static final String[] SERVO_NAMES = ${list(servos.map(x=>x.constant))};
 
-    public void stop() {
+    /** Called every loop by the autonomous${crTurrets.length?': a continuous-servo turret told to turn is steered until it is there, also while\n     *  the robot drives on (an action path does not wait for it, and its servo would otherwise keep the power it was last given)':''}. */
+    public void update() {${crTurrets.length?'\n        if (steering) steerTurrets();\n    ':''}}
+
+    public void stop() {${crTurrets.length?'\n        steering = false;':''}
         intake(false);
         feeders(false, 0);
         spin(false);
