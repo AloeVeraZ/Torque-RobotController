@@ -479,11 +479,12 @@ function debugTrip(serial,on){const all=debugTrips();if(!!all[serial]===on)retur
 // The crash guard's watch after a build, beside whatever comes next. A newer build has its own. A real crash takes the program off and says so to whoever is listening, and that hub is remembered.
 let debugGuarding=null;
 function debugWatch(before,serial){const me={};debugGuarding=me;void robotLink.usbDebugGuard({before,still:()=>debugGuarding===me}).catch(e=>{if(e.crashed){debugTrip(serial,true);emit('robot-link-debug',{error:e.message});}}).finally(()=>{if(debugGuarding===me)debugGuarding=null;});}
+// The pages Torque Debug runs on by itself, over the cable or the robot's Wi-Fi: Setup, Calibrate and Simulate.
+const DEBUG_PAGES=new Set(['setup','calibrate','simulation']);
 // Torque Debug onto the robot and built, and over the cable the crash guard then watches that the app survives it. auto: Calibrate → Camera asked, so nothing goes on unless the robot is free and that page still shows: a build
-// on a robot someone is driving would disturb them. noStart with it: nobody pressed anything, which never happens over Wi-Fi, where nothing could bring the app back from a crash, or on a hub it has crashed.
-async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='usb',nobody=data?.noStart===true,here=()=>{if(state.page!=='calibrate'&&state.page!=='setup')throw Error('Torque left this page before the robot started.');},serial=usb?(await robotLink.usbForward()).serial:null;
+// on a robot someone is driving would disturb them. noStart with it: nobody pressed anything, which never happens on a hub it has crashed. Over Wi-Fi it goes on too: opening the page is the ask.
+async function debugInstall(data,overLink,usbOptions){const usb=data?.host==='usb',nobody=data?.noStart===true,here=()=>{if(!DEBUG_PAGES.has(state.page))throw Error('Torque left this page before the robot started.');},serial=usb?(await robotLink.usbForward()).serial:null;
   if(data?.auto){here();if(bridge instanceof FtcSocket)throw Error('Close the robot in Drive first: its Driver Station is using the robot connection.');
-    if(nobody&&!usb)throw Error('Over Wi-Fi, Torque puts the camera program on the robot only when someone asks.');
     if(nobody&&debugTrips()[serial])throw Error('Last time, the Robot Controller app on this robot crashed when it loaded Torque Debug, so Torque will not put it back by itself. Press Try again to put it on once more.');
     await overLink(o=>robotLink.debugIdle(data?.host,o),undefined,usbOptions);here();}
   if(serial&&!nobody)debugTrip(serial,false);
@@ -585,8 +586,8 @@ handle('robot-link',async(action,data)=>{
   if(action==='debug-start'){
     if(competition&&data?.host!=='usb')throw Error(COMPETITION_WIFI);
     const host=data?.host==='usb'?'usb':robotLink.checkHost(data?.host),socket=host==='usb'?await new UsbFtcSocket(()=>robotLink.usbLink(usbOptions).then(f=>({port:f.link}))).open():null;
-    // The page may have changed while the cable's link came up, and Live debug only runs while Calibrate or Setup shows.
-    if(state.page!=='calibrate'&&state.page!=='setup'){await socket?.close();throw Error('Torque left this page before the robot started.');}
+    // The page may have changed while the cable's link came up, and Live debug only runs while Setup, Calibrate or Simulate shows.
+    if(!DEBUG_PAGES.has(state.page)){await socket?.close();throw Error('Torque left this page before the robot started.');}
     const debug=robotLink.runDebug(host,{socket,opMode:typeof data?.opMode==='string'?data.opMode:null,onManifest:manifest=>emit('robot-link-debug',{manifest}),onFrame:frame=>emit('robot-link-debug',{frame}),onCamera:bytes=>emit('robot-link-debug',{camera:Uint8Array.from(bytes)})});robotDebug=debug;debug.usb=host==='usb';debug.auto=data?.auto===true;
     debug.ended.then(why=>{if(!debug.told)emit('robot-link-debug',{ended:why});},e=>{if(!debug.told)emit('robot-link-debug',{error:e.message});}).finally(()=>{if(robotDebug===debug)robotDebug=null;if(socket)void socket.close();});
     return true;}
