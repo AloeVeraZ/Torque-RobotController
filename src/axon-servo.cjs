@@ -304,6 +304,18 @@ async function enterBootloader(programmer){
 async function flash(programmer,image,servoName,{allowUnknownName=false,progress=()=>{}}={}){
   const v1=programmer.kind==='v1',leave=async()=>{if(v1)await programmer.v1UpdateMode(false);await programmer.bootExit(image.family);};
   const fail=async error=>{await leave();return {ok:false,error,changed:!/Nothing was changed\.$/.test(error)};};
+  // Every record is built before anything is sent: a line of the file that cannot be read is found here, with the servo
+  // untouched, not part way through the write with its old firmware already erased.
+  const total=image.lines.length,records=[];
+  try{for(let i=1;i<total;i++){const line=image.lines[i],rec=crypto.randomBytes(22);let expect=0,timeout=1500;
+      if(line.includes('$')){rec[0]=0x0A;rec[1]=hx(line,1);rec[2]=hx(line,3);expect=0x55;timeout=4000;}
+      else if(line.includes(':')&&line.length>=9&&line.slice(7,9)==='00'){const pairs=Math.floor((line.trimEnd().length-1)/2);let last=0;rec[0]=0x3A;for(let j=0;j<pairs&&j<21;j++){last=hx(line,1+j*2);rec[1+j]=last;}
+        const count=rec[1],padFrom=image.family==='v1'?count+5:count+6;// Bytes after the record are noise. The V1 app also overwrites the checksum, the V2 app keeps it.
+        if(count+5<22){const noise=crypto.randomBytes(22);for(let k=padFrom;k<22;k++)rec[k]=noise[k];}
+        expect=last;}
+      else continue;
+      records.push({i,rec,expect,timeout});}}
+  catch(e){return {ok:false,error:`This firmware file cannot be read (${e.message}). Nothing was changed.`,changed:false};}
   // In update mode the V1 programmer reports the servo with FA in byte 2 (04 01 FA 01 00 04 02 01 08). Axon's V1 app asks once and goes
   // on to the bootloader whatever it says: whether the bootloader answers is the check.
   if(v1){await programmer.v1UpdateMode(true);await programmer.status();}
@@ -317,15 +329,8 @@ async function flash(programmer,image,servoName,{allowUnknownName=false,progress
   else if(!allowUnknownName)return fail('Could not read the servo\'s name to match it against the firmware. Nothing was changed.');
   const seed=crypto.randomBytes(22),answer=await programmer.bootSeed(seed);if(!answer)return fail('The bootloader did not start an update session. Nothing was changed.');
   const key=Buffer.alloc(22);for(let i=0;i<22;i++)key[i]=seed[i]^answer[5+i];
-  const total=image.lines.length;
-  for(let i=1;i<total;i++){const line=image.lines[i],rec=crypto.randomBytes(22);let send=false,expect=0,timeout=1500;
-    if(line.includes('$')){rec[0]=0x0A;rec[1]=hx(line,1);rec[2]=hx(line,3);expect=0x55;timeout=4000;send=true;}
-    else if(line.includes(':')&&line.length>=9&&line.slice(7,9)==='00'){const pairs=Math.floor((line.trimEnd().length-1)/2);let last=0;rec[0]=0x3A;for(let j=0;j<pairs&&j<21;j++){last=hx(line,1+j*2);rec[1+j]=last;}
-      const count=rec[1],padFrom=image.family==='v1'?count+5:count+6;// Bytes after the record are noise. The V1 app also overwrites the checksum, the V2 app keeps it.
-      if(count+5<22){const noise=crypto.randomBytes(22);for(let k=padFrom;k<22;k++)rec[k]=noise[k];}
-      expect=last;send=true;}
-    if(send){for(let k=0;k<22;k++)rec[k]^=key[k];const got=await programmer.bootRecord(rec,timeout);
-      if(got!==expect)return fail(`The update failed on line ${i+1} of ${total} (servo answered ${got<0?'nothing':two(got)}, expected ${two(expect)}). Keep the servo plugged in and use Recover to try again.`);}
+  for(const {i,rec,expect,timeout} of records){for(let k=0;k<22;k++)rec[k]^=key[k];const got=await programmer.bootRecord(rec,timeout);
+    if(got!==expect)return fail(`The update failed on line ${i+1} of ${total} (servo answered ${got<0?'nothing':two(got)}, expected ${two(expect)}). Keep the servo plugged in and use Recover to try again.`);
     if(i%8===0||i===total-1)progress(Math.floor(i*100/total),null);}
   await leave();progress(100,'Firmware written.');return {ok:true};
 }

@@ -23,7 +23,14 @@ class SerialHelper{
     child.on('error',e=>gone(e.code==='ENOENT'?'Torque\'s serial helper is missing.':`Torque's serial helper could not start: ${e.message}`));child.on('exit',()=>gone('Torque\'s serial helper stopped.'));child.stdin.on('error',()=>{});
     child.stdout.on('data',d=>{text+=d.toString('latin1');for(let at;(at=text.indexOf('\n'))>=0;text=text.slice(at+1)){const [id,kind,...rest]=text.slice(0,at).trim().split(' '),w=this.waiting.get(+id);if(!w)continue;this.waiting.delete(+id);const value=rest.join(' ');
       if(kind==='ok')w.done(value);else if(kind==='lost')w.fail(new S.DeviceLost(value));else w.fail(Object.assign(Error(value.replace(/^busy /,'')),value.startsWith('busy ')?{busy:true}:{}));}});}
-  ask(...words){this.start();return new Promise((done,fail)=>{const id=this.next++;this.waiting.set(id,{done,fail});try{this.child.stdin.write(`${id} ${words.join(' ')}\n`);}catch(e){this.waiting.delete(id);fail(e);}});}
+  // Every request has a time to be answered in (a read or a write: its own time and three seconds more). A helper that says
+  // nothing by then is stuck (a call into Windows on a device that was pulled out can wait for ever): it is ended, and what
+  // was waiting hears the device is lost, so the service lets go, fails its jobs and connects again. Without this one stuck
+  // request held the programmer busy until Torque was restarted.
+  limit(words){const w=words[0],n=Number(words[1]);return w==='read'?(Number.isFinite(n)?n:0)+3000:w==='close-rivals'?20000:w==='open'?10000:8000;}
+  stuck(child,what){if(this.child!==child)return;this.child=null;try{child.kill();}catch{}const waiting=[...this.waiting.values()];this.waiting.clear();for(const w of waiting)w.fail(new S.DeviceLost(`Torque's serial helper stopped answering (${what}).`));}
+  ask(...words){this.start();const child=this.child;return new Promise((done,fail)=>{const id=this.next++,timer=setTimeout(()=>this.stuck(child,words[0]),this.limit(words));
+    this.waiting.set(id,{done:v=>{clearTimeout(timer);done(v);},fail:e=>{clearTimeout(timer);fail(e);}});try{child.stdin.write(`${id} ${words.join(' ')}\n`);}catch(e){clearTimeout(timer);this.waiting.delete(id);fail(e);}});}
   stop(){const child=this.child;this.child=null;for(const w of this.waiting.values())w.fail(Error('Torque\'s serial helper stopped.'));this.waiting.clear();try{child?.stdin.end();}catch{}if(child)setTimeout(()=>{try{child.kill();}catch{}},1500).unref();}
 }
 // The transport the service uses: the helper, or a simulated programmer in tests.

@@ -486,3 +486,16 @@ test('no Axon key is in the code, firmware asks for an imported file, and a bad 
     const shared=path.join(dir,'in documents.json');S.useKeys(null);const found=new AxonService({transport:simTransport(new SimLink('v2','servo','MAXMK2')),firmwareDir:dir,keyFile:path.join(dir,'none.json'),sharedKeyFile:shared});assert.equal(found.firmwareStatus('max2','cr').keys,false);fs.writeFileSync(shared,JSON.stringify(TEST_KEYS));assert.equal(found.firmwareStatus('max2','cr').keys,true,'a file in Documents is found with no prompt, even one that synced in later');assert.equal(fs.existsSync(path.join(dir,'none.json')),false,'and it is not copied');}
   finally{S.useKeys(TEST_KEYS);}
 });
+
+// A helper call into Windows on a device that was pulled out can wait for ever. One request that is never answered used to
+// hold the programmer busy until Torque was restarted.
+test('a helper that stops answering is ended and replaced: the request fails as a lost device, and the next one is answered',{skip:process.platform==='win32'?'uses a script as the helper':false},async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-helper-')),file=path.join(dir,'helper.cjs');
+  fs.writeFileSync(file,`#!${process.execPath}\nrequire('readline').createInterface({input:process.stdin}).on('line',l=>{const [id,cmd]=l.split(' ');if(cmd==='read')return;console.log(id+' ok '+(cmd==='ping'?'pong':''));});\n`,{mode:0o755});
+  const h=new UsbHelper(file);
+  try{assert.equal(await h.ask('ping'),'pong');const first=h.child,began=Date.now();
+    await assert.rejects(h.ask('read',50),e=>e instanceof S.DeviceLost&&/stopped answering \(read\)/.test(e.message));
+    assert.ok(Date.now()-began<6000,'within its own time and three seconds');assert.equal(h.child,null);
+    assert.equal(await h.ask('ping'),'pong','a new helper answers');assert.notEqual(h.child,first);
+  }finally{h.stop();fs.rmSync(dir,{recursive:true,force:true});}
+});

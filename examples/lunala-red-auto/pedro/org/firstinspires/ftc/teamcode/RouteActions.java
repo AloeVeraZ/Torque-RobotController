@@ -44,6 +44,8 @@ public abstract class RouteActions {
         public double duration;
         /** The hive cell to aim at: 0 the cell up at the start, 1 the other cell (up after the first tip). */
         public int cell;
+        /** True while an Intake step of the same list is running: a Shoot then feeds without waiting for pieces to move up. */
+        public boolean withIntake;
     }
 
     protected HardwareMap hardwareMap;
@@ -78,6 +80,7 @@ public abstract class RouteActions {
 
     /** Called every loop by the autonomous: moving parts finish their moves on their own. */
     public void update() {
+        mech.update();
     }
 
     /** Called when the autonomous ends or is stopped: stop every mechanism. */

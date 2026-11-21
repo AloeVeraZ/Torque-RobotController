@@ -40,7 +40,11 @@ test('a continuous-servo turret is steered every loop, also on an action path, a
   assert.match(src,/CRServo turret/,'this robot’s turret is a continuous servo');
   assert.match(src,/public void update\(\) \{\s*if \(steering\) steerTurrets\(\);\s*\}/);assert.match(src,/public void update\(\) \{\s*mech\.update\(\);/,'the route calls it every loop');
   assert.match(src,/steering = true;\s*steerTurrets\(\);/);assert.match(src,/public void stop\(\) \{\s*steering = false;/,'and nothing steers after the stop');
-  assert.match(src,/now - \w+SeenAt > TURRET_STALL_SECONDS/);assert.match(src,/setPower\(there \|\| \w+Dead \|\|/);
+  assert.match(src,/now - \w+SeenAt > TURRET_STALL_SECONDS/);
+  // Nor does a turret that never gets there keep a Shoot or an Aim waiting for the rest of the autonomous.
+  assert.match(src,/if \(aimSince < 0\) aimSince = now;\s*return now - aimSince >= AIM_TIMEOUT_SECONDS;/);
+  // The guided check begins no further step once STOP is pressed, and switches off what was turning whatever happened.
+  assert.match(out.check.source,/if \(!opModeIsActive\(\)\) throw new Stopped\(\);/);assert.match(out.check.source,/\} catch \(Stopped stopped\) \{\s*return;\s*\} finally \{/);assert.match(src,/setPower\(there \|\| \w+Dead \|\|/);
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'deck-onbot-turret-')),jdk=path.join(__dirname,'../.cache/simulation-runtime/jdk'),home=fs.readdirSync(jdk).map(f=>path.join(jdk,f)).map(f=>fs.existsSync(path.join(f,'Contents/Home'))?path.join(f,'Contents/Home'):f).find(f=>fs.existsSync(path.join(f,'bin/javac.exe'))||fs.existsSync(path.join(f,'bin/javac'))),javac=path.join(home,'bin',process.platform==='win32'?'javac.exe':'javac');
   try{for(const [name,source] of [[out.name,src],[path.basename(out.check.file||'PlannedRouteCheck.java'),out.check.source]]){const file=path.join(dir,name);fs.writeFileSync(file,source);
     const r=spawnSync(javac,['--release','8','-encoding','UTF-8','-classpath',[path.join(__dirname,'../sim-runtime/driver/classes'),dir].join(path.delimiter),'-d',dir,file],{encoding:'utf8',windowsHide:true});assert.equal(r.status,0,`${name}:\n${r.stderr}`);}}

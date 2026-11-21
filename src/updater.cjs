@@ -78,6 +78,14 @@ class Updater{
   async downloadAndInstall(install){const download=await this.download();this.busy=true;try{this.onProgress({phase:'installing'});return await install(download);}finally{this.busy=false;}}
 }
 // A full macOS package holds Torque.app; packages from before the rename hold Deck Driver Station.app.
+// Each update leaves its folder behind in updates/ (the download, the unpacked copy, and the whole previous version), failed
+// ones too, and nothing took them away: they filled the disk a version at a time. At start, every one more than a day old
+// goes, but the newest is kept for its install.log. Never one from the last day: an install may still be using it.
+async function pruneStages(directory,{now=Date.now(),olderMs=24*3600e3}={}){const root=path.join(directory,'updates');let names=[];try{names=await fs.promises.readdir(root);}catch{return [];}
+  const found=[];for(const name of names){if(!/^[0-9a-f-]{36}$/i.test(name))continue;try{const st=await fs.promises.stat(path.join(root,name));if(st.isDirectory())found.push({name,at:st.mtimeMs});}catch{}}
+  found.sort((a,b)=>b.at-a.at);const removed=[];
+  for(const f of found.slice(1)){if(now-f.at<olderMs)continue;try{await fs.promises.rm(path.join(root,f.name),{recursive:true,force:true,maxRetries:2});removed.push(f.name);}catch{}}
+  return removed;}
 function macBundle(stage){const named=path.join(stage,'Torque.app');return fs.existsSync(named)?named:path.join(stage,'Deck Driver Station.app');}
 function installRoot(appPath,executable,platform){
   if(platform==='darwin'){const suffix=path.join('Contents','Resources','app');if(!appPath.endsWith(suffix))return null;const root=appPath.slice(0,-suffix.length-1);return path.resolve(executable)===path.join(root,'Contents','MacOS','Electron')?root:null;}
@@ -161,4 +169,4 @@ async function launchInstall(prepared){const {plan,script,planPath}=prepared;con
     await run('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'update-launch.ps1'),script,planPath,logPath],{windowsHide:true,timeout:15000});return;
   }
   const log=fs.openSync(logPath,'a');const child=spawn('/bin/bash',[script,plan.source,plan.destination,String(plan.pid),plan.platform,plan.stage],{detached:true,stdio:['ignore',log,log]});fs.closeSync(log);child.unref();await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});}
-module.exports={Updater,repository,selectRelease,compare,assetName,assetNames,installRoot,prepareInstall,launchInstall,keepLocalCad,runPayload};
+module.exports={Updater,repository,selectRelease,compare,assetName,assetNames,installRoot,prepareInstall,launchInstall,keepLocalCad,runPayload,pruneStages};

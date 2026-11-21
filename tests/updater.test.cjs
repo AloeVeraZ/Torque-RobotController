@@ -87,3 +87,17 @@ test('switching channels never offers the build already installed: a Main instal
   // Testing back to Main still installs Main's build, the same version or an older one.
   assert.equal(ask([rel('v2.4.35','2.4.35')],{version:'2.4.35',channel:'main',installedChannel:'testing'}).tag,'v2.4.35');assert.equal(ask([rel('v2.4.35','2.4.35')],{version:'2.4.36',channel:'main',installedChannel:'testing'}).tag,'v2.4.35');
 });
+
+// Every update left its folder behind (the download, the unpacked copy, the whole previous version): they are cleared at start.
+test('old update folders are cleared at start: all but the newest, and none from the last day',async()=>{
+  const {pruneStages}=require('../src/updater.cjs'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-stages-')),root=path.join(dir,'updates'),now=Date.now();
+  const make=(name,ageHours)=>{const d=path.join(root,name);fs.mkdirSync(path.join(d,'previous','app'),{recursive:true});fs.writeFileSync(path.join(d,'install.log'),'log');const t=new Date(now-ageHours*3600e3);fs.utimesSync(d,t,t);return d;};
+  const old1=make('11111111-1111-4111-8111-111111111111',72),old2=make('22222222-2222-4222-8222-222222222222',30),recent=make('33333333-3333-4333-8333-333333333333',2),newest=make('44444444-4444-4444-8444-444444444444',1);
+  fs.mkdirSync(path.join(root,'not-an-update'));fs.writeFileSync(path.join(root,'note.txt'),'kept');
+  try{assert.deepEqual((await pruneStages(dir,{now})).sort(),['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222']);
+    assert.ok(!fs.existsSync(old1)&&!fs.existsSync(old2));assert.ok(fs.existsSync(recent)&&fs.existsSync(newest),'what an install may still be using stays');assert.ok(fs.existsSync(path.join(root,'not-an-update'))&&fs.existsSync(path.join(root,'note.txt')),'only update folders are touched');
+    // A single old one is the newest: it stays, for its log.
+    fs.rmSync(recent,{recursive:true});fs.rmSync(newest,{recursive:true});const only=make('55555555-5555-4555-8555-555555555555',500);assert.deepEqual(await pruneStages(dir,{now}),[]);assert.ok(fs.existsSync(only));
+    assert.deepEqual(await pruneStages(path.join(dir,'nowhere')),[]);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

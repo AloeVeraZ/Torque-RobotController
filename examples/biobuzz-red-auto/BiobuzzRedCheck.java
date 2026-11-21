@@ -68,150 +68,158 @@ public class BiobuzzRedCheck extends LinearOpMode {
         if (pinpoint != null) { pinpoint.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD, GoBildaPinpointDriver.EncoderDirection.FORWARD); pinpoint.setEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD); pinpoint.resetPosAndIMU(); }
         show("Deck's guided check: " + STEPS + " steps. Put the robot on blocks with its wheels off the floor, then press START.", "");
         waitForStart();
-        next("IMU (\"imu\")");
-        if (imu == null) result("imu", "?missing");
-        else {
-            YawPitchRollAngles level = imu.getRobotYawPitchRollAngles();
-            boolean tilted = Math.abs(level.getPitch(AngleUnit.DEGREES)) > 15 || Math.abs(level.getRoll(AngleUnit.DEGREES)) > 15;
-            result("imu.level", tilted ? "?tilted" : "ok");
-            double before = level.getYaw(AngleUnit.DEGREES);
-            if (ask(String.format(Locale.US, "The IMU reads pitch %.0f and roll %.0f degrees%s. Turn the robot a quarter turn LEFT (counterclockwise, seen from above), then press A.", level.getPitch(AngleUnit.DEGREES), level.getRoll(AngleUnit.DEGREES), tilted ? ": tilted, so the Control Hub mounting in Deck is wrong" : ""), "A: turned it | B: skip") == YES) {
-                double turned = AngleUnit.normalizeDegrees(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES) - before);
-                result("imu.turn", turned > 45 ? "ok" : turned < -45 ? "?backward" : "?none");
-            }
-        }
-        next("front left wheel (\"front_left\")");
-        if (drive[0] == null) result("robot.frontLeft.reversed", "?missing");
-        else {
-            int answer = turn(drive[0], 0.3, TURN_SECONDS, "Did the front left wheel turn so the robot would drive FORWARD?");
-            direction("robot.frontLeft.reversed", DRIVE_REVERSED[0], answer);
-            // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
-            if (answer == NO) drive[0].setDirection(direction(!DRIVE_REVERSED[0]));
-        }
-        next("front right wheel (\"front_right\")");
-        if (drive[1] == null) result("robot.frontRight.reversed", "?missing");
-        else {
-            int answer = turn(drive[1], 0.3, TURN_SECONDS, "Did the front right wheel turn so the robot would drive FORWARD?");
-            direction("robot.frontRight.reversed", DRIVE_REVERSED[1], answer);
-            // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
-            if (answer == NO) drive[1].setDirection(direction(!DRIVE_REVERSED[1]));
-        }
-        next("back left wheel (\"back_left\")");
-        if (drive[2] == null) result("robot.backLeft.reversed", "?missing");
-        else {
-            int answer = turn(drive[2], 0.3, TURN_SECONDS, "Did the back left wheel turn so the robot would drive FORWARD?");
-            direction("robot.backLeft.reversed", DRIVE_REVERSED[2], answer);
-            // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
-            if (answer == NO) drive[2].setDirection(direction(!DRIVE_REVERSED[2]));
-        }
-        next("back right wheel (\"back_right\")");
-        if (drive[3] == null) result("robot.backRight.reversed", "?missing");
-        else {
-            int answer = turn(drive[3], 0.3, TURN_SECONDS, "Did the back right wheel turn so the robot would drive FORWARD?");
-            direction("robot.backRight.reversed", DRIVE_REVERSED[3], answer);
-            // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
-            if (answer == NO) drive[3].setDirection(direction(!DRIVE_REVERSED[3]));
-        }
-        next("intake 1 roller (\"intake\")");
-        if (intake1 == null) result("intakes.0.reversed", "?missing");
-        else direction("intakes.0.reversed", BiobuzzRedAuto.Mechanisms.INTAKE_1_REVERSED, turn(intake1, BiobuzzRedAuto.Mechanisms.INTAKE_1_POWER, TURN_SECONDS, "Did the intake 1 roller pull pieces IN?"));
-        next("shooter 1 flywheel (\"shooter\")");
-        if (flywheel1 == null) result("shooters.0.reversed", "?missing");
-        else {
-            flywheel1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            int answer = turn(flywheel1, 0.3, TURN_SECONDS, "Did the shooter 1 flywheel spin the way that shoots pieces OUT?");
-            direction("shooters.0.reversed", BiobuzzRedAuto.Mechanisms.FLYWHEEL_1_REVERSED, answer);
-            // The top speed is measured with every motor turning the flywheel the right way.
-            if (answer == NO) flywheel1.setDirection(direction(!BiobuzzRedAuto.Mechanisms.FLYWHEEL_1_REVERSED));
-        }
-        next("flywheel top speed");
-        if (ask("Next the flywheels run at full power for 3 s, to measure their top speed. Stand clear of the shooter.", "A: run them | B: skip") == YES) {
-            double top = topSpeed(new DcMotorEx[] {flywheel1});
-            if (top <= 0) result("shooter.topSpeed", "?none");
+        // Once STOP is pressed no further step is begun (next() ends the check), and whatever was turning is switched off,
+        // also when a step fails.
+        try {
+            next("IMU (\"imu\")");
+            if (imu == null) result("imu", "?missing");
             else {
-                // REV's velocity PIDF from the top speed: F = 32767 / top, P = 0.1 F, I = 0.1 P, D = 0.
-                double f = 32767 / top, p = 0.1 * f, i = 0.1 * p;
-                result("shooter.topSpeed", String.format(Locale.US, "%.0f", top));
-                result("shooter.pidf", String.format(Locale.US, "%.4f,%.4f,0,%.4f", p, i, f));
-                if (top < 0.98 * BiobuzzRedAuto.Mechanisms.FLYWHEEL_TICKS_PER_SECOND) result("shooter.rpm", "?high");
+                YawPitchRollAngles level = imu.getRobotYawPitchRollAngles();
+                boolean tilted = Math.abs(level.getPitch(AngleUnit.DEGREES)) > 15 || Math.abs(level.getRoll(AngleUnit.DEGREES)) > 15;
+                result("imu.level", tilted ? "?tilted" : "ok");
+                double before = level.getYaw(AngleUnit.DEGREES);
+                if (ask(String.format(Locale.US, "The IMU reads pitch %.0f and roll %.0f degrees%s. Turn the robot a quarter turn LEFT (counterclockwise, seen from above), then press A.", level.getPitch(AngleUnit.DEGREES), level.getRoll(AngleUnit.DEGREES), tilted ? ": tilted, so the Control Hub mounting in Deck is wrong" : ""), "A: turned it | B: skip") == YES) {
+                    double turned = AngleUnit.normalizeDegrees(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES) - before);
+                    result("imu.turn", turned > 45 ? "ok" : turned < -45 ? "?backward" : "?none");
+                }
             }
-        }
-        next("shooter 1 feeder (\"indexer\")");
-        if (feeder1 == null) result("shooters.0.indexerReversed", "?missing");
-        else direction("shooters.0.indexerReversed", BiobuzzRedAuto.Mechanisms.FEEDER_1_REVERSED, turn(feeder1, BiobuzzRedAuto.Mechanisms.FEEDER_POWER, TURN_SECONDS, "Did the shooter 1 feeder move pieces toward the flywheel?"));
-        next("shooter 1 turret (\"turret\")");
-        if (turret1 == null) result("shooters.0.turretReversed", "?missing");
-        else {
-            turret1.setDirection(direction(BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED));
-            turret1.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            int answer = turnTo(turret1, 20 * BiobuzzRedAuto.Mechanisms.TURRET_TICKS_PER_DEGREE, "Did the turret turn LEFT (counterclockwise, seen from above)?");
-            direction("shooters.0.turretReversed", BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED, answer);
-            // The rest of the check turns it the right way.
-            if (answer == NO) turret1.setDirection(direction(!BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED));
-            if (answer == YES || answer == NO) {
-                double ahead = aim(turret1, "Point the turret straight ahead, toward the front of the robot.");
-                double left = Double.isNaN(ahead) ? Double.NaN : aim(turret1, "Now point it a quarter turn LEFT (90 degrees counterclockwise, seen from above).");
-                if (!Double.isNaN(left) && Math.abs(left - ahead) > 9) result("turret.ticksPerDegree", String.format(Locale.US, "%.3f", Math.abs(left - ahead) / 90));
-                if (!Double.isNaN(ahead)) turnTo(turret1, ahead, "");
+            next("front left wheel (\"front_left\")");
+            if (drive[0] == null) result("robot.frontLeft.reversed", "?missing");
+            else {
+                int answer = turn(drive[0], 0.3, TURN_SECONDS, "Did the front left wheel turn so the robot would drive FORWARD?");
+                direction("robot.frontLeft.reversed", DRIVE_REVERSED[0], answer);
+                // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
+                if (answer == NO) drive[0].setDirection(direction(!DRIVE_REVERSED[0]));
             }
-            turret1.setPower(0);
-        }
-        next("Pinpoint (\"pinpoint\")");
-        if (pinpoint == null) result("pinpoint", "?missing");
-        else {
-            int signX = PINPOINT_X_REVERSED ? -1 : 1, signY = PINPOINT_Y_REVERSED ? -1 : 1;
-            double tpi = PINPOINT_TICKS_PER_INCH;
-            double[] from = counts(pinpoint);
-            int pushed = ask("Put the robot on the floor with room around it. Push it straight FORWARD by hand, exactly 48 inches (two field tiles) if you can measure it, then press A.", PUSHED);
-            double[] to = counts(pinpoint);
-            double fx = (to[0] - from[0]) / tpi, fy = (to[1] - from[1]) / tpi;
-            if (pushed == YES || pushed == NOTHING) {
-                if (Math.abs(fx) < 2 && Math.abs(fy) >= 2) result("pinpoint.pods", "?swapped");
-                else if (Math.abs(fx) < 2) result("pinpoint.xReversed", "?none");
+            next("front right wheel (\"front_right\")");
+            if (drive[1] == null) result("robot.frontRight.reversed", "?missing");
+            else {
+                int answer = turn(drive[1], 0.3, TURN_SECONDS, "Did the front right wheel turn so the robot would drive FORWARD?");
+                direction("robot.frontRight.reversed", DRIVE_REVERSED[1], answer);
+                // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
+                if (answer == NO) drive[1].setDirection(direction(!DRIVE_REVERSED[1]));
+            }
+            next("back left wheel (\"back_left\")");
+            if (drive[2] == null) result("robot.backLeft.reversed", "?missing");
+            else {
+                int answer = turn(drive[2], 0.3, TURN_SECONDS, "Did the back left wheel turn so the robot would drive FORWARD?");
+                direction("robot.backLeft.reversed", DRIVE_REVERSED[2], answer);
+                // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
+                if (answer == NO) drive[2].setDirection(direction(!DRIVE_REVERSED[2]));
+            }
+            next("back right wheel (\"back_right\")");
+            if (drive[3] == null) result("robot.backRight.reversed", "?missing");
+            else {
+                int answer = turn(drive[3], 0.3, TURN_SECONDS, "Did the back right wheel turn so the robot would drive FORWARD?");
+                direction("robot.backRight.reversed", DRIVE_REVERSED[3], answer);
+                // The odometry steps turn the robot with its wheels, so a wheel found backward is turned the right way now.
+                if (answer == NO) drive[3].setDirection(direction(!DRIVE_REVERSED[3]));
+            }
+            next("intake 1 roller (\"intake\")");
+            if (intake1 == null) result("intakes.0.reversed", "?missing");
+            else direction("intakes.0.reversed", BiobuzzRedAuto.Mechanisms.INTAKE_1_REVERSED, turn(intake1, BiobuzzRedAuto.Mechanisms.INTAKE_1_POWER, TURN_SECONDS, "Did the intake 1 roller pull pieces IN?"));
+            next("shooter 1 flywheel (\"shooter\")");
+            if (flywheel1 == null) result("shooters.0.reversed", "?missing");
+            else {
+                flywheel1.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                int answer = turn(flywheel1, 0.3, TURN_SECONDS, "Did the shooter 1 flywheel spin the way that shoots pieces OUT?");
+                direction("shooters.0.reversed", BiobuzzRedAuto.Mechanisms.FLYWHEEL_1_REVERSED, answer);
+                // The top speed is measured with every motor turning the flywheel the right way.
+                if (answer == NO) flywheel1.setDirection(direction(!BiobuzzRedAuto.Mechanisms.FLYWHEEL_1_REVERSED));
+            }
+            next("flywheel top speed");
+            if (ask("Next the flywheels run at full power for 3 s, to measure their top speed. Stand clear of the shooter.", "A: run them | B: skip") == YES) {
+                double top = topSpeed(new DcMotorEx[] {flywheel1});
+                if (top <= 0) result("shooter.topSpeed", "?none");
                 else {
-                    signX = fx > 0 ? 1 : -1;
-                    result("pinpoint.xReversed", String.valueOf(fx < 0));
-                    if (pushed == YES) tpi = podType(Math.abs(fx));
+                    // REV's velocity PIDF from the top speed: F = 32767 / top, P = 0.1 F, I = 0.1 P, D = 0.
+                    double f = 32767 / top, p = 0.1 * f, i = 0.1 * p;
+                    result("shooter.topSpeed", String.format(Locale.US, "%.0f", top));
+                    result("shooter.pidf", String.format(Locale.US, "%.4f,%.4f,0,%.4f", p, i, f));
+                    if (top < 0.98 * BiobuzzRedAuto.Mechanisms.FLYWHEEL_TICKS_PER_SECOND) result("shooter.rpm", "?high");
                 }
             }
-            from = counts(pinpoint);
-            pushed = ask("Now push it straight to its LEFT by hand, about 24 inches (one tile), then press A.", "A: pushed it | B: skip");
-            to = counts(pinpoint);
-            fy = (to[1] - from[1]) / tpi;
-            if (pushed == YES) {
-                if (Math.abs(fy) < 2) result("pinpoint.yReversed", "?none");
-                else { signY = fy > 0 ? 1 : -1; result("pinpoint.yReversed", String.valueOf(fy < 0)); }
-            }
-            if (ask("Next the robot turns on the spot by itself, one full turn counterclockwise, to find where the odometry sits. Keep clear of it.", "A: turn it | B: skip") == YES) {
-                double[] last = counts(pinpoint), sums = new double[2 + last.length];
-                double heading = pinpoint.getHeading(AngleUnit.RADIANS);
-                ElapsedTime time = new ElapsedTime(), coast = new ElapsedTime();
-                boolean braking = false;
-                spin(drive, SPIN_POWER);
-                while (opModeIsActive() && time.seconds() < 15 && !(braking && coast.seconds() > 1)) {
-                    if (!braking && Math.abs(sums[0]) >= 2 * Math.PI) { spin(drive, 0); braking = true; coast.reset(); }
-                    double[] now = counts(pinpoint);
-                    double h = pinpoint.getHeading(AngleUnit.RADIANS), d = AngleUnit.normalizeRadians(h - heading);
-                    double[] delta = new double[now.length];
-                    for (int i = 0; i < now.length; i++) { delta[i] = now[i] - last[i]; sums[2 + i] += d * delta[i]; }
-                    sums[0] += d; sums[1] += d * d;
-                    heading = h; last = now;
-                    show(String.format(Locale.US, "Turning on the spot: %.0f of 360 degrees.", Math.toDegrees(Math.abs(sums[0]))), "");
+            next("shooter 1 feeder (\"indexer\")");
+            if (feeder1 == null) result("shooters.0.indexerReversed", "?missing");
+            else direction("shooters.0.indexerReversed", BiobuzzRedAuto.Mechanisms.FEEDER_1_REVERSED, turn(feeder1, BiobuzzRedAuto.Mechanisms.FEEDER_POWER, TURN_SECONDS, "Did the shooter 1 feeder move pieces toward the flywheel?"));
+            next("shooter 1 turret (\"turret\")");
+            if (turret1 == null) result("shooters.0.turretReversed", "?missing");
+            else {
+                turret1.setDirection(direction(BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED));
+                turret1.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                int answer = turnTo(turret1, 20 * BiobuzzRedAuto.Mechanisms.TURRET_TICKS_PER_DEGREE, "Did the turret turn LEFT (counterclockwise, seen from above)?");
+                direction("shooters.0.turretReversed", BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED, answer);
+                // The rest of the check turns it the right way.
+                if (answer == NO) turret1.setDirection(direction(!BiobuzzRedAuto.Mechanisms.TURRET_1_REVERSED));
+                if (answer == YES || answer == NO) {
+                    double ahead = aim(turret1, "Point the turret straight ahead, toward the front of the robot.");
+                    double left = Double.isNaN(ahead) ? Double.NaN : aim(turret1, "Now point it a quarter turn LEFT (90 degrees counterclockwise, seen from above).");
+                    if (!Double.isNaN(left) && Math.abs(left - ahead) > 9) result("turret.ticksPerDegree", String.format(Locale.US, "%.3f", Math.abs(left - ahead) / 90));
+                    if (!Double.isNaN(ahead)) turnTo(turret1, ahead, "");
                 }
-                spin(drive, 0);
-                if (Math.abs(sums[0]) < Math.PI) result("pinpoint.xOffset", "?none");
-                else {
-                    // A pod counts the turn times how far it sits from the centre, across its direction of travel.
-                    result("pinpoint.xOffset", number(-sums[2] / sums[1] / (signX * tpi)));
-                    result("pinpoint.yOffset", number(sums[3] / sums[1] / (signY * tpi)));
+                turret1.setPower(0);
+            }
+            next("Pinpoint (\"pinpoint\")");
+            if (pinpoint == null) result("pinpoint", "?missing");
+            else {
+                int signX = PINPOINT_X_REVERSED ? -1 : 1, signY = PINPOINT_Y_REVERSED ? -1 : 1;
+                double tpi = PINPOINT_TICKS_PER_INCH;
+                double[] from = counts(pinpoint);
+                int pushed = ask("Put the robot on the floor with room around it. Push it straight FORWARD by hand, exactly 48 inches (two field tiles) if you can measure it, then press A.", PUSHED);
+                double[] to = counts(pinpoint);
+                double fx = (to[0] - from[0]) / tpi, fy = (to[1] - from[1]) / tpi;
+                if (pushed == YES || pushed == NOTHING) {
+                    if (Math.abs(fx) < 2 && Math.abs(fy) >= 2) result("pinpoint.pods", "?swapped");
+                    else if (Math.abs(fx) < 2) result("pinpoint.xReversed", "?none");
+                    else {
+                        signX = fx > 0 ? 1 : -1;
+                        result("pinpoint.xReversed", String.valueOf(fx < 0));
+                        if (pushed == YES) tpi = podType(Math.abs(fx));
+                    }
+                }
+                from = counts(pinpoint);
+                pushed = ask("Now push it straight to its LEFT by hand, about 24 inches (one tile), then press A.", "A: pushed it | B: skip");
+                to = counts(pinpoint);
+                fy = (to[1] - from[1]) / tpi;
+                if (pushed == YES) {
+                    if (Math.abs(fy) < 2) result("pinpoint.yReversed", "?none");
+                    else { signY = fy > 0 ? 1 : -1; result("pinpoint.yReversed", String.valueOf(fy < 0)); }
+                }
+                if (ask("Next the robot turns on the spot by itself, one full turn counterclockwise, to find where the odometry sits. Keep clear of it.", "A: turn it | B: skip") == YES) {
+                    double[] last = counts(pinpoint), sums = new double[2 + last.length];
+                    double heading = pinpoint.getHeading(AngleUnit.RADIANS);
+                    ElapsedTime time = new ElapsedTime(), coast = new ElapsedTime();
+                    boolean braking = false;
+                    spin(drive, SPIN_POWER);
+                    while (opModeIsActive() && time.seconds() < 15 && !(braking && coast.seconds() > 1)) {
+                        if (!braking && Math.abs(sums[0]) >= 2 * Math.PI) { spin(drive, 0); braking = true; coast.reset(); }
+                        double[] now = counts(pinpoint);
+                        double h = pinpoint.getHeading(AngleUnit.RADIANS), d = AngleUnit.normalizeRadians(h - heading);
+                        double[] delta = new double[now.length];
+                        for (int i = 0; i < now.length; i++) { delta[i] = now[i] - last[i]; sums[2 + i] += d * delta[i]; }
+                        sums[0] += d; sums[1] += d * d;
+                        heading = h; last = now;
+                        show(String.format(Locale.US, "Turning on the spot: %.0f of 360 degrees.", Math.toDegrees(Math.abs(sums[0]))), "");
+                    }
+                    spin(drive, 0);
+                    if (Math.abs(sums[0]) < Math.PI) result("pinpoint.xOffset", "?none");
+                    else {
+                        // A pod counts the turn times how far it sits from the centre, across its direction of travel.
+                        result("pinpoint.xOffset", number(-sums[2] / sums[1] / (signX * tpi)));
+                        result("pinpoint.yOffset", number(sums[3] / sums[1] / (signY * tpi)));
+                    }
                 }
             }
+        } catch (Stopped stopped) {
+            return;
+        } finally {
+            for (DcMotorEx motor : drive) if (motor != null) motor.setPower(0);
+            if (intake1 != null) intake1.setPower(0);
+            if (flywheel1 != null) flywheel1.setPower(0);
+            if (feeder1 != null) feeder1.setPower(0);
+            if (turret1 != null) turret1.setPower(0);
         }
-        for (DcMotorEx motor : drive) if (motor != null) motor.setPower(0);
-        if (intake1 != null) intake1.setPower(0);
-        if (flywheel1 != null) flywheel1.setPower(0);
-        if (feeder1 != null) feeder1.setPower(0);
-        if (turret1 != null) turret1.setPower(0);
+        if (!opModeIsActive()) return;
         // Done: the results stay on the screen, and the mechanisms can be tried with the settings in the code.
         title = "Done";
         BiobuzzRedAuto.Mechanisms mech = new BiobuzzRedAuto.Mechanisms();
@@ -248,7 +256,11 @@ public class BiobuzzRedCheck extends LinearOpMode {
         return String.format(Locale.US, "%.3f", value);
     }
 
+    /** STOP was pressed: the check ends where it is. */
+    private static final class Stopped extends RuntimeException { }
+
     private void next(String what) {
+        if (!opModeIsActive()) throw new Stopped();
         step++;
         title = what;
     }

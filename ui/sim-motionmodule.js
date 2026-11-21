@@ -233,7 +233,7 @@ class PlannedRoute:
             if stop.is_set():
                 return False
             heading = self.sensors.heading()
-            if heading is None:
+            if heading is None or not math.isfinite(heading):
                 return False
             if moving and not self.moving["done"]:
                 step = self.moving["step"]
@@ -267,7 +267,7 @@ class PlannedRoute:
             if stop.is_set():
                 return False
             heading = self.sensors.heading()
-            if heading is None:
+            if heading is None or not math.isfinite(heading):
                 return False
             if moving and not self.moving["done"]:
                 step = self.moving["step"]
@@ -311,7 +311,7 @@ class PlannedRoute:
             if stop.is_set():
                 return False
             heading = self.sensors.heading()
-            if heading is None:
+            if heading is None or not math.isfinite(heading):
                 return False
             step.elapsed = time.monotonic() - started
             step.last = seconds > 0 and step.elapsed >= seconds
@@ -386,7 +386,7 @@ class PlannedRoute:
             if stop.is_set():
                 return False
             heading = self.sensors.heading()
-            if heading is None:
+            if heading is None or not math.isfinite(heading):
                 return False
             rate = getattr(self.sensors, "rate", None)
             turn = self.heading.power(self.target, heading, rate() if callable(rate) else None, in_place=True)
@@ -405,6 +405,8 @@ class PlannedRoute:
                     raise RuntimeError("Built-in IMU is not ready; autonomous stayed stopped.")
                 stop.wait(self.LOOP_SECONDS)
             start = self.sensors.heading()
+            if start is None or not math.isfinite(start):
+                raise RuntimeError("IMU heading lost; autonomous stayed stopped.")
             self.start = start
             self.target = start
             for index, step in enumerate(PLAN):
@@ -455,13 +457,19 @@ class PlannedRoute:
                     return
                 self.progress = {**self.progress, "completed": index + 1}
         finally:
+            # The drive first, then each of the others whatever the one before it did: an action that raises as it is
+            # ended must not leave the mechanisms running.
             self.drive.stop()
-            self.end_moving()
-            if MECHANISMS is not None:
-                MECHANISMS.stop()
-            finish = getattr(self.actions, "stop", None)
-            if callable(finish):
-                finish(self.module)
+            try:
+                self.end_moving()
+            finally:
+                try:
+                    if MECHANISMS is not None:
+                        MECHANISMS.stop()
+                finally:
+                    finish = getattr(self.actions, "stop", None)
+                    if callable(finish):
+                        finish(self.module)
 
 
 def create_autonomous(module, drive):

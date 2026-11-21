@@ -84,8 +84,19 @@ try {
         $installed += $item
     }
 } catch {
-    foreach ($item in $installed) { Move-Item -LiteralPath (Join-Path $destination $item) -Destination (Join-Path $stage ('failed-'+$item)) }
-    foreach ($item in $moved) { Move-Item -LiteralPath (Join-Path $backup $item) -Destination $destination }
+    # The previous version goes back and is started again: a failed update must not leave Torque closed, or half replaced.
+    Write-Output ('Update failed, restoring the previous version: '+$_.Exception.Message)
+    try {
+        foreach ($item in $installed) { Move-Item -LiteralPath (Join-Path $destination $item) -Destination (Join-Path $stage ('failed-'+$item)) }
+        foreach ($item in $moved) {
+            $target = Join-Path $destination $item
+            # A copy that stopped part way left a piece of the new one here: it moves out of the way first.
+            if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination (Join-Path $stage ('partial-'+$item)) }
+            Move-Item -LiteralPath (Join-Path $backup $item) -Destination $destination
+        }
+    } finally {
+        try { Restart-App $destination } catch { Write-Output ('Could not restart the previous version: '+$_.Exception.Message) }
+    }
     throw
 }
 if (Test-Path -LiteralPath (Join-Path $source 'DeckDriverStation.exe')) {

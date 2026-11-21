@@ -841,7 +841,14 @@ ${p.device==='servo'?`        ${f}.setPosition(${f}Position(value));${p.extra.ma
     public boolean ${f}Done() {
         if (${f}Start < 0) return true;
         double t = clock.seconds() - ${f}Start;
-        boolean done = ${done};${p.device==='crservo'?`
+        boolean done = ${done};${p.device==='motor'?`
+        // Still not there in twice its time: it is jammed, or its encoder is not counting. It holds where it is from here on,
+        // rather than push at ${c}_POWER against whatever stopped it for the rest of the autonomous.
+        if (done && ${f}.isBusy()) {
+            ${f}.setTargetPosition(${f}.getCurrentPosition());${p.extra.map(({s:k})=>`
+            if (${f}${k} != null) ${f}${k}.setTargetPosition(${f}${k}.getCurrentPosition());`).join('')}
+            ${f}Start = -1;
+        }`:''}${p.device==='crservo'?`
         if (done) { ${f}.setPower(0);${p.extra.map(({s:k})=>` if (${f}${k} != null) ${f}${k}.setPower(0);`).join('')} }`:''}
         return done;
     }
@@ -1077,7 +1084,10 @@ public class Mechanisms {
 ${C.join('\n').replace(/\n+$/,'')}
 
 ${fields.join('\n')}
-    private final ElapsedTime clock = new ElapsedTime();
+    private final ElapsedTime clock = new ElapsedTime();${motorTurrets.length||crTurrets.length?`
+    /** How long aimed() is asked before the route stops waiting for a turret that is not getting there. */
+    public static final double AIM_TIMEOUT_SECONDS = 3.0;
+    private double aimSince = -1, aimAsked = -1e9;`:''}
     private double feedStart = -1, spinStart = -1, lastIntake = -1e9${servoTurrets.length?`, trackedAt = 0${servoTurrets.map(x=>`, ${x.field}Degrees = 0, ${x.field}At = 0`).join('')}`:''};
     private boolean spinning, shot, streamed;
 
@@ -1217,7 +1227,14 @@ ${servoTurrets.map(x=>`        ${x.field}At += Math.max(-step, Math.min(step, ${
     public boolean aimed() {${servoTurrets.length?`
         trackServoTurrets();`:''}${crTurrets.length?`
         steerTurrets();`:''}
-        return ${aimed.join(' && ')||'true'};
+${motorTurrets.length||crTurrets.length?`        // A turret that cannot get there (jammed, past a hard stop, its encoder or feedback wire out) would keep a Shoot or an
+        // Aim at a pin waiting for the rest of the autonomous: after AIM_TIMEOUT_SECONDS of asking, the route carries on.
+        double now = clock.seconds();
+        if (now - aimAsked > 0.25) aimSince = -1;
+        aimAsked = now;
+        if (${aimed.join(' && ')}) { aimSince = -1; return true; }
+        if (aimSince < 0) aimSince = now;
+        return now - aimSince >= AIM_TIMEOUT_SECONDS;`:`        return ${aimed.join(' && ')||'true'};`}
     }
 
     /** Feeders on or off, for the mechanism check: rollers run, gates open, pushers push. */
@@ -1660,8 +1677,16 @@ ${consts.length?consts.join('\n')+'\n':''}    /** The answers as Deck settings: 
 ${gets.join('\n')}
         show("Deck's guided check: " + STEPS + " steps. Put the robot on blocks with its wheels off the floor, then press START.", "");
         waitForStart();
-${steps.join('\n')}
-${stops.join('\n')}
+        // Once STOP is pressed no further step is begun (next() ends the check), and whatever was turning is switched off,
+        // also when a step fails.
+        try {
+${steps.join('\n').replace(/^(?=.)/gm,'    ')}
+        } catch (Stopped stopped) {
+            return;
+        } finally {
+${stops.join('\n').replace(/^(?=.)/gm,'    ')}
+        }
+        if (!opModeIsActive()) return;
         // Done: the results stay on the screen, and the mechanisms can be tried with the settings in the code.
         title = "Done";${m?`
         ${M} mech = new ${M}();
@@ -1698,7 +1723,11 @@ ${stops.join('\n')}
         return String.format(Locale.US, "%.3f", value);
     }
 
+    /** STOP was pressed: the check ends where it is. */
+    private static final class Stopped extends RuntimeException { }
+
     private void next(String what) {
+        if (!opModeIsActive()) throw new Stopped();
         step++;
         title = what;
     }

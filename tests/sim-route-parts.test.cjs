@@ -29,6 +29,8 @@ test('Parts.java: each part on its motor or servo, closed on its sensor, and the
   assert.deepEqual(ex.parts.list.map(p=>[p.method,p.device,p.name]),[['armServo','servo','armServo'],['liftMotor','motor','liftMotor']]);
   assert.match(src,/public static final String PART_ARM_SERVO_SENSOR = "armAngle";/);assert.match(src,/Math\.abs\(armServoMeasured\(\) - armServoTarget\) <= TOLERANCE_DEGREES/);
   assert.match(src,/liftMotor\.setMode\(DcMotor\.RunMode\.STOP_AND_RESET_ENCODER\);/,'the CAD pose is the encoder zero');assert.match(src,/!liftMotor\.isBusy\(\)/);
+  // A lift that is still not there in twice its time holds where it is: it does not push on at full power against a jam.
+  assert.match(src,/if \(done && liftMotor\.isBusy\(\)\) \{\s*liftMotor\.setTargetPosition\(liftMotor\.getCurrentPosition\(\)\);[\s\S]{0,200}?liftMotorStart = -1;/);
   // The lift's second motor (mirrored) runs to the same target, and the home switch re-zeroes the encoders when sent home.
   assert.match(src,/liftMotor2 = map\.tryGet\(DcMotorEx\.class, PART_LIFT_MOTOR_2\);/);assert.match(src,/liftMotor2\.setTargetPosition\(\(int\) Math\.round\(value \* PART_LIFT_MOTOR_COUNTS_PER_UNIT\)\);/);
   assert.match(src,/public boolean liftMotorAtHome\(\) \{\n\s+return liftMotorHome\.isPressed\(\);/);assert.match(src,/if \(liftMotorAtHome\(\) && Math\.abs\(liftMotorTarget - PART_LIFT_MOTOR_HOME\) < 1e-6/);

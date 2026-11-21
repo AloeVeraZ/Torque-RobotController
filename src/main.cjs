@@ -3,7 +3,7 @@ const BugReport=require('./bug-report.cjs');
 const {app,BrowserWindow,WebContentsView,ipcMain,screen,Menu,shell,powerMonitor,powerSaveBlocker,utilityProcess,dialog,net}=require('electron');
 const fs=require('node:fs'),path=require('node:path');const {execFile}=require('node:child_process');const {promisify}=require('node:util');const {createHash,randomUUID}=require('node:crypto');
 const {Library,normalizeUrl,cleanSsid}=require('./library.cjs');const {Network}=require('./network.cjs');const {RobotProxy}=require('./robot-proxy.cjs');const {FtcSocket,UsbFtcSocket,probeFtc,findFtc,usbHold}=require('./ftc.cjs');
-const {Updater,prepareInstall,launchInstall}=require('./updater.cjs');const {shortcut}=require('./shortcuts.cjs');let build={};try{build=JSON.parse(fs.readFileSync(path.join(__dirname,'../build.json'),'utf8'));}catch{}const meta=require('../package.json');let updater;
+const {Updater,prepareInstall,launchInstall,pruneStages}=require('./updater.cjs');const {shortcut}=require('./shortcuts.cjs');let build={};try{build=JSON.parse(fs.readFileSync(path.join(__dirname,'../build.json'),'utf8'));}catch{}const meta=require('../package.json');let updater;
 const {identifyHardware,detectHardware}=require('./hardware.cjs');let device=identifyHardware();
 const {ControllerHub}=require('./controller-hub.cjs');let controllerHub,lastControllerState='',lastInputConfig='';
 // Controller 1 can be the keyboard: a virtual standard pad built from held physical keys.
@@ -333,7 +333,9 @@ handle('open-reference',url=>{if(!libraryPages){libraryPages=new Set();try{for(c
   const u=String(url||'');if(!u.startsWith('https://')||!libraryPages.has(u))throw Error('Only a page the mechanism library cites can be opened.');return shell.openExternal(u).then(()=>true);});
 // The computer stays awake while a Control Hub is in use over USB: sleeping suspends the port, and the hub can then need a replug.
 let hubSeenAt=0,awake=null;
-setInterval(()=>{const on=bridge instanceof UsbFtcSocket||Date.now()-hubSeenAt<15000;if(on&&awake===null)awake=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awake!==null){powerSaveBlocker.stop(awake);awake=null;}},5000).unref();
+// Also while a servo is being written or flashed: a laptop that dozes off part way leaves the servo needing Recover.
+const programming=()=>{try{return Object.values(axons).some(a=>['flash','write'].includes(a.busy?.kind))||['flash','write'].includes(swyft?.busy?.kind);}catch{return false;}};
+setInterval(()=>{const on=bridge instanceof UsbFtcSocket||Date.now()-hubSeenAt<15000||programming();if(on&&awake===null)awake=powerSaveBlocker.start('prevent-app-suspension');else if(!on&&awake!==null){powerSaveBlocker.stop(awake);awake=null;}},5000).unref();
 ipcMain.handle('ftc-device-photo',async(e,tag)=>{fromDs(e);return photos().photo(String(tag||''));});
 ipcMain.handle('ftc-device-photos',async e=>{fromDs(e);return photos().prefetch();});
 // The hubs the open robot's web server lists, with each one's IMU (Configure Robot's New: the scan leaves it UNKNOWN).
@@ -678,6 +680,7 @@ app.whenReady().then(async()=>{
   calibrationFile=path.join(app.getPath('userData'),'controller-calibration.json');try{for(const [id,zone]of Object.entries(JSON.parse(fs.readFileSync(calibrationFile,'utf8')))){if(id.length<=2048)calibrations[id]=deadzone(zone);}}catch{}
   zoomFile=path.join(app.getPath('userData'),'robot-zoom.json');try{for(const [key,factor]of Object.entries(JSON.parse(fs.readFileSync(zoomFile,'utf8'))))if(key.length<=2048&&zoomSteps.includes(factor))zooms[key]=factor;}catch{}
   updater=new Updater({directory:app.getPath('userData'),version:meta.version,repo:meta.repository.url,channel:meta.updateChannel,base:build.electron===process.versions.electron?build.base:'',onProgress:p=>emit('update-progress',p)});
+  void pruneStages(app.getPath('userData')).catch(()=>{});
   // A library that cannot be read is set aside under another name and a new one started in its place: started under a new
   // name each launch instead, whatever was added afterwards was gone at the next launch.
   const libraryFile=path.join(app.getPath('userData'),'robots.json');

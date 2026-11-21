@@ -95,8 +95,11 @@ public class Mechanisms {
     private DcMotorSimple feeder2;
     private DcMotorEx turret2;
     private final ElapsedTime clock = new ElapsedTime();
+    /** How long aimed() is asked before the route stops waiting for a turret that is not getting there. */
+    public static final double AIM_TIMEOUT_SECONDS = 3.0;
+    private double aimSince = -1, aimAsked = -1e9;
     private double feedStart = -1, spinStart = -1, lastIntake = -1e9;
-    private boolean spinning, shot;
+    private boolean spinning, shot, streamed;
 
     public void init(HardwareMap map) {
         intake1 = map.get(DcMotorSimple.class, INTAKE_1);
@@ -208,7 +211,14 @@ public class Mechanisms {
 
     /** True once every turret has reached its angle. */
     public boolean aimed() {
-        return !turret1.isBusy() && !turret2.isBusy();
+        // A turret that cannot get there (jammed, past a hard stop, its encoder or feedback wire out) would keep a Shoot or an
+        // Aim at a pin waiting for the rest of the autonomous: after AIM_TIMEOUT_SECONDS of asking, the route carries on.
+        double now = clock.seconds();
+        if (now - aimAsked > 0.25) aimSince = -1;
+        aimAsked = now;
+        if (!turret1.isBusy() && !turret2.isBusy()) { aimSince = -1; return true; }
+        if (aimSince < 0) aimSince = now;
+        return now - aimSince >= AIM_TIMEOUT_SECONDS;
     }
 
     /** Feeders on or off, for the mechanism check: rollers run, gates open, pushers push. */
@@ -225,15 +235,17 @@ public class Mechanisms {
     /** One call of "Shoot N" (count 0: every storage slot). Returns true once all N shots have had time. */
     public boolean shoot(int count, RouteActions.Step step) {
         int want = count > 0 ? count : STORAGE;
-        if (step.first) { feedStart = -1; shot = false; }
+        if (step.first) { feedStart = -1; shot = false; streamed = false; }
+        // With the intake running alongside (step.withIntake) nothing waits for pieces to move up: each is shot as it arrives.
+        if (step.withIntake) streamed = true;
         if (shot) return true;
         spin(true);
         aim(step.pose, step.cell);
         double now = clock.seconds();
         // Start once spun up and on target, and pieces from the last intake have moved up.
-        if (feedStart < 0 && ready() && aimed() && now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS) feedStart = now;
+        if (feedStart < 0 && ready() && aimed() && (step.withIntake || now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS)) feedStart = now;
         // Shooting for a set time keeps feeding until the route's last call; otherwise long enough for N shots.
-        double window = step.duration > 0 ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
+        double window = step.duration > 0 || streamed && step.moving ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
         boolean feeding = feedStart >= 0 && now - feedStart < window;
         feeders(feeding && !step.last, feedStart >= 0 ? now - feedStart : 0);
         if (feedStart >= 0 && !feeding) shot = true;
@@ -260,6 +272,9 @@ public class Mechanisms {
     }
 
     public static final String[] SERVO_NAMES = {};
+
+    /** Called every loop by the autonomous. */
+    public void update() {}
 
     public void stop() {
         intake(false);

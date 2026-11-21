@@ -31,6 +31,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
  */
 @Autonomous(name = "BIOBUZZ dual red (Deck)", group = "Torque")
 public class PlannedRouteAuto extends LinearOpMode {
+    /** Seconds without getting half an inch further along a leg before everything is stopped. */
+    private static final double STUCK_SECONDS = 2.0;
     private DeckFollower follower;
     private RouteActions actions;
     private final RouteActions.Step step = new RouteActions.Step();
@@ -47,6 +49,10 @@ public class PlannedRouteAuto extends LinearOpMode {
         telemetry.addData("Route", legs.length + " legs");
         telemetry.update();
         waitForStart();
+        // Where the robot stands when START is pressed is the route's start. The IMU's heading, the encoders and every
+        // position sensor are zeroed to it here, so everything is measured from this spot and nothing that moved the robot
+        // between INIT and START is counted.
+        follower.setPose(PlannedRoute.START);
         try {
             ElapsedTime timer = new ElapsedTime(), movingTimer = new ElapsedTime();
             double plannedHeading = PlannedRoute.START.heading();
@@ -72,8 +78,17 @@ public class PlannedRouteAuto extends LinearOpMode {
                 follower.follow(legs[i]);
                 step.wait = 0;
                 boolean through = i + 1 < legs.length && PlannedRoute.WAIT_SECONDS[i] == 0 && PlannedRoute.ACTIONS[i].isEmpty() && Double.isNaN(PlannedRoute.TURN_AFTER[i]) && DeckFollower.continuous(legs[i],legs[i+1]);
+                // A robot that stops getting anywhere along the leg is stopped, not driven on: blocked by a wall or another robot,
+                // or its position no longer changing because a sensor stopped answering (an odometry cable out), which would
+                // otherwise drive it blind for the rest of the autonomous. Within an inch of the end it is only settling, and moves on.
+                double best = follower.remainingDistance();
+                ElapsedTime progress = new ElapsedTime();
+                boolean stuck = false;
                 while (opModeIsActive() && follower.following()) {
                     follower.update();
+                    double left = follower.remainingDistance();
+                    if (left < best - 0.5) { best = left; progress.reset(); }
+                    else if (progress.seconds() > (left > 1.0 ? STUCK_SECONDS : 3)) { stuck = left > 1.0; break; }
                     if (!moving.isEmpty() && !movingDone) {
                         // A set time runs the action from the start of its path; the last call stops it.
                         double t = movingTimer.seconds();
@@ -85,6 +100,18 @@ public class PlannedRouteAuto extends LinearOpMode {
                     }
                     report(i, legs.length, moving.isEmpty() ? "Driving" : "Action path");
                     if (through && follower.remainingDistance() < 1.5 && near(legs[i].endPose(),1.5)) break;
+                }
+                if (stuck) {
+                    // Everything stops and stays stopped: the drive, then the mechanisms. Nothing more of the route runs.
+                    try { follower.stop(); } finally { actions.stop(); }
+                    while (opModeIsActive()) {
+                        telemetry.addData("Leg", (i + 1) + " of " + legs.length);
+                        telemetry.addData("Phase", "Stopped: no progress for " + STUCK_SECONDS + " s");
+                        telemetry.addLine("The robot stopped moving along its path: it is blocked, or a position sensor stopped answering (check the odometry cables). Everything is off.");
+                        telemetry.update();
+                        idle();
+                    }
+                    break;
                 }
                 boolean pathEnds = i == legs.length - 1 || PlannedRoute.PATH[i + 1] != movingPath || PlannedRoute.MOVING_ACTIONS[i + 1].isEmpty();
                 if (!moving.isEmpty() && pathEnds) {
@@ -184,7 +211,55 @@ public class PlannedRouteAuto extends LinearOpMode {
         telemetry.addData("x", "%.1f", p.x());
         telemetry.addData("y", "%.1f", p.y());
         telemetry.addData("heading", "%.1f", Math.toDegrees(p.heading()));
+        devices();
         telemetry.update();
+    }
+
+    // Every motor, servo and sensor in the robot's configuration, under the route on the Driver Station: the power each motor
+    // and servo is given and what each sensor reads. Sensors are read four times a second (as often as the Driver Station
+    // shows telemetry), so reading them does not slow the route.
+    private final ElapsedTime deviceClock = new ElapsedTime();
+    private final java.util.List<String[]> deviceLines = new java.util.ArrayList<>();
+    private String nameOf(com.qualcomm.robotcore.hardware.HardwareDevice d) { java.util.Iterator<String> n = hardwareMap.getNamesOf(d).iterator(); return n.hasNext() ? n.next() : d.getDeviceName(); }
+    private void line(com.qualcomm.robotcore.hardware.HardwareDevice d, String format, Object... values) { deviceLines.add(new String[]{nameOf(d), String.format(java.util.Locale.US, format, values)}); }
+    private void devices() {
+        if (deviceLines.isEmpty() || deviceClock.milliseconds() >= 250) {
+            deviceClock.reset(); deviceLines.clear();
+            try {
+                for (com.qualcomm.robotcore.hardware.DcMotorEx m : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DcMotorEx.class)) line(m, "power %.2f · %d ticks · %.0f ticks/s", m.getPower(), m.getCurrentPosition(), m.getVelocity());
+                for (com.qualcomm.robotcore.hardware.Servo v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.Servo.class)) line(v, "servo at %.3f", v.getPosition());
+                for (com.qualcomm.robotcore.hardware.CRServo v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.CRServo.class)) line(v, "power %.2f", v.getPower());
+                for (com.qualcomm.robotcore.hardware.IMU i : hardwareMap.getAll(com.qualcomm.robotcore.hardware.IMU.class)) { org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles a = i.getRobotYawPitchRollAngles(); line(i, "yaw %.1f° · pitch %.1f° · roll %.1f°", a.getYaw(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES), a.getPitch(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES), a.getRoll(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES)); }
+                for (com.qualcomm.robotcore.hardware.NormalizedColorSensor c : hardwareMap.getAll(com.qualcomm.robotcore.hardware.NormalizedColorSensor.class)) { com.qualcomm.robotcore.hardware.NormalizedRGBA x = c.getNormalizedColors(); line(c, "red %.3f · green %.3f · blue %.3f", x.red, x.green, x.blue); }
+                for (com.qualcomm.robotcore.hardware.DistanceSensor d : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DistanceSensor.class)) line(d, "%.1f cm", d.getDistance(org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.CM));
+                for (com.qualcomm.robotcore.hardware.TouchSensor t : hardwareMap.getAll(com.qualcomm.robotcore.hardware.TouchSensor.class)) line(t, t.isPressed() ? "pressed" : "not pressed");
+                for (com.qualcomm.robotcore.hardware.DigitalChannel c : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DigitalChannel.class)) line(c, c.getState() ? "HIGH" : "LOW");
+                for (com.qualcomm.robotcore.hardware.AnalogInput a : hardwareMap.getAll(com.qualcomm.robotcore.hardware.AnalogInput.class)) line(a, "%.3f V", a.getVoltage());
+                for (com.qualcomm.robotcore.hardware.VoltageSensor v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.VoltageSensor.class)) line(v, "battery %.2f V", v.getVoltage());
+            } catch (RuntimeException e) { deviceLines.add(new String[]{"Devices", "could not read: " + e.getClass().getSimpleName()}); }
+        }
+        telemetry.addLine("— Devices —");
+        for (String[] l : deviceLines) telemetry.addData(l[0], l[1]);
+    }
+
+    public static final class RoadRunnerParams {
+
+    private RoadRunnerParams() {}
+
+    /** MecanumDrive.PARAMS.logoFacingDirection: RevHubOrientationOnRobot.LogoFacingDirection.UP. */
+    public static final String LOGO_FACING_DIRECTION = "UP";
+    /** MecanumDrive.PARAMS.usbFacingDirection: RevHubOrientationOnRobot.UsbFacingDirection.FORWARD. */
+    public static final String USB_FACING_DIRECTION = "FORWARD";
+    /** The IMU's name in the robot configuration (Control Hub IMU: Logo up, USB ports forward). */
+    public static final String IMU_NAME = "imu";
+    /** PinpointLocalizer.Params.parYTicks: the X (forward) pod, 4.0 in left of centre, in its 19.894367 ticks a mm. */
+    public static final double PAR_Y_TICKS = 2021.267709;
+    /** PinpointLocalizer.Params.perpXTicks: the Y (strafe) pod, -3.0 in forward of centre. */
+    public static final double PERP_X_TICKS = -1515.950782;
+    /** MecanumDrive.PARAMS.inPerTick for the Pinpoint's pods. */
+    public static final double IN_PER_TICK = 0.001978956;
+    public static final String PINPOINT_NAME = "pinpoint";
+
     }
 
     public static final class PlannedRoute {
@@ -296,6 +371,8 @@ public class PlannedRouteAuto extends LinearOpMode {
         public double duration;
         /** The hive cell to aim at: 0 the cell up at the start, 1 the other cell (up after the first tip). */
         public int cell;
+        /** True while an Intake step of the same list is running: a Shoot then feeds without waiting for pieces to move up. */
+        public boolean withIntake;
     }
 
     protected HardwareMap hardwareMap;
@@ -330,6 +407,7 @@ public class PlannedRouteAuto extends LinearOpMode {
 
     /** Called every loop by the autonomous: moving parts finish their moves on their own. */
     public void update() {
+        mech.update();
     }
 
     /** Called when the autonomous ends or is stopped: stop every mechanism. */
@@ -407,7 +485,7 @@ public class PlannedRouteAuto extends LinearOpMode {
     private final SparkFunOTOS otos;
     private final ElapsedTime clock = new ElapsedTime();
     private final int[] before = new int[4], podBefore = new int[0];
-    private double oldImu, lastTime;
+    private double oldImu, lastTime, trusted;
     double limit=0.6;
     private DeckFollower.MotionState state=DeckFollower.MotionState.ofVelocity(DeckFollower.Pose.zero(),DeckFollower.Velocity.zero());
     public RobotDrive(HardwareMap map) {
@@ -418,7 +496,8 @@ public class PlannedRouteAuto extends LinearOpMode {
         for(DcMotorEx m:motors){m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);}
 
         imu=map.get(IMU.class,"imu");
-        // How the Control Hub is mounted (Deck: Setup → Robot controller). If this is wrong, every turn and heading is wrong.
+        // How the IMU is mounted (Torque: Setup → Mechanisms → Chassis). If this is wrong, every turn and heading is wrong.
+        // Control Hub IMU: Logo up, USB ports forward.
         imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.UP,RevHubOrientationOnRobot.UsbFacingDirection.FORWARD)));
         pinpoint=map.get(GoBildaPinpointDriver.class,"pinpoint");
         // The Pinpoint's pods: X is the forward pod (its offset: inches left of the robot's centre), Y the strafe pod (inches
@@ -437,7 +516,7 @@ public class PlannedRouteAuto extends LinearOpMode {
     public void setPose(DeckFollower.Pose p){
         for(int i=0;i<motors.length;i++)before[i]=motors[i].getCurrentPosition();
         for(int i=0;i<pods.length;i++)podBefore[i]=pods[i].getCurrentPosition();
-        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=clock.seconds();
+        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=trusted=clock.seconds();
         if(pinpoint!=null)pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,p.x(),p.y(),AngleUnit.RADIANS,p.heading()));
         if(otos!=null)otos.setPosition(new SparkFunOTOS.Pose2D(p.x(),p.y(),p.heading()));
         state=DeckFollower.MotionState.ofVelocity(p,DeckFollower.Velocity.zero());
@@ -445,7 +524,8 @@ public class PlannedRouteAuto extends LinearOpMode {
     public void update(){
         double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;DeckFollower.Pose p=state.pose(),next;
         double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=DeckFollower.angle(yaw-oldImu);oldImu=yaw;
-        if(pinpoint!=null){pinpoint.update();next=new DeckFollower.Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS));}
+        // The Pinpoint turns with its own IMU; while it does not answer (a loose cable), the Control Hub's IMU carries the heading.
+        if(pinpoint!=null){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new DeckFollower.Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new DeckFollower.Pose(p.x(),p.y(),p.heading()+dh);}
         else if(otos!=null){SparkFunOTOS.Pose2D q=otos.getPosition();next=new DeckFollower.Pose(q.x,q.y,q.h);}
         else {
             double[] d=new double[motors.length];for(int i=0;i<d.length;i++){int ticks=motors[i].getCurrentPosition();d[i]=(ticks-before[i])*0.0333065;before[i]=ticks;}
@@ -453,11 +533,20 @@ public class PlannedRouteAuto extends LinearOpMode {
 
             double mid=p.heading()+dh/2;next=new DeckFollower.Pose(p.x()+forward*Math.cos(mid)-left*Math.sin(mid),p.y()+forward*Math.sin(mid)+left*Math.cos(mid),p.heading()+dh);
         }
+        // A reading that is not a number (a sensor that failed mid-read) is no reading: the pose stays where it was, and the
+        // autonomous stops the robot if it stays there.
+        if(!(Double.isFinite(next.x())&&Double.isFinite(next.y())&&Double.isFinite(next.heading())))next=new DeckFollower.Pose(p.x(),p.y(),p.heading());
+        // A position further off than the robot could have driven since the last good one (3 in, and 100 in/s for at most a
+        // quarter second) is no reading either: a Pinpoint or OTOS that lost power or reset reads 0,0, and a robot that believed
+        // it would drive hard at wherever that says it is not. The hub's IMU carries the heading meanwhile.
+        else if(Math.hypot(next.x()-p.x(),next.y()-p.y())>3+100*Math.min(.25,now-trusted))next=new DeckFollower.Pose(p.x(),p.y(),p.heading()+dh);
+        else trusted=now;
         state=DeckFollower.MotionState.ofVelocity(next,new DeckFollower.Velocity((next.x()-p.x())/dt,(next.y()-p.y())/dt,DeckFollower.angle(next.heading()-p.heading())/dt));
     }
     public void drive(DeckFollower.DrivePowers p,boolean manual){
         double[] powers=new double[]{p.forward()-p.strafe()-p.turn(),p.forward()+p.strafe()+p.turn(),p.forward()+p.strafe()-p.turn(),p.forward()-p.strafe()+p.turn()};
         double scale=1;for(double w:powers)scale=Math.max(scale,Math.abs(w)/Math.max(.000001,limit));
+        if(Double.isNaN(scale)){stop();return;}
         for(int i=0;i<motors.length;i++)motors[i].setPower(limit<=0?0:powers[i]/scale);
     }
     public void stop(){for(DcMotorEx m:motors)m.setPower(0);}
@@ -534,6 +623,11 @@ public class PlannedRouteAuto extends LinearOpMode {
     public static final class Config {
         public double maxForward=60, maxStrafe=50, maxTurn=5, maxPathSpeed=.6, acceleration=70;
         public double positionP=.09, positionD=.01, headingP=2, headingD=.12;
+        // A turn on the spot: the most power, the least that still turns the robot, how far out (radians) it starts to slow, how hard its own
+        // turning speed brakes it (power for each radian a second), and how close (radians) counts as there. Calibrate measures these on the robot.
+        public double turnTop=.25, turnLeast=.07, turnSlow=Math.toRadians(60), turnBrake=.115, turnDone=Math.toRadians(1);
+        // How old the heading is by the time the power reaches the wheels, in seconds: a Control Hub IMU read goes over I2C and is slow.
+        public double turnLag=.02;
         public boolean tank;
     }
     public interface Curve { Point get(double t); }
@@ -560,6 +654,8 @@ public class PlannedRouteAuto extends LinearOpMode {
         public static Path path(Path... p) { return new Path(Arrays.asList(p)); }
     }
     public enum Mode { IDLE, FOLLOWING, HOLDING }
+    // Holding a heading: whether it is there (inside turnDone and still), and the least power built up from rest, and which way.
+    private boolean holdThere;private double holdPush,holdWay;
     /** Continuous modifiers may change at a tangent boundary without a needless full stop. */
     public static boolean continuous(Path a,Path b) {
         Pose end=a.endPose();Point start=b.get(0),before=a.get(.99),after=b.get(.01);
@@ -606,14 +702,17 @@ public class PlannedRouteAuto extends LinearOpMode {
         // Where the path bends (a curve, or a sharp corner at a pin it drives through) the robot cannot
         // change direction at full speed: it slows to sqrt(acceleration/2 * radius) there, and brakes in
         // time for each bend ahead, so it drives through the bend instead of sweeping wide of it.
+        // Braking is planned at .35 of the acceleration figure: a light, fast robot speeds up far harder
+        // than it can slow down, and planned at twice this it reached bends at three times the planned
+        // speed (a swerve then swung 2.6 in wide while its modules turned).
         int n=samples.size();limits=new double[n];Arrays.fill(limits,Double.POSITIVE_INFINITY);double inX=0,inY=0,inLength=0;
         for(int i=1;i<n;i++){Pose a=samples.get(i-1).pose,b=samples.get(i).pose;double dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);if(length<1e-9)continue;
             if(inLength>0){double bend=Math.abs(angle(Math.atan2(dy,dx)-Math.atan2(inY,inX)));if(bend>1e-4)limits[i-1]=Math.max(3,Math.sqrt(.5*config.acceleration*(length+inLength)/2/bend));}
             inX=dx;inY=dy;inLength=length;}
-        for(int i=n-2;i>=0;i--)limits[i]=Math.min(limits[i],Math.sqrt(limits[i+1]*limits[i+1]+2*.7*config.acceleration*(samples.get(i+1).s-samples.get(i).s)));
+        for(int i=n-2;i>=0;i--)limits[i]=Math.min(limits[i],Math.sqrt(limits[i+1]*limits[i+1]+.7*config.acceleration*(samples.get(i+1).s-samples.get(i).s)));
         target=path.endPose();total=arc;progress=reference=settled=0;speed=velocity().linSpeed();nearest=0;lastTime=-1;mode=Mode.FOLLOWING;
     }
-    public void hold(Pose p) { target=p;mode=Mode.HOLDING;speed=0;settled=0; }
+    public void hold(Pose p) { target=p;mode=Mode.HOLDING;speed=0;settled=0;holdThere=false;holdPush=0;holdWay=0; }
     public void stop() { mode=Mode.IDLE;speed=0;drive.stop(); }
     private Pose sample(double s) {
         int lo=0,hi=samples.size()-1;while(lo<hi){int m=(lo+hi)/2;if(samples.get(m).s<s)lo=m+1;else hi=m;}
@@ -628,8 +727,9 @@ public class PlannedRouteAuto extends LinearOpMode {
             for(int j=Math.max(0,nearest-4);j<samples.size()&&samples.get(j).s<=progress+20;j++){double d=p.distance(samples.get(j).pose);if(d<best){best=d;index=j;}}
             nearest=Math.max(nearest,index);progress=Math.max(progress,samples.get(nearest).s);
             double remaining=total-reference,cruise=config.maxForward*config.maxPathSpeed;
-            // Leave braking headroom for wheel saturation, heading corrections and sensor delay.
-            double wanted=Math.min(cruise,Math.sqrt(Math.max(0,.7*config.acceleration*remaining)));
+            // Leave braking headroom for wheel saturation, heading corrections and sensor delay
+            // (.25 of the acceleration figure: at .35 a fast robot ran an inch past the end and came back).
+            double wanted=Math.min(cruise,Math.sqrt(Math.max(0,.5*config.acceleration*remaining)));
             Pose here=sample(reference),look=sample(Math.min(total,reference+.5));
             double angularPerInch=Math.abs(angle(look.heading-here.heading))/Math.max(.001,Math.min(.5,total-reference));
             if(angularPerInch>1e-6)wanted=Math.min(wanted,config.maxTurn*config.maxPathSpeed*.65/angularPerInch);
@@ -639,7 +739,7 @@ public class PlannedRouteAuto extends LinearOpMode {
             reference=Math.min(total,Math.min(reference+speed*dt,progress+Math.max(2,speed*.12)));
             aim=sample(reference);Pose ahead=sample(Math.min(total,reference+.25));double dx=ahead.x-aim.x,dy=ahead.y-aim.y,len=Math.hypot(dx,dy);
             if(len>1e-8&&reference<total){vx=dx/len*speed;vy=dy/len*speed;omega=angle(ahead.heading-aim.heading)/len*speed;}
-            if(total-progress<.6&&p.distance(target)<.8){settled+=dt;if(settled>.1){mode=Mode.HOLDING;aim=target;vx=vy=omega=0;}}else settled=0;
+            if(total-progress<.6&&p.distance(target)<.8){settled+=dt;if(settled>.1){mode=Mode.HOLDING;aim=target;vx=vy=omega=0;holdThere=false;holdPush=0;holdWay=0;}}else settled=0;
         }
         double ex=aim.x-p.x,ey=aim.y-p.y,c=Math.cos(p.heading),s=Math.sin(p.heading);
         // Position error becomes a correction speed: proportional near the path, square-root beyond
@@ -654,9 +754,23 @@ public class PlannedRouteAuto extends LinearOpMode {
         if(config.tank&&following()&&Math.abs(forward+ffForward)>.02)desiredHeading+=Math.signum(forward+ffForward)*clamp(Math.atan2(-ex*s+ey*c,4),-.35,.35);
         double headingError=angle(desiredHeading-p.heading);
         double turn=config.headingP*headingError-config.headingD*(v.heading-omega);
+        // Nearing its angle it turns slower: the feedback is held under a power that falls with what is left to turn. A real robot's weight
+        // carries it on and its IMU answers a little late, so at full power it swings past the angle and hunts either side of it.
+        // Only where it settles onto an angle: holding, a turn on the spot, and the last 12 in of a path. Driving the rest of a curve it keeps its
+        // full turning, or it falls behind the curve (12° and more off its tangent).
+        if(mode!=Mode.FOLLOWING||total-progress<12){double turnCap=Math.max(.08,Math.min(1,.05+.4*Math.sqrt(Math.abs(headingError))));turn=clamp(turn,-turnCap,turnCap);}
+        // A turn on the spot (the turn at a pin, or holding a heading) uses the law the IMU turn test proves on the robot: its top turn power
+        // far out, less and less as it nears the angle, braked by its own turning speed, and nothing once it is there.
+        // Once it is inside turnDone and still, it is there: nothing more until it is pushed out by twice that (a kick each time it is a hair off swings it past and back, over and over).
+        // The least power is only given from rest, built up from half of it, and eased off quickly once it turns, so it does not shove the robot past its angle.
+        if(mode==Mode.HOLDING){double ahead=angle(desiredHeading-(p.heading+v.heading*config.turnLag)),left=Math.abs(ahead),off=Math.abs(headingError);boolean slow=Math.abs(v.heading)<Math.toRadians(10);
+            if(holdThere){if(off>2*config.turnDone)holdThere=false;}else if(off<=config.turnDone&&slow)holdThere=true;
+            if(holdThere||left<=config.turnDone*.5){turn=0;holdPush=0;}
+            else{if(Math.signum(ahead)!=holdWay){holdWay=Math.signum(ahead);holdPush=0;}holdPush=slow?Math.min(1.5*config.turnLeast,Math.max(holdPush,.5*config.turnLeast)+dt*2*config.turnLeast):Math.max(.5*config.turnLeast,holdPush-dt*3*config.turnLeast);
+                turn=clamp(Math.copySign(Math.max(holdPush,config.turnTop*Math.min(1,left/Math.max(1e-6,config.turnSlow))),ahead)-config.turnBrake*v.heading,-config.turnTop,config.turnTop);}}
         // Overcome the motor deadband at a nearly stationary heading error. Without this,
         // a light/fast drivetrain can stop just outside the turn-settling tolerance.
-        if(Math.abs(headingError)>.015&&Math.abs(v.heading)<.1&&Math.abs(turn+ffTurn)<.045)turn=Math.copySign(.045,headingError)-ffTurn;
+        if(mode!=Mode.HOLDING&&Math.abs(headingError)>.015&&Math.abs(v.heading)<.1&&Math.abs(turn+ffTurn)<.045)turn=Math.copySign(.045,headingError)-ffTurn;
         if(config.tank){strafe=0;ffStrafe=0;}
         // Correction has priority over path speed: when the wheels saturate, the robot slows down
         // along the path rather than drifting off it. Feedback alone is capped at the power limit.
@@ -745,8 +859,11 @@ public class PlannedRouteAuto extends LinearOpMode {
     private DcMotorSimple feeder2;
     private DcMotorEx turret2;
     private final ElapsedTime clock = new ElapsedTime();
+    /** How long aimed() is asked before the route stops waiting for a turret that is not getting there. */
+    public static final double AIM_TIMEOUT_SECONDS = 3.0;
+    private double aimSince = -1, aimAsked = -1e9;
     private double feedStart = -1, spinStart = -1, lastIntake = -1e9;
-    private boolean spinning, shot;
+    private boolean spinning, shot, streamed;
 
     public void init(HardwareMap map) {
         intake1 = map.get(DcMotorSimple.class, INTAKE_1);
@@ -862,7 +979,14 @@ public class PlannedRouteAuto extends LinearOpMode {
 
     /** True once every turret has reached its angle. */
     public boolean aimed() {
-        return !turret1.isBusy() && !turret2.isBusy();
+        // A turret that cannot get there (jammed, past a hard stop, its encoder or feedback wire out) would keep a Shoot or an
+        // Aim at a pin waiting for the rest of the autonomous: after AIM_TIMEOUT_SECONDS of asking, the route carries on.
+        double now = clock.seconds();
+        if (now - aimAsked > 0.25) aimSince = -1;
+        aimAsked = now;
+        if (!turret1.isBusy() && !turret2.isBusy()) { aimSince = -1; return true; }
+        if (aimSince < 0) aimSince = now;
+        return now - aimSince >= AIM_TIMEOUT_SECONDS;
     }
 
     /** Feeders on or off, for the mechanism check: rollers run, gates open, pushers push. */
@@ -879,15 +1003,17 @@ public class PlannedRouteAuto extends LinearOpMode {
     /** One call of "Shoot N" (count 0: every storage slot). Returns true once all N shots have had time. */
     public boolean shoot(int count, RouteActions.Step step) {
         int want = count > 0 ? count : STORAGE;
-        if (step.first) { feedStart = -1; shot = false; }
+        if (step.first) { feedStart = -1; shot = false; streamed = false; }
+        // With the intake running alongside (step.withIntake) nothing waits for pieces to move up: each is shot as it arrives.
+        if (step.withIntake) streamed = true;
         if (shot) return true;
         spin(true);
         aim(step.pose, step.cell);
         double now = clock.seconds();
         // Start once spun up and on target, and pieces from the last intake have moved up.
-        if (feedStart < 0 && ready() && aimed() && now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS) feedStart = now;
+        if (feedStart < 0 && ready() && aimed() && (step.withIntake || now - lastIntake >= TRANSFER_SECONDS + KICKER_UP_SECONDS)) feedStart = now;
         // Shooting for a set time keeps feeding until the route's last call; otherwise long enough for N shots.
-        double window = step.duration > 0 ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
+        double window = step.duration > 0 || streamed && step.moving ? Double.MAX_VALUE : (want - 1) * FEED_CYCLE_SECONDS + LAST_SHOT_SECONDS;
         boolean feeding = feedStart >= 0 && now - feedStart < window;
         feeders(feeding && !step.last, feedStart >= 0 ? now - feedStart : 0);
         if (feedStart >= 0 && !feeding) shot = true;
@@ -914,6 +1040,9 @@ public class PlannedRouteAuto extends LinearOpMode {
     }
 
     public static final String[] SERVO_NAMES = {};
+
+    /** Called every loop by the autonomous. */
+    public void update() {}
 
     public void stop() {
         intake(false);
