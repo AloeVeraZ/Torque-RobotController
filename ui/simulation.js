@@ -2209,6 +2209,9 @@ public class MyAuto implements DeckAutonomous {
     catch(e){if(gen!==setupGen)return;setupRobot=null;setupAutoFor=null;if(/still starting/.test(e.message)){setupTried=null;setupPlug(e.message,true);}
       // Just plugged in, ADB can say it is not there yet or not ready. That is only a wait: the next look reads it.
       else if(hubOnUsb&&/No Control Hub on USB|has not allowed|on USB is /.test(e.message)){setupTried=null;setupPlug('Control Hub plugged in. Waiting for it to answer…',true);}
+      // Over Wi-Fi a first try often fails for a moment: just after Drive let go of the robot, the robot still holds that Driver Station for a few
+      // seconds. It is asked again at the next look (every 3 s) instead of the page staying on the simulated hub until the network changes.
+      else if(conn.host!=='usb'){setupTried=null;setupPlug(`Connected to the robot over Wi-Fi. Reading it… (${e.message})`,true);}
       else setupPlug(`Could not read the Control Hub. ${e.message}`,false);}
     finally{if(gen===setupGen){setupFree();setupRender();}}}
   // Scan: what answers on the robot now, as Configure Robot's Scan does. It adds what it found to the hubs Setup uses.
