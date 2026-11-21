@@ -350,3 +350,16 @@ dialog, .driver-station #hub-dropped { border-radius: var(--radius-sheet); box-s
   .driver-station :is(#setup-view, #calibrate-view, #simulation-view, #settings-view):not([hidden]) { animation: bl-fade var(--dur) ease-out; }
   .driver-station :is(.cal-card, .cal-mech, .sim-setup-page) { animation: bl-fade var(--dur) ease-out; }
 }
+
+/* Buttons that sit side by side are one size. Wherever a main button and a quiet one share a row they stand the same
+   height (the row stretches them to its tallest) and take the same padding and type, whatever each was given alone. */
+.driver-station :is(.button-row, .dialog-actions, .robot-card-actions, .sim-run-row, .cal-debug-actions),
+.driver-station :has(> :is(.primary, .secondary) ~ :is(.primary, .secondary)) { align-items: stretch; }
+.driver-station :is(.primary + .secondary, .secondary + .primary, .secondary:has(+ .primary), .primary:has(+ .secondary)):not(.sim-pause, .icon-button) { padding: 0 18px; font-size: var(--text-md); }
+.driver-station :is(.cal-card, .cal-gate, .cal-mech) .button-row > :is(.primary, .secondary) { min-height: var(--h-lg); }
+.driver-station .cal-mech-sim .button-row > .primary { min-height: var(--h-lg); }
+/* The bar's Wi-Fi chip, controller buttons and icon buttons: one 44 px height, all rounded the same way. */
+body.driver-station > header .header-right > button.controller { min-height: 44px; height: 44px; padding-block: 0; }
+/* (By id: an older rule lists these beside an id, which pins their corner at id strength.) */
+.driver-station :is(#controller-1, #controller-2) { border-radius: var(--radius-pill); }
+.driver-station :is(.cal-chip, .sim-reliable > .sim-reliable-close, .ce-back, #close-page, #manager-close, #controller-1) { border-radius: var(--radius-pill); }
