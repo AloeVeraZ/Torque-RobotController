@@ -11,6 +11,36 @@ steel-blue accents, floating rounded chrome, pill controls, Inter text and Barlo
 Condensed headings. Fonts are bundled locally under the SIL Open Font License;
 the app requires no font CDN or third-party page at runtime.
 
+## Shape, spacing and motion from BuildLens (2026-11-21)
+
+At the user's request the app takes its shapes, spacing, type and motion from their LegoBuilder project
+(`app/BuildLens/Design/Theme.swift`). Colours were deliberately left as they were. Before and after screenshots are in
+`docs/media/redesign/`. The values live in `ui/tokens.css`; the rules that apply them are the last block of
+`ui/design-system.css` and of `ui/ftc/ds.css`.
+
+| What | Value | Was |
+| --- | --- | --- |
+| Card corner (`--radius`, `--radius-panel`) | 24 px | 14 / 16 px |
+| Floating corner: dialogs, pickers (`--radius-sheet`) | 28 px | 18 px |
+| Hero corner: the Drive welcome card (`--radius-hero`) | 32 px | 16 px |
+| Tile and field corner (`--radius-control`) | 12 px | 10 px |
+| Nested detail corner (`--radius-detail`) | 8 px | 7 px |
+| Buttons, chips, pick-one rows, toasts (`--radius-pill`) | capsule | 10 px |
+| Header icon buttons, controller numbers | circle | 10 / 8 px |
+| Nested shapes | outer radius less the gap (the op-mode bar: 24 − 4 = 20) | fixed |
+| Gap between cards (`--gap-card`) | 12 px | 16 px |
+| Padding inside a card (`--pad-card`) | 20 px (16 px under 1100 px wide) | 18–20 px |
+| Group labels | 11 px, bold, uppercase, .07em tracking | 12 px sentence case |
+| Titles | h1 800, h2/h3 700 | 700 / 600 |
+| Typeface | SF Rounded on a Mac, Inter elsewhere | SF Pro / Inter |
+| Press | scale .97 and 80% opacity on every button | scale .98 on some |
+| Disabled | 40% opacity | 45% |
+| Press spring (`--ease-press`, 300 ms) | response .24, damping .8 | 160 ms ease |
+| Step spring (`--ease-step`, 480 ms) | response .42, damping .86 | none |
+| Opening | dialogs, menus and pickers grow from 94% and fade in; toasts rise 12 px; a page fades in | instant |
+
+Reduce Motion keeps the dimming on press and drops the scaling, the springs and every opening animation.
+
 ## Controller setup (2.4.8)
 
 The user requested [Hardware Tester's standard controller layout](https://hardwaretester.com/gamepad).

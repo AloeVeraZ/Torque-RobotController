@@ -109,7 +109,6 @@ body.driver-station > header { background: var(--bar); border-bottom: .5px solid
 .driver-station .primary:active:not(:disabled) { background: var(--accent-active); }
 .driver-station .secondary, .driver-station :is(.cal-card, .cal-gate) .button-row > button.secondary { background: var(--track); color: var(--text); }
 .driver-station .secondary:hover:not(:disabled), .driver-station :is(.cal-card, .cal-gate) .button-row > button.secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--track) 100%, var(--hover) 60%); }
-@media (prefers-reduced-motion: no-preference) { .driver-station :is(.primary, .secondary, .sim-tile, .cal-chip):active:not(:disabled) { transform: scale(.98); } }
 
 /* Fields: rounded, quiet until used; focus is the system's soft ring. */
 .driver-station :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea) { border-radius: var(--radius-control); }
@@ -288,3 +287,66 @@ dialog { z-index: var(--z-dialog); }
 .driver-station textarea::placeholder { color: var(--placeholder); }
 /* Axon and SWYFT settings fit a fixed-height box: their group labels keep the old 12 px line box, only the case changes. */
 .driver-station .axon-group { font-size: var(--text-xs); line-height: 12px; }
+
+/* ---- The BuildLens language (2026-11-21) --------------------------------------------------------------------------------
+   Taken from the user's LegoBuilder app (app/BuildLens/Design/Theme.swift): its shapes, spacing, type and motion, not
+   its colours. Capsule buttons and pick-one rows, 24 px cards with 20 px inside and 12 px between, 28 px corners for
+   whatever floats, tiny uppercase labels, and two springs. Colours, sizes, structure and behaviour are unchanged. */
+
+/* Type: tighter, heavier titles; tiny uppercase eyebrows over groups. Numbers that change keep their width. */
+h1, .settings-heading h1 { font-weight: 800; letter-spacing: -.02em; }
+h2, h3, dialog h2, .cal-card h2 { font-weight: 700; }
+.driver-station :is(.sim-mech-label, .cal-group-title, .cal-port-group > h4, .cal-measures li.cal-group, .axon-group, .axon-side-title, .ce-heading, .ce-menu h4, .sim-run-timing h3, .sim-pop-label, .cal-elec-slots thead th, .sim-stats dt, .cal-elec-list > h3, .sim-garage > h3, .sim-setup-label) {
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.driver-station :is(output, .sim-stats dd, .axis-reading, .version) { font-variant-numeric: tabular-nums; }
+
+/* Buttons are capsules. */
+.driver-station :is(.primary, .secondary, .card-action, .cal-chip, .text-button, #hub-dropped button, .sim-reliable > .sim-reliable-close, .ce-back),
+.driver-station :is(#setup-view, #calibrate-view, #simulation-view, #settings-view, dialog) :is(.primary, .secondary),
+.driver-station .sim-robot-cad .button-row > button, .driver-station .sim-robot-cad [data-assign-side],
+.driver-station :is(#sim-setup-new, #sim-open, #sim-send-go, #sim-setup) { border-radius: var(--radius-pill); }
+.driver-station :is(.primary, .secondary) { font-weight: 700; letter-spacing: 0; }
+
+/* The bar: its tabs are capsules and its icon buttons are circles. */
+body.driver-station > header nav .tab { padding: 0 16px; font-weight: 700; }
+body.driver-station > header nav .tab::before { height: 36px; border-radius: var(--radius-pill); transition: background-color var(--dur-press) var(--ease-press), scale var(--dur-press) var(--ease-press); }
+body.driver-station > header .header-right > :is(.more, #theme-cycle, #bug-quick, #update-ready, .icon-button) { border-radius: 50%; }
+.driver-station :is(.network-chip, button.controller, .competition-chip) { border-radius: var(--radius-pill); }
+.driver-station .controller > span, .driver-station .slot-number { border-radius: 50%; }
+
+/* Pick-one rows: a capsule track and capsule thumbs. */
+.driver-station :is(.sim-setup-steps, .sim-planning-steps, .sim-settings-tabs, .cal-tabs, .studio-side-tabs, .segmented, .sim-view-controls, .update-channels),
+.driver-station .sim-setup-bar .sim-setup-actions { border-radius: var(--radius-pill); }
+.driver-station :is(.sim-setup-steps, .sim-planning-steps, .sim-settings-tabs, .cal-tabs, .studio-side-tabs, .segmented, .sim-view-controls, .update-channels) > button,
+.driver-station .sim-setup-bar .sim-setup-actions > button { border-radius: var(--radius-pill); }
+
+/* Cards: 24 px corners, 20 px inside, 12 px between them, no outline. Tiles and fields inside take 12. */
+.driver-station :is(.panel, .cal-card, .cal-mech, .welcome, .library-panel) { border: 0; border-radius: var(--radius-panel); }
+.driver-station .panel { padding: var(--pad-card); }
+.driver-station .welcome { border-radius: var(--radius-hero); }
+.driver-station :is(.setup-left, .setup-right, .settings-grid) { gap: var(--gap-card); }
+.driver-station .sim-tile { border-radius: var(--radius-control); }
+.driver-station .sim-tile[aria-pressed=true], .driver-station .sim-tile[aria-selected=true] { box-shadow: 0 0 0 2px var(--accent); }
+.driver-station :is(.cal-elec-badge, .step) { border-radius: var(--radius-detail); }
+.driver-station .sim-setup-current { border-radius: var(--radius-pill); padding-inline: 18px 14px; }
+@media (min-width: 1181px) { .driver-station .sim-setup-bar { flex-wrap: nowrap; } .driver-station .sim-setup-bar > .hint { white-space: nowrap; } .driver-station .sim-setup-current { min-width: 0; flex-shrink: 1; } }
+@media (max-width: 1100px) { .driver-station .panel { padding: var(--space-4); } }
+
+/* Status chips: a capsule washed in its own colour. */
+.driver-station :is(.rs-pill, .version, .robot-kind, .role-badge) { border-radius: var(--radius-pill); }
+
+/* Whatever floats takes 28 px corners; a toast is a capsule. */
+dialog, .driver-station #hub-dropped { border-radius: var(--radius-sheet); box-shadow: var(--shadow); }
+.driver-station #hub-dropped { box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent), var(--shadow); }
+.menu { border-radius: var(--radius-panel); padding: 8px; }
+.driver-station .wifi-popover { border-radius: var(--radius-panel); padding: 8px; }
+.menu button, .driver-station .menu button, .driver-station .menu button:last-child, .driver-station .wifi-row { border-radius: 16px; }
+.driver-station #toast { border-radius: var(--radius-pill); padding-inline: 20px; box-shadow: var(--shadow); }
+
+/* Motion: menus and toasts arrive on the slower spring; a page fades in when its tab is picked. */
+@media (prefers-reduced-motion: no-preference) {
+  .menu:not([hidden]), .driver-station .wifi-popover:not([hidden]) { animation: bl-pop var(--dur-step) var(--ease-step); transform-origin: top right; }
+  .driver-station #toast:not([hidden]) { animation: bl-rise var(--dur-step) var(--ease-step); }
+  .driver-station :is(#setup-view, #calibrate-view, #simulation-view, #settings-view):not([hidden]) { animation: bl-fade var(--dur) ease-out; }
+  .driver-station :is(.cal-card, .cal-mech, .sim-setup-page) { animation: bl-fade var(--dur) ease-out; }
+}

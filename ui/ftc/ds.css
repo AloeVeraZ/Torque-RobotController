@@ -304,3 +304,21 @@ dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap;
 .inspect-note { margin: 0; font-size: 12px; color: var(--muted); }
 
 .opname.none #opmode-label { color: var(--warning); }
+
+/* ---- The BuildLens language (2026-11-21), as in ../design-system.css: capsule buttons, 28 px corners for what floats, shapes
+   nested in a card take the card's corner less the gap between them, and menus and dialogs arrive on the step spring. */
+.bar-btn, .cfg-btn, .ok, .system-action, .link, .page-back { border-radius: var(--radius-pill); }
+.bar-icon { border-radius: 50%; }
+.ok { font-weight: 700; }
+.opbar > .tri, .opbar > .opname { border-radius: calc(var(--radius-panel) - 4px); }
+.practice { border-radius: var(--radius-pill); padding-left: 24px; }
+.menu { border-radius: var(--radius-panel); padding: 8px; }
+.menu button, .picker-list button { border-radius: 16px; }
+.menu #menu-about { border-radius: 0 0 16px 16px; }
+dialog, .picker-card { border-radius: var(--radius-sheet); }
+.progress, .toast { border-radius: var(--radius-pill); padding-inline: 20px; }
+@media (prefers-reduced-motion: no-preference) {
+  .menu:not([hidden]) { animation: bl-pop var(--dur-step) var(--ease-step); transform-origin: top right; }
+  .picker:not([hidden]) > .picker-card { animation: bl-pop var(--dur-step) var(--ease-step); }
+  .ds-page:not([hidden]) { animation: bl-fade var(--dur) ease-out; }
+}

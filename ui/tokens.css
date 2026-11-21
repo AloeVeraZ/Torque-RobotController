@@ -4,7 +4,8 @@
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
 :root {
   color-scheme: dark;
-  /* Apple's system colours, dark: black base, grouped grey surfaces, the system tint for the main action. */
+  /* Apple's system colours, dark: black base, grouped grey surfaces, the system tint for the main action.
+     The shapes, spacing and motion below come from BuildLens (the user's LegoBuilder app); the colours do not. */
   --bg: #000;
   --surface: #1c1c1e;
   --raised: #2c2c2e;
@@ -42,10 +43,16 @@
   --on-go: #05160c;
   --stop: #dc2626;
   --on-stop: #fff;
-  --radius: 14px;
-  --radius-panel: 16px;
-  --radius-control: 10px;
-  --radius-detail: 7px;
+  /* Corners: 12 for a tile or field inside a card, 24 for a card, 28 for what floats (dialogs, menus), 32 for a hero.
+     Buttons and chips are capsules. A shape nested in another takes the outer radius less the gap between them. */
+  --radius: 24px;
+  --radius-panel: 24px;
+  --radius-sheet: 28px;
+  --radius-hero: 32px;
+  --radius-control: 12px;
+  --radius-detail: 8px;
+  --radius-pill: 999px;
+  /* A 4 px grid: 8 between controls, 12 between cards and rows, 16 panel padding, 20 inside a card, 24 between sections. */
   --space: 16px;
   --space-1: 4px;
   --space-2: 8px;
@@ -54,6 +61,8 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
+  --gap-card: 12px;
+  --pad-card: 20px;
   /* Control heights: compact toolbars, regular buttons and fields, touch-size and form fields. */
   --h-sm: 32px;
   --h-md: 36px;
@@ -71,17 +80,26 @@
   --z-popover: 40;
   --z-menu: 60;
   --z-dialog: 100;
-  --dur-fast: 120ms;
-  --dur: 160ms;
-  --dur-slow: 240ms;
+  /* Motion: two springs. Press (response .24, damping .8) for buttons and thumbs; step (response .42, damping .86)
+     for things that open, close or swap. A pressed control shrinks to 97% and dims to 80%. */
+  --ease-press: linear(0, .114, .337, .561, .74, .866, .944, .988, 1.008, 1.015, 1.015, 1.012, 1.008, 1.005, 1);
+  --ease-step: linear(0, .099, .296, .498, .668, .795, .883, .939, .973, .992, 1.001, 1.004, 1.005, 1.004, 1);
+  --dur-press: 300ms;
+  --dur-step: 480ms;
+  --press-scale: .97;
+  --press-opacity: .8;
+  --disabled-opacity: .4;
+  --dur-fast: 160ms;
+  --dur: 240ms;
+  --dur-slow: 420ms;
   --bar-height: 52px;
   --page-gutter: 24px;
   --page-max: 1320px;
-  /* San Francisco where the system has it (a Mac); Inter, drawn to the same proportions, everywhere else. */
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  /* SF Rounded where the system has it (a Mac); Inter everywhere else. */
+  --font: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-display: var(--font);
   --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
-  --ease: cubic-bezier(.25, .1, .25, 1);
+  --ease: var(--ease-press);
   --shadow: 0 0 0 .5px #ffffff1f, 0 24px 64px #000000b3;
   --backdrop: #0009;
   --grid-major: transparent;
@@ -119,12 +137,21 @@
 [hidden] { display: none !important; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
-button:disabled { cursor: default; opacity: .45; }
+button:disabled { cursor: default; opacity: var(--disabled-opacity); }
 button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
 :where(button, a, input, select, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
 ::selection { background: var(--accent); color: var(--on-accent); }
+/* Every control answers a press the same way: it dims, and (unless motion is reduced) gives a little. */
+:where(button, summary, [role=button]):active:not(:disabled) { opacity: var(--press-opacity); }
 @media (prefers-reduced-motion: no-preference) {
-  button, a, input, select { transition: background-color 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease), box-shadow 160ms var(--ease), transform 160ms var(--ease); }
+  button, a, input, select, summary { transition: background-color var(--dur-press) var(--ease-press), border-color var(--dur-press) var(--ease-press), color var(--dur-press) var(--ease-press), box-shadow var(--dur-press) var(--ease-press), opacity var(--dur-press) var(--ease-press), transform var(--dur-press) var(--ease-press), scale var(--dur-press) var(--ease-press); }
+  :where(button, summary, [role=button]):active:not(:disabled) { scale: var(--press-scale); }
+  /* What opens grows from 94% and fades in, on the slower spring. */
+  @keyframes bl-pop { from { opacity: 0; scale: .94; } }
+  @keyframes bl-rise { from { opacity: 0; translate: 0 12px; } }
+  @keyframes bl-fade { from { opacity: 0; } }
+  dialog[open] { animation: bl-pop var(--dur-step) var(--ease-step); }
+  dialog[open]::backdrop { animation: bl-fade var(--dur) ease-out; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
