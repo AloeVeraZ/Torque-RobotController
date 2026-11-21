@@ -308,7 +308,6 @@ h2, h3, dialog h2, .cal-card h2 { font-weight: 700; }
 .driver-station :is(.primary, .secondary) { font-weight: 700; letter-spacing: 0; }
 
 /* The bar: its tabs are capsules and its icon buttons are circles. */
-body.driver-station > header nav .tab { padding: 0 16px; font-weight: 700; }
 body.driver-station > header nav .tab::before { height: 36px; border-radius: var(--radius-pill); transition: background-color var(--dur-press) var(--ease-press), scale var(--dur-press) var(--ease-press); }
 body.driver-station > header .header-right > :is(.more, #theme-cycle, #bug-quick, #update-ready, .icon-button) { border-radius: 50%; }
 .driver-station :is(.network-chip, button.controller, .competition-chip) { border-radius: var(--radius-pill); }
