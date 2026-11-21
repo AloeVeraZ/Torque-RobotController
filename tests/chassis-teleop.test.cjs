@@ -66,11 +66,11 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
 
 test('IMU tuning: one line to Torque Debug, which runs it on the robot, and the result it sends back',()=>{
   const motors=[{name:'fl',power:-1},{name:'fr',power:1},{name:'bl',power:-1},{name:'br',power:1}];
-  const std=T.turnLineOf({job:'standard',id:7,tolerance:2,heading:{kind:'hub',name:'imu'},mount:{logo:'up',usb:'forward'},scale:-1,motors});
-  assert.equal(std.line,['U','standard','7','2','0.25','0.07','60','0.002','0.02','imu:imu','L:UP:FORWARD','-1','fl','-1','fr','1','bl','-1','br','1'].join('\t'));
+  const std=T.turnLineOf({job:'tune',id:7,tolerance:2,heading:{kind:'hub',name:'imu'},mount:{logo:'up',usb:'forward'},scale:-1,motors});
+  assert.equal(std.line,['U','tune','7','2','0.25','0.07','60','0.002','0.02','imu:imu','L:UP:FORWARD','-1','fl','-1','fr','1','bl','-1','br','1'].join('\t'));
   const chk=T.turnLineOf({job:'check',id:8,tolerance:1.5,turn:{top:.6,least:.08,slowFrom:70,brake:.0017,lag:.012},heading:{kind:'pinpoint',name:'GBPP'},mount:{quaternion:{w:.7071068,x:0,y:.7071068,z:0}},motors});
   assert.equal(chk.line.split('\t').slice(0,12).join(' '),'U check 8 1.5 0.6 0.08 70 0.0017 0.012 pin:GBPP Q:0.707107:0:0.707107:0 1');
-  assert.equal(T.turnLineOf({motors,tolerance:99}).tolerance,10);assert.equal(T.turnLineOf({motors,job:'nonsense'}).job,'standard');assert.match(T.turnLineOf({motors:[]}).error,/do not steer/);
+  assert.equal(T.turnLineOf({motors,tolerance:99}).tolerance,10);assert.equal(T.turnLineOf({motors,job:'nonsense'}).job,'tune');assert.match(T.turnLineOf({motors:[]}).error,/do not steer/);
   // What it sends back: the standard one keeps the quickest of the good powers, the aggressive one the most power that was good.
   const round=(power,seconds,ok,worst=1)=>({power,rate:200,coast:12,slowFrom:80,brake:.0017,worst,over:2,seconds,ok}),res=(mode,rounds)=>JSON.stringify({v:2,mode,backwards:false,least:.07,tolerance:2,repeats:3,problem:'',rounds});
   assert.equal(T.turnResultOf(res('standard',[round(.5,2.2,true),round(.55,1.9,true),round(.6,1.95,true),round(.65,1.8,false)])).best.power,.55);

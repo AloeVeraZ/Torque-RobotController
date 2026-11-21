@@ -175,37 +175,38 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // IMU tuning, required, after the wheels: it runs in Torque Debug, the live readings already running, so nothing is sent to the robot. The robot in this
     // test reports what a real one would: 50% and 55% land, 60% swings past; then the aggressive one: 75% and 80% land, 85% and 90% do not.
     assert.doesNotMatch(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head'),/Good to use|Calibrated/,'not good to use until the IMU is tuned');
-    await page.click('[data-mech-pick="chassis-2"]');assert.match(await page.textContent('[data-chassis-step="2"]'),/Required\..*nothing is sent to the robot.*Not tuned yet\./s);assert.equal(await page.isDisabled('[data-chassis=tune-aggressive]'),true,'the aggressive one after the standard one');
+    await page.click('[data-mech-pick="chassis-2"]');assert.match(await page.textContent('[data-chassis-step="2"]'),/Required\..*nothing is sent to the robot.*Not tuned yet\./s);assert.equal(await page.locator('[data-chassis=tune-aggressive]').count(),0,'one tuning, 50% to 100%');
     // The heading live, and a short drive to watch it follow: every wheel for about a second, no ask.
     await soon('the heading shows',async()=>/-?\d+\.\d/.test(await page.textContent('[data-chassis-heading]')));
     motorLines.length=0;await page.click('[data-chassis=nudge][data-nudge=left]');await soon('every wheel driven at a quarter power',async()=>MOTORS.every(n=>motorLines.some(l=>l.startsWith(`M\t${n}\t`)&&Math.abs(+l.split('\t')[2])===.25)),5000).catch(e=>{throw Error(e.message+': '+motorLines.join(' | '));});await soon('and stopped',async()=>motorLines.some(l=>/^M\tleftFront\t0\.00$/.test(l)));
     const rnd=(power,seconds,ok,worst=1.1,over=2)=>({power,rate:200,coast:12,slowFrom:80,brake:.0017,worst,over,seconds,ok});
     const tuned=(mode,backwards,rounds)=>{turnNext={rows:rounds.map(r=>`${Math.round(r.power*100)}% ${r.ok?'good':'no'}`),result:JSON.stringify({v:2,mode,backwards,least:.07,tolerance:3,repeats:3,readMs:7.2,problem:'',rounds})};};
     tuned('standard',true,[rnd(.5,2.2,true),rnd(.55,1.9,true),rnd(.6,1.8,false,4.2,14)]);
-    await soon('the nudge is over',async()=>!(await page.isDisabled('[data-chassis=tune-standard]')));
-    await page.selectOption('[data-chassis-turn-want]','3');await page.click('[data-chassis=tune-standard]');
+    await soon('the nudge is over',async()=>!(await page.isDisabled('[data-chassis=tune-tune]')));
+    await page.selectOption('[data-chassis-turn-want]','3');await page.click('[data-chassis=tune-tune]');
     await soon('it says where it is',async()=>/50%: round 1 of 3/.test(await page.textContent('[data-chassis-step="2"]')));
-    await soon('the standard tuning finishes and shows what it found',async()=>/Standard tuning: 55% is the best power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    assert.equal(turnLines.length,1);assert.match(turnLines[0],/^U\tstandard\t\d+\t3\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\timu:imu\tL:UP:FORWARD\t1\tleftFront\t-?1\trightFront\t-?1\tleftBack\t-?1\trightBack\t-?1$/,'one line to Torque Debug: '+turnLines[0]);
+    await soon('the standard tuning finishes and shows what it found',async()=>/Tuning: 55% is the quickest power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
+    assert.equal(turnLines.length,1);assert.match(turnLines[0],/^U\ttune\t\d+\t3\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\t[^\t]+\timu:imu\tL:UP:FORWARD\t1\tleftFront\t-?1\trightFront\t-?1\tleftBack\t-?1\trightBack\t-?1$/,'one line to Torque Debug: '+turnLines[0]);
     assert.equal(await app.evaluate(()=>Object.keys(global.__files||{}).filter(f=>/Imu|Tune/i.test(f)).length),0,'nothing sent to the robot');
     {const p=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2'))),t=p.calibration.chassis.turnTune;assert.equal(t.standard.top,.55);assert.equal(t.standard.done,3);assert.equal(t.standard.rounds.length,3);assert.equal(t.backwards,true);assert.equal(p.robot.odometry?.imu?.reversed,true,'the heading is taken the other way round');}
     assert.equal(await page.locator('[data-chassis-step="2"] [data-imu-best]').count(),1);
     // Then the check: four quarter turns by what it found, and the student says whether it lands.
     assert.doesNotMatch(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head'),/Good to use|Calibrated/,'not good to use until it is checked');
     turnNext={rows:['Left 90°: 0.8° off','Back to 0°: 0.5° off','Right 90°: 1.1° off','Back to 0°: 0.4° off'],result:JSON.stringify({v:2,check:true,tolerance:3,readMs:7,turns:[]})};await page.click('[data-chassis=tune-check]');
-    await soon('it asks whether it landed',async()=>/Did it turn a quarter turn each way/.test(await page.textContent('[data-chassis-step="2"]')),20000);
+    await soon('it asks whether it landed',async()=>/Did it turn left first/.test(await page.textContent('[data-chassis-step="2"]')),20000);
     assert.match(turnLines[1],/^U\tcheck\t\d+\t3\t0\.55\t0\.07\t80\t0\.0017\t[^\t]+\timu:imu\tL:UP:FORWARD\t-1\t/,'turned by what was found, the heading the other way round: '+turnLines[1]);
     assert.match(await page.textContent('[data-chassis-step="2"]'),/Right 90°: 1\.1° off/);await page.click('[data-chassis=check-yes]');
     await soon('good to use once the IMU is tuned and checked',async()=>/Calibrated|Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
-    // Aggressive: with the heading as it is now (already turned round), so the robot finds it the right way round.
-    tuned('aggressive',false,[rnd(.75,1.5,true),rnd(.8,1.4,true),rnd(.85,1.3,false,3.5,12),rnd(.9,1.2,false,5,20)]);await page.click('[data-chassis=tune-aggressive]');
-    await soon('the aggressive tuning finishes',async()=>/Aggressive tuning: 80% is the most power that landed within ±3° every time/.test(await page.textContent('[data-chassis-step="2"]')),20000);
-    assert.match(turnLines[2],/^U\taggressive\t.*\timu:imu\tL:UP:FORWARD\t-1\t/,'the heading turned round');
-    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry?.imu?.reversed),true,'not turned back');
-    assert.equal(await page.inputValue('[data-chassis-turn-use]'),'standard','the standard one until the team picks');await page.selectOption('[data-chassis-turn-use]','aggressive');
-    await soon('the code turns by the aggressive one',async()=>/Now: up to 80% turn power/.test(await page.textContent('[data-chassis-step="2"]')));
+    // It turned right first: the left and right motors were swapped in Setup and the tuning took the heading to count backwards. Torque puts
+    // each motor on its own side and turns the heading back round, and asks for the check again.
     turnNext={rows:['Left 90°: 1.2° off'],result:JSON.stringify({v:2,check:true,tolerance:3,turns:[]})};await page.click('[data-chassis=tune-check]');
-    await soon('asked again',async()=>/Did it turn a quarter turn each way/.test(await page.textContent('[data-chassis-step="2"]')),20000);await page.click('[data-chassis=check-yes]');
+    await soon('asked again',async()=>/Did it turn left first/.test(await page.textContent('[data-chassis-step="2"]')),20000);
+    {const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices);await page.click('[data-chassis=check-mirror]');
+      await soon('the motors are swapped',async()=>{const d=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices);return d.frontLeft.name===before.frontRight.name&&d.frontRight.name===before.frontLeft.name&&d.backLeft.name===before.backRight.name&&d.frontLeft.reversed===!!before.frontRight.reversed;}).catch(async e=>{throw Error(e.message+' '+JSON.stringify(before)+' -> '+JSON.stringify(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices))+' | '+await page.textContent('[data-chassis-step="2"]'));});
+      assert.equal(await page.evaluate(()=>!!JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry?.imu?.reversed),false,'the heading turned back round');
+      assert.match(await page.textContent('[data-chassis-step="2"]'),/left and right drive motors were swapped/);}
+    turnNext={rows:['Left 90°: 0.9° off'],result:JSON.stringify({v:2,check:true,tolerance:3,turns:[]})};await page.click('[data-chassis=tune-check]');
+    await soon('asked once more',async()=>/Did it turn left first/.test(await page.textContent('[data-chassis-step="2"]')),20000);assert.match(turnLines.at(-1),/\timu:imu\tL:UP:FORWARD\t1\t/,'by the heading as it is now');await page.click('[data-chassis=check-yes]');
     await soon('calibrated once the IMU is tuned too',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
     await page.locator('[data-chassis-step="2"]').screenshot({path:path.join(root,'test-results/imu-tuning-ui.png')}).catch(()=>{});
     await page.click('[data-mech-pick="chassis-code"]');assert.match(await page.textContent('[data-chassis-code]'),/LEFT_FRONT_REVERSED = (true|false);\n/);

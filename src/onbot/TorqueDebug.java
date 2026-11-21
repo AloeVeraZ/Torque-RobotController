@@ -327,7 +327,7 @@ public class TorqueDebug extends LinearOpMode {
     //   T target                  move the running loop's target
     //   G name 0|1                a light off or on
     //   U job id tolerance top least slowFrom brake lag heading mount scale (motor power)...
-    //                             IMU turning, run here (TorqueDebugTurn): job standard | aggressive (a tuning) or check (four
+    //                             IMU turning, run here (TorqueDebugTurn): job tune (50% to 100%) or check (four
     //                             quarter turns by top..lag); heading imu:<name> or pin:<name>; mount L:<logo>:<usb> or
     //                             Q:w:x:y:z (how the hub sits, for the IMU); scale the heading's factor; then each drive motor
     //                             and its power for a turn to the left. Its state goes out in each frame as "tt".
@@ -1024,14 +1024,15 @@ final class TorqueDebugLoop {
  * (the watchdog), STOP is pressed, or a motor is driven by hand.
  *
  * Every turn uses the turn law (step; ui/sim-chassis-teleop.js turnStep is the reference, step for step).
- * Jobs: standard (50% to 75%) and aggressive (75% to 100%) tunings, as the IMU tuning op modes did before, and check: four
+ * Jobs: tune (50% to 100% turn power, every power tried; the quickest that lands is kept), and check: four
  * quarter turns with the numbers given. The result is one JSON line, as turnResultOf reads it.
  */
 final class TorqueDebugTurn implements Runnable {
     /** What it turns: the robot as TorqueDebug gives it (a test gives a simulated one). heading(): degrees, left positive, as the sensor counts it (wrapping at ±180 is fine). */
 
     static final double RAMP = 0.25, STILL = 10, WINDOW = 0.05;
-    static final double[] STANDARD = {0.5, 0.55, 0.6, 0.65, 0.7, 0.75}, AGGRESSIVE = {0.75, 0.8, 0.85, 0.9, 0.95, 1};
+    /** The turn powers it tries, in order: 10% steps to 70%, then 5% steps to full. A power that does not land does not stop it. */
+    static final double[] POWERS = {0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1};
     static final int REPEATS = 3;
 
     // The law: the numbers it turns by, and its state for one turn.
@@ -1133,7 +1134,7 @@ final class TorqueDebugTurn implements Runnable {
     }
 
     @Override public void run() {
-        try { robot.setUp(); if ("check".equals(job)) check(); else tune("aggressive".equals(job)); }
+        try { robot.setUp(); if ("check".equals(job)) check(); else tune(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         catch (RuntimeException e) { if (result == null) finish(false, 0, "It stopped: " + e.getClass().getSimpleName()); }
         finally { power(0); try { robot.tearDown(); } catch (RuntimeException ignored) { } if (result == null && !state.startsWith("problem:")) state = stopped ? "stopped" : "ended"; finished = true; }
@@ -1157,8 +1158,8 @@ final class TorqueDebugTurn implements Runnable {
         state = "done";
     }
 
-    void tune(boolean aggressive) throws InterruptedException {
-        double[] list = aggressive ? AGGRESSIVE : STANDARD;
+    void tune() throws InterruptedException {
+        double[] list = POWERS;
         pause(300); read(); heading = 0;
 
         // Which way the heading counts: a turn to the left has to count up.
@@ -1181,7 +1182,6 @@ final class TorqueDebugTurn implements Runnable {
         }
         rest();
 
-        int fails = 0;
         for (double power : list) {
             if (!alive()) return;
             say(String.format(java.util.Locale.US, "%.0f%%: how fast it turns", power * 100));
@@ -1198,9 +1198,8 @@ final class TorqueDebugTurn implements Runnable {
             double coast = Math.abs(read() - cutAt), speed = Math.abs(spin);
             if (speed < 20) { rows.add(String.format(java.util.Locale.US, "%.0f%% too slow to measure", power * 100)); continue; }
             // Where it starts to slow: what it rolls on once cut, with room to spare, and a little turning for the readings to catch up.
-            // Aggressive leaves it later, so it comes in faster and stops harder; the rounds show whether it still lands.
             top = power; this.least = least;
-            slowFrom = Math.min(150, Math.max(aggressive ? 20 : 30, aggressive ? 1.6 * coast + 0.12 * speed : 2.5 * coast + 0.25 * speed));
+            slowFrom = Math.min(150, Math.max(30, 2.5 * coast + 0.25 * speed));
             brake = 0.45 * power / speed;
             double worst = 0, over = 0, seconds = 0;
             int turns = 0;
@@ -1219,16 +1218,13 @@ final class TorqueDebugTurn implements Runnable {
             double each = turns > 0 ? seconds / turns : 0;
             rows.add(String.format(java.util.Locale.US, "%.0f%% %s: %.1f° off, %.1f° past, %.2f s a turn", power * 100, ok ? "good" : "no", worst, over, each));
             json.add(String.format(java.util.Locale.US, "{\"power\":%.2f,\"rate\":%.1f,\"coast\":%.1f,\"slowFrom\":%.0f,\"brake\":%.5f,\"worst\":%.2f,\"over\":%.2f,\"seconds\":%.2f,\"ok\":%s}", power, speed, coast, slowFrom, brake, worst, over, each, ok));
-            // More power only swings further: two in a row that do not land, or one that swings far past, ends it.
-            fails = ok ? 0 : fails + 1;
-            if (over > 45 || (aggressive && fails >= 2)) break;
         }
         finish(backwards, least, "");
     }
 
     void finish(boolean backwards, double least, String problem) {
         power(0);
-        result = "{\"v\":2,\"mode\":\"" + ("aggressive".equals(job) ? "aggressive" : "standard") + "\",\"backwards\":" + backwards + ",\"least\":" + String.format(java.util.Locale.US, "%.3f", least)
+        result = "{\"v\":2,\"mode\":\"standard\",\"backwards\":" + backwards + ",\"least\":" + String.format(java.util.Locale.US, "%.3f", least)
             + ",\"tolerance\":" + tolerance + ",\"repeats\":" + REPEATS + ",\"readMs\":" + String.format(java.util.Locale.US, "%.2f", readMs)
             + ",\"problem\":" + TorqueDebug.str(problem) + ",\"rounds\":[" + String.join(",", json) + "]}";
         state = "done";

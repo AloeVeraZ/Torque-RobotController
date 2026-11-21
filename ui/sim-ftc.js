@@ -403,7 +403,35 @@ public class ${options.opModeName} extends LinearOpMode {
         telemetry.addData("x", "%.1f", p.x());
         telemetry.addData("y", "%.1f", p.y());
         telemetry.addData("heading", "%.1f", Math.toDegrees(p.heading()));
+        devices();
         telemetry.update();
+    }
+
+    // Every motor, servo and sensor in the robot's configuration, under the route on the Driver Station: the power each motor
+    // and servo is given and what each sensor reads. Sensors are read four times a second (as often as the Driver Station
+    // shows telemetry), so reading them does not slow the route.
+    private final ElapsedTime deviceClock = new ElapsedTime();
+    private final java.util.List<String[]> deviceLines = new java.util.ArrayList<>();
+    private String nameOf(com.qualcomm.robotcore.hardware.HardwareDevice d) { java.util.Iterator<String> n = hardwareMap.getNamesOf(d).iterator(); return n.hasNext() ? n.next() : d.getDeviceName(); }
+    private void line(com.qualcomm.robotcore.hardware.HardwareDevice d, String format, Object... values) { deviceLines.add(new String[]{nameOf(d), String.format(java.util.Locale.US, format, values)}); }
+    private void devices() {
+        if (deviceLines.isEmpty() || deviceClock.milliseconds() >= 250) {
+            deviceClock.reset(); deviceLines.clear();
+            try {
+                for (com.qualcomm.robotcore.hardware.DcMotorEx m : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DcMotorEx.class)) line(m, "power %.2f · %d ticks · %.0f ticks/s", m.getPower(), m.getCurrentPosition(), m.getVelocity());
+                for (com.qualcomm.robotcore.hardware.Servo v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.Servo.class)) line(v, "servo at %.3f", v.getPosition());
+                for (com.qualcomm.robotcore.hardware.CRServo v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.CRServo.class)) line(v, "power %.2f", v.getPower());
+                for (com.qualcomm.robotcore.hardware.IMU i : hardwareMap.getAll(com.qualcomm.robotcore.hardware.IMU.class)) { org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles a = i.getRobotYawPitchRollAngles(); line(i, "yaw %.1f° · pitch %.1f° · roll %.1f°", a.getYaw(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES), a.getPitch(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES), a.getRoll(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES)); }
+                for (com.qualcomm.robotcore.hardware.NormalizedColorSensor c : hardwareMap.getAll(com.qualcomm.robotcore.hardware.NormalizedColorSensor.class)) { com.qualcomm.robotcore.hardware.NormalizedRGBA x = c.getNormalizedColors(); line(c, "red %.3f · green %.3f · blue %.3f", x.red, x.green, x.blue); }
+                for (com.qualcomm.robotcore.hardware.DistanceSensor d : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DistanceSensor.class)) line(d, "%.1f cm", d.getDistance(org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.CM));
+                for (com.qualcomm.robotcore.hardware.TouchSensor t : hardwareMap.getAll(com.qualcomm.robotcore.hardware.TouchSensor.class)) line(t, t.isPressed() ? "pressed" : "not pressed");
+                for (com.qualcomm.robotcore.hardware.DigitalChannel c : hardwareMap.getAll(com.qualcomm.robotcore.hardware.DigitalChannel.class)) line(c, c.getState() ? "HIGH" : "LOW");
+                for (com.qualcomm.robotcore.hardware.AnalogInput a : hardwareMap.getAll(com.qualcomm.robotcore.hardware.AnalogInput.class)) line(a, "%.3f V", a.getVoltage());
+                for (com.qualcomm.robotcore.hardware.VoltageSensor v : hardwareMap.getAll(com.qualcomm.robotcore.hardware.VoltageSensor.class)) line(v, "battery %.2f V", v.getVoltage());
+            } catch (RuntimeException e) { deviceLines.add(new String[]{"Devices", "could not read: " + e.getClass().getSimpleName()}); }
+        }
+        telemetry.addLine("— Devices —");
+        for (String[] l : deviceLines) telemetry.addData(l[0], l[1]);
     }
 }
 `;}

@@ -4285,6 +4285,18 @@ function calRender(){if(!calRoot||calRoot.hidden)return;syncChassisNames();if(ca
     sendTeleop:t=>sendTeleopFile(t),moreCode:()=>calMoreCode(),sendCode:async t=>{await sendJava('TorqueCalibration.java',t);return 'On the robot, in OnBot Java, as TorqueCalibration.java: your own code can read it.';},saveFile:(name,text)=>native?api.simFile('code-save',{name,text}):Promise.reject(Error('saving needs the desktop app')),
     // IMU tuning runs in Torque Debug (the live readings); it asks only whether a robot is connected.
     connected:()=>!!setupConn,
+    // The left and right drive motors the other way round: each name, with which way it turns, goes to the wheel on the other side (and the
+    // checks Electronics made on each wheel go with it). Answers what was swapped, in words, or '' when there was nothing to swap.
+    swapSides:()=>{const d=project.robot.devices||{},pairs=[['frontLeft','frontRight'],['backLeft','backRight'],['left','right']].filter(([a,b])=>d[a]?.name&&d[b]?.name);if(!pairs.length)return '';
+      const devs={...d},names={},ch=project.calibration?.chassis,pods={...(ch?.pods||{})};
+      for(const [a,b] of pairs){devs[a]={...d[a],reversed:d[b].reversed};devs[b]={...d[b],reversed:d[a].reversed};names[a]=d[b].name;names[b]=d[a].name;[pods[a],pods[b]]=[pods[b],pods[a]];for(const k of [a,b])if(pods[k]===undefined)delete pods[k];}
+      // Each name's port goes with it too: Setup takes the names from the wiring.
+      const wiring=structuredClone(project.robot.wiring||{hubs:{},devices:{},sensors:[]});wiring.devices??={};
+      for(const [a,b] of pairs){const wa=wiring.devices['robot.'+a],wb=wiring.devices['robot.'+b];if(wb)wiring.devices['robot.'+a]=wb;else delete wiring.devices['robot.'+a];if(wa)wiring.devices['robot.'+b]=wa;else delete wiring.devices['robot.'+b];}
+      for(const [k,n] of Object.entries(names))devs[k]={...devs[k],name:n};
+      // Electronics keeps which motor is at each wheel too, and gives Setup the names from it: swapped there as well.
+      const ec=project.calibration?.electronics?.chassis;if(ec?.slots){const sl={...ec.slots};for(const [a,b] of pairs)[sl[a],sl[b]]=[ec.slots[b],ec.slots[a]];for(const k of Object.keys(sl))if(sl[k]===undefined)delete sl[k];ec.slots=sl;}
+      if(ch)ch.pods=pods;project.robot.devices=devs;calKeepRead(()=>applyWiring(wiring));linksCal?.refresh();return pairs.map(([a,b])=>`${names[b]} and ${names[a]}`).join(', ');},
     setImuReversed:on=>{const o={...project.robot.odometry},im={...o.imu};if(on)im.reversed=true;else delete im.reversed;if(Object.keys(im).length)o.imu=im;else delete o.imu;project.robot=C.robot({...project.robot,odometry:o},project.controller);save();},
     setReversed:(key,on)=>{project.robot.devices={...project.robot.devices,[key]:{...project.robot.devices?.[key],reversed:!!on}};calKeepRead(()=>applyWiring(structuredClone(project.robot.wiring)));},
     setSteerZero:zero=>{const st=window.DeckWiring.state(project),w=structuredClone(project.robot.wiring);for(const x of w.sensors||[]){const row=st.rows.find(q=>q.key==='sensor.'+x.id);if(row&&Number.isFinite(zero[row.name]))x.zeroVolts=zero[row.name];}calKeepRead(()=>applyWiring(w));}}):null;

@@ -80,14 +80,13 @@ const SIM=['import java.util.*;','public class Sim implements TorqueDebugTurnRob
   '    for (String job : a) { String[] f = job.split(":"); Sim s = new Sim(Double.parseDouble(f[1])); TorqueDebugTurn u = new TorqueDebugTurn(s, f[0], 1, 2);',
   '      if (f[0].equals("check")) { u.top = 0.6; u.least = 0.18; u.slowFrom = 60; u.brake = 0.0011; u.lag = 0.02; }',
   '      u.run(); System.out.println(u.result == null ? "none " + u.state : u.result); } } }'].join('\n');
-test('IMU tuning runs in Torque Debug, start to end, on a simulated robot: standard, aggressive, a heading that counts backwards, and the check',t=>{
+test('IMU tuning runs in Torque Debug, start to end, on a simulated robot: every power from 50% to 100%, a heading that counts backwards, and the check',t=>{
   const dir=javaDir(t);if(!dir)return;
   try{fs.writeFileSync(path.join(dir,'Sim.java'),SIM);compile(dir,['Sim.java']);
-    const out=execFileSync(bin('java'),['-cp',path.join(dir,'out'),'Sim','standard:1','aggressive:1','standard:-1','check:1'],{encoding:'utf8',timeout:120000}).trim().split('\n');
-    const [std,hard,back]=out.slice(0,3).map(T.turnResultOf),check=JSON.parse(out[3]);
-    for(const [name,res] of [['standard',std],['aggressive',hard],['backwards',back]]){assert.ok(res,`${name}: a result (${out.join(' | ')})`);assert.ok(res.best,`${name}: a power landed: ${JSON.stringify(res.rounds)}`);}
-    assert.equal(std.mode,'standard');assert.equal(std.backwards,false);assert.equal(std.rounds.length,6);assert.ok(std.best.power>=.5&&std.best.power<=.75);assert.ok(std.rounds.filter(x=>x.ok).length>=4,JSON.stringify(std.rounds));
-    assert.equal(hard.mode,'aggressive');assert.ok(hard.best.power>=.75);
+    const out=execFileSync(bin('java'),['-cp',path.join(dir,'out'),'Sim','tune:1','tune:-1','check:1'],{encoding:'utf8',timeout:120000}).trim().split('\n');
+    const [std,back]=out.slice(0,2).map(T.turnResultOf),check=JSON.parse(out[2]);
+    for(const [name,res] of [['tuning',std],['backwards',back]]){assert.ok(res,`${name}: a result (${out.join(' | ')})`);assert.ok(res.best,`${name}: a power landed: ${JSON.stringify(res.rounds)}`);}
+    assert.equal(std.backwards,false);assert.deepEqual(std.rounds.map(x=>x.power),[.5,.6,.7,.75,.8,.85,.9,.95,1],'every power, 10% steps to 70% then 5% steps');assert.ok(std.rounds.filter(x=>x.ok).length>=6,JSON.stringify(std.rounds));
     assert.equal(back.backwards,true,'a heading that counts a left turn as a right one is found');
     assert.equal(check.check,true);assert.equal(check.turns.length,4);assert.ok(check.turns.every(x=>x.off<=2),JSON.stringify(check.turns));}
   finally{fs.rmSync(dir,{recursive:true,force:true});}

@@ -388,15 +388,14 @@
   // is written to the robot. Each tuning first checks which way the heading counts (it turns left a little) and the least power that
   // turns the robot. Then, at each turn power: a spin to see how fast it turns and how far it rolls on once the power is cut (which
   // sets where it starts to slow and how hard it brakes at that power), then four quarter turns (left, back, right, back) three times
-  // over. A power is good only if every one of those turns ends inside the tolerance without swinging far past.
-  //   standard: 50% to 75%; the best of the good ones (the quickest turns).  aggressive: 75% to 100%; the most power that is still good.
-  // check: four quarter turns with the numbers the code turns by, to see them land.
-  const TURN_TUNE={standard:{powers:[.5,.55,.6,.65,.7,.75],pick:'best'},aggressive:{powers:[.75,.8,.85,.9,.95,1],pick:'most'},repeats:3};
-  // The U line. o: {job: 'standard' | 'aggressive' | 'check', id, tolerance, turn (turnOf's numbers, for check), heading: {kind: 'hub' | 'pinpoint',
+  // over. A power is good only if every one of those turns ends inside the tolerance without swinging far past. One tuning tries every
+  // power (one that misses does not stop it) and keeps the quickest that lands. check: four quarter turns with the numbers the code turns by.
+  const TURN_TUNE={powers:[.5,.6,.7,.75,.8,.85,.9,.95,1],repeats:3};
+  // The U line. o: {job: 'tune' | 'check', id, tolerance, turn (turnOf's numbers, for check), heading: {kind: 'hub' | 'pinpoint',
   // name}, mount: {logo, usb} or {quaternion: {w, x, y, z}}, scale (the yaw's factor: its scale, -1 when it counts backwards), motors:
   // [{name, power}] (each drive motor's power for a turn to the left, its direction in it)}. Returns the line, or {error}.
   function turnLineOf(o){if(!o||!Array.isArray(o.motors)||!o.motors.length)return {error:'IMU tuning is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
-    const job=['standard','aggressive','check'].includes(o.job)?o.job:'standard',tol=Math.min(10,Math.max(.5,Number.isFinite(+o.tolerance)?+o.tolerance:2)),k={top:.25,least:.07,slowFrom:60,brake:.002,lag:.02,...(o.turn||{})};
+    const job=o.job==='check'?'check':'tune',tol=Math.min(10,Math.max(.5,Number.isFinite(+o.tolerance)?+o.tolerance:2)),k={top:.25,least:.07,slowFrom:60,brake:.002,lag:.02,...(o.turn||{})};
     const fx=(v,d=4)=>String(+(+v||0).toFixed(d)),m=o.mount?.quaternion?`Q:${['w','x','y','z'].map(a=>fx(o.mount.quaternion[a],6)).join(':')}`:`L:${FACE[o.mount?.logo]||'UP'}:${FACE[o.mount?.usb]||'FORWARD'}`;
     const src=o.heading?.kind==='pinpoint'?`pin:${o.heading.name||'pinpoint'}`:`imu:${o.heading?.name||'imu'}`;
     if(o.motors.some(x=>/[\t\n]/.test(x.name||'')))return {error:'A drive motor’s name has a tab in it.'};
