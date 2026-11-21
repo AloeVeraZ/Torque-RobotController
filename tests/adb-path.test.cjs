@@ -12,7 +12,7 @@ test('a Mac finds the adb inside the REV Hardware Client app first, then Android
 });
 test('Windows keeps the REV Hardware Client\'s adb.exe first, and Linux looks in its usual places',()=>{
   const win=adbCandidates({platform:'win32',env:{'ProgramFiles(x86)':'C:\\PF'},home:'C:\\Users\\team'});
-  assert.equal(win[0],path.join('C:\\PF','REV Robotics','REV Hardware Client','android-tools','adb.exe'));assert.ok(win.every(f=>f.endsWith('adb.exe')));
+  assert.equal(win[0],path.win32.join('C:\\PF','REV Robotics','REV Hardware Client','android-tools','adb.exe'));assert.ok(win.every(f=>f.endsWith('adb.exe')));
   const linux=adbCandidates({platform:'linux',env:{ANDROID_HOME:'/sdk'},home:'/home/deck'});
   assert.deepEqual(linux,['/home/deck/Android/Sdk/platform-tools/adb','/sdk/platform-tools/adb','/usr/bin/adb','/usr/local/bin/adb']);
 });

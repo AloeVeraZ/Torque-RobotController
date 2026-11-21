@@ -457,13 +457,14 @@ const {execFile,spawn}=require('node:child_process'),os=require('node:os');
 // Program Files, on a Mac inside the app bundle (REV Hardware Client 2.app/Contents/bin/adb). Then Android's platform-tools
 // and Homebrew, then PATH. An app opened from the Dock or Finder does not get the shell's PATH on a Mac, so bare 'adb'
 // alone would not find a Homebrew one there.
-function adbCandidates({platform=process.platform,env=process.env,home=os.homedir()}={}){const exe=platform==='win32'?'adb.exe':'adb';
-  const sdk=[env.ANDROID_HOME,env.ANDROID_SDK_ROOT].filter(Boolean).map(d=>path.join(d,'platform-tools',exe));
-  if(platform==='win32')return [env.ADB,path.join(env['ProgramFiles(x86)']||'C:\\Program Files (x86)','REV Robotics','REV Hardware Client','android-tools',exe),
-    env.LOCALAPPDATA?path.join(env.LOCALAPPDATA,'Android','Sdk','platform-tools',exe):null,...sdk].filter(Boolean);
-  if(platform==='darwin'){const apps=['/Applications',path.join(home,'Applications')],names=['REV Hardware Client 2.app','REV Hardware Client.app'];
-    return [env.ADB,...apps.flatMap(a=>names.map(n=>path.join(a,n,'Contents','bin',exe))),path.join(home,'Library','Android','sdk','platform-tools',exe),...sdk,'/opt/homebrew/bin/adb','/usr/local/bin/adb'].filter(Boolean);}
-  return [env.ADB,path.join(home,'Android','Sdk','platform-tools',exe),...sdk,'/usr/bin/adb','/usr/local/bin/adb'].filter(Boolean);}
+// Paths in that system's own form (a Linux list made on Windows still uses /).
+function adbCandidates({platform=process.platform,env=process.env,home=os.homedir()}={}){const exe=platform==='win32'?'adb.exe':'adb',join=(platform==='win32'?path.win32:path.posix).join;
+  const sdk=[env.ANDROID_HOME,env.ANDROID_SDK_ROOT].filter(Boolean).map(d=>join(d,'platform-tools',exe));
+  if(platform==='win32')return [env.ADB,join(env['ProgramFiles(x86)']||'C:\\Program Files (x86)','REV Robotics','REV Hardware Client','android-tools',exe),
+    env.LOCALAPPDATA?join(env.LOCALAPPDATA,'Android','Sdk','platform-tools',exe):null,...sdk].filter(Boolean);
+  if(platform==='darwin'){const apps=['/Applications',join(home,'Applications')],names=['REV Hardware Client 2.app','REV Hardware Client.app'];
+    return [env.ADB,...apps.flatMap(a=>names.map(n=>join(a,n,'Contents','bin',exe))),join(home,'Library','Android','sdk','platform-tools',exe),...sdk,'/opt/homebrew/bin/adb','/usr/local/bin/adb'].filter(Boolean);}
+  return [env.ADB,join(home,'Android','Sdk','platform-tools',exe),...sdk,'/usr/bin/adb','/usr/local/bin/adb'].filter(Boolean);}
 function adbPath(){const fsx=require('node:fs');return adbCandidates().find(f=>fsx.existsSync(f))||'adb';}
 const adb=(args,{timeout=10000,run=execFile}={})=>new Promise((resolve,reject)=>run(adbPath(),args,{timeout,maxBuffer:8*1024*1024,windowsHide:true,encoding:'utf8'},(e,out,err)=>e?reject(Object.assign(Error(e.code==='ENOENT'?'Torque could not find its USB tool. Install the REV Hardware Client, which includes it.':(String(err||e.message).trim()||e.message)),{code:e.code})):resolve(String(out))));
 // GET a path of the robot's web server forwarded to this computer's port (it hangs up on a kept-alive request).
