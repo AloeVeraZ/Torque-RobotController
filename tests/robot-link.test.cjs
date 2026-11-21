@@ -351,3 +351,9 @@ test('a public class in a file of another name is moved to its own file on the r
   const b=robot({'org/firstinspires/ftc/teamcode/Test.java':two,'org/firstinspires/ftc/teamcode/Yoav.java':'theirs'});assert.deepEqual(await L.fixBuild(b,log,{backupDir:dir}),[]);assert.equal(b.files['org/firstinspires/ftc/teamcode/Yoav.java'],'theirs');assert.equal(b.files['org/firstinspires/ftc/teamcode/Test.java'],two);
   assert.deepEqual(await L.fixBuild(robot({'TorqueDebug.java':two}),'TorqueDebug.java(9:8): ERROR: class Marcus is public, should be declared in a file named Marcus.java',{own:['TorqueDebug.java']}),[],'never Torque’s own file');
 });
+
+test('a robot’s own network is known by the address this computer has on it, whatever the network is called',()=>{
+  const {robotNetOf}=require('../src/robot-link.cjs'),v4=(address,internal=false)=>({family:'IPv4',internal,address});
+  assert.equal(robotNetOf({en0:[v4('192.168.43.52')]}),'192.168.43.1','a Control Hub');assert.equal(robotNetOf({wlan0:[{family:4,internal:false,address:'192.168.49.7'}]}),'192.168.49.1','a Robot Controller phone');
+  assert.equal(robotNetOf({lo0:[v4('127.0.0.1',true)],en0:[v4('192.168.1.20'),{family:'IPv6',internal:false,address:'fe80::1'}]}),'');assert.equal(robotNetOf({en0:[v4('10.192.168.43')]}),'');assert.equal(robotNetOf(null),'');
+  const main=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');assert.match(main,/\/\^FTC-\|-RC\$\|\^DIRECT-\/i\.test\(ssid\)\|\|!!onNet/,'by name or by address');});

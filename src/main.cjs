@@ -197,7 +197,8 @@ async function refreshNetwork(){
   if(previous&&(next.ssid!==previous.ssid||next.device!==previous.device))finding?.abort();
   // A robot on the USB cable does not care which Wi-Fi this computer is on.
   const expected=isUsb(active?.url||state.robot?.url)?null:active?.ssid||state.robot?.ssid||previous?.ssid;
-  if((robotView||opening&&state.url)&&expected&&next.ssid!==expected&&!network.busy&&!suspended){await interruptRobot(next.ssid?'Wi-Fi changed. Your robot address is saved. Choose Try again to reconnect to its network.':'Wi-Fi disconnected. Your robot address is saved. Reconnect Wi-Fi, then choose Try again.');}
+  // Where the system keeps the network's name to itself, a different name is not a different network: only losing the connection is.
+  if((robotView||opening&&state.url)&&expected&&next.ssid!==expected&&!(next.nameHidden&&next.connected)&&!network.busy&&!suspended){await interruptRobot(next.ssid?'Wi-Fi changed. Your robot address is saved. Choose Try again to reconnect to its network.':'Wi-Fi disconnected. Your robot address is saved. Reconnect Wi-Fi, then choose Try again.');}
   emit('network',next);return next;
 }
 // A Control Hub on the USB cable is saved at this address: Drive's Driver Station reaches it through ADB and a relay that
@@ -525,7 +526,10 @@ handle('robot-link',async(action,data)=>{
     // While the USB watch is up it already knows, so no ADB runs for this.
     const usb=usbWatch?.status()??await robotLink.usbStatus().catch(e=>({found:false,message:e.message})).then(p=>usbWatch?usbWatch.withPoll(p):p);if(usb.found)hubSeenAt=Date.now();
     // A robot saved under this network, or a network named like one, is only a guess: without a hub on USB, ask whether it answers. A port already in use is usually this app holding a link to it, Live debug say, which nothing else could be doing.
-    const robot=!!saved&&!!ssid&&saved.ssid===ssid||/^FTC-|-RC$|^DIRECT-/i.test(ssid),wifiHost=host||(phone?'192.168.49.1':'192.168.43.1'),reachable=robot&&!usb.found?await probeFtc(wifiHost,{timeout:700}).then(r=>!!r.ftc||/in use/.test(r.error||"")).catch(()=>false):robot;
+    // Both ways: by the network's name (a saved robot's, or one named like a robot's), and by this computer's own address on it. A team may have renamed its
+    // robot's network, and some systems do not say the name at all, but a Control Hub always hands out 192.168.43.x and a Robot Controller phone 192.168.49.x.
+    const onNet=robotLink.robotNetOf(require('node:os').networkInterfaces())||currentNetwork?.robotHost||'';
+    const robot=!!saved&&!!ssid&&saved.ssid===ssid||/^FTC-|-RC$|^DIRECT-/i.test(ssid)||!!onNet,wifiHost=host||onNet||(phone?'192.168.49.1':'192.168.43.1'),reachable=robot&&!usb.found?await probeFtc(wifiHost,{timeout:700}).then(r=>!!r.ftc||/in use/.test(r.error||"")).catch(()=>false):robot;
     return {usb,wifi:{ssid,robot,reachable,host:wifiHost,name:saved?.name||''}};}
   if(action==='check-press')return !!robotCheck?.press(String(data?.button||''));
   if(action==='debug-camera')return !!robotDebug?.camera(data?.on===true);

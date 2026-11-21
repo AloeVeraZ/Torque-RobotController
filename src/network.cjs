@@ -5,7 +5,7 @@ function splitEscaped(line){const out=[];let value='',escaped=false;for(const c 
 const xml=s=>String(s).replace(/[<>&'\"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
 function wifiError(message,code='NETWORK_ERROR'){const e=Error(message);e.code=code;return e;}
 class Network {
-  constructor({platform=process.platform,runner=nativeRun,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){this.platform=platform;this.runner=runner;this.sleep=sleep;this.busy=false;}
+  constructor({platform=process.platform,runner=nativeRun,sleep=ms=>new Promise(r=>setTimeout(r,ms)),interfaces=()=>os.networkInterfaces()}={}){this.platform=platform;this.runner=runner;this.sleep=sleep;this.interfaces=interfaces;this.busy=false;this.joined=null;}
   async run(file,args,timeout=5000){return (await this.runner(file,args,{timeout,maxBuffer:500000,windowsHide:true,env:{...process.env,LC_ALL:'C',LANG:'C'}})).stdout.trim();}
   async status(){
     try{
@@ -20,7 +20,15 @@ class Network {
       }
       if(this.platform==='darwin'){
         const ports=await this.run('/usr/sbin/networksetup',['-listallhardwareports']);const device=ports.match(/Hardware Port: (?:Wi-Fi|AirPort)\r?\nDevice: (\S+)/)?.[1]||'en0';
-        const raw=await this.run('/usr/sbin/networksetup',['-getairportnetwork',device]);const ssid=raw.match(/Current Wi-Fi Network: (.+)/)?.[1]||'';return {available:true,connected:!!ssid,ssid,device,native:true};
+        const raw=await this.run('/usr/sbin/networksetup',['-getairportnetwork',device]);const ssid=raw.match(/Current Wi-Fi Network: (.+)/)?.[1]||'';
+        // Newer macOS keeps a network's name from apps (it answers "not associated" while connected). The interface's own address still says
+        // whether it is connected, and a Control Hub's network (192.168.43.x) or a Robot Controller phone's (192.168.49.x) is known by it:
+        // the name is then the one this app joined, or a stand-in that reads as a robot's.
+        if(!ssid){const ip=(this.interfaces()[device]||[]).find(a=>a&&a.family==='IPv4'&&!a.internal)?.address||'',net3=ip.split('.').slice(0,3).join('.'),hub=net3==='192.168.43',phone=net3==='192.168.49';
+          if(ip&&this.joined&&(this.joined.net3??=net3)===net3)return {available:true,connected:true,ssid:this.joined.ssid,device,native:true,nameHidden:true,...(hub||phone?{robotHost:hub?'192.168.43.1':'192.168.49.1'}:{})};
+          if(ip&&(hub||phone)){this.joined=null;return {available:true,connected:true,ssid:hub?'FTC-robot':'DIRECT-robot',device,native:true,nameHidden:true,robotHost:hub?'192.168.43.1':'192.168.49.1'};}
+          if(!ip)this.joined=null;}
+        return {available:true,connected:!!ssid,ssid,device,native:true};
       }
     }catch{}
     return {available:false,connected:false,ssid:'',native:false,message:'Wi-Fi details are unavailable. Open system Wi-Fi settings, or use Ethernet.'};
@@ -74,7 +82,11 @@ class Network {
       else if(this.platform==='win32')await this.joinWindows(ssid,password);
       else if(this.platform==='darwin'){
         if(!password)throw wifiError('Enter this network’s password, or connect using system Wi-Fi settings.','NEEDS_PASSWORD');
-        await this.run('/usr/sbin/networksetup',['-setairportnetwork',current.device||'en0',ssid,password],35000);
+        // networksetup says what went wrong in words and still exits clean.
+        const said=await this.run('/usr/sbin/networksetup',['-setairportnetwork',current.device||'en0',ssid,password],35000);if(/could not find|failed to join|error/i.test(said))throw wifiError(said.split('\n')[0].slice(0,200));
+        // Newer macOS will not say which network this is afterwards, so the one just joined is remembered; it counts once the interface has its address.
+        this.joined={ssid};await this.sleep(1500);let result=await this.status();for(let i=0;i<16&&result.ssid!==ssid;i++){this.joined={ssid};await this.sleep(500);result=await this.status();}
+        if(result.ssid!==ssid){this.joined=null;throw wifiError('The network switch has not completed. Check system Wi-Fi settings and try again.');}return result;
       }else throw wifiError('Use system Wi-Fi settings on this device.','SYSTEM_WIFI');
       const result=await this.status();if(result.ssid!==ssid)throw wifiError('The network switch has not completed. Check system Wi-Fi settings and try again.');return result;
     }catch(e){if(e.code==='NEEDS_PASSWORD'||e.code==='SYSTEM_WIFI')throw e;throw wifiError('Could not join Wi-Fi. Check the password, signal, and system network permissions.','NEEDS_PASSWORD');}finally{this.busy=false;}
