@@ -16,14 +16,15 @@ async function setup(localization){
 }
 async function finish(e,limit=1800){const phases=new Set();for(let i=0;i<limit&&e.mode==='program';i++){await e.programTick();phases.add(e.telemetry?.Phase);if(e.telemetry?.Phase==='Done')break;}return phases;}
 
-for(const [localization,tolerance] of [['encoders',2.5],['odometry',1],['odometry3',1],['fused',1],['optical',1]])
+for(const [localization,tolerance] of [['gyro',25],['encoders',2.5],['odometry',1],['odometry3',1],['fused',1],['optical',1]])
   test(`exported Control Hub OpMode runs on the virtual hub with ${F.SUPPORTED[localization]}`,{skip},async()=>{
     const {e,out,error}=await setup(localization);try{
       assert.ok(Object.keys(out.files).some(k=>k.endsWith('drive/Constants.java')));assert.ok(Object.keys(out.files).some(k=>k.endsWith('drive/RobotDrive.java')));assert.ok(out.files['deck/pathing/DeckFollower.java']);assert.ok(Object.values(out.files).every(s=>!s.includes('com.pedropathing')));
       const started=await e.run({kind:'opmode',files:out.files,opMode:out.opMode});assert.equal(started.ok,true,error());assert.equal(started.program,'org.firstinspires.ftc.teamcode.PlannedRouteAuto');
       const phases=await finish(e);assert.ok(['Driving','Pause','Done'].every(p=>phases.has(p)),[...phases].join());assert.ok(!phases.has('Turning'),'a fixed-heading route never stops to turn');
       const t=e.truth();assert.ok(Math.hypot(t.x-120,t.y-120)<tolerance,JSON.stringify(t));assert.ok(Math.abs(t.heading)<.1);
-      assert.equal(e.violations.size,0,'no zone touched');
+      // With nothing measuring distance it lands roughly, and may brush a zone a measured robot clears.
+      if(localization!=='gyro')assert.equal(e.violations.size,0,'no zone touched');
     }finally{e.dispose();}
   });
 
@@ -49,9 +50,9 @@ test('the virtual hub catches wiring and compile mistakes that would fail on a r
   }finally{e.dispose();}
 });
 
-test('IMU-only and unsupported drivetrains are refused for positional export on a Control Hub with a clear reason',()=>{
+test('unsupported drivetrains and sensing are refused for export on a Control Hub with a clear reason',()=>{
   assert.throws(()=>F.hardware({drivetrain:'swerve',length:17,width:17,driveRpm:500},'odometry'),/mecanum and tank drivetrains/);assert.equal(F.hardware({drivetrain:'tank2',length:17,width:17,driveRpm:500},'odometry').drive.kind,'tank');
-  assert.throws(()=>F.hardware({length:17,width:17,driveRpm:500},'gyro'),/IMU-only setups export timed commands/);
+  assert.equal(F.hardware({length:17,width:17,driveRpm:500},'gyro').localization,'gyro','the IMU alone is enough: distance goes by time');assert.throws(()=>F.hardware({length:17,width:17,driveRpm:500},'none'),/runs on the IMU alone, drive encoders/);
   const h=F.hardware({length:17,width:17,driveRpm:500},'encoders');assert.equal(h.drive.ticksPerRev,336);assert.ok(Math.abs(h.drive.ticksPerInch-336/(Math.PI*104/25.4))<1e-9);
   assert.deepEqual(Object.values(h.drive.motors).map(m=>m.mount),[-1,1,-1,1]);
 });

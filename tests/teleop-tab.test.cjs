@@ -303,7 +303,7 @@ test('how a robot can follow its route comes from what Calibrate checked, never 
 
 test('a chassis is good to use once its wheels are checked: it asks for no distance measuring and no field map',()=>{
   const src=fs.readFileSync(path.join(__dirname,'../ui/sim-chassis-cal.js'),'utf8');
-  assert.doesNotMatch(src,/\['roll',|\['field',/,'How far it rolls and Where it is on the field are not chassis steps');assert.match(src,/,\['wheels',together\],\.\.\.\(hubHeading\(c\)\?\[\['turn',!!r\.turn\?\.ok\]\]:\[\]\)\];/,'then only the heading’s quarter turn, where the hub’s IMU gives the heading');assert.match(src,/ok\?'pass':extra\?'optional':'todo';if\(!ok&&!extra\)\{open=false;/,'an extra not done holds nothing up');
+  assert.doesNotMatch(src,/\['roll',|\['field',/,'How far it rolls and Where it is on the field are not chassis steps');assert.match(src,/,\['wheels',together\],\.\.\.\(hubHeading\(c\)\?\[\['turn',!!r\.turn\?\.ok\],\['spin',!!r\.turnTune\?\.at,true\]\]:\[\]\)\];/,'then the heading’s quarter turn, and tuning the turning as an extra, where the hub’s IMU gives the heading');assert.match(src,/ok\?'pass':extra\?'optional':'todo';if\(!ok&&!extra\)\{open=false;/,'an extra not done holds nothing up');
   assert.match(src,/s\.filter\(x=>!x\.extra\)\.every\(x=>x\.state==='pass'\)\?`<span class="rs-pill ok">\$\{s\.every\(x=>x\.state==='pass'\)\?'Calibrated':'Good to use'\}<\/span>`/);
   assert.match(fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8'),/counts:st!=='info'&&st!=='optional'/,'an extra is not counted as left to do');
 });

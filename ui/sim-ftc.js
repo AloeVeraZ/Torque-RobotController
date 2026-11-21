@@ -16,12 +16,12 @@
     odometry:[{name:'par',axis:'forward',x:0,y:4},{name:'perp',axis:'strafe',x:-3,y:0}],
     odometry3:[{name:'par_left',axis:'forward',x:0,y:6},{name:'par_right',axis:'forward',x:0,y:-6},{name:'perp',axis:'strafe',x:-3,y:0}]
   };
-  const SUPPORTED={encoders:'drive encoders + IMU',odometry:'two odometry pods + IMU',odometry3:'three odometry pods + IMU',fused:'goBILDA Pinpoint',optical:'SparkFun OTOS'};
+  const SUPPORTED={gyro:'the IMU alone (distance by time)',encoders:'drive encoders + IMU',odometry:'two odometry pods + IMU',odometry3:'three odometry pods + IMU',fused:'goBILDA Pinpoint',optical:'SparkFun OTOS'};
   // Wiring of the virtual Control Hub for a robot and sensing setup.
   // swerve: a swerve as Calibrate has it (ui/sim-chassis-cal.js teleopInput: its pods with their drive motor, steering
   // servo, absolute encoder and the steering loop tuned on the robot). With it a swerve's autonomous is written too.
   function hardware(robot,localization,swerve=null){
-    if(!SUPPORTED[localization])throw Error('Autonomous on a Control Hub needs position sensing: drive encoders, odometry pods, Pinpoint or OTOS. IMU-only setups export timed commands.');
+    if(!SUPPORTED[localization])throw Error('Autonomous on a Control Hub runs on the IMU alone, drive encoders, odometry pods, a Pinpoint or an OTOS.');
     const drivetrain=robot.drivetrain||'mecanum',tank=TANK.has(drivetrain),sw=swerve&&swerve.kind==='swerve'&&Array.isArray(swerve.pods)&&swerve.pods.length?swerve:null;
     let steered=null;if(sw){steered=(globalThis.DeckChassisTeleop||require('./sim-chassis-teleop.js')).swerveParts(sw);if(steered.error)throw Error(steered.error);}
     if(!tank&&drivetrain!=='mecanum'&&!sw)throw Error('Autonomous on a Control Hub is exported for mecanum and tank drivetrains, and for a swerve once Calibrate has set its wheels straight. X-drive, Kiwi and butterfly export timed commands or route geometry for your own drivetrain code.');
@@ -83,7 +83,9 @@ public final class Constants {
         config.positionP=${n(t.translationalP*.35)}; config.positionD=${n(t.translationalD)};
         config.headingP=${n(t.headingP*.7)}; config.headingD=${n(Math.max(.08,t.headingD))};
         config.acceleration=${n(Math.max(20,Math.min(t.maxForward*3,(t.maxAcceleration??t.maxForward*2)*.65)))}; config.tank=${h.drive.kind==='tank'};
-        config.maxPathSpeed=${n(t.maxPathSpeed??.8)};
+        config.maxPathSpeed=${n(t.maxPathSpeed??.8)};${(tn=>tn?`
+        // Turning on the spot, as Calibrate set it${tn.measured?' from what it measured on the robot':''}.
+        config.turnTop=${n(tn.top)}; config.turnLeast=${n(tn.least)}; config.turnSlow=Math.toRadians(${n(tn.slowFrom)}); config.turnBrake=${n(+(tn.brake*180/Math.PI).toFixed(4))}; config.turnDone=Math.toRadians(${n(Math.min(1.2,tn.done))});`:'')(options.turn)}
         ElapsedTime clock = new ElapsedTime();
         return new DeckFollower(hardware, hardware, config, () -> clock.nanoseconds());
     }
@@ -91,6 +93,8 @@ public final class Constants {
 }
 `;}
   function robotDrive(h,options){const motors=Object.entries(h.drive.motors),pods=h.pods,kind=h.drive.kind,pp=h.pinpointMount,ot=h.otosMount,sw=kind==='swerve'?h.drive.steered:null;
+    // IMU only ("motors only"): nothing measures how far it went, so that is taken from what it was told to do and for how long, at the speeds Setup gives the robot. Only the heading is measured.
+    const timed=h.localization==='gyro'&&!sw,tSpeed=options?.tuning||{};
     const extra=[...(sw?sw.imports:[]),...(h.imuMount?.imports||[])].filter(i=>!/^com\.qualcomm\.robotcore\.hardware\.\w+$/.test(i)&&!['com.qualcomm.hardware.rev.RevHubOrientationOnRobot','org.firstinspires.ftc.robotcore.external.navigation.AngleUnit'].includes(i));
     const PODS_ENUM={'4bar':'goBILDA_4_BAR_POD',swingarm:'goBILDA_SWINGARM_POD'},direction=r=>`GoBildaPinpointDriver.EncoderDirection.${r?'REVERSED':'FORWARD'}`;
     return `package ${options.packageName}.drive;
@@ -129,7 +133,7 @@ ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that co
     private final SparkFunOTOS otos;
     private final ElapsedTime clock = new ElapsedTime();
     private final int[] before = new int[${motors.length}], podBefore = new int[${pods.length}];
-    private double oldImu, lastTime;
+    private double oldImu, lastTime;${timed?'\n    private double toldForward, toldStrafe;':''}
     double limit=${n(.6)};
     private MotionState state=MotionState.ofVelocity(Pose.zero(),Velocity.zero());
     public RobotDrive(HardwareMap map) {
@@ -184,7 +188,8 @@ ${sw?`            // Each wheel rolled along the way its pod points; less what t
             // pods together say how far the robot went.
             double forward=0,left=0;
             for(int i=0;i<motors.length;i++){int ticks=motors[i].getCurrentPosition();double d=(ticks-before[i])*${n(1/h.drive.ticksPerInch)},a=Math.toRadians(podAngle[i]);before[i]=ticks;forward+=d*Math.cos(a)+POD_Y[i]*dh;left+=d*Math.sin(a)-POD_X[i]*dh;}
-            forward/=motors.length;left/=motors.length;`:`            double[] d=new double[motors.length];for(int i=0;i<d.length;i++){int ticks=motors[i].getCurrentPosition();d[i]=(ticks-before[i])*${n(1/h.drive.ticksPerInch)};before[i]=ticks;}
+            forward/=motors.length;left/=motors.length;`:timed?`            // No position sensing: the distance is the power it was given, at the robot's own speed, for the time since the last look.
+            double forward=toldForward*${n(tSpeed.maxForward||60)}*dt,left=${kind==='tank'?'0':`toldStrafe*${n(tSpeed.maxStrafe||50)}*dt`};`:`            double[] d=new double[motors.length];for(int i=0;i<d.length;i++){int ticks=motors[i].getCurrentPosition();d[i]=(ticks-before[i])*${n(1/h.drive.ticksPerInch)};before[i]=ticks;}
             double forward=${kind==='tank'?'('+motors.map((_,i)=>`d[${i}]`).join('+')+')/'+motors.length:'(d[0]+d[1]+d[2]+d[3])/4'},left=${kind==='tank'?'0':'(-d[0]+d[1]+d[2]-d[3])/4'};`}
 ${pods.length?`            double[] pod=new double[pods.length];for(int i=0;i<pods.length;i++){int ticks=pods[i].getCurrentPosition();pod[i]=(ticks-podBefore[i])*POD_SIGN[i];podBefore[i]=ticks;}
             forward=(${pods.map((p,i)=>p.axis==='forward'?`pod[${i}]*${n(1/p.ticksPerInch)}+${n(p.y)}*dh`:null).filter(Boolean).map(t=>'('+t+')').join('+')})/${pods.filter(p=>p.axis==='forward').length};
@@ -216,9 +221,9 @@ ${sw?`    public void drive(DrivePowers p,boolean manual){
     public void stop(){for(DcMotorEx m:motors)m.setPower(0);for(CRServo s:steer)s.setPower(0);steerTime=-1;}`:`    public void drive(DrivePowers p,boolean manual){
         double[] powers=new double[]{${kind==='tank'?motors.map(([key])=>`p.forward()${/left/i.test(key)?'-':'+'}p.turn()`).join(','):'p.forward()-p.strafe()-p.turn(),p.forward()+p.strafe()+p.turn(),p.forward()+p.strafe()-p.turn(),p.forward()-p.strafe()+p.turn()'}};
         double scale=1;for(double w:powers)scale=Math.max(scale,Math.abs(w)/Math.max(.000001,limit));
-        for(int i=0;i<motors.length;i++)motors[i].setPower(limit<=0?0:powers[i]/scale);
+        for(int i=0;i<motors.length;i++)motors[i].setPower(limit<=0?0:powers[i]/scale);${timed?'\n        toldForward=limit<=0?0:p.forward()/scale;toldStrafe=limit<=0?0:p.strafe()/scale;':''}
     }
-    public void stop(){for(DcMotorEx m:motors)m.setPower(0);}`}
+    public void stop(){for(DcMotorEx m:motors)m.setPower(0);${timed?'toldForward=0;toldStrafe=0;':''}}`}
 }
 `;}
   function opMode(options){const R=options.className;return `package ${options.packageName};
@@ -1832,10 +1837,10 @@ ${flywheels.length&&velocity?`
   }
   // Every TeamCode file for the Control Hub, keyed by path under TeamCode/src/main/java. RobotActions
   // is listed in keep: it is written only when it does not exist yet.
-  function files({route,layout,tuning,robot,localization,setupName,packageName='org.firstinspires.ftc.teamcode',className='PlannedRoute',autoName='',swerve=null,routeJava,mechanisms=null,kinematics=null,target=null,exporter=globalThis.DeckSimExport||require('./sim-export.js')}){
+  function files({route,layout,tuning,robot,localization,setupName,packageName='org.firstinspires.ftc.teamcode',className='PlannedRoute',autoName='',swerve=null,turn=null,routeJava,mechanisms=null,kinematics=null,target=null,exporter=globalThis.DeckSimExport||require('./sim-export.js')}){
     const h=hardware(robot,localization,swerve),dir=packageName.replace(/\./g,'/'),opModeName=className+'Auto',mech=mechanisms?.enabled?mechanisms:null,list=exporter.actions(route),{parts,sensorSpecs}=exportParts({robot,localization,mechanisms,kinematics});
     // autoName: what the autonomous shows as on the Driver Station, when the team named it (one line, no quotes).
-    const options={packageName,className,opModeName,layoutName:layout.name,autoName:String(autoName||'').replace(/[\r\n\t"\\]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60),setupName,exporter,mechanisms:mech,kinematics,parts,sensorSpecs,sequences:exporter.sequences?.(route)||[]};
+    const options={tuning,turn,packageName,className,opModeName,layoutName:layout.name,autoName:String(autoName||'').replace(/[\r\n\t"\\]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60),setupName,exporter,mechanisms:mech,kinematics,parts,sensorSpecs,sequences:exporter.sequences?.(route)||[]};
     if(mech)h.mechanisms=mechanismHardware(mech);
     // Older callers export geometry before passing the measured robot tuning. Resolve inherited
     // power here as well, so generated code and the virtual follower use the same default.

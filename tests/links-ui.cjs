@@ -52,9 +52,9 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // The robot: each motor's power turns its wheel and its encoder counts it, but rightFront's and rightBack's encoder
     // cables are swapped. The left side turning turns the robot right. The claw servo moves nothing anyone reads, and the
     // beam reads LOW while a game piece is in it.
-    const pos=[0,0,0,0],pow=[0,0,0,0],resets=[],motorLines=[],servoLines=[];let t=0,yaw=0,pitch=0,beam=1;
+    let leftBackWay=1;/* -1 once leftBack is found to be mounted the other way round: its raw power then turns the robot the other way */const pos=[0,0,0,0],pow=[0,0,0,0],resets=[],motorLines=[],servoLines=[];let t=0,yaw=0,pitch=0,beam=1;
     (async()=>{while(run){const lines=await app.evaluate(()=>global.__sent.splice(0)).catch(()=>[]);for(const l of lines){const [c,n,v]=l.split('\t');if(c==='M')motorLines.push(l);if(c==='S'||c==='E')servoLines.push(l);const i=MOTORS.indexOf(n);if(c==='M'&&i>=0)pow[i]=+v;if(c==='R'&&i>=0){pos[i===2?3:i===3?2:i]=0;resets.push(n);}if(c==='X')pow.fill(0);}
-      for(let i=0;i<4;i++){const into=i===2?3:i===3?2:i;pos[into]+=Math.round(pow[i]*40);}yaw-=(pow[0]+pow[1])*1.5;
+      for(let i=0;i<4;i++){const into=i===2?3:i===3?2:i;pos[into]+=Math.round(pow[i]*40);}yaw-=(pow[0]+leftBackWay*pow[1])*1.5;
       await send({frame:{t:t+=40,loop:6,v:13,m:pos.map((p,i)=>[p,0,pow[i],0,0]),s:[[.5,1]],c:[],d:[beam],touch:[],l:[],a:[],i:[{age:10,v:{yaw,pitch,roll:0,wx:0,wy:0,wz:0}}],on:[1],b:[]}}).catch(()=>{});await wait(40);}})();
     await soon('frames drawn',async()=>/robot clock/.test(await page.textContent('[data-debug-stats]')));
 
@@ -147,14 +147,14 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/is not on the hub/);
     // A mecanum on motors only: nothing Electronics already checked is asked again, and plain motors have nothing to
     // calibrate. Its wheels are checked to roll forward, and it is good to use.
-    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['All wheels together','Quarter turn to the left','Use it in your code','Drive it']);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['All wheels together','Quarter turn to the left','Tune the turning','Use it in your code','Drive it']);
     await page.click('[data-mech-pick="chassis-1"]');
     // Each motor by itself is Electronics' check: until every wheel's motor has been moved there and said to roll forward or backwards, nothing moves here.
     assert.match(await page.textContent('[data-chassis-step="1"]'),/Not checked yet: Front left \(leftFront\), Front right \(rightFront\), Back left \(leftBack\), Back right \(rightBack\)/);assert.equal(await page.locator('[data-chassis=move-go]').count(),0);
     await page.click('[data-chassis-step="1"] [data-chassis=to-elec]');await page.waitForSelector('#cal-links .cal-elec2',{state:'visible'});
     // Left unset, a left-side drive motor of a mecanum counts as reversed (the SDK default the generated code uses). Electronics moves the motor as it is and takes the answer as seen.
     const way=async(name,answer)=>{await pick(name);await moveIt();await page.waitForSelector('[data-elec-dir-ask]');assert.match(await page.textContent('[data-elec-dir-ask]'),/Did the wheel roll forward\?/);await page.click(`[data-elec-dir=${answer}]`);await page.waitForSelector('[data-elec-dir-kept]');};
-    await way('leftFront','yes');await way('rightFront','yes');await way('leftBack','no');assert.match(await page.textContent('[data-elec-dir-kept]'),/Torque turns it the other way now/);
+    await way('leftFront','yes');await way('rightFront','yes');await way('leftBack','no');leftBackWay=-1;assert.match(await page.textContent('[data-elec-dir-kept]'),/Torque turns it the other way now/);
     // Move it again checks the answer: the reversed motor is turned the other way, and now it goes forward.
     motorLines.length=0;await way('leftBack','yes');assert.ok(motorLines.some(l=>/^M\tleftBack\t-0/.test(l))&&!motorLines.some(l=>/^M\tleftBack\t0\.[1-9]/.test(l)),'moved the reversed way');assert.match(await page.textContent('[data-elec-dir-kept]'),/Reversed/,'still reversed after it is seen going forward');
     assert.ok(await page.evaluate(()=>{const a=document.querySelector('[data-elec-dir-kept]'),b=document.querySelector('#cal-links h4.cal-group-title');return !!a;}));await way('rightBack','yes');
@@ -177,7 +177,13 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry?.imu?.reversed),true,'a bad measurement changes nothing');
     await page.click('[data-chassis=turn-start]');await page.waitForSelector('[data-chassis=turn-done]');for(let i=0;i<9;i++){yaw+=10;await wait(90);}await page.click('[data-chassis=turn-done]');
     await soon('measured again the right way round, it is not reversed',async()=>await page.evaluate(()=>{const p=JSON.parse(localStorage.getItem('deck-simulation-project-v2'));return p.calibration.chassis.turn?.backwards===false&&!p.robot.odometry?.imu?.reversed;}));
-    await soon('good to use once the wheels work together and the heading counts the right way',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
+    await soon('good to use once the wheels work together and the heading counts the right way',async()=>/Good to use/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
+    // Tune the turning is optional: not tuned, the code turns gently. Tuned, the robot turns by itself both ways and the numbers come from what it did.
+    await page.click('[data-mech-pick="chassis-3"]');assert.match(await page.textContent('[data-chassis-step="3"]'),/Not measured: the gentle defaults\. It turns at up to 25% power/);motorLines.length=0;
+    await page.click('[data-chassis=spin-go]');await page.waitForSelector('[data-chassis=spin-stop]');await soon('it turns itself and finishes',async()=>await page.locator('[data-chassis=spin-go]').count()===1,60000);
+    {const t=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).calibration.chassis.turnTune);assert.ok(t?.at,'kept with the robot: '+JSON.stringify(t));assert.equal(t.top,.4,'tuned, it may turn harder');assert.ok(t.rate>20&&t.least>=.04&&t.least<=.2&&t.slowFrom>=30,JSON.stringify(t));}
+    assert.ok(motorLines.some(l=>/^M\tleftFront\t-0\.\d+$/.test(l))&&motorLines.some(l=>/^M\tleftFront\t0\.[1-9]\d*$/.test(l)),'turned both ways');assert.match(await page.textContent('[data-chassis-step="3"]'),/Measured.*It turns at up to 40% power/);
+    await soon('calibrated once the turning is tuned too',async()=>/Calibrated/.test(await page.textContent('#cal-chassis .cal-chassis>.cal-hub-head')));
     await page.click('[data-mech-pick="chassis-code"]');assert.match(await page.textContent('[data-chassis-code]'),/LEFT_FRONT_REVERSED = (true|false);\n/);
     assert.equal(await page.locator('[data-cal-mech-row="drive"]').count(),0,'the chassis is not listed again below');
     await page.screenshot({path:path.join(root,'test-results/chassis-ui.png'),fullPage:true}).catch(()=>{});

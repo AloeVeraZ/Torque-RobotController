@@ -56,7 +56,7 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
   assert.match(out.source,/TOP_TURN \* Math\.min\(1, Math\.abs\(error\) \/ SLOW_FROM_DEGREES\)\), error\) - BRAKE \* rate/,'slower as it nears the angle, braked by its own speed');assert.doesNotMatch(out.source,/gamepad|getCurrentPosition|Pinpoint/,'nothing but the IMU');
   assert.deepEqual(T.turnTestOf({...o,angles:[45,'x',-45]}).source.match(/ANGLES = \{([^}]*)\}/)[1],'45.0, -45.0');assert.match(T.turnTestOf(kiwi).error,/do not steer/);assert.match(T.turnTestOf(null).error,/do not steer/);
   // What the follower on the robot does too: its turn feedback is held under a power that falls with what is left to turn.
-  assert.match(require('../ui/sim-follower-source.js'),/double turnCap=Math\.max\(\.08,Math\.min\(1,\.06\+\.55\*Math\.sqrt\(Math\.abs\(headingError\)\)\)\);turn=clamp\(turn,-turnCap,turnCap\);/);
+  assert.match(require('../ui/sim-follower-source.js'),/double turnCap=Math\.max\(\.08,Math\.min\(1,\.05\+\.4\*Math\.sqrt\(Math\.abs\(headingError\)\)\)\);turn=clamp\(turn,-turnCap,turnCap\);/);
   const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
   if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
   for(const [name,x] of [['mecanum',o],['tank',{...o,kind:'tank'}],['kiwi wheels',{...o,kind:'kiwi',motors:[{key:'front',name:'f'},{key:'backLeft',name:'bl'},{key:'backRight',name:'br'}]}]]){

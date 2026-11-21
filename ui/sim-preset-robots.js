@@ -104,6 +104,16 @@
       P(24,84,'','Up the field, then turned around',plain('Straight up the field'),{turn:-90}),
       P(24,48,'','Back down the field',plain('Straight back down')),
       P(21,107,'','PARK: partly in the red LOADING ZONE, facing it',plain('Up into the loading zone, pushing its pollen into the corner'),{turn:-180})]}};
+  // More routes a demo robot comes with, beside its demo. The kit's IMU turn test is for trying the heading on the real robot
+  // before a whole route depends on it: a small square by the wall, forward a little and a quarter turn to the left four times,
+  // at a third of its power. Its turns are 90°, 180°, -90° and back to 0°, from where it stands when it starts.
+  const slow=note=>({style:'sharp',note,power:.35});
+  const MORE={startermecanum:[{key:'imu',name:'IMU turn test',start:{x:10.11,y:27,heading:0},pins:[
+    P(26.11,27,'','Forward a little, then turn left to 90°',slow('Forward'),{turn:90,wait:.5}),
+    P(26.11,43,'','Forward, then turn left to 180°',slow('Forward'),{turn:180,wait:.5}),
+    P(12.11,43,'','Forward, then turn left to -90°',slow('Forward'),{turn:-90,wait:.5}),
+    P(12.11,29,'','Forward, then turn left to 0°: back as it started',slow('Forward'),{turn:0,wait:.5})]}]};
+  const more=id=>(MORE[id]||[]).map(r=>({key:r.key,layout:{name:r.name,field:'biobuzz',alliance:'red',width:144,height:144,elements:true,start:{...r.start},zones:[],pins:JSON.parse(JSON.stringify(r.pins)),clearance:.25,style:'spline',rotate:false,route:null,tested:null,autoName:r.name}}));
   // The demo route as a field of its own (the app gives it its id).
   function layout(id){const r=ROUTES[id];return {name:`${Mech().PRESETS[id].name} demo`,field:'biobuzz',alliance:'red',width:144,height:144,elements:true,start:{...r.start},zones:[],pins:JSON.parse(JSON.stringify(r.pins)),
     clearance:.25,style:'spline',rotate:false,route:null,tested:null};}
@@ -128,5 +138,5 @@
     const m=Mech().presetMechanisms(id);if(r.parts)for(const list of ['intakes','shooters'])m[list]=m[list].map((x,n)=>r.parts[list][n]?{...x,parts:[r.parts[list][n]]}:x);
     out.mechanisms=m;out.kinematics=Kin().sanitize(kinematics(id));out.robotPreset=id;return out;
   }
-  return {VERSION,ROBOTS,ROUTES,has,ofModel,model,meshes,result,kinematics,wiring,layout,apply};
+  return {VERSION,ROBOTS,ROUTES,has,ofModel,model,meshes,result,kinematics,wiring,layout,more,apply};
 });

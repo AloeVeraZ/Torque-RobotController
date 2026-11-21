@@ -1485,7 +1485,7 @@ public class MyAuto implements DeckAutonomous {
   const swerveNow=()=>{try{const t=chassisCal?.teleopInput?.();return t?.kind==='swerve'?t:null;}catch{return null;}};
   function teamCode(route,onbot=false){const l=L(),lay={name:l.name,field:l.field,fieldName:GAMES[l.field],width:l.width,height:l.height,start,zones:l.zones};
     if(!info)throw Error('Wait for the simulation to load.');
-    const out=window.DeckSimFtc[onbot?'onBotJava':'files']({route,layout:lay,mechanisms:robotMechanisms(),kinematics:project.kinematics,target:info.target,tuning:info.tuning,robot:info.robot,localization:project.sensors.localization,setupName:project.setupName,packageName:project.export.packageName,className:exportClass(),autoName:l.autoName||'',swerve:swerveNow(),
+    const out=window.DeckSimFtc[onbot?'onBotJava':'files']({route,layout:lay,mechanisms:robotMechanisms(),kinematics:project.kinematics,target:info.target,tuning:info.tuning,robot:info.robot,localization:project.sensors.localization,setupName:project.setupName,packageName:project.export.packageName,className:exportClass(),autoName:l.autoName||'',swerve:swerveNow(),turn:chassisCal?.turn?.()||null,
       routeJava:exporter.java(route,lay,{className:exportClass(),packageName:project.export.packageName,polygon:planner.polygon})});
     // What Calibrate checked on the real robot goes with the code it is sent with: TorqueCalibration.java, beside the op modes.
     try{const code=onbot?chassisCal?.code?.():null,first=Object.keys(out.files||{})[0];if(code&&first){const dir=first.slice(0,first.lastIndexOf('/'));out.files[dir+'/TorqueCalibration.java']=`package ${project.export.packageName||'org.firstinspires.ftc.teamcode'};\n\n${code}\n`;}}catch{}
@@ -2612,15 +2612,18 @@ public class MyAuto implements DeckAutonomous {
   // Each preset robot is a saved setup of its own ("Starter Mecanum"), built in: it cannot be deleted or renamed, and
   // opens on its demo route, optimized, ready to run. Clone one to change it freely.
   function ensurePresetSetups(){const P=PR();if(!P)return;let added=false;
+    // A demo's other routes (the kit's IMU turn test) are added beside its demo route, where they are missing, and are never opened by themselves.
+    const others=id=>{const have=project.setups.find(s=>s.id==='preset:'+id);if(!have||!P.has(id)||!P.more)return;const d=project.setupId===have.id?project:have.data;if(!d||!Array.isArray(d.layouts))return;
+      for(const r of P.more(id)){const lid=`${presetLayoutId(id)}-${r.key}`;if(d.layouts.some(l=>l.id===lid))continue;d.layouts=[...d.layouts,cleanLayout({...r.layout,id:lid})];added=true;}};
     for(const id of Object.keys(MECH.PRESETS)){const name=`${MECH.PRESETS[id].name} demo`,have=project.setups.find(s=>s.id==='preset:'+id);
       if(have&&have.name!==name){have.name=name;if(have.data)have.data.setupName=name;if(project.setupId===have.id)project.setupName=name;added=true;}
       // A demo whose route changed in a new version gets the new route (its field cannot be edited, so nothing is lost);
       // Optimize reshapes paths and aiming sets turns, but each stop stays, so stops are compared.
       const stops=pins=>JSON.stringify((pins||[]).map(q=>[q.x,q.y,q.action||'',q.wait||0])),fresh=have&&P.has(id)?cleanLayout({...P.layout(id),id:presetLayoutId(id)}):null;
       if(fresh&&(project.setupId===have.id?project:have.data)){const d=project.setupId===have.id?project:have.data,ls=Array.isArray(d.layouts)?d.layouts:[],l=ls.find(x=>x.id===fresh.id);if(!l||stops(l.pins)!==stops(fresh.pins)){d.layouts=l?ls.map(x=>x.id===fresh.id?fresh:x):[fresh,...ls];if(!l||!ls.some(x=>x.id===d.active))d.active=fresh.id;d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};const m=P.apply(id,d,C).mechanisms;d.mechanisms=m;if(d===project&&project.active===fresh.id){info=null;void switchLayout(fresh.id);}added=true;}}
-      if(!P.has(id)||have||project.setups.length>=20)continue;
+      others(id);if(!P.has(id)||have||project.setups.length>=20)continue;
       const d=defaults(),demo=cleanLayout({...P.layout(id),id:presetLayoutId(id)});Object.assign(d,P.apply(id,d,C));d.tuning={...d.tuning,maxPathSpeed:1,powerSet:true};d.model=null;d.layouts=[demo];d.active=demo.id;d.setupDone=true;d.setupName=`${MECH.PRESETS[id].name} demo`;
-      const {setups,...data}=JSON.parse(JSON.stringify(d));project.setups.push({id:'preset:'+id,name:`${MECH.PRESETS[id].name} demo`,data});added=true;}
+      const {setups,...data}=JSON.parse(JSON.stringify(d));project.setups.push({id:'preset:'+id,name:`${MECH.PRESETS[id].name} demo`,data});added=true;others(id);}
     if(added){save();setupPanel();presetPanel();}}
   async function placeModel(){
     const cad=presetCad();if(cad&&(project.model||project.robot.appearance!==cad)){project.model=null;project.robot.appearance=cad;project.kinematics=window.DeckKinematics.sanitize({});save();robotPanel();mechanismsPanel();}

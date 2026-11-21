@@ -301,7 +301,7 @@
   // o: as teleopOf takes (kind, motors, robot, imu, config, date), angles: degrees from the start, left positive.
   const TURN_TEST={className:'TorqueTurnTest',opMode:'Torque IMU turn test',angles:[90,0,-90,0,180,0]};
   function turnTestOf(o){if(!o||o.kind==='swerve'||!Array.isArray(o.motors)||!o.motors.length)return {error:'The IMU turn test is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
-    const ms=o.motors,kind=o.kind,angles=(Array.isArray(o.angles)&&o.angles.length?o.angles:TURN_TEST.angles).map(Number).filter(Number.isFinite).slice(0,12),name=o.className||TURN_TEST.className,opMode=o.opMode||TURN_TEST.opMode;
+    const tn={top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,...(o.turn||{})},ms=o.motors,kind=o.kind,angles=(Array.isArray(o.angles)&&o.angles.length?o.angles:TURN_TEST.angles).map(Number).filter(Number.isFinite).slice(0,12),name=o.className||TURN_TEST.className,opMode=o.opMode||TURN_TEST.opMode;
     const imports=[...COMMON.filter(i=>!/\.TeleOp$/.test(i)),'com.qualcomm.robotcore.eventloop.opmode.Autonomous','com.qualcomm.robotcore.util.ElapsedTime',...(o.imu?.mount?.imports||[])];
     const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${o.config}" configuration`:''}.`,
       '// A test of the heading alone: it uses only the IMU. Put the robot down facing the way that is 0° and press START:','// it rolls forward a little, then turns to each angle below, slowing as it nears each one. Left is positive.',
@@ -310,7 +310,7 @@
       '    // The IMU\'s yaw is multiplied by this: its scale, and -1 when Calibrate found it counts a turn to the left as a turn to the right.',`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
       '    // The angles it turns to, in order: degrees from where it stood at START, left positive.',`    static final double[] ANGLES = ${list(angles.map(dbl))};`,
       '    // Turning: the most power, the least that still moves it, how far out it starts to slow, how close counts as there,','    // and how hard it brakes against its own speed (power for each degree a second).',
-      '    static final double TOP_TURN = 0.45, LEAST_TURN = 0.08, SLOW_FROM_DEGREES = 50, DONE_DEGREES = 2, BRAKE = 0.0016;','    static final double FORWARD_POWER = 0.25, FORWARD_SECONDS = 0.6;','',
+      `    // ${tn.measured?'Measured on this robot by Calibrate (Tune the turning).':'The gentle defaults: Calibrate → Mechanisms → Tune the turning measures this robot.'}`,`    static final double TOP_TURN = ${dbl(tn.top)}, LEAST_TURN = ${dbl(tn.least)}, SLOW_FROM_DEGREES = ${dbl(tn.slowFrom)}, DONE_DEGREES = ${dbl(tn.done)}, BRAKE = ${dbl(tn.brake)};`,'    static final double FORWARD_POWER = 0.25, FORWARD_SECONDS = 0.6;','',
       '    DcMotor[] drive;','    IMU imu;','    double lastYaw, heading;','',
       '    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }','',
       '    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
