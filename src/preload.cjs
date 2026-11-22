@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('deck',{
   // The automated UI tests (DECK_TEST_SETUP=1) start on the generated Test setup; people start on the Starter Mecanum demo.
   testSetup:process.argv.includes('--deck-test-setup'),
   setTheme:theme=>ipcRenderer.send('app-theme',theme),
+  // Themes (docs/THEMES.md): imported ones are kept in the app's data folder; the Driver Station's goes to its screen.
+  themes:(action,data)=>call('themes',action,data),themeGuide:which=>call('theme-guide',which),stationLook:look=>ipcRenderer.send('station-look',look),onStationTheme:fn=>listen('station-theme',fn),
   robotFocus:()=>call('robot-focus'),
   devicePhoto:tag=>call('device-photo',tag),openExternal:url=>call('open-reference',url),savePinout:file=>call('save-pinout',file),
   robotFullscreen:enabled=>call('robot-fullscreen',enabled),

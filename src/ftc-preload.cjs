@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('ftcHost',{
   onPacket:fn=>listen('ftc-packet',bytes=>fn(new Uint8Array(bytes))),
   onActive:fn=>listen('ftc-active',active=>fn(!!active)),
   onTheme:fn=>listen('ftc-theme',fn),
+  onLook:fn=>listen('ftc-look',fn),pickTheme:id=>ipcRenderer.invoke('ftc-station-theme',id),
   onFullscreen:fn=>listen('ftc-fullscreen',on=>fn(!!on)),
   closeRobot:()=>ipcRenderer.invoke('ftc-close'),
   fullscreen:()=>ipcRenderer.invoke('ftc-fullscreen'),

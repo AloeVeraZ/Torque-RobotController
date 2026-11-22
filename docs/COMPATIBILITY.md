@@ -22,7 +22,7 @@ V2 finds updates the same way forever, so every release keeps to this:
 
 - Macs still update in the app: `-macOS-arm64.zip` is both the download and the update, found through GitHub's API (60 checks an hour per network).
 - Windows and Steam Deck installs no longer find an update in the app, because their update file (`-Windows.zip`, `-SteamDeck.tar.gz`) is not published. They install the new version from the Releases page. Teaching the updater to install from `-Windows-Setup.exe` and `-SteamDeck.run` would bring in-app updates back.
-- Only Main releases are published, so Testing installs see no release. They can switch to Main in Settings.
+- Only Main releases are published, so Testing installs see no release. They can switch to Main in **⋮ → Updates**.
 
 **Removing a release:** delete the release itself, never only its tag. A release whose tag is deleted disappears from the Releases list but still exists, still counts in the Releases number, and can still be downloaded from its old link. In November 2026, 24 old releases ended up like that. V2 (v2.4.34) was published as the only release: its publish deleted every earlier release and its tag (`.github/workflows/release.yml`, "Make V2 the only release"), and a one-time workflow then removed the `main-channel` and `testing-channel` manifest releases.
 

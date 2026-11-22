@@ -20,6 +20,11 @@
   .bar { position: relative; z-index: var(--z-bar); flex: none; display: flex; align-items: center; gap: var(--space-4); min-height: 48px; padding: 0 var(--ds-edge) 0 var(--ds-gutter); border-bottom: 1px solid var(--line); background: var(--bg); }
   .brand { flex: none; display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
   #ds-name { font: 700 var(--display-sm)/1 var(--font-display); letter-spacing: .01em; white-space: nowrap; }
+  /* A Driver Station theme (docs/THEMES.md): its picture lies behind the whole screen, faded under the ground so every
+     reading stays readable, and its logo comes before the station's name, 24 px tall. */
+  body { isolation: isolate; }
+  :root[data-theme-image] body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: var(--theme-image) var(--theme-image-position, center) / cover no-repeat; opacity: var(--theme-image-opacity, .3); pointer-events: none; }
+  :root[data-theme-logo] #ds-name::before { content: ""; display: inline-block; width: 72px; height: 24px; margin-right: 10px; vertical-align: middle; background: var(--theme-logo) left center / contain no-repeat; }
   .banner { color: var(--muted); font-size: var(--text-md); font-weight: 600; white-space: nowrap; }
   .banner.connected { color: var(--ok); }
   .banner.searching { color: var(--warn); }
@@ -165,7 +170,7 @@
   .switch input:checked + i::after { translate: 16px 0; background: var(--on-go); }
   .switch input:disabled { cursor: default; }
   .switch input:disabled + i { opacity: var(--disabled-opacity); }
-  .switch input:focus-visible + i { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .practice { flex: none; display: flex; align-items: center; gap: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
   .practice-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }

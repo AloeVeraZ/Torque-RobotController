@@ -24,9 +24,9 @@ function probe(){
   const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
   const same=(a,b)=>Math.abs(a.r-b.r)+Math.abs(a.g-b.g)+Math.abs(a.b-b.b)<6;
   // What may be round or long and round: a switch, a slider, and the Driver Station's one big action.
-  const ROUND='.switch,.switch *,[role=switch],[role=switch] *,.axon-toggle,.axon-toggle *,.cal-switch,.cal-switch *,input[type=range],.num-slider,progress,meter,.go,.abort,.round-play';
+  const ROUND='.stick,.stick *,.switch,.switch *,[role=switch],[role=switch] *,.axon-toggle,.axon-toggle *,.cal-switch,.cal-switch *,input[type=range],.num-slider,progress,meter,.go,.abort,.round-play';
   // What floats may cast a shadow and sits over the page, so it is not "a box inside a box".
-  const FLOATS='dialog,.menu,[popover],.touch-keyboard,#toast,.sim-setup-list,.sim-setup-menu,.sim-popover,.sim-help-pop,.sim-path-tooltip,.sim-minimap,.ce-menu,.ce-tip,.picker,.sheet,.dev-menu';
+  const FLOATS='dialog,.menu,.menu-sub,.wifi-popover,[popover],.touch-keyboard,#toast,.sim-setup-list,.sim-setup-menu,.sim-popover,.sim-help-pop,.sim-path-tooltip,.sim-minimap,.ce-menu,.ce-tip,.picker,.sheet,.dev-menu';
   const boxed=new Set(),all=[...scope.querySelectorAll('*')].filter(e=>!(e instanceof SVGElement)&&!e.closest('.touch-keyboard')&&seen(e));
   for(const e of all){
     const cs=getComputedStyle(e),r=e.getBoundingClientRect();
@@ -64,9 +64,9 @@ function probe(){
       Network.prototype.status=async()=>({connected:true,available:true,native:true,ssid:'9999-C-RC'});Network.prototype.scan=async()=>[{ssid:'9999-C-RC',security:'WPA2'},{ssid:'Robotics Lab',security:'WPA2'}];});
     await page.evaluate(()=>window.deck.network());for(const r of [{name:'Practice bot',url:'192.168.43.1',kind:'ftc'},{name:'MotionModule',url:'192.168.4.1'}])await page.evaluate(x=>window.deck.save(x),r);
     const go=async p=>{await page.evaluate(x=>window.deck.page(x),p);await page.waitForFunction(x=>state.page===x,p);},click=s=>page.locator(s).first().click(),simTab=t=>page.evaluate(x=>document.querySelector(`.sim-tabs [data-tab=${x}]`).click(),t);
-    const shut=()=>page.evaluate(()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();setMenu(false);});let loaded=false;
+    const shut=()=>page.evaluate(()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();setMenu(false);closeWifiPicker();});let loaded=false;
     const screens=[
-      ['Drive',()=>go('drive')],['Drive menu',async()=>{await go('drive');await click('#more');},shut],
+      ['Drive',()=>go('drive')],['Drive menu',async()=>{await go('drive');await click('#more');await page.hover('#menu-shortcuts');},shut],['Wi-Fi list',async()=>{await go('drive');await click('#network-chip');await page.waitForTimeout(400);},shut],['Keyboard shortcuts',async()=>{await click('#more');await click('#menu-shortcuts');},shut],['Licenses and credits',async()=>{await click('#more');await click('#menu-credits');},shut],
       ['Settings',()=>go('settings')],['Controller test',async()=>{await go('settings');await click('#controller-1');},shut],['Controller calibration',async()=>{await go('settings');await click('#controller-1');await click('#controller-calibration-tab');},shut],
       ['Updates',async()=>{await click('#more');await click('#menu-updates');await page.waitForTimeout(500);},shut],['Report a bug',async()=>{await click('#bug-quick');await page.waitForTimeout(300);},shut],
       ['Setup → Robot',async()=>{await go('setup');await click('#sim-setup-step-robot');}],['Setup → Mechanisms',()=>click('#sim-setup-step-mechanisms')],['Setup → Hubs',()=>click('#setup-view .setup-flow [data-flow=setup]')],['Setup → Configure',()=>click('#setup-view .setup-flow [data-flow=configure]')],

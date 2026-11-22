@@ -1,37 +1,67 @@
 /* The app shell: the bar, Drive, Settings and the shell's dialogs. Never injected into a robot website. */
 @layer system {
   /* ---- The bar ----------------------------------------------------------------------------------------------------
-     The name, the four places, then what the station is connected to. The place you are in is ink with a rule under it. */
+     The name, the four places, then what the station is connected to. The place you are in has the accent under it. */
   body.driver-station > header { position: sticky; top: 0; z-index: var(--z-bar); display: flex; align-items: center; gap: 20px; height: var(--bar-height); padding: 0 max(12px, calc((100vw - var(--page-max)) / 2 + 12px)) 0 max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter))); background: var(--bg); border-bottom: 1px solid var(--line); }
-  .brand { flex-shrink: 0; display: flex; align-items: center; min-height: var(--h-lg); color: var(--text); font: 700 22px/1 var(--font-display); letter-spacing: .01em; text-decoration: none; }
+  .brand { flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: var(--h-lg); color: var(--text); font: 700 22px/1 var(--font-display); letter-spacing: .01em; text-decoration: none; }
+  /* An app theme's logo (docs/THEMES.md) sits before the name, 24 px tall. */
+  :root[data-theme-logo] .brand::before { content: ""; width: 72px; height: 24px; background: var(--theme-logo) left center / contain no-repeat; }
   header nav { display: flex; align-self: stretch; flex-shrink: 0; gap: 2px; }
-  .tab { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: var(--text-md); font-weight: 500; }
+  .tab { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: var(--text-md); font-weight: 500; transition: color var(--dur-1) var(--ease); }
   .tab:hover:not(:disabled), .tab:active:not(:disabled) { background: none; color: var(--text); }
+  .tab:active:not(:disabled) { transform: none; }
   .tab.active { color: var(--text); }
-  /* The rule under the place you are in is ::before; ::after is the mark a tab carries when its place needs a look. */
-  .tab.active::before { content: ""; position: absolute; inset: auto 12px -1px; height: 2px; background: var(--ink); }
+  /* The rule under the place you are in is ::before, and it grows from its middle when you arrive; ::after is the mark a
+     tab carries when its place needs a look. */
+  .tab.active::before { content: ""; position: absolute; inset: auto 12px -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); animation: rule-in var(--dur-3) var(--ease-out); }
   .tab:focus-visible { outline-offset: -4px; }
   .tab .ui-icon { display: none; }
   .header-right { display: flex; align-items: center; gap: 2px; min-width: 0; margin-left: auto; }
   .header-right > button { flex-shrink: 0; }
-  .competition-chip { margin-right: 8px; padding: 3px 8px; border-radius: var(--r-tag); background: var(--warn-bg); color: var(--warn); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
 
-  /* Wi-Fi: the network's name. Its glyph is green while the station is on it. */
-  .network-chip { display: flex; align-items: center; gap: 8px; max-width: 220px; padding: 0 10px; border: 0; background: none; color: var(--text); font-weight: 500; }
-  .network-chip:hover:not(:disabled), :is(button.controller, .more):hover:not(:disabled) { background: var(--control); }
+  /* Wi-Fi: the network's name. Its glyph is green while the station is on it, and it opens the list of networks. */
+  .wifi-anchor { position: relative; display: flex; flex-shrink: 1; min-width: 0; }
+  .network-chip { display: flex; align-items: center; gap: 8px; max-width: 220px; min-width: 0; padding: 0 10px; border: 0; background: none; color: var(--text); font-weight: 500; }
+  .network-chip:hover:not(:disabled), :is(button.controller, .more):hover:not(:disabled), .network-chip[aria-expanded=true] { background: var(--control); }
   .network-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .network-chip .dot { display: none; }
   .network-icon { width: 16px; height: 16px; color: var(--quiet); }
   .network-chip:has(.dot.live) .network-icon { color: var(--ok); }
   .network-chip:not(:has(.dot.live)) span { color: var(--muted); }
+  .wifi-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); width: 340px; max-width: calc(100vw - 16px); padding: 6px; border: 1px solid var(--line-strong); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--shadow); transform-origin: top right; animation: pop-in var(--dur-2) var(--ease-out); }
+  .wifi-head { display: flex; align-items: flex-start; gap: 8px; padding: 8px 6px 10px 10px; }
+  .wifi-head > div { flex: 1; min-width: 0; }
+  .wifi-head h2 { margin: 0; font-size: var(--display-sm); }
+  .wifi-head p { margin: 2px 0 0; color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .wifi-head .icon-button { flex-shrink: 0; }
+  #refresh-wifi:disabled .ui-icon { animation: spin 1s linear infinite; }
+  .wifi-list { display: flex; flex-direction: column; gap: 2px; max-height: min(300px, 46vh); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y pinch-zoom; }
+  .wifi-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; background: none; text-align: left; animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .wifi-row > div { min-width: 0; }
+  .wifi-row > span { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); }
+  .wifi-row:hover:not(:disabled) { background: var(--control); }
+  .wifi-row.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .wifi-row strong { font-size: var(--text-md); font-weight: 500; overflow-wrap: anywhere; }
+  .wifi-row.selected strong { font-weight: 600; }
+  .wifi-row small { display: block; color: var(--quiet); font-size: var(--text-xs); }
+  .wifi-row.active small { color: var(--ok); }
+  #wifi-connect-panel { margin-top: 4px; padding: 12px 10px 8px; border-top: 1px solid var(--line); }
+  #wifi-selection { margin-bottom: 8px; color: var(--text); overflow-wrap: anywhere; }
+  #wifi-scan-message { margin: 0; padding: 8px 10px; }
+  #wifi-scan-message:empty { display: none; }
+  #system-wifi { margin: 4px 4px 2px; }
 
-  /* A controller slot: its number, then what is in it. The dot is there only while a pad is. */
-  button.controller { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; background: none; text-align: left; }
-  .controller > span { min-width: 10px; color: var(--text); font: 700 18px/1 var(--font-display); }
+  /* A controller slot: a pad, its number, then what is in it. The pad turns green while one is in the slot. */
+  button.controller { display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; background: none; text-align: left; }
+  .pad-icon { flex: none; width: 20px; height: 20px; color: var(--quiet); transition: color var(--dur-2) var(--ease); }
+  .controller:has(.dot.live) .pad-icon { color: var(--ok); }
+  .controller:has(.dot.error) .pad-icon { color: var(--warn); }
+  .controller > span { min-width: 10px; margin-right: 2px; color: var(--text); font: 700 18px/1 var(--font-display); }
   .controller.standby > span { color: var(--quiet); }
   .controller b { display: none; }
   .controller small { display: block; max-width: 150px; overflow: hidden; color: var(--muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
   .controller:has(.dot.live) small { color: var(--text); }
+  .controller .dot { display: none; }
   .more { display: inline-grid; place-items: center; min-width: var(--h-lg); height: var(--h-lg); padding: 0; border: 0; background: none; color: var(--muted); }
   .more:hover:not(:disabled) { color: var(--text); }
   #more .ui-icon { stroke-width: 2.6; }
@@ -44,20 +74,29 @@
   .update-icon[data-state=current]:is(:hover, :focus-visible) { color: var(--ok); }
   .update-icon[data-state=available] { color: var(--warn); }
   .update-dot { position: absolute; top: 9px; right: 9px; display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn-fill); box-shadow: 0 0 0 2px var(--bg); }
-  .update-icon.has-update .update-dot { display: block; }
-  .update-icon::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); width: max-content; max-width: 280px; padding: 6px 10px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--text-sm); font-weight: 500; line-height: 1.35; text-align: left; white-space: normal; pointer-events: none; opacity: 0; transition: opacity var(--dur) var(--ease); }
-  .update-icon:is(:hover, :focus-visible)::after { opacity: 1; }
+  .update-icon.has-update .update-dot { display: block; animation: breathe 2.4s var(--ease) infinite; }
+  .update-icon::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); width: max-content; max-width: 280px; padding: 6px 10px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--text-sm); font-weight: 500; line-height: 1.35; text-align: left; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(-2px); transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-out); transition-delay: 0s; }
+  .update-icon:is(:hover, :focus-visible)::after { opacity: 1; transform: none; transition-delay: .3s; }
   body:has(dialog[open]) .update-icon::after { opacity: 0; }
 
-  /* The three-dot menu. */
-  header > .menu { top: calc(var(--bar-height) - 4px); right: max(8px, calc((100vw - var(--page-max)) / 2 + 8px)); width: 240px; }
+  /* The three-dot menu, and the shortcut list that opens beside it. */
+  header > .menu { top: calc(var(--bar-height) - 4px); right: max(8px, calc((100vw - var(--page-max)) / 2 + 8px)); width: 248px; overflow: visible; transform-origin: top right; animation: pop-in var(--dur-2) var(--ease-out); }
   .menu-version { margin: 0; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--quiet); font-size: var(--text-sm); }
   .menu-version + button { margin-top: 4px; }
   header > .menu > button:last-child { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-ctl) var(--r-ctl); }
   .menu [aria-current=page] { font-weight: 600; }
-  /* The two switches in the menu: a box that fills when on. */
-  .menu :is(#menu-keyboard-check, #menu-competition-check) { flex: none; width: 16px; height: 16px; border: 1.5px solid var(--field); border-radius: var(--r-tag); background: center / 13px 13px no-repeat; font-size: 0; }
-  .menu button[aria-checked=true] :is(#menu-keyboard-check, #menu-competition-check) { border-color: var(--ink); background-color: var(--ink); background-image: var(--tick); }
+  .menu #menu-keyboard-check { flex: none; width: 16px; height: 16px; border: 1.5px solid var(--field); border-radius: var(--r-tag); background: center / 13px 13px no-repeat; font-size: 0; transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease); }
+  .menu button[aria-checked=true] #menu-keyboard-check { border-color: var(--accent); background-color: var(--accent); background-image: var(--tick); }
+  .menu-sub-wrap { position: relative; }
+  .menu-sub-wrap > button { width: 100%; }
+  .menu-sub-arrow { width: 14px; height: 14px; margin-left: auto; color: var(--quiet); }
+  .menu-sub { position: absolute; top: -6px; right: calc(100% + 8px); display: none; width: 300px; padding: 10px 12px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--shadow); transform-origin: top right; }
+  /* Hovering or focusing Keyboard shortcuts shows the list beside the menu; clicking it opens the whole list. */
+  .menu-sub-wrap:is(:hover, :focus-within) > .menu-sub { display: block; animation: pop-in var(--dur-2) var(--ease-out); }
+  .menu-sub .shortcut-list { margin: 0; }
+  .menu-sub .shortcut-list > div { padding: 6px 0; font-size: var(--text-sm); }
+  .menu-sub .shortcut-list > div:first-child { border-top: 0; }
+  .menu-sub-hint { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); color: var(--quiet); font-size: var(--text-xs); }
 
   /* ---- Drive ------------------------------------------------------------------------------------------------------ */
   #drive-view { display: flex; flex-direction: column; height: calc(100dvh - var(--bar-height)); }
@@ -68,7 +107,7 @@
   .url-display { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--text-md); }
   .url-display span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mini { color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
-  #close-page, #manager-close, .zoom-reset { flex-shrink: 0; white-space: nowrap; }
+  #close-page, #manager-close, #robots-page, .zoom-reset { flex-shrink: 0; white-space: nowrap; }
   .zoom-reset { padding: 0 10px; font-weight: 600; }
   .input-notice { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 var(--page-gutter); border-bottom: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn); font-size: var(--text-sm); }
   .input-notice .text-button { color: var(--warn); white-space: nowrap; }
@@ -76,109 +115,80 @@
   #preview-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
   #drive-view > footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 28px; padding: 0 var(--page-gutter); border-top: 1px solid var(--line); color: var(--quiet); font-size: var(--text-xs); }
   #drive-view > footer > span { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* With no robot open there is nothing for the toolbar or the status line to say. */
-  #drive-view:has(#welcome:not([hidden])) > :is(.browser-toolbar, footer) { display: none; }
   /* While the Driver Station shows, its own bar replaces the toolbar and footer. A robot's website keeps them. */
   #drive-view.station-view > :is(.browser-toolbar, footer, .input-notice) { display: none; }
-
-  /* No robot open: say what to do, then the robots already saved, as a list. Set at the page's left edge, not centred. */
-  #robot-mount:has(> #welcome:not([hidden])) { align-items: flex-start; justify-content: flex-start; overflow-y: auto; }
-  .welcome { width: min(560px + 2 * var(--page-gutter), 100%); margin-left: max(0px, calc((100vw - var(--page-max)) / 2)); padding: clamp(24px, 9vh, 88px) var(--page-gutter) 32px; text-align: left; }
-  .welcome h1 { margin: 0 0 8px; font-size: var(--display-lg); line-height: 1.05; }
-  .welcome > p { margin: 0 0 20px; font-size: var(--text-base); }
-  .quick-robots { display: grid; margin-top: 40px; }
-  .quick-robots:not(:empty)::before { content: attr(aria-label); padding-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--quiet); font-size: var(--text-sm); font-weight: 500; }
-  .quick-robots > button { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; text-align: left; }
-  .quick-robots > button:hover:not(:disabled) { background: var(--control); }
-  .quick-robots strong { overflow: hidden; font-size: var(--text-base); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-  .quick-robots small { flex-shrink: 0; color: var(--quiet); }
   /* Opening, or stopped: centred while it fits, and scrolled from its top (never cut off) when a long address makes it tall. */
   #robot-mount:has(> .page-status:not([hidden])) { align-items: flex-start; overflow-y: auto; }
-  .page-status { width: min(520px, 100%); margin: auto; padding: 24px; text-align: center; }
+  .page-status { width: min(520px, 100%); margin: auto; padding: 24px; text-align: center; animation: rise-in var(--dur-3) var(--ease-out); }
   .page-status h2 { font-size: var(--display-md); }
   .page-status p { font-size: var(--text-md); overflow-wrap: anywhere; }
   .page-status[data-kind=error] h2 { color: var(--bad); }
   .page-status .secondary { margin: 4px; }
 
-  /* ---- Settings: a sheet in two columns. Sections are titles and rules, not boxes. ------------------------------- */
-  #settings-view { max-width: var(--page-max); margin: 0 auto; padding: 20px var(--page-gutter) 32px; }
-  .settings-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-  .settings-heading > div { min-width: 0; }
-  .settings-heading h1 { margin: 0; font-size: var(--display-lg); line-height: 1; }
-  .version { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
-  .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); align-items: start; }
-  .setup-left, .setup-right { display: grid; align-content: start; min-width: 0; }
-  .setup-left { padding-right: 40px; }
-  .setup-right { padding-left: 40px; border-left: 1px solid var(--line); }
-  .panel { min-width: 0; padding: 0 0 24px; }
-  .panel + .panel { padding-top: 20px; border-top: 1px solid var(--line); }
-  .panel-title { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
-  .panel-title > div { flex: 1; min-width: 0; }
-  .panel-title h2 { margin: 0; }
-  .panel-title p { margin: 4px 0 0; color: var(--quiet); font-size: var(--text-sm); }
-  .panel-title > .icon-button { flex-shrink: 0; margin: -10px -10px 0 0; }
-  :is(.panel, dialog) :is(h1, h2, h3, p, .network-binding, .empty, .hint, summary) { overflow-wrap: anywhere; }
-  /* Settings fits the window as the other views do: the heading stays and each column scrolls on its own, so Open robot
-     shows without scrolling the page. A short or narrow window scrolls as one page. */
-  @media (min-width: 861px) and (min-height: 560px) {
-    #settings-view:not([hidden]) { display: flex; flex-direction: column; height: calc(100dvh - var(--bar-height)); padding-bottom: 0; overflow: clip; }
-    #settings-view > .settings-heading { flex: none; margin-bottom: 0; }
-    #settings-view > .settings-grid { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-    #settings-view :is(.setup-left, .setup-right) { min-height: 0; padding-top: 20px; padding-bottom: 24px; overflow-y: auto; overscroll-behavior: contain; }
-  }
-
-  /* Wi-Fi: the picker opens a list in place. */
-  .wifi-picker { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 0 12px; border: 1px solid var(--field); background: var(--surface); font-weight: 400; text-align: left; }
-  .wifi-picker:hover:not(:disabled) { border-color: var(--input-hover); background: var(--surface); }
-  .wifi-picker[aria-expanded=true] { border-color: var(--ink); }
-  .wifi-picker > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-  .wifi-picker > span:last-child { display: grid; place-items: center; flex-shrink: 0; color: var(--muted); }
-  .wifi-popover { margin-top: 6px; padding: 4px; border: 1px solid var(--line-strong); border-radius: var(--r-box); background: var(--surface); }
-  .wifi-list { display: flex; flex-direction: column; gap: 2px; max-height: min(264px, 40vh); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y pinch-zoom; }
-  .wifi-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; background: none; text-align: left; }
-  .wifi-row > div { min-width: 0; }
-  .wifi-row > span { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); }
-  .wifi-row:hover:not(:disabled) { background: var(--control); }
-  .wifi-row.selected { background: var(--selected); }
-  .wifi-row strong { font-size: var(--text-md); font-weight: 500; overflow-wrap: anywhere; }
-  .wifi-row.selected strong { font-weight: 600; }
-  .wifi-row small { display: block; color: var(--quiet); font-size: var(--text-xs); }
-  .wifi-row.active small { color: var(--ok); }
-  #wifi-connect-panel { margin-top: 4px; padding: 12px 10px 8px; border-top: 1px solid var(--line); }
-  #wifi-selection { margin-bottom: 8px; color: var(--text); overflow-wrap: anywhere; }
-  #wifi-scan-message { margin: 0; padding: 8px 10px; }
-  #wifi-scan-message:empty { display: none; }
-  .network-panel > .text-button { margin-top: 8px; }
-
-  /* Controller slots: two rows. */
-  .controller-cards { display: grid; border-top: 1px solid var(--line); }
-  .controller-card { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; min-height: 60px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; text-align: left; }
-  .controller-card:hover:not(:disabled), .controller-card:active:not(:disabled) { background: none; }
-  .controller-card:last-child { border-bottom: 0; }
-  .controller-card:focus-visible { outline-offset: -2px; }
-  .controller-card > span:nth-child(2) { flex: 1; min-width: 0; }
-  .controller-card strong { display: block; font-size: var(--text-base); font-weight: 500; }
-  .controller-card strong span { color: var(--quiet); font-weight: 400; }
-  .controller-card small { display: block; margin-top: 2px; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
-  .slot-number { flex-shrink: 0; width: 16px; color: var(--quiet); font: 700 22px/1 var(--font-display); text-align: center; }
-  .card-action { flex-shrink: 0; padding: 7px 14px; border-radius: var(--r-ctl); background: var(--control); color: var(--text); font-size: var(--text-md); font-weight: 500; }
-  .controller-card:hover .card-action { background: var(--hover); }
-
-  /* Preferences. */
-  .theme-row .segmented, .segmented.robot-kind, .segmented.input-source { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-  .shortcuts { margin-top: 12px; border-top: 1px solid var(--line); }
-  .shortcuts + .shortcuts { margin-top: 0; }
-  .shortcut-list { margin: 0 0 8px; }
-  .shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 7px 0; border-top: 1px solid var(--line); font-size: var(--text-md); }
-  .shortcut-list dt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--quiet); }
-  .shortcut-list dd { margin: 0; text-align: right; }
-  .credit-list { margin: 0 0 8px; padding: 0; list-style: none; }
-  .credit-list li { padding: 7px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-md); overflow-wrap: anywhere; }
-  .credit-list li b { color: var(--text); }
+  /* Drive with no robot open: your robots on the left, a new one on the right, the controllers underneath. An app theme's
+     picture (docs/THEMES.md) lies behind it, faded under the page's ground so the words stay readable. */
+  #connect-view { position: relative; isolation: isolate; max-width: var(--page-max); min-height: calc(100dvh - var(--bar-height)); margin: 0 auto; padding: 28px var(--page-gutter) 32px; }
+  :root[data-theme-image] #connect-view::before { content: ""; position: fixed; inset: var(--bar-height) 0 0; z-index: -1; background: var(--theme-image) var(--theme-image-position, center) / cover no-repeat; opacity: var(--theme-image-opacity, .3); pointer-events: none; }
+  .connect-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 24px; animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .connect-head h1 { margin: 0 0 6px; font-size: var(--display-lg); line-height: 1.02; }
+  .connect-status { margin: 0; color: var(--muted); font-size: var(--text-base); }
+  .connect-back { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--ok-line); border-radius: var(--r-box); background: var(--ok-bg); }
+  .connect-back p { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-weight: 500; }
+  .connect-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); gap: 0 48px; align-items: start; }
+  .connect-grid > * { min-width: 0; }
+  .connect-main { display: grid; align-content: start; }
+  .connect-grid h2, .connect-pads h2 { margin: 0; font-size: var(--display-sm); }
+  .connect-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--h-lg); margin-bottom: 8px; }
+  .connect-title input { max-width: 220px; }
+  .connect-add { padding-left: 48px; border-left: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) 60ms both; }
+  .connect-add > h2 { min-height: var(--h-lg); display: flex; align-items: center; margin-bottom: 8px; }
+  /* A saved robot is a row: what it is, its name and where it is, and Connect. Rows arrive one after another. */
+  .robot-list { display: grid; }
+  .saved-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; padding: 12px 4px; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background-color var(--dur-1) var(--ease); }
+  .saved-row:last-child { border-bottom: 1px solid var(--line); }
+  .saved-row:hover { background: var(--hover-soft, transparent); }
+  .robot-kind-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: var(--r-box); background: var(--control); color: var(--muted); font: 700 15px/1 var(--font-display); }
+  .robot-kind-mark.ftc { background: var(--accent-soft); color: var(--accent-text); }
+  .saved-name { min-width: 0; }
+  .saved-row strong { display: block; overflow: hidden; font-size: var(--text-lg); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-row small { display: block; margin-top: 3px; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
+  .saved-row.here small { color: var(--muted); }
+  .saved-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; }
+  .saved-actions > :first-child { margin-right: 6px; }
+  .saved-row :is(.edit, .delete) { min-height: var(--h-lg); padding-inline: 8px; color: var(--muted); font-weight: 400; }
+  .saved-row .delete:hover { color: var(--bad); }
+  .saved-row.open { background: var(--ok-bg); }
+  /* No robots yet: what a robot looks like to Torque, and what to do. */
+  .connect-empty { display: flex; align-items: center; gap: 20px; padding: 20px 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .connect-empty-art { flex: none; width: 120px; height: 96px; fill: none; stroke: var(--line-strong); stroke-width: 1.6; stroke-linejoin: round; }
+  .connect-empty-art .wheel { stroke: var(--accent); animation: wheel-turn 3.2s var(--ease) infinite; transform-box: fill-box; transform-origin: center; }
+  .connect-empty-art .wheel:nth-of-type(2), .connect-empty-art .wheel:nth-of-type(3) { animation-delay: .4s; }
+  .connect-empty p { display: grid; gap: 4px; margin: 0; }
+  .connect-empty b { font-size: var(--text-lg); }
+  .connect-empty span { color: var(--muted); }
+  /* The controllers: each one's name and its sticks, which move as you move them. */
+  .connect-pads { margin-top: 32px; animation: rise-in var(--dur-3) var(--ease-out) 120ms both; }
+  .connect-pads h2 { margin-bottom: 12px; }
+  .pad-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .pad-tile { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 76px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); color: var(--text); text-align: left; font-weight: 400; }
+  .pad-tile:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface); }
+  .pad-tile .pad-icon { width: 28px; height: 28px; }
+  .pad-tile.live { border-color: var(--ok-line); }
+  .pad-tile.live .pad-icon { color: var(--ok); }
+  .pad-num { color: var(--text); font: 700 24px/1 var(--font-display); }
+  .pad-text { min-width: 0; }
+  .pad-text b { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .pad-text small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-sm); }
+  .pad-tile.live .pad-text small { color: var(--ok); }
+  .pad-sticks { display: flex; gap: 8px; }
+  .stick { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 1.5px solid var(--line-strong); border-radius: 50%; }
+  .stick b { width: 10px; height: 10px; border-radius: 50%; background: var(--quiet); transition: transform 80ms linear, background-color var(--dur-2) var(--ease); }
+  .pad-tile.live .stick b { background: var(--accent); }
+  .connect-note { margin: 16px 0 0; }
 
   /* The robot to open. */
   #robot-form > :first-child { margin-top: 0; }
-  .segmented.robot-kind { margin-bottom: 8px; }
+  .segmented.robot-kind { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-bottom: 8px; }
   .network-binding { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 0; color: var(--quiet); font-size: var(--text-sm); }
   .network-binding > :first-child { flex-shrink: 0; }
   .network-binding strong { color: var(--text); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
@@ -187,19 +197,72 @@
   .robot-discovery h3 { margin: 0 0 4px; }
   #discovery-results { display: grid; gap: 8px; }
   #discovery-results:not(:empty) { margin-top: 12px; }
-  #discovery-results button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  #discovery-results button { text-align: left; white-space: normal; overflow-wrap: anywhere; animation: rise-in var(--dur-3) var(--ease-out) both; }
+  :is(.connect-add, dialog) :is(h1, h2, h3, p, .network-binding, .hint, summary) { overflow-wrap: anywhere; }
 
-  /* Saved robots: a list. Open is the action; Edit and Delete stay quiet until wanted. */
-  .library-panel .panel-title { align-items: center; justify-content: space-between; }
-  .library-panel .panel-title input { max-width: 240px; }
-  .saved-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; min-width: 0; padding: 8px 0; border-top: 1px solid var(--line); }
-  .saved-row > div { min-width: 0; }
-  .saved-row strong { display: block; overflow: hidden; font-size: var(--text-base); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-  .saved-row small { display: block; margin-top: 2px; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
-  .saved-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-  .saved-row :is(.edit, .delete) { background: none; color: var(--muted); font-weight: 400; }
-  .saved-row .edit:hover { background: var(--control); color: var(--text); }
-  .saved-row .delete:hover { background: var(--bad-bg); color: var(--bad); }
+  /* ---- Settings: Torque's own settings, one column of groups. Each group is a title, a line, then what it sets. ---- */
+  #settings-view { max-width: 920px; margin: 0 auto; padding: 24px var(--page-gutter) 48px; }
+  .settings-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .settings-heading > div { min-width: 0; }
+  .settings-heading h1 { margin: 0; font-size: var(--display-lg); line-height: 1; }
+  .version { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
+  .settings-sheet { display: grid; }
+  /* Settings fits the window as the other views do: the heading stays and the groups scroll under it. A short or narrow
+     window scrolls as one page. */
+  @media (min-width: 861px) and (min-height: 560px) {
+    #settings-view:not([hidden]) { display: flex; flex-direction: column; height: calc(100dvh - var(--bar-height)); padding-bottom: 0; overflow: clip; }
+    #settings-view > .settings-heading { flex: none; }
+    #settings-view > .settings-sheet { flex: 1; min-height: 0; align-content: start; margin-right: calc(-1 * var(--page-gutter)); padding: 0 var(--page-gutter) 40px 0; overflow-y: auto; overscroll-behavior: contain; }
+  }
+  .settings-group { padding: 22px 0 24px; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .settings-group:nth-child(2) { animation-delay: 40ms; } .settings-group:nth-child(3) { animation-delay: 80ms; } .settings-group:nth-child(n+4) { animation-delay: 120ms; }
+  .settings-group:last-child { border-bottom: 0; }
+  .settings-group > h2, .settings-group-head h2 { margin: 0; font-size: var(--display-sm); }
+  .settings-group > h2 { margin-bottom: 12px; }
+  .settings-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+  .settings-group-head > div { min-width: 0; }
+  .settings-group-head p { max-width: 64ch; margin: 4px 0 0; color: var(--muted); font-size: var(--text-md); }
+  .settings-group-head .text-button { flex-shrink: 0; }
+  .setting-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .setting-row .setting-label { margin: 0; }
+  .setting-row .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); min-width: 280px; }
+  .about-version { margin: 0 0 12px; color: var(--muted); }
+  #theme-import-status:empty { display: none; }
+  /* A theme is a small window in its own colours: its ground, a line of text and its accent. Picking one rings it. */
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+  .theme-card { display: grid; gap: 8px; align-content: start; min-height: 0; padding: 6px 6px 8px; border: 1px solid var(--line); border-radius: var(--r-box); background: none; color: var(--text); text-align: left; font-weight: 500; }
+  .theme-card:hover:not(:disabled) { border-color: var(--line-strong); background: none; }
+  .theme-card[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .theme-preview { position: relative; display: block; height: 64px; overflow: hidden; border-radius: var(--r-ctl); background: var(--p-image, none) center / cover, var(--p-bg); box-shadow: inset 0 0 0 1px #ffffff14; }
+  .theme-preview > i { position: absolute; display: block; border-radius: 2px; }
+  .theme-preview .p-bar { inset: 0 0 auto; height: 12px; background: var(--p-surface); }
+  .theme-preview .p-line { top: 22px; left: 10px; width: 56%; height: 5px; background: var(--p-text); opacity: .85; }
+  .theme-preview .p-line.short { top: 32px; width: 34%; opacity: .45; }
+  .theme-preview .p-button { right: 10px; bottom: 9px; width: 34px; height: 12px; border-radius: 3px; background: var(--p-accent); }
+  .theme-card[aria-checked=true] .p-button { animation: breathe 2.4s var(--ease) infinite; }
+  .theme-name { padding: 0 4px; font-size: var(--text-md); }
+  .theme-from { padding: 0 4px; color: var(--quiet); font-size: var(--text-xs); }
+  .robot-themes { display: grid; margin-top: 18px; }
+  .robot-themes h3 { margin: 0 0 6px; color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
+  .robot-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 8px 0; border-top: 1px solid var(--line); }
+  .robot-theme-row > span { min-width: 0; }
+  .robot-theme-row b { display: block; font-weight: 500; overflow-wrap: anywhere; }
+  .robot-theme-row small { color: var(--quiet); font-size: var(--text-sm); }
+  .robot-theme-row select { width: auto; min-width: 200px; }
+  .imported-list { display: grid; margin-top: 12px; }
+  .imported-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .imported-row > div { min-width: 0; }
+  .imported-row b { display: block; font-weight: 500; }
+  .imported-row small { color: var(--quiet); font-size: var(--text-sm); }
+  .shortcut-list { margin: 0 0 8px; }
+  .shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid var(--line); font-size: var(--text-md); }
+  .shortcut-list dt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--quiet); }
+  .shortcut-list dd { margin: 0; text-align: right; }
+  .credit-list { margin: 0 0 8px; padding: 0; list-style: none; }
+  .credit-list li { padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-md); overflow-wrap: anywhere; }
+  .credit-list li b { color: var(--text); }
+  .info-dialog { width: min(640px, calc(100vw - 32px)); }
+  .info-dialog .button-row { justify-content: flex-end; margin-top: 16px; }
 
   /* ---- Dialogs ---------------------------------------------------------------------------------------------------- */
   .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -291,9 +354,9 @@
   @media (max-width: 860px) {
     .controller small { display: none; }
     .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
-    .settings-grid { grid-template-columns: minmax(0, 1fr); }
-    .setup-left { padding-right: 0; }
-    .setup-right { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+    .connect-grid { grid-template-columns: minmax(0, 1fr); }
+    .connect-add { margin-top: 24px; padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+    .pad-tiles { grid-template-columns: minmax(0, 1fr); }
     .browser-toolbar { flex-wrap: wrap; gap: 4px 8px; padding: 4px 8px; }
     .url-display { order: -1; flex: 1 0 100%; min-height: 28px; }
     .browser-actions { margin-right: auto; }
@@ -318,14 +381,25 @@
     .tab.active::before { inset-inline: 10px; }
     button.controller { gap: 4px; padding: 0 4px; }
     header > .menu { right: 4px; }
-    .welcome { padding-inline: 16px; }
-    .welcome h1 { font-size: var(--display-md); }
+    #connect-view { padding: 20px 16px 32px; }
+    .connect-head h1 { font-size: var(--display-md); }
+    .connect-back { width: 100%; }
     #settings-view { padding: 16px 16px 32px; }
+    .settings-group-head { flex-direction: column; }
+    .setting-row .segmented { min-width: 0; width: 100%; }
+    .robot-theme-row { flex-direction: column; align-items: stretch; }
+    .robot-theme-row select { min-width: 0; width: 100%; }
+    .pad-tile { grid-template-columns: auto auto minmax(0, 1fr); }
+    .pad-sticks { display: none; }
     .settings-heading { flex-wrap: wrap; gap: 8px; }
     .settings-heading h1 { font-size: var(--display-md); }
-    .library-panel .panel-title { flex-direction: column; align-items: stretch; }
-    .library-panel .panel-title input { max-width: none; }
-    .saved-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .connect-title { flex-wrap: wrap; }
+    .connect-title input { max-width: none; }
+    .saved-row { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; }
+    .saved-actions { grid-column: 1 / -1; justify-content: flex-start; }
+    .connect-empty { flex-direction: column; align-items: flex-start; }
+    .wifi-popover { position: fixed; top: calc(var(--bar-height) + 4px); right: 8px; left: 8px; width: auto; }
+    .menu-sub { right: 0; left: auto; top: calc(100% + 4px); width: min(300px, calc(100vw - 24px)); }
     #drive-view > footer > #device { display: none; }
     #drive-view > footer > span { max-width: 100%; }
     .dialog-actions > button { flex: 1 1 140px; }
@@ -346,7 +420,7 @@
     .tab .ui-icon { display: block; width: 20px; height: 20px; }
     .tab.active::before { inset-inline: 8px; }
     .header-right { gap: 0; }
-    /* Report a bug stays in the menu; its shortcut gives its place to the tabs. */
-    #bug-quick { display: none; }
+    /* The theme button gives its place to the tabs (Settings has the themes); Report a bug keeps its own. */
+    #theme-cycle { display: none; }
   }
 }

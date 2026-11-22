@@ -62,7 +62,7 @@ Local-network access may require macOS's normal permission prompt.
 
 ## Daily workflow
 
-**⋮ → Settings → Wi-Fi → robot address → Open robot.** Enter an IP such as
+**Wi-Fi button in the bar → Drive → Add a robot → robot address → Open robot.** Enter an IP such as
 `192.168.4.1`, a hostname such as `pushbot.local`, or a full URL including a port
 or path. No robot protocol or type is selected: an FTC Control Hub (usually
 `192.168.43.1`) is recognized and opens the [FTC Driver Station](FTC.md); any other

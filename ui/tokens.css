@@ -2,13 +2,15 @@
    Program & Manage keep their own styles.
 
    The rules the tokens stand for:
-   1. Ink does the work. Structure is type, space and hairlines. Colour is kept for the robot's state (green live,
-      amber look here, red stop) and for the two alliances on a field. The main action is solid ink, not a hue.
+   1. Ink and one accent. Structure is type, space and hairlines. The theme's accent (ui/themes.js) marks the main
+      action, where you are and what is picked; other colour is the robot's state (green live, amber look here, red
+      stop) and the two alliances on a field.
    2. One level of boxes. A surface holds rows; nothing boxed sits inside another box.
    3. Shape follows the job: 2 marks, 4 tags and keys, 6 controls, 10 surfaces, 14 what floats. Only round things
       are round (a dot, a knob, STOP).
    4. Inter reads; Barlow Condensed is for readings (numbers that matter) and titles. Sentence case, no tracked capitals.
-   5. Motion explains a press or an opening, 100 to 180 ms, easing out. Nothing bounces.
+   5. Motion explains: a press (100 ms), something opening (180 ms), a page arriving (260 ms), all easing out; a list
+      arrives a row at a time. What is live may breathe. Nothing bounces, and reduced motion turns it all off.
    6. Say a thing once. No subtitle that repeats its heading, no arrows on buttons. */
 @font-face{font-family:Inter;font-style:normal;font-weight:300 700;font-display:swap;src:url('fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
@@ -36,22 +38,24 @@
   --muted: #acb3af;
   --quiet: #8d9490;
   --placeholder: #8d9490;
-  /* Ink: the main action and what is picked. The accent names stay for the screens that still ask for them. */
+  /* Ink: strong text and lines. The accent: the main action, where you are and what is picked. These are the default
+     theme's, Torque's green; another theme (ui/themes.js) replaces them and the neutrals above. */
   --ink: #ebf0ed;
   --ink-hover: #fafcfb;
   --ink-active: #cdd3cf;
   --on-ink: #0c0f0d;
-  --accent: var(--ink);
-  --accent-text: var(--text);
-  --accent-bg: #232825;
-  --accent-hover: var(--ink-hover);
-  --accent-active: var(--ink-active);
-  --accent-fill: var(--ink);
-  --on-accent: var(--on-ink);
+  --accent: #31d78c;
+  --accent-text: #31d78c;
+  --accent-soft: #122f21;
+  --accent-bg: var(--accent-soft);
+  --accent-hover: #45e498;
+  --accent-active: #05c77d;
+  --accent-fill: var(--accent);
+  --on-accent: #0c0f0d;
   --selected: #232825;
   --thumb: #ebf0ed;
   --track: #343a36;
-  --ring: #ebf0ed66;
+  --ring: #31d78c80;
   --bar: var(--bg);
   --card-shadow: none;
   /* State. Each has the word's colour, a quiet ground for a strip of it, the ground's edge, and a solid fill. */
@@ -152,6 +156,10 @@
   --dur-slow: 180ms;
   --dur-press: 100ms;
   --dur-step: 180ms;
+  --dur-1: 100ms;
+  --dur-2: 180ms;
+  --dur-3: 260ms;
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
   --press-scale: 1;
   --press-opacity: 1;
   --disabled-opacity: .45;
@@ -172,7 +180,8 @@
   --line: #d9dedb; --line-strong: #b9c0bc; --field: #808884; --input-hover: #59605b;
   --text: #141a16; --muted: #4a524d; --quiet: #59605b; --placeholder: #59605b;
   --ink: #141a16; --ink-hover: #28302b; --ink-active: #060a08; --on-ink: #fbfdfc;
-  --accent-bg: #dde3df; --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #141a1659;
+  --accent: #037f4e; --accent-text: #037f4e; --accent-soft: #d5e7df; --accent-bg: #d5e7df; --accent-hover: #007040; --accent-active: #006435; --on-accent: #fff;
+    --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #037f4e66;
   --ok: #006d42; --ok-bg: #def8e7; --ok-line: #b1dec2; --ok-fill: #007e4c;
   --warn: #8d5400; --warn-bg: #ffeed3; --warn-line: #eecb95; --warn-fill: #d78c00;
   --bad: #b51f1f; --bad-bg: #ffe9e6; --bad-line: #fcc0ba; --bad-fill: #d72828;
@@ -190,7 +199,8 @@
     --line: #d9dedb; --line-strong: #b9c0bc; --field: #808884; --input-hover: #59605b;
     --text: #141a16; --muted: #4a524d; --quiet: #59605b; --placeholder: #59605b;
     --ink: #141a16; --ink-hover: #28302b; --ink-active: #060a08; --on-ink: #fbfdfc;
-    --accent-bg: #dde3df; --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #141a1659;
+    --accent: #037f4e; --accent-text: #037f4e; --accent-soft: #d5e7df; --accent-bg: #d5e7df; --accent-hover: #007040; --accent-active: #006435; --on-accent: #fff;
+    --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #037f4e66;
     --ok: #006d42; --ok-bg: #def8e7; --ok-line: #b1dec2; --ok-fill: #007e4c;
     --warn: #8d5400; --warn-bg: #ffeed3; --warn-line: #eecb95; --warn-fill: #d78c00;
     --bad: #b51f1f; --bad-bg: #ffe9e6; --bad-line: #fcc0ba; --bad-fill: #d72828;
@@ -209,3 +219,19 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Motion the screens share (rule 5). Transform and opacity only, so it costs no layout. */
+@keyframes rise-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes pop-in { from { opacity: 0; scale: .97; translate: 0 -4px; } }
+@keyframes rule-in { from { scale: 0 1; } }
+/* A rail's mark is its bottom border: it arrives as a colour, from the line's own. */
+@keyframes rail-in { from { border-bottom-color: transparent; } }
+@keyframes breathe { 50% { opacity: .55; } }
+@keyframes ring-out { from { opacity: .7; scale: 1; } to { opacity: 0; scale: 2.6; } }
+@keyframes wheel-turn { 0%, 70% { rotate: 0deg; } 85% { rotate: -4deg; } 100% { rotate: 0deg; } }
+@keyframes view-in { from { opacity: 0; } }
+@keyframes toast-in { from { opacity: 0; translate: -50% 8px; } }
+
+/* Settings → Text: the computer's own face instead of Inter. Barlow Condensed stays for titles and readings. */
+:root[data-font=system] { --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto, sans-serif; }

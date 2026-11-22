@@ -1,0 +1,12 @@
+{
+  "format": "torque-theme",
+  "version": 1,
+  "name": "Field Day",
+  "for": "app",
+  "author": "Torque",
+  "colours": {
+    "dark":  { "accent": "#7ee081", "background": "#0d110d", "text": "#eef4ec" },
+    "light": { "accent": "#2e7d32", "background": "#f4f7f2", "text": "#152015" }
+  },
+  "background": { "image": "background.jpg", "position": "center", "opacity": 0.12 }
+}

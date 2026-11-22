@@ -59,8 +59,8 @@ function check(){
         for(const c of r.cut)problems.push(`${W}×${H} ${label}: ${c}`);
         if(W===1280&&H===718)await page.screenshot({path:path.join(out,`${label.replace(/[^a-z]+/gi,'-').toLowerCase()}.png`)});}}
     assert.deepEqual(problems,[],'every screen fits the window');
-    // Settings at a laptop's size: Open robot shows without scrolling anything.
-    await page.setViewportSize({width:1280,height:718});await go('settings');const open=await page.locator('#open-robot').boundingBox();assert.ok(open&&open.y>=0&&open.y+open.height<=718,'Open robot is in view');
+    // Drive at a laptop's size: Open robot shows without scrolling anything.
+    await page.setViewportSize({width:1280,height:718});await go('drive');await page.evaluate(()=>scrollTo(0,0));const open=await page.locator('#open-robot').boundingBox();assert.ok(open&&open.y>=0&&open.y+open.height<=718,'Open robot is in view');
     // Calibrate keeps the robot bar and its steps where they are while a list scrolls.
     await go('calibrate');await click('#cal-tab-electronics');const bar=async()=>(await page.locator('#calibrate-view .cal-flow').boundingBox()).y,y0=await bar();
     await page.evaluate(()=>{const l=document.querySelector('#cal-links .cal-elec-list');l.scrollTop=l.scrollHeight;document.querySelector('#cal-links [data-elec-pick]:last-of-type')?.scrollIntoView({block:'start'});});assert.equal(await bar(),y0,'the steps stay put');

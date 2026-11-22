@@ -24,15 +24,15 @@ const pad=(id,index,y=0)=>({id,index,connected:true,mapping:'standard',axes:[0,y
   // Refresh the fixture SSID explicitly so the current network is always the
   // 25th entry, independent of process startup timing or the runner's Wi-Fi.
   await page.evaluate(()=>window.deck.network());await page.waitForFunction(()=>wifi.ssid==='Touch test network (simulated)'&&scanPromise===null);
-  await tap(page,page.locator('#more'));await tap(page,page.locator('#menu-settings'));await page.waitForFunction(()=>state.page==='settings');
+  await tap(page,page.locator('#more'));await tap(page,page.locator('#menu-library'));await page.waitForFunction(()=>state.page==='drive'&&!document.querySelector('#connect-view').hidden);
   console.log('Touch check: Settings opened with a real touch event.');
   // The on-screen keyboard is off by default; switch it on as the three-dot menu does.
   await page.evaluate(()=>{const on=document.querySelector('#touch-keyboard-auto');if(!on.checked)document.querySelector('#menu-keyboard').click();});
   const undersized=await page.evaluate(()=>[...document.querySelectorAll('button,input:not([type=checkbox]),select,summary')].filter(e=>e.getClientRects().length&&!e.disabled).map(e=>({id:e.id||e.textContent.trim().slice(0,20),rect:e.getBoundingClientRect()})).filter(e=>e.rect.height<43.5||e.rect.width<43.5).map(e=>e.id));assert.deepEqual(undersized,[],'small touch targets');
-  await tap(page,page.locator('#wifi-picker'));await page.waitForFunction(()=>document.querySelectorAll('.wifi-row').length===25);
+  await tap(page,page.locator('#network-chip'));await page.waitForFunction(()=>document.querySelectorAll('.wifi-row').length===25);
   const box=await page.locator('#wifi-list').boundingBox(),session=await cdp(page),x=box.x+box.width/2,from=box.y+box.height-30,to=box.y+30;
   await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y:from}]});for(let step=1;step<=8;step++)await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:from+(to-from)*step/8}]});await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForFunction(()=>document.querySelector('#wifi-list').scrollTop>0);
-  await tap(page,page.locator('#wifi-picker'));
+  await tap(page,page.locator('#network-chip'));
   console.log('Touch check: Wi-Fi list swiped.');
   await tap(page,page.locator('#robot-url'));await page.waitForFunction(()=>document.querySelector('#touch-keyboard')?.matches(':popover-open'));
   const url=`http://127.0.0.2:${server.address().port}/`;await type(page,url);assert.equal(await page.locator('#robot-url').inputValue(),url);
@@ -42,7 +42,7 @@ const pad=(id,index,y=0)=>({id,index,connected:true,mapping:'standard',axes:[0,y
   await page.screenshot({path:path.join(out,'settings-touch-keyboard.png'),scale:'css'});await key(page,'Done');
   console.log('Touch check: address entered with on-screen keys.');
   await session.send('Emulation.setTouchEmulationEnabled',{enabled:false});await page.locator('#robot-name').click();await page.waitForFunction(()=>document.querySelector('#touch-keyboard').matches(':popover-open'));await page.locator('#touch-keyboard').getByRole('button',{name:'Done',exact:true}).click();await session.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
-  await tap(page,page.locator('#wifi-picker'));await tap(page,page.locator('.wifi-row').filter({hasText:'Simulated network 12'}));await tap(page,page.locator('#join-network'));await page.locator('#wifi-dialog').waitFor({state:'visible'});
+  await tap(page,page.locator('#network-chip'));await tap(page,page.locator('.wifi-row').filter({hasText:'Simulated network 12'}));await tap(page,page.locator('#join-network'));await page.locator('#wifi-dialog').waitFor({state:'visible'});
   await tap(page,page.locator('#wifi-password'));await key(page,'a');await key(page,'Shift');await key(page,'B');await key(page,'Lowercase');await key(page,'Symbols');await key(page,'!');await key(page,'ABC');await key(page,'3');assert.equal(await page.locator('#wifi-password').inputValue(),'aB!3');assert.equal(await page.locator('#wifi-password').getAttribute('type'),'password');
   const password=await page.locator('#wifi-password').boundingBox(),modalKeys=await page.locator('#touch-keyboard').boundingBox();assert.ok(password.y+password.height<=modalKeys.y,'keyboard covers modal password field');await page.screenshot({path:path.join(out,'wifi-password-touch-keyboard.png'),scale:'css'});await key(page,'Done');await tap(page,page.locator('#wifi-cancel'));
   await tap(page,page.locator('#open-robot'));await page.waitForFunction(()=>state.url&&!state.loading&&state.page==='drive');
@@ -73,5 +73,5 @@ const pad=(id,index,y=0)=>({id,index,connected:true,mapping:'standard',axes:[0,y
   await tap(page,page.locator('#auth-username'));await type(page,'driver');await key(page,'Done');await tap(page,page.locator('#auth-password'));await type(page,'secret');await key(page,'Done');await tap(page,page.locator('#auth-form button[type=submit]'));await page.locator('#auth-dialog').waitFor({state:'hidden'});
   await page.evaluate(()=>window.deck.close());assert.deepEqual(errors,[]);
   console.log('PASS: real touch taps/swipes, 44px targets, touch-only URL entry/editing, Wi-Fi and robot passwords, Shift/Symbols/caret keys/Enter, HTTP authentication handoff, touch menu/diagnostics/fullscreen, neutral robot inputs while typing, built-in C1/external C2 detection with no dashboard gamepad enumeration. Physical touch panels/OS emulation remain device checks.');
- }catch(error){console.error('Touch failure:',error.message);if(page){console.error('Fixture state:',JSON.stringify(await page.evaluate(()=>({page:state.page,ssid:wifi.ssid,rows:document.querySelectorAll('.wifi-row').length,picker:document.querySelector('#wifi-picker').getAttribute('aria-expanded')})).catch(()=>null)));await page.screenshot({path:path.join(out,'failure.png'),scale:'css'}).catch(()=>{});}throw error;}finally{await app.close();wm?.kill();server.closeAllConnections();await new Promise(r=>server.close(r));}
+ }catch(error){console.error('Touch failure:',error.message);if(page){console.error('Fixture state:',JSON.stringify(await page.evaluate(()=>({page:state.page,ssid:wifi.ssid,rows:document.querySelectorAll('.wifi-row').length,picker:document.querySelector('#network-chip').getAttribute('aria-expanded')})).catch(()=>null)));await page.screenshot({path:path.join(out,'failure.png'),scale:'css'}).catch(()=>{});}throw error;}finally{await app.close();wm?.kill();server.closeAllConnections();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

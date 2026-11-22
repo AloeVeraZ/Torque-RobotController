@@ -82,7 +82,9 @@ test('saved robots survive going back to V2 and forward again, fields V2 never k
 test('every file and setting V2 saves is still read by this version',()=>{
   // V2's saved names, from V2's own source. Renaming one would lose that data for everyone coming from V2.
   const V2_NAMES=['robots.json','update-settings.json','release-cache.json','controller-settings.json','input-source.json','controller-calibration.json','robot-zoom.json','wiring-notes.json','configuration-notes.json','axon-keys.json','Torque Axon keys.json','axon-firmware','robot-backups',
-    'deck-simulation-project-v2','deck-simulation-project-v1','deck-simulation-start-v1','deck-ds-settings','deck-theme','deck-keep-awake','deck-virtual-keyboard','torque-competition','torque-camera','torque-debug-devices'];
+    'deck-simulation-project-v2','deck-simulation-project-v1','deck-simulation-start-v1','deck-ds-settings','deck-theme','deck-keep-awake','deck-virtual-keyboard','torque-camera','torque-debug-devices'];
+  // Not read on purpose: torque-competition, Competition mode's switch. The mode is gone (docs/COMPETITION-RULES.md), so a
+  // computer that had it on drives as any other; V2, if someone goes back to it, still finds the value where it left it.
   const sources=[...['src','ui','ui/ftc'].flatMap(d=>fs.readdirSync(path.join(root,d)).filter(f=>/\.(c?js|html)$/.test(f)).map(f=>path.join(root,d,f)))].map(f=>fs.readFileSync(f,'utf8')).join('\n');
   for(const name of V2_NAMES)assert.ok(sources.includes(name),`${name} is still read`);
 });

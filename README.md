@@ -43,7 +43,7 @@ Connect to your robot and drive it.
 - **Gamepads:** Xbox, PlayStation, Nintendo, Logitech and Steam Deck controls. A live test screen shows every stick and button, and measures stick drift.
 - **Touch friendly:** every screen works by touch, with an optional on-screen keyboard.
 
-**To connect:** open **⋮ → Settings**, join the robot's Wi-Fi, enter its address and press **Open robot**.
+**To connect:** join the robot's Wi-Fi with the Wi-Fi button in the bar, then on **Drive** enter its address under **Add a robot** and press **Open robot**. Next time it is one tap under **Your robots**.
 
 ![The controller test screen showing every stick and button](docs/media/controller-test.jpg)
 
@@ -93,7 +93,11 @@ Tune your robot step by step using real readings from your Control Hub.
 
 ![Live debug listing each motor, servo and sensor on the Control Hub](docs/media/calibrate-live.jpg)
 
-[Full calibration guide](docs/CALIBRATION.md) · [FTC rules and Competition mode](docs/COMPETITION-RULES.md)
+[Full calibration guide](docs/CALIBRATION.md) · [Torque and the FTC rules](docs/COMPETITION-RULES.md)
+
+## Make it yours
+
+Pick a theme for Torque and another for the FTC Driver Station in **⋮ → Settings**, and give each robot its own, the way teams colour their Driver Hubs. You can make your own themes with your colours, a background picture and your team's logo, and import them; they stay on your computer. [How to make a theme](docs/THEMES.md)
 
 ## Updating
 

@@ -28,7 +28,7 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
     const dialog=document.querySelector('dialog[open]'),scope=dialog||document;
     if(document.documentElement.scrollWidth>document.documentElement.clientWidth+1)problems.push('document horizontal overflow');
     if(dialog&&(dialog.scrollWidth>dialog.clientWidth+1||rect(dialog).left<0||rect(dialog).right>innerWidth+1))problems.push('dialog horizontal overflow');
-    const groups=dialog?['.dialog-heading','.controller-identity','.controller-tabs','.controller-test-grid','.axis-readings','.stick-plots','.calibration-plots','.update-channels','.button-row','.dialog-actions']:['header','nav','.header-right','.browser-toolbar','.browser-actions','.panel-title','.settings-heading','.network-binding','.controller-card','.robot-card-head','.robot-card-actions','.saved-row','.saved-actions','.button-row','.wifi-row'];
+    const groups=dialog?['.dialog-heading','.controller-identity','.controller-tabs','.controller-test-grid','.axis-readings','.stick-plots','.calibration-plots','.update-channels','.button-row','.dialog-actions']:['header','nav','.header-right','.browser-toolbar','.browser-actions','.settings-group-head','.settings-heading','.network-binding','.pad-tile','.connect-title','.connect-head','.robot-card-head','.robot-card-actions','.saved-row','.saved-actions','.button-row','.wifi-row'];
     for(const selector of groups)for(const group of scope.querySelectorAll(selector)){
      const children=[...group.children].filter(e=>visible(e)&&getComputedStyle(e).position!=='absolute');
      for(let i=0;i<children.length;i++)for(let j=i+1;j<children.length;j++)if(cross(rect(children[i]),rect(children[j])))problems.push(selector+' children overlap: '+(children[i].id||children[i].className)+' / '+(children[j].id||children[j].className));
@@ -56,10 +56,10 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
   for(const [width,height,zoom]of layouts){
    const name=`${width}x${height}@${zoom}`;await win.evaluate((w,s)=>{w.setMinimumSize(0,0);w.setContentSize(s.width,s.height);w.webContents.setZoomFactor(s.zoom);},{width,height,zoom});
    await page.evaluate(()=>document.fonts.ready.then(()=>undefined));
-   await page.evaluate(()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();setMenu(false);render({...state,page:'settings',url:'',robot:null,error:'',loading:false,robotFullscreen:false});});await inspect(name,'Settings / saved robots / long names');
+   await page.evaluate(()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();setMenu(false);render({...state,page:'drive',url:'',robot:null,error:'',loading:false,robotFullscreen:false});});await inspect(name,'Drive / saved robots / long names');
    await page.evaluate(()=>{document.querySelector('#library-search').value='no matching robot';renderLibrary(true);});await inspect(name,'Settings / empty search');await page.evaluate(()=>{document.querySelector('#library-search').value='';renderLibrary(true);});
    await tap('#robot-url');await page.waitForFunction(()=>document.body.dataset.touchKeyboard==='open');await inspect(name,'Settings / touch keyboard');await page.locator('.touch-keyboard-title button').click();
-   await page.locator('#wifi-picker').click();await page.locator('.wifi-row').first().waitFor();await inspect(name,'Wi-Fi / long SSIDs');await page.keyboard.press('Escape');
+   await page.locator('#network-chip').click();await page.locator('.wifi-row').first().waitFor();await inspect(name,'Wi-Fi / long SSIDs');await page.keyboard.press('Escape');
    await page.evaluate(()=>{render({...state,page:'drive',url:'',robot:null,error:'',loading:false});});await inspect(name,'Drive / welcome / saved shortcuts');
    await page.evaluate(url=>render({...state,page:'drive',url,title:'Loading',loading:true,error:'',kind:'web'}),longUrl);await inspect(name,'Drive / loading / long URL');
    await page.evaluate(url=>render({...state,page:'drive',url,title:'Connection paused',loading:false,error:'Wi-Fi disconnected. Your robot address is saved. Reconnect Wi-Fi, then choose Try again. '+url,recovering:true,kind:'ftc',manager:true,robot:{name:'Fixture',id:'fixture'}}),longUrl);await inspect(name,'Drive / recovery / all toolbar actions');

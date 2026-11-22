@@ -313,17 +313,22 @@ async function openManager(){
 ipcMain.on('ftc-send',(e,bytes)=>{if(robotView&&e.sender===robotView.webContents&&bridge instanceof FtcSocket&&bytes instanceof Uint8Array)bridge.send(bytes);});
 ipcMain.handle('ftc-info',e=>{if(!robotView||e.sender!==robotView.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC robot is open.');
   const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;const open=dsOpenPage;dsOpenPage=null;
-  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,fullscreen:!!state.robotFullscreen};});
+  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,look:stationLook,fullscreen:!!state.robotFullscreen};});
 // The Driver Station's own bar closes the robot and goes fullscreen, and it follows the app's colour theme.
 ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;if(bridge instanceof UsbFtcSocket)auto.usbDismissed='pending';await closeRobot();return true;});
 ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(true);return true;});
 ipcMain.on('app-theme',(e,theme)=>{if(e.sender!==win?.webContents||!['system','light','dark'].includes(theme))return;appTheme=theme;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-theme',theme);}catch{}});
+// The Driver Station's theme (docs/THEMES.md): the app works out which one this robot has and sends it here; the Driver
+// Station's own Settings can pick another for this robot, which goes back to the app to keep.
+let stationLook=null;
+ipcMain.on('station-look',(e,look)=>{if(e.sender!==win?.webContents||!look||typeof look!=='object'||JSON.stringify(look).length>40e6)return;stationLook=look;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-look',look);}catch{}});
+ipcMain.handle('ftc-station-theme',(e,id)=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');if(typeof id!=='string'||id.length>80)throw Error('Unknown theme.');emit('station-theme',{robot:active?.id||null,id});return true;});
 // A configuration saved or picked in the Driver Station's Configure Robot goes to Setup, Simulate and Calibrate.
 ipcMain.on('ftc-use-configuration',(e,c)=>{if(robotView&&e.sender===robotView.webContents&&typeof c?.xml==='string'&&c.xml.length<200000&&typeof c.name==='string')emit('robot-config',{name:c.name,xml:c.xml});});
 ipcMain.handle('ftc-controller-capture',(e,slot)=>{if(e.sender!==robotView?.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC driver station is open.');return captureController(slot);});
 ipcMain.handle('ftc-manage',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');return openManager();});
 // The Driver Station's Settings > Pair with Robot Controller: Deck's Settings, with the robot kept connected.
-ipcMain.handle('ftc-settings',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setPage('settings');return true;});
+ipcMain.handle('ftc-settings',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setPage('connect');return true;});
 // Configure Robot's product photos (read from the makers' listings while online and kept here) and saving a pinout.
 const fromDs=e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');};
 handle('device-photo',tag=>photos().photo(String(tag||'')));
@@ -385,7 +390,7 @@ let competition=false;
 const COMPETITION_WIFI='Competition mode is on, and FTC rule R704 allows streaming over Wi-Fi only through the FTC Driver Station app. Use the USB-C cable, or turn Competition mode off in the three-dot menu once you are away from the event.';
 async function driveAgain(){const robot=driveRobot;driveRobot=null;try{await debugStop();if(robotCheck){robotCheck.stop();await Promise.race([robotCheck.ended?.catch(()=>{}),delay(5000)]);}if(state.page==='drive'&&!robotView&&!opening)await openRobot(robot);}catch(e){emit('notice',e.message);}}
 async function setPage(page){
-  if(!['drive','setup','settings','simulation','calibrate'].includes(page))throw Error('Unknown app view.');
+  if(!['drive','connect','setup','settings','simulation','calibrate'].includes(page))throw Error('Unknown app view.');
   pageEpoch++;releaseKeys();
   if(page!=='drive'){robotKeyboard?.hide({focus:false});await setRobotFullscreen(false);}
   update({page});fitView();
@@ -399,6 +404,17 @@ async function setPage(page){
   return snapshot();
 }
 handle('page',setPage);
+// Imported themes (docs/THEMES.md), kept on this computer in the app's data folder, one JSON file each.
+const themeDir=()=>path.join(app.getPath('userData'),'themes'),themeFile=id=>{if(typeof id!=='string'||!/^custom-[a-z0-9-]{1,40}$/.test(id))throw Error('Unknown theme.');return path.join(themeDir(),id+'.json');};
+handle('themes',async(action,data)=>{
+  if(action==='list'){let names=[];try{names=fs.readdirSync(themeDir()).filter(n=>/^custom-[a-z0-9-]{1,40}\.json$/.test(n));}catch{return [];}
+    return names.map(n=>{try{return JSON.parse(fs.readFileSync(path.join(themeDir(),n),'utf8'));}catch{return null;}}).filter(Boolean);}
+  if(action==='save'){const file=themeFile(data?.id),text=JSON.stringify(data);if(text.length>30e6)throw Error('This theme is larger than 30 MB.');fs.mkdirSync(themeDir(),{recursive:true});fs.writeFileSync(file+'.tmp',text);fs.renameSync(file+'.tmp',file);return true;}
+  if(action==='remove'){const file=themeFile(data);fs.rmSync(file,{force:true});return true;}
+  if(action==='folder'){fs.mkdirSync(themeDir(),{recursive:true});await shell.openPath(themeDir());return true;}
+  throw Error('Unknown theme action.');});
+// "Make your own": the theme guide on GitHub, for the branch this install follows.
+handle('theme-guide',which=>shell.openExternal(`https://github.com/AloeVeraZ/Torque-RobotController/blob/${meta.updateChannel==='testing'?'testing':'main'}/docs/THEMES.md#${which==='station'?'driver-station-themes':'app-themes'}`).then(()=>true));
 // Setup's Configure Robot button: the Driver Station's own page (its three-dot menu's Configure Robot), on the robot that is
 // open or the Control Hub on the cable. Without a robot it says how to get one.
 let dsOpenPage=null;

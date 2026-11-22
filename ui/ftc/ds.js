@@ -240,11 +240,15 @@ document.addEventListener('keydown',e=>{
   if(e.code==='Space'&&session&&session.state.opModeState!=='stopped'&&!$('#ds-dialog').open&&!e.target.closest?.('input,select,textarea')){e.preventDefault();stop();}
 });
 
+// The theme Torque sent for this robot, for the Settings page's colour scheme.
+let look=null;
 async function boot(){
   if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Open this robot from Torque Settings.';return;}
   try{info={...info,...await host.info()};}catch{}if(overUsb()&&info.ssid)robotNetwork=info.ssid;
   const applyTheme=t=>{if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;};
-  applyTheme(info.theme);host.onTheme?.(applyTheme);document.body.classList.toggle('fullscreen',!!info.fullscreen);host.onFullscreen?.(on=>document.body.classList.toggle('fullscreen',on));
+  applyTheme(info.theme);host.onTheme?.(applyTheme);
+  // The theme Torque picked for this robot (docs/THEMES.md): colours, and a theme's picture and logo if it has them.
+  const applyLook=l=>{look=l||null;try{window.DeckThemes?.apply(document,l?.theme||null,{font:l?.font});}catch{}};applyLook(info.look);host.onLook?.(applyLook);document.body.classList.toggle('fullscreen',!!info.fullscreen);host.onFullscreen?.(on=>document.body.classList.toggle('fullscreen',on));
   window.deckControllerAssignments=()=>Array.from(navigator.getGamepads?.()||[]).slice(0,2).map(p=>p?{id:p.id,index:p.index,mapping:p.mapping,connected:true}:null);
   $('#pad-1').title='Click, then press a button to assign controller 1';
   $('#ds-name').textContent=dsName();document.title=`${info.name||'FTC Robot'} · ${dsName()}`;
@@ -253,7 +257,7 @@ async function boot(){
   host.onRobotName?.(n=>{robotNetwork=String(n||'');$('#ds-name').textContent=dsName();queueRender();});host.onLinkNote?.(n=>{linkNote=String(n||'');queueRender();});
   host.onActive?.(on=>{inputsOn=on;shown=on;pollGamepads();if(!on)game?.pause();renderGame(session.state.connection==='connected');});
   session.on('state',queueRender);
-  window.DeckDsPages.init({session,host,toast,prefs,savePrefs,dsName,restart:restartRobot});
+  window.DeckDsPages.init({session,host,toast,prefs,savePrefs,dsName,restart:restartRobot,look:()=>look});
   // Setup's Configure Robot button opens the same page as this Driver Hub's three-dot menu.
   host.onOpen?.(page=>{if(page==='configure')window.DeckDsPages.configure();});if(info.open==='configure')window.DeckDsPages.configure();
   // The autonomous the simulator's Send to robot just built is selected once the robot lists it, unless one is chosen first.

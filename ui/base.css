@@ -3,7 +3,7 @@
 @layer base {
   html { background: var(--bg); }
   body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--text-md)/1.45 var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-  ::selection { background: var(--ink); color: var(--on-ink); }
+  ::selection { background: var(--accent); color: var(--on-accent); }
 
   /* Type. Titles are the condensed face; everything read at length is Inter. */
   h1, h2, h3, h4, p { margin-top: 0; }
@@ -38,9 +38,14 @@
   button:hover:not(:disabled) { background: var(--hover); }
   button:active:not(:disabled) { background: var(--line-strong); }
   button:disabled { cursor: default; opacity: var(--disabled-opacity); }
-  :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: no-preference) {
-    button, a, input, select, textarea, summary { transition: background-color var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease), color var(--dur-press) var(--ease), opacity var(--dur-press) var(--ease); }
+    button, a, input, select, textarea, summary { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease), scale var(--dur-1) var(--ease-out); }
+    /* A press: the control gives a little under the finger. */
+    :is(.primary, .secondary, .icon-button, .more, .segmented > button):active:not(:disabled) { scale: .97; }
+    /* A page arriving fades in; its parts rise in after it (their own rules). */
+    :is(#connect-view, #drive-view, #settings-view, #simulation-view, #calibrate-view, #setup-view):not([hidden]) { animation: view-in var(--dur-3) var(--ease-out); }
+    #toast:not([hidden]) { animation: toast-in var(--dur-2) var(--ease-out); }
   }
 
   /* Buttons. One main action a view, in ink; the rest are quiet. */
@@ -56,20 +61,20 @@
   input:not([type=checkbox], [type=radio], [type=range], [type=file], [type=color]), select, textarea { width: 100%; padding: 0 12px; border: 1px solid var(--field); border-radius: var(--r-ctl); background: var(--surface); color: var(--text); font-size: var(--text-md); }
   textarea { min-height: 96px; padding: 10px 12px; line-height: 1.5; resize: vertical; }
   :is(input, select, textarea):hover:not(:disabled, :focus) { border-color: var(--input-hover); }
-  :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea):focus { border-color: var(--ink); outline: 2px solid var(--ring); outline-offset: 0; }
+  :is(input:not([type=checkbox], [type=radio], [type=range]), select, textarea):focus { border-color: var(--accent); outline: 2px solid var(--ring); outline-offset: 0; }
   :is(input, textarea)::placeholder { color: var(--placeholder); opacity: 1; }
   :is(input, select, textarea):disabled { opacity: var(--disabled-opacity); }
   select { appearance: none; -webkit-appearance: none; padding-right: 34px; background-image: var(--chevron); background-position: right 9px center; background-size: 18px 18px; background-repeat: no-repeat; text-overflow: ellipsis; }
   input[type=checkbox], input[type=radio] { appearance: none; -webkit-appearance: none; flex-shrink: 0; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; border: 1.5px solid var(--field); border-radius: var(--r-tag); background: var(--surface) center / 14px 14px no-repeat; cursor: pointer; }
   input[type=radio] { border-radius: 50%; }
-  input[type=checkbox]:checked { border-color: var(--ink); background-color: var(--ink); background-image: var(--tick); }
-  input[type=radio]:checked { border-color: var(--ink); box-shadow: inset 0 0 0 3.5px var(--surface); background-color: var(--ink); }
+  input[type=checkbox]:checked { border-color: var(--accent); background-color: var(--accent); background-image: var(--tick); }
+  input[type=radio]:checked { border-color: var(--accent); box-shadow: inset 0 0 0 3.5px var(--surface); background-color: var(--accent); }
   :is(input[type=checkbox], input[type=radio]):disabled { cursor: default; }
   input[type=search] { padding-right: 8px; }
   input[type=number] { font-variant-numeric: tabular-nums; }
-  progress { width: 100%; height: 4px; border: 0; border-radius: var(--r-mark); background: var(--track); accent-color: var(--ink); overflow: hidden; }
+  progress { width: 100%; height: 4px; border: 0; border-radius: var(--r-mark); background: var(--track); accent-color: var(--accent); overflow: hidden; }
   progress::-webkit-progress-bar { background: var(--track); }
-  progress::-webkit-progress-value { background: var(--ink); }
+  progress::-webkit-progress-value { background: var(--accent); }
   /* A row with a tick box and what it turns on. */
   .check-row { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: flex-start; gap: 12px; min-height: var(--h-lg); margin: var(--space-3) 0 0; padding: 10px 0; cursor: pointer; font-size: var(--text-sm); font-weight: 400; }
   .check-row input { margin-top: 1px; }
@@ -80,11 +85,11 @@
   /* Number boxes and their bars: a thin track, filled to the handle. --fill is set by number-slider.js. */
   .num-field { display: flex; flex-direction: column; min-width: 0; }
   input.num-slider, input[type=range] { --fill: 50%; display: block; width: 100%; min-height: 24px; height: 24px; margin: 4px 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: pointer; touch-action: pan-y; -webkit-appearance: none; appearance: none; }
-  :is(input.num-slider, input[type=range])::-webkit-slider-runnable-track { height: 4px; border-radius: var(--r-mark); background: linear-gradient(to right, var(--ink) var(--fill), var(--track) var(--fill)); }
-  :is(input.num-slider, input[type=range])::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border: 2px solid var(--bg); border-radius: 50%; background: var(--ink); cursor: grab; }
+  :is(input.num-slider, input[type=range])::-webkit-slider-runnable-track { height: 4px; border-radius: var(--r-mark); background: linear-gradient(to right, var(--accent) var(--fill), var(--track) var(--fill)); }
+  :is(input.num-slider, input[type=range])::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border: 2px solid var(--bg); border-radius: 50%; background: var(--accent); cursor: grab; }
   :is(input.num-slider, input[type=range]):active::-webkit-slider-thumb { cursor: grabbing; }
   :is(input.num-slider, input[type=range]):focus-visible { outline: none; }
-  :is(input.num-slider, input[type=range]):focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ink); outline-offset: 2px; }
+  :is(input.num-slider, input[type=range]):focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
   :is(input.num-slider, input[type=range]):disabled { opacity: var(--disabled-opacity); cursor: default; }
 
   /* Pick one of a few: the picked one lifts off the trough. */
@@ -95,7 +100,9 @@
   .tag { display: inline-flex; align-items: center; min-height: 20px; padding: 0 6px; line-height: 1; white-space: nowrap; }
   /* A dot is a live signal: it shows only while it has something to say. */
   .dot { display: none; flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
-  .dot.live { display: inline-block; background: var(--ok-fill); }
+  .dot.live { position: relative; display: inline-block; background: var(--ok-fill); }
+  /* Live: a ring goes out from the dot now and then, so a connection reads as alive without anything blinking. */
+  .dot.live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ok-fill); animation: ring-out 2.8s var(--ease-out) infinite; }
   .dot.error { display: inline-block; background: var(--bad-fill); }
 
   /* A strip to read first. Its ground carries the state; no stripe down the side. */
@@ -112,8 +119,8 @@
   @media (prefers-reduced-motion: no-preference) {
     @keyframes rise-in { from { opacity: 0; translate: 0 6px; } }
     @keyframes fade-in { from { opacity: 0; } }
-    dialog[open] { animation: rise-in var(--dur-slow) var(--ease); }
-    dialog[open]::backdrop { animation: fade-in var(--dur-slow) linear; }
+    dialog[open] { animation: pop-in var(--dur-3) var(--ease-out); }
+    dialog[open]::backdrop { animation: fade-in var(--dur-3) linear; }
   }
   .menu { position: absolute; z-index: var(--z-menu); min-width: 220px; padding: 4px; border-radius: var(--r-box); background: var(--surface); box-shadow: var(--shadow); }
   .menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0 10px; border: 0; background: none; color: var(--text); font-weight: 400; text-align: left; }
@@ -127,7 +134,7 @@
   details > summary::before { content: ""; flex-shrink: 0; width: 6px; height: 6px; margin-inline: 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; }
   details[open] > summary::before { rotate: 45deg; }
 
-  .loader { width: 20px; height: 20px; margin: 0 auto 16px; border: 2px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
+  .loader { width: 20px; height: 20px; margin: 0 auto 16px; border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Scrollbars: a thin thumb, no trough. */
@@ -141,18 +148,18 @@
 /* The shared controls, drawn one way on every screen. In the system layer, so no screen's stylesheet can give a
    button, a pick-one row or a tag a look of its own; a screen only sizes and places them. */
 @layer system {
-  /* Buttons. One main action a view, in ink; the rest are quiet; a link-like one is underlined words. */
+  /* Buttons. One main action a view, in the theme's accent; the rest are quiet; a link-like one is underlined words. */
   .primary, .secondary { border-radius: var(--r-ctl); box-shadow: none; }
-  .primary { border-color: var(--ink); background: var(--ink); color: var(--on-ink); font-weight: 600; }
-  .primary:hover:not(:disabled) { border-color: var(--ink-hover); background: var(--ink-hover); }
-  .primary:active:not(:disabled) { border-color: var(--ink-active); background: var(--ink-active); }
+  .primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
+  .primary:active:not(:disabled) { border-color: var(--accent-active); background: var(--accent-active); }
   .primary.danger { border-color: var(--bad-fill); background: var(--bad-fill); color: #fff; }
   .primary.danger:hover:not(:disabled) { border-color: var(--bad-fill); background: var(--bad-fill); filter: brightness(1.08); }
   .secondary { border-color: transparent; background: var(--control); color: var(--text); font-weight: 500; }
   .secondary:hover:not(:disabled) { background: var(--hover); }
   .secondary:active:not(:disabled) { background: var(--line-strong); }
-  /* A quiet button that stays down: ink round it. */
-  .secondary:is([aria-pressed=true], [aria-selected=true], [aria-checked=true]) { background: var(--selected); box-shadow: inset 0 0 0 1.5px var(--ink); font-weight: 600; }
+  /* A quiet button that stays down: the accent round it, on the accent's own ground. */
+  .secondary:is([aria-pressed=true], [aria-selected=true], [aria-checked=true]) { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 600; }
   .text-button { border: 0; border-radius: var(--r-tag); background: none; color: var(--text); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); box-shadow: none; }
   .text-button:hover:not(:disabled), .text-button:active:not(:disabled) { background: none; text-decoration-color: currentColor; }
 

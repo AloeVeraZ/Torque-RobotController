@@ -15,8 +15,8 @@ use a separate raw-input report, including while Settings is open.
 - Tap a text field to open the app's keyboard. On detected Steam Deck/Windows handhelds
   this also works when a compositor reports a screen tap as a mouse click. Other devices
   use actual touch/pen events and browser-reported touch capabilities, independent of OS.
-- **Settings → Preferences → Open on-screen keyboard when a text box is tapped** turns
-  this off (it is on by default). Off, neither the app nor robot pages open the app's
+- **⋮ → Virtual keyboard** turns
+  this on (it is off by default). Off, neither the app nor robot pages open the app's
   keyboard or suppress the system one, so **Steam + X** or the Windows touch keyboard can
   be used instead. The choice is saved on this device.
 - Every number field in the simulator has a touch slider below it, so values can be set

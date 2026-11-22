@@ -1,6 +1,6 @@
 # Find a robot on its own Wi-Fi
 
-In Settings, **Find robot automatically** is always visible below the robot address controls. Connect to
+On Drive, **Find robot automatically** is always visible below the robot address controls (under **Add a robot**). Connect to
 the Wi-Fi emitted by the robot, confirm **This Wi-Fi is emitted by my robot, not
 a home/shared network**, then press **Find robot automatically**. Confirmation
 clears when the connected SSID or Wi-Fi adapter changes. There is no background

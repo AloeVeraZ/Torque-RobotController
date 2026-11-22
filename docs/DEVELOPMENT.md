@@ -31,7 +31,7 @@ After reconnecting Wi-Fi, choose **Try again** to reopen it without restarting t
 or retyping its address. Controls stay neutral until held sticks/buttons are released;
 robot enable and initialization are never automatically restored.
 
-Robot-hosted Wi-Fi can use [Find robot automatically](DISCOVERY.md) in Settings.
+Robot-hosted Wi-Fi can use [Find robot automatically](DISCOVERY.md) on Drive.
 It is opt-in and checks the hotspot gateway only; home/shared networks keep manual or saved addresses.
 Controller setup includes [drift measurement and app deadzones](CONTROLLERS.md#calibration-and-steam-deck-navigation).
 

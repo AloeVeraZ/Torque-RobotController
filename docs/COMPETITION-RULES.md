@@ -4,27 +4,20 @@ Torque is for the bench and the pits. At inspection and in matches a team uses t
 
 This comes from the [2026-27 BIOBUZZ Competition Manual](https://ftc-resources.firstinspires.org/ftc/game/manual), version TU09 (12 November 2026), Team Updates 00 to 09 (TU08 and TU09 change no rule this page relies on), the [Inspection Checklist](https://ftc-resources.firstinspires.org/ftc/archive/2027/event/inspection-check) and the public [Q&A board](https://game-qa.firstinspires.org/boards/2027/FTC/QA). Check the manual again when a Team Update comes out: referees and inspectors have the final say (section 1.7.4). Items marked *reading* are our reading of a rule that does not name the situation, and have not been asked on the Q&A board.
 
-## Competition mode
+## No competition mode
 
-**Competition mode** in the three-dot menu is for the day of an event. It keeps Torque on the right side of R704:
-
-- Torque will not drive or stream over Wi-Fi: Drive, Live debug, Camera and the guided check refuse a robot on Wi-Fi and say why, and Torque Debug is not put on a robot over Wi-Fi. USB-C still works. Q&A QA26 makes this the rule everywhere in the venue, pits and practice field included.
-- The Driver Hub keeps the robot: Torque does not take the robot over the cable (no restart of the Robot Controller app) and does not hold it between uses, so the Driver Hub is never refused and Self Inspect can be shown at inspection.
-- Sounds stay off.
-- The header says Competition mode, so anyone can see it is on.
-
-What it cannot do for you: disconnect the laptop before you queue, and use your Driver Hub for inspection and matches.
+Torque had a Competition mode that held back Wi-Fi driving and streaming on the day of an event. It is gone: teams do not drive with Torque at an event at all, so the switch only suggested otherwise. On the day, close Torque before you queue, and use your Driver Hub for inspection and matches.
 
 ## Each feature
 
 | Torque feature | Where it is allowed | Rule | What Torque does |
 |---|---|---|---|
-| Drive | Off-venue. In the pits over USB (*reading*). Never in a match or at inspection | R901, R902, R704.D, I301 | Drive says it is for practice. Competition mode refuses Wi-Fi |
-| Live debug and Camera streaming | Off-venue. In the pits over USB (*reading*) | R704.D, Q&A QA26 | Competition mode refuses Wi-Fi |
+| Drive | Off-venue. In the pits over USB (*reading*). Never in a match or at inspection | R901, R902, R704.D, I301 | Drive says it is for practice. Not used at the event |
+| Live debug and Camera streaming | Off-venue. In the pits over USB (*reading*) | R704.D, Q&A QA26 | Not used at the event |
 | Saving configurations, putting code on the robot, ADB | The pits, by USB. No rule bans them, and the manual expects programming laptops | R704.C, T405.E | USB first everywhere |
 | Torque Debug left on the robot | Allowed. Custom code is fine, and nothing covers a program that is left listed | R304, I303.D | Do not run it at an event: while it runs it listens on the hub's Wi-Fi as well as USB, streams, and moves things on command (and holds one empty servo port at 1500 µs to keep servo power on) |
 | Servo Test | The pits, by USB | R704.D (Wi-Fi only) | USB only. Its own op mode (TorqueServoTest, not Torque Debug) plays the pulse from Torque's slider (0-2500 µs, written over USB) on servo port 0, and turns the port off on STOP or when Torque goes quiet for 3 s. It opens no network port and streams nothing; it stays in the op mode list like any team op mode |
-| USB takeover and holding the robot | Off-venue | R901, I301 | Competition mode turns both off |
+| USB takeover and holding the robot | Off-venue | R901, I301 | Not used at the event |
 | Auto-configure and Save | Anywhere they are used | R701.C, R702 | Configure warns on a second Expansion Hub. A Limelight's USB row says a 3G is prohibited |
 | Motors and servos on a robot | At most 8 of each, added up over every configuration used at an event | R503 | Configure warns above 8 in the configuration it shows. It cannot add up the others for you |
 | Sensors on I2C and analog | There is no list of allowed sensors. They must be powered by the hub, keep stock firmware, and stay off USB | R607, R613, R702, R707, Q&A QA22, QA25 | See [I2C devices](I2C-DEVICES.md) |
@@ -34,7 +27,7 @@ What it cannot do for you: disconnect the laptop before you queue, and use your 
 | SPARK Mini | Allowed, 2 motors each, on main battery power | R505, R608 | None |
 | Servos | 8 W and 4 A. Lowering limits in software does not make a servo legal | R502, R504.C | Applies to the Axon programmer too |
 | A Bluetooth game controller on a laptop | Not in the venue | E301, Q&A QA16 | Use a wired one |
-| Sounds | Quiet, in the pits (*reading*) | R202.B, E111 | Competition mode turns them off |
+| Sounds | Quiet, in the pits (*reading*) | R202.B, E111 | Not used at the event |
 | Generated autonomous and TeleOp code | Allowed | R304, G304.H, G305 | Not yet checked against G304.H's no motion after init rule |
 
 **Worth asking.** No Q&A answers whether a USB-tethered tool that is not the Driver Station may be used in the pits. A Lead Coach can ask on the Q&A board. Until then, the pits row above is our reading, and what is sure is off-venue use.

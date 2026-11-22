@@ -22,7 +22,7 @@
   function reset(){for(const image of images)URL.revokeObjectURL(image.url);images=[];$('#bug-form').reset();$('#bug-browser').hidden=true;$('#bug-send').hidden=false;$('#bug-send').disabled=false;$('#bug-cancel').textContent='Cancel';say('');renderImages();}
   function close(){dialog.close();reset();void api.overlay(false).catch(()=>{});}
   const open=()=>{$('#menu').hidden=true;$('#more').setAttribute('aria-expanded','false');reset();dialog.showModal();void api.overlay(true).catch(()=>{});$('#bug-title').focus();};
-  $('#menu-bug').onclick=open;$('#bug-quick').onclick=open;
+  $('#bug-quick').onclick=open;
   $('#bug-cancel').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
   $('#bug-add').onclick=()=>$('#bug-file').click();$('#bug-file').onchange=e=>{void addFiles([...e.target.files]);e.target.value='';};
   dialog.addEventListener('paste',e=>{const files=[...e.clipboardData.files];if(files.length){e.preventDefault();void addFiles(files);}});

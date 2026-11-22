@@ -118,6 +118,36 @@ updater's download in the full `ui`). With that one check relaxed, `ftc-app`,
 `touch-ui` and `ui` pass to the end on both versions, and `robot-fullscreen` passes
 its zoom half. Real hardware was not part of it.
 
+## Colour, motion and Drive (2026-11-22)
+
+Looking at the rebuilt app, the user found it right but dull: little colour, nothing moving, and a Drive page with nothing on
+it. Three changes answer that without giving up the rules above.
+
+- **One accent, from the theme.** The main action on each screen, the mark under the page you are on, what is picked,
+  ticked boxes, sliders and focus rings take the theme's accent (Torque's is green, #31d78c dark and #037f4e light). Other
+  colour is still the robot's state and the alliances. Rule 1 in `ui/tokens.css` says so.
+- **Motion that explains** (rule 5), from what [NN/g](https://www.nngroup.com/articles/animation-duration/), Fluent and
+  Emil Kowalski's animation standards agree on: a press gives under the finger (scale .97, 100 ms); a menu, list or popover
+  opens from where it belongs (180 ms); a page fades in and its parts rise in a row at a time (260 ms, 45 ms apart, at
+  most eight); the mark under a new tab grows from its middle. Only transform and opacity move, everything eases out,
+  nothing bounces, and what repeats all day (typing, keyboard actions) does not animate. Live things breathe: a ring goes
+  out from a connected dot every few seconds. Reduced motion stops all of it.
+- **Drive is where you connect.** With no robot open, Drive shows your robots (one tap to connect, the likeliest one
+  first), a form to add one, and both controllers with their sticks moving live. The Wi-Fi list drops down from the
+  bar's Wi-Fi button. A running robot stays connected while you look at the list (the toolbar's **Robots**).
+
+Settings is now Torque's own settings: the app theme, the Driver Station theme (one for every robot, or one per robot),
+imported themes, the font, keeping the screen awake, and About. Keyboard shortcuts and the licenses open from the menu
+as well; the menu lost Report a bug (the bar has it) and Competition mode (Torque is not used at an event).
+
+### Themes
+
+`ui/themes.js` holds six built-in themes. Each one turns the app's neutrals to its hue at the same lightness, so every
+theme keeps the same contrast, and picks an accent that holds 4.5:1 on its ground in light. A theme goes on through a
+constructed stylesheet (the pages' content security policy allows no inline styles) and, for pictures, custom properties
+the stylesheets draw with. Imported themes are validated (`fromPackage`: names, hex colours, contrast, picture types and
+sizes) and kept as JSON files in the app's data folder. [docs/THEMES.md](THEMES.md) is the guide for making one.
+
 ## The mark (2026-11-22)
 
 The icon was a smiling robot head on a mint square: the stock chatbot mascot, the
