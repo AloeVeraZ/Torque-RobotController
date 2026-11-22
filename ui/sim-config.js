@@ -93,7 +93,9 @@
     try{return raw&&typeof raw==='object'?JSON.parse(JSON.stringify(raw)):null;}catch{return null;}}
   function robot(raw={},controller){if(RETIRED[raw.drivetrain])raw={...raw,drivetrain:RETIRED[raw.drivetrain]};const own=devices(raw.devices),odo=odometry(raw.odometry),wire=wiring(raw.wiring),place=sensorPlace(raw.sensorPlace);return {drivetrain:Object.hasOwn(drives,raw.drivetrain)?raw.drivetrain:'mecanum',wheelPos:wheelPos(raw.wheelPos),intakeIn:intake(raw),...(finite(raw.driveTicksPerIn)&&raw.driveTicksPerIn>0&&raw.driveTicksPerIn<100000?{driveTicksPerIn:raw.driveTicksPerIn}:{}),
     length:positive(raw.length,17.56),width:positive(raw.width,17.79),heightIn:positive(raw.heightIn,12),massLb:positive(raw.massLb,9.41),driveRpm:positive(raw.driveRpm,312),wheelDiameterMm:positive(raw.wheelDiameterMm,104),driveAmps:current(raw.driveAmps,controller),driveStyle:raw.driveStyle==='field'?'field':'robot',...hubMounting(raw),
-    appearance:['strafer','plain','custom'].includes(raw.appearance)?raw.appearance:raw.drivetrain==='swerve'?'plain':'strafer',...(Object.keys(own).length?{devices:own}:{}),...(Object.keys(odo).length?{odometry:odo}:{}),...(wire?{wiring:wire}:{}),...(place?{sensorPlace:place}:{})};}
+    appearance:['strafer','plain','custom'].includes(raw.appearance)?raw.appearance:raw.drivetrain==='swerve'?'plain':'strafer',...(Object.keys(own).length?{devices:own}:{}),...(Object.keys(odo).length?{odometry:odo}:{}),...(wire?{wiring:wire}:{}),...(place?{sensorPlace:place}:{}),
+    // A goBILDA Pinpoint on the robot with no pods on it: it is the IMU, and distance comes from the drive encoders (or time).
+    ...(raw.pinpointImu===true?{pinpointImu:true}:{})};}
   // A robot imported from CAD (appearance custom) collides as its chassis only: length × width.
   const chassisHitbox=r=>r?.appearance==='custom';
   function footprint(raw){const r=robot(raw);return {front:r.length/2+(chassisHitbox(r)?0:r.intakeIn),rear:r.length/2,half:r.width/2};}

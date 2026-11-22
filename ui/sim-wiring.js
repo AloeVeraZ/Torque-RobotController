@@ -147,6 +147,8 @@
         return `<div class="sim-chassis-module" data-module="pod:${esc(k)}" data-module-title="${esc(title)}" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>${esc(title)}</b><small><code>${esc(row.name)}</code></small></div>
           <div class="sim-chassis-pos">${field('data-pod-pos',k,'x','Forward · in',p.x)}${field('data-pod-pos',k,'y','Left · in',p.y)}<small></small></div>${port}</div>`;}
       if(row.role==='pinpoint'){const p=odo.pinpoint;
+        // A Pinpoint alone has no pods: it is the IMU, so only where its board sits and its port are asked.
+        if(st.project?.robot?.pinpointImu&&['encoders','gyro'].includes(st.project?.sensors?.localization))return `<div class="sim-chassis-module" data-module="pinpoint" data-module-title="IMU · goBILDA Pinpoint" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>IMU · goBILDA Pinpoint</b><small><code>${esc(row.name)}</code></small></div><p class="hint">No pods: it measures turning. Distance comes from the drive motors’ encoders, or from time where a motor has none.</p>${boardHtml('pinpoint',st,opts)}${port}</div>`;
         return `<div class="sim-chassis-module" data-module="pinpoint" data-module-title="Odometry · goBILDA Pinpoint" data-wire-row="${esc(row.key)}"><div class="sim-chassis-module-head"><b>Odometry · goBILDA Pinpoint</b><small><code>${esc(row.name)}</code></small></div>
           <div class="sim-chassis-pos">${field('data-pinpoint-pos','xOffset','y','X pod · left · in',p.xOffset)}<small></small></div>
           <div class="sim-chassis-pos">${field('data-pinpoint-pos','yOffset','x','Y pod · forward · in',p.yOffset)}<small></small></div>${boardHtml('pinpoint',st,opts)}${port}</div>`;}

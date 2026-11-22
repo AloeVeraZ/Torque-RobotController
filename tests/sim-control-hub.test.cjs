@@ -4,9 +4,9 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const P=require('../ui/sim-planner.js'),X=require('../ui/sim-export.js'),F=require('../ui/sim-ftc.js'),{SimEngine}=require('../src/sim-engine.cjs');
 const built=fs.existsSync(path.join(__dirname,'../sim-runtime/driver/classes/deck/sim/hub/VirtualHub.class')),skip=built?false:'run node tools/simulation/build.cjs first';
-const robot={drivetrain:'mecanum',length:17,width:17,heightIn:5,driveRpm:500,intakeIn:0};
+const ROBOT={drivetrain:'mecanum',length:17,width:17,heightIn:5,driveRpm:500,intakeIn:0};
 const start={x:20,y:30,heading:0},zones=[{id:'a',type:'rect',x:70,y:60,width:16,height:40}],pins=[{x:110,y:40,wait:.5,action:'Score'},{x:120,y:120}];
-async function setup(localization){
+async function setup(localization,robot=ROBOT){
   let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
   const info=await e.load({field:'empty',start,robot,zones,sensors:{localization}});
   const route=P.plan({start,zones,pins,clearance:2,style:'spline'},info.footprint,[],info.bounds),layout={name:'Hub check',field:'empty',width:144,height:144,start,zones};
@@ -27,6 +27,20 @@ for(const [localization,tolerance] of [['gyro',25],['encoders',2.5],['odometry',
       if(localization!=='gyro')assert.equal(e.violations.size,0,'no zone touched');
     }finally{e.dispose();}
   });
+
+// A Pinpoint alone (no pods) is the IMU: the heading comes from it, the distance from the drive encoders, or from time
+// where a drive motor has none.
+for(const [localization,tolerance] of [['encoders',2.5],['gyro',25]])
+  test(`exported Control Hub OpMode runs with a Pinpoint alone as its IMU and ${localization==='encoders'?'drive encoders':'time'} for distance`,{skip},async()=>{
+    const {e,out,error}=await setup(localization,{...ROBOT,pinpointImu:true});try{
+      const drive=Object.entries(out.files).find(([k])=>k.endsWith('drive/RobotDrive.java'))[1];assert.match(drive,/PINPOINT_HAS_PODS = false/);assert.match(drive,/map\.get\(GoBildaPinpointDriver\.class,"pinpoint"\)/);assert.doesNotMatch(drive,/setOffsets/);
+      assert.ok(F.deviceSlots({...ROBOT,pinpointImu:true},localization).some(d=>d.kind==='pinpoint'),'the Pinpoint is one of the robot’s devices');
+      const started=await e.run({kind:'opmode',files:out.files,opMode:out.opMode});assert.equal(started.ok,true,error());
+      const phases=await finish(e);assert.ok(phases.has('Done'),[...phases].join());const t=e.truth();assert.ok(Math.hypot(t.x-120,t.y-120)<tolerance,JSON.stringify(t));assert.ok(Math.abs(t.heading)<.1);
+    }finally{e.dispose();}
+  });
+// With its pods it is as before, and a robot without the flag has no Pinpoint.
+test('a Pinpoint is in the code only where the robot has one',()=>{assert.equal(F.hardware(ROBOT,'encoders').pinpoint,undefined);assert.equal(F.hardware({...ROBOT,pinpointImu:true},'fused').pinpointImu,undefined);assert.equal(F.hardware({...ROBOT,pinpointImu:true},'gyro').pinpointImu,true);});
 
 test('the exported OpMode reproduces the simulated follower: same route, end point and timing',{skip},async()=>{
   const sim=await setup('odometry'),hub=await setup('odometry');try{
@@ -86,7 +100,7 @@ test('an export without measured tuning uses the Deck controller defaults, never
 test('a robot blocked on its way stops within a few seconds and stays stopped; an unblocked one never trips it',{skip},async()=>{
   let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
   try{
-    const block=[{id:'block',type:'rect',x:70,y:30,width:6,height:60}],info=await e.load({field:'empty',start,robot,zones:block,sensors:{localization:'odometry'}});
+    const block=[{id:'block',type:'rect',x:70,y:30,width:6,height:60}],info=await e.load({field:'empty',start,robot:ROBOT,zones:block,sensors:{localization:'odometry'}});
     // The route is planned as if nothing were there: straight through the block.
     const route=P.plan({start,zones:[],pins:[{x:120,y:30}],clearance:2,style:'spline'},info.footprint,[],info.bounds),layout={name:'Blocked',field:'empty',width:144,height:144,start,zones:[]};
     const routeJava=X.java(route,layout,{polygon:P.polygon,className:'PlannedRoute',packageName:'org.firstinspires.ftc.teamcode'});

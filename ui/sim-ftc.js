@@ -40,7 +40,9 @@
     const imuPlace={kind:place.imu.kind,said:`${SP.KINDS[place.imu.kind].short}: ${SP.words(place.imu)}${place.imu.placed?`, ${SP.where(place.imu)} of the robot’s centre`:''}`};
     return {localization,imu:sw?.imu?.name||named('imu','imu'),imuPlace,imuScale:odo.imu.scale*(odo.imu.reversed?-1:1),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
-      ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
+      ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),
+      // A Pinpoint alone (no pods): it gives the heading; the drive encoders, or time, give the distance.
+      ...(robot.pinpointImu===true&&!sw&&['encoders','gyro'].includes(localization)?{pinpoint:named('pinpoint','pinpoint'),pinpointImu:true}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
   // Deck's own name for each drive and sensor device a robot of this kind uses, keyed as robot.devices keys them, with
   // what it is (for the robot configuration check and the Robot controller step).
@@ -134,10 +136,12 @@ ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that co
     private static final int[] POD_SIGN = {${pods.map(p=>p.reversed?-1:1).join(', ')}};
 `:''}    private final IMU imu;
     private final GoBildaPinpointDriver pinpoint;
+    /** A Pinpoint with its two pods gives the whole position. Alone it gives the heading, and the drive motors (or time) the distance. */
+    private static final boolean PINPOINT_HAS_PODS = ${h.pinpointImu?'false':'true'};
     private final SparkFunOTOS otos;
     private final ElapsedTime clock = new ElapsedTime();
     private final int[] before = new int[${motors.length}], podBefore = new int[${pods.length}];
-    private double oldImu, lastTime, trusted;${timed?'\n    private double toldForward, toldStrafe;':''}
+    private double oldImu, lastTime, trusted, oldPinpoint = Double.NaN;${timed?'\n    private double toldForward, toldStrafe;':''}
     double limit=${n(.6)};
     private MotionState state=MotionState.ofVelocity(Pose.zero(),Velocity.zero());
     public RobotDrive(HardwareMap map) {
@@ -152,7 +156,10 @@ ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.nam
         // How the IMU is mounted (Torque: Setup → Mechanisms → Chassis). If this is wrong, every turn and heading is wrong.
         // ${h.imuPlace?.said||'Control Hub IMU'}.
         imu.initialize(new IMU.Parameters(${h.imuMount?.code||`new RevHubOrientationOnRobot(RevHubOrientationOnRobot.LogoFacingDirection.${h.hub.logo},RevHubOrientationOnRobot.UsbFacingDirection.${h.hub.usb})`}));
-        pinpoint=${h.localization==='fused'?`map.get(GoBildaPinpointDriver.class,${javaString(h.pinpoint)})`:'null'};${pp?`
+        pinpoint=${h.localization==='fused'||h.pinpointImu?`map.get(GoBildaPinpointDriver.class,${javaString(h.pinpoint)})`:'null'};${h.pinpointImu?`
+        // The Pinpoint alone, with no pods: it is the IMU. Resetting calibrates it, so the robot must be still at INIT.
+        pinpoint.resetPosAndIMU();
+        try{Thread.sleep(500);}catch(InterruptedException e){Thread.currentThread().interrupt();}`:''}${pp?`
         // The Pinpoint's pods: X is the forward pod (its offset: inches left of the robot's centre), Y the strafe pod (inches
         // forward of it). Resetting also calibrates its IMU, so the robot must be still at INIT. The reset takes about 0.25 s
         // and a position set before it ends is lost, so wait for it (Pedro's PinpointLocalizer waits 0.5 s too).
@@ -175,8 +182,8 @@ ${pods.map((p,i)=>`        pods[${i}]=map.get(DcMotorEx.class,${javaString(p.nam
     public void setPose(Pose p){
         for(int i=0;i<motors.length;i++)before[i]=motors[i].getCurrentPosition();
         for(int i=0;i<pods.length;i++)podBefore[i]=pods[i].getCurrentPosition();
-        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=trusted=clock.seconds();
-        if(pinpoint!=null)pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,p.x(),p.y(),AngleUnit.RADIANS,p.heading()));
+        oldImu=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);lastTime=trusted=clock.seconds();oldPinpoint=Double.NaN;
+        if(pinpoint!=null&&PINPOINT_HAS_PODS)pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,p.x(),p.y(),AngleUnit.RADIANS,p.heading()));
         if(otos!=null)otos.setPosition(new SparkFunOTOS.Pose2D(p.x(),p.y(),p.heading()));
         state=MotionState.ofVelocity(p,Velocity.zero());
     }
@@ -186,7 +193,10 @@ ${sw?`    /** Where each pod points now: its absolute encoder, from the reading 
         ${sw?'readPods();':''}double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;Pose p=state.pose(),next;
         double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=${h.imuScale&&h.imuScale!==1?`${n(h.imuScale)}*`:''}DeckFollower.angle(yaw-oldImu);oldImu=yaw;
         // The Pinpoint turns with its own IMU; while it does not answer (a loose cable), the Control Hub's IMU carries the heading.
-        if(pinpoint!=null){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new Pose(p.x(),p.y(),p.heading()+dh);}
+${h.pinpointImu?`        // The Pinpoint alone: its IMU says how far the robot turned. While it does not answer (a loose cable), the Control Hub's IMU does.
+        pinpoint.update();
+        if(pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY){double turned=pinpoint.getHeading(AngleUnit.RADIANS);if(!Double.isNaN(oldPinpoint))dh=DeckFollower.angle(turned-oldPinpoint);oldPinpoint=turned;}else oldPinpoint=Double.NaN;
+`:''}        if(pinpoint!=null&&PINPOINT_HAS_PODS){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new Pose(p.x(),p.y(),p.heading()+dh);}
         else if(otos!=null){SparkFunOTOS.Pose2D q=otos.getPosition();next=new Pose(q.x,q.y,q.h);}
         else {
 ${sw?`            // Each wheel rolled along the way its pod points; less what turning on the spot gives a pod out where it is, the

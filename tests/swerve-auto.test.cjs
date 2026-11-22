@@ -127,7 +127,7 @@ test('where the robot stands when START is pressed is the start: the IMU, the en
   for(const src of [F.onBotJava({route,layout,tuning:{},robot:mec,localization:'encoders',routeJava}).source,F.onBotJava({route,layout,tuning:{},robot,localization:'fused',routeJava,swerve}).source]){
     assert.match(src,/waitForStart\(\);\n(?:\s*\/\/[^\n]*\n)+\s*follower\.setPose\(PlannedRoute\.START\);\n\s*try \{/);
     // Zeroing reads every sensor it measures from: the drive encoders, the pods, the IMU's heading, and a Pinpoint or an OTOS is told where it is.
-    for(const part of [/before\[i\]=motors\[i\]\.getCurrentPosition\(\);/,/podBefore\[i\]=pods\[i\]\.getCurrentPosition\(\);/,/oldImu=imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.RADIANS\);/,/if\(pinpoint!=null\)pinpoint\.setPosition\(/,/if\(otos!=null\)otos\.setPosition\(/])assert.match(src,part);}
+    for(const part of [/before\[i\]=motors\[i\]\.getCurrentPosition\(\);/,/podBefore\[i\]=pods\[i\]\.getCurrentPosition\(\);/,/oldImu=imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.RADIANS\);/,/if\(pinpoint!=null&&PINPOINT_HAS_PODS\)pinpoint\.setPosition\(/,/if\(otos!=null\)otos\.setPosition\(/])assert.match(src,part);}
   // Carried to its spot after INIT (turned 40 degrees, wheels rolled), it still drives its route from where it stands.
   const r=run(t,[{x:90,y:24}],'new double[] {0, 0, 0}',{carried:true,zeroed:true});if(!r)return;t.diagnostic(r.said.trim().split('\n').join(' | '));
   assert.doesNotMatch(r.said,/following true/);for(const m of r.said.matchAll(/^END \d+ off ([\d.eE+-]+) heading (-?[\d.eE+-]+)/gm)){assert.ok(+m[1]<1,`ends on its point: ${m[1]} in off`);assert.ok(Math.abs(+m[2])<3);}assert.ok(r.num('TRACK','worst')<4);
