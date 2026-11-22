@@ -97,7 +97,7 @@ Tune your robot step by step using real readings from your Control Hub.
 
 ## Make it yours
 
-Pick a theme for Torque and another for the FTC Driver Station in **⋮ → Settings**, and give each robot its own, the way teams colour their Driver Hubs. You can make your own themes with your colours, a background picture and your team's logo, and import them with the **+** at the end of each list. Text works the same way: use Inter, your computer's font, or add a font file of your own. All of it stays on your computer. [How to make a theme](docs/THEMES.md)
+Pick a theme for Torque and another for the FTC Driver Station in **⋮ → Settings**, and give each robot its own, the way teams colour their Driver Hubs. You can make your own themes with your colours, a background picture and your team's logo, and import them with the **+** at the end of each list. Text works the same way: use Inter, OpenDyslexic or your computer's font, or add a font file of your own. All of it stays on your computer. [How to make a theme](docs/THEMES.md)
 
 ## Updating
 

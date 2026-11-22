@@ -39,6 +39,9 @@
      edge, so it is never clipped. */
   :is(.flow-steps, .sim-tabs) { min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-bottom: 1px solid var(--line); box-shadow: none; }
   :is(.flow-steps, .sim-tabs) > button { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; min-height: var(--h-lg); margin-bottom: 0; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; box-shadow: none; color: var(--muted); font: 500 var(--text-md) var(--font); white-space: nowrap; }
+  /* A wide face (OpenDyslexic, or a wide font of the user's) in a full window: the rail takes a second row rather than
+     hiding its last steps past the edge. A phone-narrow window still scrolls it. */
+  @media (min-width: 861px) { :root[data-font-wide] :is(.flow-steps, .sim-tabs) { flex-wrap: wrap; } }
   :is(.flow-steps, .sim-tabs) > button:focus-visible { outline-offset: -2px; }
   :is(.flow-steps, .sim-tabs) > button:hover:not(:disabled), :is(.flow-steps, .sim-tabs) > button:active:not(:disabled) { background: none; color: var(--text); }
   .flow-steps > button[data-here], .sim-tabs > button[aria-selected=true] { border-bottom-color: var(--accent); background: none; box-shadow: none; color: var(--text); }
@@ -98,9 +101,9 @@
   .sim-tile:is([aria-pressed=true], [aria-selected=true]), .sim-tile:is([aria-pressed=true], [aria-selected=true]):hover:not(:disabled) { background: var(--selected); box-shadow: none; }
   .sim-tile .sim-tile-text b { font-weight: 500; }
   .sim-tile:is([aria-pressed=true], [aria-selected=true]) .sim-tile-text b { font-weight: 600; }
-  .sim-tile .sim-tile-text small { color: var(--quiet); overflow-wrap: normal; }
-  .sim-tile-sub .sim-tile-text small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .sim-tile-text small > em[data-wired] { display: block; margin: 1px 0 0; white-space: nowrap; }
+  .sim-tile .sim-tile-text small { color: var(--quiet); overflow-wrap: break-word; }
+  .sim-tile-sub .sim-tile-text small { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .sim-tile-text small > em[data-wired] { display: block; margin: 1px 0 0; }
   /* How finished a part is, as a mark at the row's end: a green tick done, an amber dot works here but is not finished,
      a red dot must be fixed. The row itself is not tinted. */
   .sim-tile:is([data-state=done], [data-state=warn], [data-state=bad])::after { content: ""; flex: none; margin-left: auto; }

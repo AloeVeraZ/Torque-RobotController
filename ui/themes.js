@@ -44,6 +44,14 @@
   const fontsIn=new WeakMap();
   function addFont(doc,f){if(!f||!f.data||!f.family)return;let have=fontsIn.get(doc);if(!have){have=new Set();fontsIn.set(doc,have);}if(have.has(f.family))return;have.add(f.family);
     try{const face=new doc.defaultView.FontFace(f.family,f.data,f.variable?{weight:'100 900'}:{});doc.fonts.add(face);face.load().catch(()=>{});}catch{}}
+  // A face that sets words much wider than Inter marks the page data-font-wide, and the few columns sized for Inter's
+  // words widen for it. OpenDyslexic sets a line half as long again; a font added here is measured once it has loaded.
+  const SAMPLE='The quick brown fox jumps over the lazy dog 0123456789',INTER_WIDTH=27.44,WIDE={dyslexic:true,system:false},measuring=new WeakMap();
+  function markWide(doc,f){const root=doc.documentElement,turn=(measuring.get(doc)||0)+1;measuring.set(doc,turn);
+    const set=wide=>{if(measuring.get(doc)!==turn)return;if(wide)root.dataset.fontWide='';else delete root.dataset.fontWide;};
+    if(!f.custom||!f.family){set(!!WIDE[f.id]);return;}
+    const face=`400 100px "${f.family}"`;set(false);
+    Promise.resolve(doc.fonts?.load(face)).catch(()=>{}).then(()=>{const c=doc.createElement('canvas').getContext('2d');if(!c)return;c.font=face;set(c.measureText(SAMPLE).width/100/INTER_WIDTH>1.15);});}
   function apply(doc,theme,{font}={}){
     const root=doc.documentElement;let sheet=sheets.get(doc);
     if(!sheet&&typeof CSSStyleSheet==='function'){sheet=new CSSStyleSheet();sheets.set(doc,sheet);doc.adoptedStyleSheets=[...doc.adoptedStyleSheets,sheet];}
@@ -59,6 +67,7 @@
     if(f.id&&f.id!=='inter')root.dataset.font=f.custom?'custom':f.id;else delete root.dataset.font;
     if(f.custom&&f.family){const stack=`"${f.family}", system-ui, sans-serif`;root.style.setProperty('--font',stack);root.style.setProperty('--font-display',stack);}
     else{root.style.removeProperty('--font');root.style.removeProperty('--font-display');}
+    markWide(doc,f);
   }
   // Two colours that say what a theme looks like, for its swatch: its ground and its accent, dark.
   const swatch=t=>[t.dark.bg,t.dark.accent,t.light.bg,t.light.accent];

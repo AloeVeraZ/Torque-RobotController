@@ -14,6 +14,12 @@
    6. Say a thing once. No subtitle that repeats its heading, no arrows on buttons. */
 @font-face{font-family:Inter;font-style:normal;font-weight:300 700;font-display:swap;src:url('fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
+/* OpenDyslexic's own line is 1.82 em for letters 1.15 em tall; these hold its line to what its letters use. */
+@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:400;font-display:swap;src:url('fonts/opendyslexic-regular.woff2') format('woff2');ascent-override:100%;descent-override:30%;line-gap-override:0%}
+@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:700;font-display:swap;src:url('fonts/opendyslexic-bold.woff2') format('woff2');ascent-override:100%;descent-override:30%;line-gap-override:0%}
+/* For titles and readings it is drawn with the capitals as tall as Barlow Condensed's, so a heading keeps its size. */
+@font-face{font-family:'OpenDyslexic Display';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/opendyslexic-regular.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
+@font-face{font-family:'OpenDyslexic Display';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/opendyslexic-bold.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
 
 /* Later layers win whatever their selectors: base is each element's default look, features is each screen's own layout,
    system is the shared components and the screens drawn with them. */
@@ -235,3 +241,5 @@
 
 /* Settings → Text: the computer's own face instead of Inter. Barlow Condensed stays for titles and readings. */
 :root[data-font=system] { --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto, sans-serif; }
+/* OpenDyslexic, for readers with dyslexia, is every face: words, titles and readings. */
+:root[data-font=dyslexic] { --font: OpenDyslexic, system-ui, sans-serif; --font-display: 'OpenDyslexic Display', OpenDyslexic, system-ui, sans-serif; }

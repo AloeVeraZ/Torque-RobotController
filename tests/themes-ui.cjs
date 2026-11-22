@@ -3,7 +3,8 @@
 // (docs/THEMES.md), and Text ends in + to add a font file. What comes in goes into the list whose + was used, is put on,
 // is kept in the app's data folder, and Remove takes it out again. The Driver Station, on an FTC robot (one simulated in
 // memory), wears the Driver Station theme and the font. A folder without theme.json, or a file that is not a font, says
-// so and changes nothing.
+// so and changes nothing. OpenDyslexic is built in: picked like Inter, it is every face on both pages, it marks them as
+// setting words wide (data-font-wide, which the few columns sized for Inter's words widen for), and it stays on.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/themes-ui.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
@@ -73,7 +74,16 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/themes'
     await ds.waitForFunction(()=>document.documentElement.dataset.font==='custom'&&(document.documentElement.dataset.look||'').startsWith('custom-field-day-'),null,{timeout:15000});
     const dsFont=await ds.evaluate(()=>{const f=getComputedStyle(document.documentElement).getPropertyValue('--font');return {font:f,loaded:[...document.fonts].some(face=>f.includes(face.family.replace(/"/g,''))&&face.status==='loaded')};});
     assert.equal(dsFont.font,look.font,'the Driver Station uses the added font');assert.ok(dsFont.loaded,'and has it loaded');
+    assert.equal(await ds.evaluate(()=>'fontWide' in document.documentElement.dataset),false,'Barlow Condensed is not a wide face');
     await ds.screenshot({path:path.join(out,'driver-station.png')});
+    // OpenDyslexic reaches the Driver Station too, as a wide face, and the added font comes back after it.
+    const addedId=await page.evaluate(()=>prefs.get('torque-font',''));
+    await page.evaluate(()=>{prefs.set('torque-font','dyslexic');applyLooks();});
+    await ds.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&'fontWide' in document.documentElement.dataset,null,{timeout:15000});
+    await ds.waitForFunction(()=>[...document.fonts].some(f=>f.family==='OpenDyslexic'&&f.status==='loaded'),null,{timeout:15000});
+    await ds.screenshot({path:path.join(out,'driver-station-dyslexic.png')});
+    await page.evaluate(id=>{prefs.set('torque-font',id);applyLooks();},addedId);
+    await ds.waitForFunction(()=>document.documentElement.dataset.font==='custom'&&!('fontWide' in document.documentElement.dataset),null,{timeout:15000});
     await page.evaluate(()=>window.deck.close?.());await page.evaluate(()=>window.deck.page('settings'));await page.waitForFunction(()=>state.page==='settings');
 
     await page.locator('#themes-station .choice-remove').click();await page.waitForFunction(()=>!document.querySelector('#themes-station .choice-remove'));
@@ -81,6 +91,20 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/themes'
     await page.locator('#fonts .choice-remove').click();await page.waitForFunction(()=>!document.documentElement.dataset.font);
     assert.equal(await checked('#fonts'),'Inter');assert.deepEqual(kept('fonts'),[]);
     assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--font').trim().startsWith('Inter')),true);
+
+    // OpenDyslexic, built in: words in it, titles and readings in its title cut, wide layouts on, and still on after a reload.
+    await page.locator('#fonts .font-card',{hasText:'OpenDyslexic'}).click();
+    await page.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&'fontWide' in document.documentElement.dataset);
+    assert.equal(await checked('#fonts'),'OpenDyslexic');
+    const dys=await page.evaluate(async()=>{await document.fonts.ready;const s=getComputedStyle(document.documentElement);return {font:s.getPropertyValue('--font').trim(),display:s.getPropertyValue('--font-display').trim(),body:getComputedStyle(document.body).fontFamily,faces:[...document.fonts].filter(f=>f.status==='loaded').map(f=>f.family)};});
+    assert.match(dys.font,/^OpenDyslexic,/);assert.match(dys.display,/^['"]OpenDyslexic Display['"],/);assert.match(dys.body,/^OpenDyslexic/);
+    assert.ok(dys.faces.includes('OpenDyslexic')&&dys.faces.includes('OpenDyslexic Display'),'both cuts load from the app: '+dys.faces.join(', '));
+    await page.screenshot({path:path.join(out,'settings-dyslexic.png')});
+    await page.reload();await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.font),'dyslexic','it is still on after the page loads again');
+    await page.evaluate(()=>window.deck.page('settings'));await page.waitForFunction(()=>state.page==='settings');
+    await page.locator('#fonts .font-card',{hasText:'Inter'}).click();
+    await page.waitForFunction(()=>!document.documentElement.dataset.font&&!('fontWide' in document.documentElement.dataset));
 
     assert.deepEqual(errors,[]);console.log('Themes and fonts: all passed');
   }finally{await app.close().catch(()=>{});fs.rmSync(data,{recursive:true,force:true});fs.rmSync(scratch,{recursive:true,force:true});}

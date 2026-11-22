@@ -56,7 +56,11 @@ are a convention the app uses consistently, and several tests read those strings
    action button).
 4. **Two faces.** Inter reads; Barlow Condensed (already bundled) is for titles and
    for readings: a clock, a voltage, a pulse width, a count, a port's number, set
-   like the print on a hub. Sentence case; no tracked capitals.
+   like the print on a hub. Sentence case; no tracked capitals. Settings → Text can
+   swap both for OpenDyslexic or a font the user adds. A face that sets words much
+   wider than Inter marks the page `data-font-wide`, and the few places sized for
+   Inter's words (a narrow column, a step rail, the bar's controller words) give way
+   for it. Anywhere else, a label wraps before it runs into its neighbour.
 5. **Motion explains** a press or an opening in 100 to 180 ms, easing out. Nothing
    bounces, scales on hover or pulses.
 6. **Say a thing once.** No arrows on buttons, no numbered-circle chips, no subtitle

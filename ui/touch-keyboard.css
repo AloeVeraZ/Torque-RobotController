@@ -4,7 +4,7 @@
 .touch-key-row{display:flex;justify-content:center;gap:4px;flex:1;min-height:0}
 .touch-keyboard button{display:flex;align-items:center;justify-content:center;flex:1;min-width:0;min-height:0;height:auto;margin:0;padding:2px;border:0;border-radius:var(--r-ctl);background:var(--control);color:var(--text);font:500 15px var(--font);touch-action:manipulation}
 .touch-keyboard button:active{background:var(--ink);color:var(--on-ink)}
-.touch-keyboard .wide{flex:1.6;font-size:12px}
+.touch-keyboard .wide{flex:1.6;min-width:min-content;font-size:12px}
 .touch-keyboard .touch-keyboard-title button{flex:0 0 88px;height:44px;background:var(--ink);color:var(--on-ink);font-weight:600}
 .touch-key-actions button:nth-child(6){flex:3}
 body[data-touch-keyboard=open]{padding-bottom:var(--touch-keyboard-height,310px)}

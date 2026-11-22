@@ -165,14 +165,14 @@ theme in Settings deletes its file; anything using it goes back to the default.
 
 ## Fonts
 
-**⋮ → Settings → Text** picks the typeface for all of Torque, the Driver Station included: Inter (Torque's own), or the
-one your computer uses for its menus. The last card, **+ Add a font**, takes a font file of your own:
+**⋮ → Settings → Text** picks the typeface for all of Torque, the Driver Station included: Inter (Torque's own),
+OpenDyslexic, which is made to be easier to read with dyslexia, or the one your computer uses for its menus. The last card, **+ Add a font**, takes a font file of your own:
 
 | | |
 | --- | --- |
 | Formats | TTF, OTF, WOFF or WOFF2, up to **10 MB**. One file is one font: pick its Regular, and Torque makes the bold. A variable font (one file with every weight) keeps its own weights. |
 | Name | Taken from the file name: `Atkinson Hyperlegible-Regular.ttf` shows as *Atkinson Hyperlegible*. |
-| Where it goes | Everywhere text is: words, headings and the big readings. |
+| Where it goes | Everywhere text is: words, headings and the big readings. A font that sets words much wider than Inter (OpenDyslexic does) gets a little more room in a few narrow places, such as Simulate's run column. |
 | Licence | Fonts are licensed like any software. Use one whose licence lets you install it, such as the SIL Open Font License most free fonts use. |
 
 Like themes, a font is copied into Torque's data folder (`fonts` beside `themes`) and never uploaded. **Remove** under it

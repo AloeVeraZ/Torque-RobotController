@@ -73,13 +73,13 @@ body.sim-workspace{overflow:hidden}
 .sim-workspace .field-area{position:static;min-height:0;display:flex;flex-direction:column}
 /* The field square is capped by the width left beside the Run timing column in every
    workspace tab, and the toolbar and footer have fixed heights, so planning and review match. */
-.sim-workspace .field-area{--sim-timing-column:262px;container-type:inline-size}
+.sim-workspace .field-area{--sim-timing-column:262px;container-type:inline-size}:root[data-font-wide] .sim-workspace .field-area{--sim-timing-column:330px}
 .sim-workspace .sim-toolbar{flex:none;margin-bottom:4px;height:44px;box-sizing:border-box;flex-wrap:nowrap}
 .sim-field-row{display:flex;gap:12px;min-height:0}
 .sim-workspace .sim-field-row{flex:1}
 .sim-field-row>.sim-stage{flex:1;min-width:0}
 .sim-workspace .sim-field-footer{flex:none;height:52px;overflow:hidden}
-.sim-workspace .sim-field-footer #field-help{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sim-workspace .sim-field-footer #field-help{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .sim-run-timing[hidden]{display:none!important}
 /* Run & review's left column: clock, practice mode and Run stay on top; the period lengths
    and live readout scroll under them when the window is short. */

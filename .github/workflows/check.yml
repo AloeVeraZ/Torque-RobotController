@@ -208,6 +208,8 @@ jobs:
           xvfb-run -a node tests/controller-ui.cjs
           echo "== tests/layout-audit.cjs"
           xvfb-run -a node tests/layout-audit.cjs
+          echo "== tests/layout-audit.cjs in OpenDyslexic"
+          DECK_TEST_FONT=dyslexic xvfb-run -a node tests/layout-audit.cjs
           echo "== tests/controller-session.cjs"
           xvfb-run -a node tests/controller-session.cjs
           echo "== tests/keyboard-app.cjs"

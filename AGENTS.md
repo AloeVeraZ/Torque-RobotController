@@ -16,5 +16,6 @@
 - The mark is τ (`MARK` in `ui/sim-video.js`); every icon and the installer's pictures are drawn from it by `npx electron tools/icons.cjs`. Never hand-edit `ui/icon.*` or `packaging/installer*`.
 - A bar that sticks while its pane scrolls is clear where it starts and fills with the theme's ground once it sticks (`container-type: scroll-state` in `ui/workspace.css`), so nothing shows through its words.
 - On-screen words read like a person wrote them: plain full sentences that say what to do, buttons and places named exactly as they appear (Setup → Mechanisms), "Torque" and never "Deck". Cut a line that only repeats its label. Words copied from the real FTC Driver Station stay as they are.
-- After changing the UI, run `tests/design-audit.cjs` (it measures these rules on the real app in both themes) with `tests/layout-audit.cjs` and `tests/window-fit-ui.cjs`.
+- Settings → Text can put OpenDyslexic or a user's own font on every screen. A label wraps before it runs into its neighbour, and a place sized for Inter's words gives way under `:root[data-font-wide]` (set for a face that sets words much wider, as OpenDyslexic does).
+- After changing the UI, run `tests/design-audit.cjs` (it measures these rules on the real app in both themes) with `tests/layout-audit.cjs` and `tests/window-fit-ui.cjs`. Run `tests/layout-audit.cjs` again with `DECK_TEST_FONT=dyslexic`: a label that only fits Inter shows up there.
 

@@ -137,14 +137,15 @@ $('#zoom-reset').onclick=()=>void task(()=>api.zoom(0));
 
 // Themes (docs/THEMES.md): one for Torque's own screens, one for the FTC Driver Station screen, which a saved robot can
 // override. Built-in themes come with the app; imported ones are folders the user picks, copied into the app's data
-// folder. Fonts work the same way: Inter and the computer's own come with it, and a font file added here is kept too.
+// folder. Fonts work the same way: Inter, OpenDyslexic and the computer's own come with it, and a font file added here
+// is kept too.
 const Themes=window.DeckThemes;let imported=[],fonts=[],lastLook='';
 const robotThemes=()=>{try{return JSON.parse(prefs.get('torque-robot-themes','{}'))||{};}catch{return {};}};
 const themeList=kind=>[...Themes.BUILT_IN,...imported.filter(t=>t.for===kind)];
 const appTheme=()=>Themes.find(themeList('app'),prefs.get('torque-app-theme','torque'))||Themes.BUILT_IN[0];
 const stationThemeId=robot=>(robot&&robotThemes()[robot])||prefs.get('torque-station-theme','same');
 const stationTheme=robot=>{const id=stationThemeId(robot);return id==='same'?appTheme():Themes.find(themeList('station'),id)||appTheme();};
-const FONTS=[{id:'inter',name:'Inter',family:'Inter'},{id:'system',name:'This computer’s',family:'system-ui'}];
+const FONTS=[{id:'inter',name:'Inter',family:'Inter'},{id:'dyslexic',name:'OpenDyslexic',family:'OpenDyslexic'},{id:'system',name:'This computer’s',family:'system-ui'}];
 const fontList=()=>[...FONTS,...fonts];
 const font=()=>fontList().find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0];
 // The Driver Station follows the robot that is open: its own theme, or the default.
@@ -202,7 +203,7 @@ $('#theme-make-app').onclick=()=>void task(()=>api.themeGuide('app'));$('#theme-
 $('#about-updates').onclick=()=>void task(showUpdates);$('#about-shortcuts').onclick=()=>openInfo('#shortcuts-dialog');$('#about-credits').onclick=()=>openInfo('#credits-dialog');
 // The Driver Station's own Settings can pick a theme for the robot it is on.
 api.onStationTheme?.(({robot,id})=>{if(robot){const m=robotThemes();if(id==='default')delete m[robot];else m[robot]=id;prefs.set('torque-robot-themes',JSON.stringify(m));}else prefs.set('torque-station-theme',id);applyLooks();});
-Themes.apply(document,appTheme(),{font:prefs.get('torque-font','inter')==='system'?'system':'inter'});
+Themes.apply(document,appTheme(),{font:FONTS.find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0]});
 
 // Session clock and zoom badge follow the robot state; reloads keep the clock running.
 let sessionStart=0,sessionUrl='',lastPage='';

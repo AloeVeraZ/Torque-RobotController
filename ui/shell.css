@@ -110,7 +110,7 @@
   #close-page, #manager-close, #robots-page, .zoom-reset { flex-shrink: 0; white-space: nowrap; }
   .zoom-reset { padding: 0 10px; font-weight: 600; }
   .input-notice { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 var(--page-gutter); border-bottom: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn); font-size: var(--text-sm); }
-  .input-notice .text-button { color: var(--warn); white-space: nowrap; }
+  .input-notice .text-button { flex-shrink: 0; max-width: 50%; color: var(--warn); text-align: right; }
   #robot-mount { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; overflow: hidden; }
   #preview-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
   #drive-view > footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 28px; padding: 0 var(--page-gutter); border-top: 1px solid var(--line); color: var(--quiet); font-size: var(--text-xs); }
@@ -131,7 +131,7 @@
   :root[data-theme-image] #connect-view::before { content: ""; position: fixed; inset: var(--bar-height) 0 0; z-index: -1; background: var(--theme-image) var(--theme-image-position, center) / cover no-repeat; opacity: var(--theme-image-opacity, .3); pointer-events: none; }
   .connect-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 24px; animation: rise-in var(--dur-3) var(--ease-out) both; }
   .connect-head h1 { margin: 0 0 6px; font-size: var(--display-lg); line-height: 1.02; }
-  .connect-status { margin: 0; color: var(--muted); font-size: var(--text-base); }
+  .connect-status { margin: 0; color: var(--muted); font-size: var(--text-base); overflow-wrap: anywhere; }
   .connect-back { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--ok-line); border-radius: var(--r-box); background: var(--ok-bg); }
   .connect-back p { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-weight: 500; }
   .connect-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); gap: 0 48px; align-items: start; }
@@ -147,7 +147,7 @@
   .saved-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; padding: 12px 4px; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background-color var(--dur-1) var(--ease); }
   .saved-row:last-child { border-bottom: 1px solid var(--line); }
   .saved-row:hover { background: var(--hover-soft, transparent); }
-  .robot-kind-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: var(--r-box); background: var(--control); color: var(--muted); font: 700 15px/1 var(--font-display); }
+  .robot-kind-mark { display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 6px; box-sizing: border-box; border-radius: var(--r-box); background: var(--control); color: var(--muted); font: 700 15px/1 var(--font-display); }
   .robot-kind-mark.ftc { background: var(--accent-soft); color: var(--accent-text); }
   .saved-name { min-width: 0; }
   .saved-row strong { display: block; overflow: hidden; font-size: var(--text-lg); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -218,7 +218,7 @@
   .theme-preview .p-line.short { top: 32px; width: 34%; opacity: .45; }
   .theme-preview .p-button { right: 10px; bottom: 9px; width: 34px; height: 12px; border-radius: 3px; background: var(--p-accent); }
   .theme-card[aria-checked=true] .p-button { animation: breathe 2.4s var(--ease) infinite; }
-  :is(.theme-name, .font-name) { min-width: 0; overflow: hidden; font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
+  :is(.theme-name, .font-name) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; overflow: hidden; font-size: var(--text-md); overflow-wrap: break-word; }
   .theme-name { padding: 0 4px; }
   .font-sample { display: flex; align-items: center; height: 44px; font-size: 32px; font-weight: 400; line-height: 1; }
   :is(.theme-card, .font-card).add-card { border-style: dashed; color: var(--muted); }
@@ -335,8 +335,17 @@
     #theme-cycle { display: none; }
     .controller small { max-width: 96px; }
     .network-chip { max-width: 160px; }
+    /* A wide face leaves no room for the controllers' words here: their dots say it, as in a narrower window. */
+    :root[data-font-wide] .controller small { display: none; }
+    :root[data-font-wide] .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
   }
   @media (max-width: 860px) {
+    /* A wide face runs out of bar sooner: the network shows as its icon and the tabs scroll, as on a phone. */
+    :root[data-font-wide] .network-chip { justify-content: center; max-width: var(--h-lg); padding: 0; }
+    :root[data-font-wide] .network-chip span { display: none; }
+    :root[data-font-wide] header nav { flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    :root[data-font-wide] .tab { flex: none; padding: 0 10px; }
+    :root[data-font-wide] .tab.active::before { inset-inline: 10px; }
     .controller small { display: none; }
     .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
     .connect-grid { grid-template-columns: minmax(0, 1fr); }

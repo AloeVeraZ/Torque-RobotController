@@ -65,6 +65,7 @@ when they build for a real robot.
 | Code adapted from Chromium | The Chromium Authors | BSD 3-Clause (`licenses/CHROMIUM-GAMEPAD.txt`) |
 | [Inter](https://rsms.me/inter/) | The Inter Project Authors | SIL Open Font License 1.1 |
 | [Barlow Condensed](https://github.com/jpt/barlow) | The Barlow Project Authors | SIL Open Font License 1.1 |
+| [OpenDyslexic](https://github.com/antijingoist/opendyslexic) | Abbie Gonzalez | SIL Open Font License 1.1, Reserved Font Name OpenDyslexic |
 | [NSIS](https://nsis.sourceforge.io) (Windows installer, build only) | NSIS contributors | zlib/libpng license |
 
 ## What is not included

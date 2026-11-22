@@ -12,6 +12,8 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
  const issues=[],errors=[];let cases=0;
  try{
   const page=await app.firstWindow();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));await page.waitForFunction(()=>typeof hardware==='object'&&hardware.model==='Steam Deck LCD');
+  // DECK_TEST_FONT=dyslexic audits every layout in OpenDyslexic, a face that sets words half as wide again as Inter.
+  if(process.env.DECK_TEST_FONT){await page.evaluate(f=>{localStorage.setItem('torque-font',f);applyLooks();},process.env.DECK_TEST_FONT);await page.waitForFunction(f=>document.documentElement.dataset.font===f,process.env.DECK_TEST_FONT);await page.evaluate(()=>document.fonts.ready);}
   await app.evaluate(({app},ssid)=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{Network}=req('./src/network.cjs');Network.prototype.status=async()=>({connected:true,native:true,ssid});Network.prototype.scan=async()=>Array.from({length:12},(_,i)=>({ssid:i?('Network_'+i+'_'+ssid).slice(0,32):ssid,security:'WPA2'}));},longSsid);
   await page.evaluate(()=>window.deck.network());for(let i=0;i<4;i++)await page.evaluate(r=>window.deck.save(r),{name:longName+i,url:longUrl+i});
   await page.evaluate(()=>window.__deckGamepadTest.set([{id:'Generic '+('unbroken_driver_description_'.repeat(65)),index:0,mapping:'standard',connected:true,axes:[-.98,.98,-.01,.04],buttons:Array.from({length:24},(_,i)=>({value:i%2,pressed:!!(i%2),touched:!!(i%2)}))}]));
