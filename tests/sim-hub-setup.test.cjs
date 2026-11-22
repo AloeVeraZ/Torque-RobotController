@@ -51,7 +51,7 @@ test('Calibrate shows ports only as the Control Hub reported them: its read-out,
   assert.deepEqual(read.find(d=>d.name==='frontLeft'),{name:'frontLeft',kind:'motor',tag:'goBILDA5202SeriesMotor',hub:'control',port:2});
   const table=W.readoutHtml(read,st);assert.match(table,/<tr data-read-row="frontLeft"><td>Motor port 2<\/td>/);assert.match(table,/<tr data-read-row="mystery"><td>Servo port 4<\/td>/);
   const row=k=>st.rows.find(r=>r.key===k),on=W.deviceHtml(row('robot.frontLeft'),st,{sensors:true,read});
-  assert.match(on,/data-wire-read="on">Control Hub motor port 2</);assert.doesNotMatch(on,/data-wire-port|Deck picks/);
+  assert.match(on,/data-wire-read="on">Control Hub motor port 2</);assert.doesNotMatch(on,/data-wire-port|Torque picks/);
   const off=W.deviceHtml(row('robot.frontRight'),st,{sensors:true,read});
   assert.match(off,/data-wire-read="off">Not on the Control Hub</);assert.doesNotMatch(off,/data-wire-port|Deck picks|motor port \d/);
 });

@@ -24,7 +24,7 @@ function probe(){
   const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
   const same=(a,b)=>Math.abs(a.r-b.r)+Math.abs(a.g-b.g)+Math.abs(a.b-b.b)<6;
   // What may be round or long and round: a switch, a slider, and the Driver Station's one big action.
-  const ROUND='.stick,.stick *,.switch,.switch *,[role=switch],[role=switch] *,.axon-toggle,.axon-toggle *,.cal-switch,.cal-switch *,input[type=range],.num-slider,progress,meter,.go,.abort,.round-play';
+  const ROUND='.switch,.switch *,[role=switch],[role=switch] *,.axon-toggle,.axon-toggle *,.cal-switch,.cal-switch *,input[type=range],.num-slider,progress,meter,.go,.abort,.round-play';
   // What floats may cast a shadow and sits over the page, so it is not "a box inside a box".
   const FLOATS='dialog,.menu,.menu-sub,.wifi-popover,[popover],.touch-keyboard,#toast,.sim-setup-list,.sim-setup-menu,.sim-popover,.sim-help-pop,.sim-path-tooltip,.sim-minimap,.ce-menu,.ce-tip,.picker,.sheet,.dev-menu';
   const boxed=new Set(),all=[...scope.querySelectorAll('*')].filter(e=>!(e instanceof SVGElement)&&!e.closest('.touch-keyboard')&&seen(e));

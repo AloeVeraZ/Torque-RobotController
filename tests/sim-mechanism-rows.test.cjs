@@ -15,7 +15,7 @@ test('a device row is its type, model, port, power and sensor, with no sentences
 test('Simulate lists what a mechanism runs on and its feedback sensor, and no ports',()=>{
   const st=W.state(project(mech())),row=st.rows.find(r=>r.key==='intakes.0.motor'),w=W.addSensor(st.wiring,row,'rev-color-v3'),shown=W.state(project(mech(),w)),html=W.mechRowHtml(shown.rows.find(r=>r.key===row.key),shown,{ports:false});
   for(const gone of ['data-wire-port','data-wire-assign','data-wire-sensor-port','plugged into'])assert.ok(!html.includes(gone),gone);
-  for(const want of ['data-wire-kind','data-wire-model','data-wire-sensor-add','REV Color Sensor V3','data-wire-linked="off"','Linked in Calibrate'])assert.ok(html.includes(want),want);
+  for(const want of ['data-wire-kind','data-wire-model','data-wire-sensor-add','REV Color Sensor V3','data-wire-linked="off"','Link it in Calibrate'])assert.ok(html.includes(want),want);
   assert.match(W.mechRowHtml(st.rows.find(r=>r.key===row.key),st,{ports:false}),/Feedback sensor/);
 });
 
@@ -24,7 +24,7 @@ test('Calibrate links each part Simulate lists to a device of the robot’s conf
   let st=W.state(project(mech())),row=st.rows.find(r=>r.key==='intakes.0.motor'),w=W.addSensor(W.addSensor(st.wiring,row,'rev-color-v3'),row,'motor-encoder');st=W.state(project(mech(),w));row=st.rows.find(r=>r.key==='intakes.0.motor');
   const html=W.linkHtml(row,st,read),id=st.wiring.sensors.find(s=>s.model==='rev-color-v3').id;
   assert.match(html,/data-wire-assign="intakes\.0\.motor" data-link-state="off"/);assert.match(html,/<option value="control:2\|intakeMotor">intakeMotor · Control Hub motor port 2<\/option>/);assert.doesNotMatch(html,/gate · /,'only its own kind of device');
-  assert.match(html,new RegExp(`data-wire-sensor-assign="${id}"`));assert.match(html,/<option value="control:2\|pieceSeen">pieceSeen · Control Hub I2C bus 2<\/option>/);assert.match(html,/encoder cable of this motor’s own port/);
+  assert.match(html,new RegExp(`data-wire-sensor-assign="${id}"`));assert.match(html,/<option value="control:2\|pieceSeen">pieceSeen · Control Hub I2C bus 2<\/option>/);assert.match(html,/This motor port’s own encoder input/);
   assert.equal(W.linked(row,st,read),false,'nothing linked yet');
   // The motor takes the configured name and port (as Calibrate's deviceAssign does), then the sensor.
   const m=mech();m.intakes[0].motor='intakeMotor';w=W.setPort(w,'intakes.0.motor','control:2','motor');let now=W.state(project(M.sanitize(m),w));

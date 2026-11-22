@@ -34,7 +34,7 @@
       blurb:'An intake that swings down to the floor to pick up and back up to hand over (slapdown, over the bumper).'}),
     T('claw','intake','Claw','revolute',{states:{open:0,closed:25},speed:360,find:'claw',motor:servo('gobilda-speed'),
       words:'\\bclaws?\\b|grabber|\\bgrab\\b|pincer|pinch(?:er)?|\\bclamp\\b|gripper|\\bgrip\\b|\\bjaws?\\b|end ?-?effector|grasp(?:er)?|\\btongs?\\b|\\bnipper\\b|\\bmandibles?\\b',
-      blurb:'Fingers that close on a piece, usually on a servo. Its fingers are found by name (finger, jaw, pincer).'}),
+      blurb:'Fingers that close on a piece, usually on a servo. Torque finds the fingers in your CAD by name (finger, jaw, pincer).'}),
     T('parallel-gripper','intake','Parallel gripper','prismatic',{axis:'side',states:{open:0,closed:1},lower:0,upper:2,speed:4,motor:servo('gobilda-speed'),
       words:'parallel ?(?:gripper|jaws?|claw)|linear ?(?:gripper|claw)|jaw ?gripper|two ?-?finger ?gripper',
       blurb:'Jaws that slide straight toward each other.'}),
@@ -91,7 +91,7 @@
       blurb:'A servo-driven two-bar linkage that pushes slides out.'}),
     T('dr4b','lift','Double reverse four-bar','prismatic',{axis:'up',states:{down:0,up:16},lower:0,upper:24,speed:20,family:'slide',motor:motor('gobilda-5203-117'),
       words:'(?:double ?-?reverse(?: ?(?:four|4) ?-?bar)?|\\bdr ?4 ?b\\b|reverse ?(?:four|4) ?-?bar)(?: ?lift)?',
-      blurb:'Two four-bars stacked so the top moves straight up. Drawn here as its straight-up motion.'}),
+      blurb:'Two four-bars stacked so the top moves straight up. Torque shows it as that straight-up motion.'}),
     // ---- arms and linkages
     T('arm','arm','Arm (pivot)','revolute',{states:{down:0,up:90},speed:120,positive:'raise',piece:true,motor:motor('gobilda-5203-117',belt(20,60)),
       words:'\\barms?\\b|^pivot$|big ?pivot|shoulder|\\bboom\\b|swing ?arm|scoring ?arm|outtake ?arm|upper ?arm|\\bcrane\\b|\\bjib\\b|(?:main|outtake|scoring|deposit|specimen) ?pivot',
@@ -236,9 +236,9 @@
       words:'stewart(?: ?-?gough)?(?: ?(?:platform|legs?|struts?|actuators?))?|\\bgough\\b|six ?-?dof ?platform',
       blurb:'One of six legs that change length to move and tilt the top plate.'}),
     // ---- your own
-    T('custom-pivot','custom','Your own pivot','revolute',{states:{up:0,down:45},speed:90,piece:true,family:'custom-pivot',blurb:'Anything that swings between two positions on a servo or motor: a flap, a latch, a lever. You pick its parts on the model.'}),
-    T('custom-slide','custom','Your own slide','prismatic',{axis:'forward',states:{in:0,out:6},lower:0,upper:12,speed:10,family:'custom-slide',blurb:'Anything that moves in and out along a rail or slide. You pick its parts on the model and how far it travels.'}),
-    T('custom-spin','custom','Your own spinner','continuous',{states:{stop:0,run:1800},speed:600,family:'custom-spin',blurb:'Anything that keeps spinning on an axle: a wheel, a roller, a fan. You pick its parts on the model and its speed.'})];
+    T('custom-pivot','custom','Your own pivot','revolute',{states:{up:0,down:45},speed:90,piece:true,family:'custom-pivot',blurb:'Anything that swings between two positions on a servo or motor, like a flap, a latch or a lever. You pick its parts on the model.'}),
+    T('custom-slide','custom','Your own slide','prismatic',{axis:'forward',states:{in:0,out:6},lower:0,upper:12,speed:10,family:'custom-slide',blurb:'Anything that moves in and out along a rail or slide. You pick its parts on the model and set how far it travels.'}),
+    T('custom-spin','custom','Your own spinner','continuous',{states:{stop:0,run:1800},speed:600,family:'custom-spin',blurb:'Anything that keeps spinning on an axle, like a wheel, a roller or a fan. You pick its parts on the model and set its speed.'})];
   const TYPES=Object.fromEntries(LIST.map(t=>[t.id,t]));
   for(const t of LIST)if(t.words)t.re=new RegExp(t.words,'gi');
   // ---------------------------------------------------------------- reading a CAD name

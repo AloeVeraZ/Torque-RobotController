@@ -70,7 +70,7 @@ function cancelAuth(){if(pendingAuth)void api.auth({id:pendingAuth.id,cancel:tru
 const controllerMonitor=window.DeckControllerMonitor.create({api,hardware:()=>hardware,robot:()=>state.robot,syncOverlay,toast});
 async function controllers(){try{if(api.controllerInfo)controllerMonitor.render(await api.controllerInfo());else{const pads=window.DeckControllers.orderedPads(navigator.getGamepads?.()||[],hardware).slice(0,2);controllerMonitor.render({count:state.robot?.controllerCount||1,slots:pads,readings:pads});}}catch{}}
 new ResizeObserver(()=>void bounds()).observe($('#robot-mount'));window.addEventListener('resize',()=>void bounds());api.onState(render);api.onNetwork(network);
-void task(async()=>{const data=await api.bootstrap();hardware=data.hardware;$('.version').textContent=data.app?data.app.version+' · '+data.app.channel:'';$('#menu-version').textContent=menuVersion(data.app);$('#device').textContent=hardware.model;render(data.state);$('#about-version').textContent=data.app?`Torque ${data.app.version}, ${data.app.channel==='testing'?'Testing (pre-release)':'Main (stable)'}`:'';void controllers();setInterval(controllers,1000);void loadThemes();});
+void task(async()=>{const data=await api.bootstrap();hardware=data.hardware;$('#menu-version').textContent=menuVersion(data.app);$('#device').textContent=hardware.model;render(data.state);$('#about-version').textContent=data.app?`Torque ${data.app.version}, ${data.app.channel==='testing'?'Testing (pre-release)':'Main (stable)'}`:'';void controllers();setInterval(controllers,1000);void loadThemes();});
 
 function syncOverlay(){void api.overlay(!$('#menu').hidden||!$('#wifi-popover').hidden||[...document.querySelectorAll('dialog')].some(d=>d.open)).catch(()=>{});}
 // However a dialog closes (its button, Escape, or a script), the robot view comes back once nothing covers it.
@@ -78,7 +78,7 @@ document.addEventListener('close',()=>syncOverlay(),true);
 let updateBusy=false;
 function updateButtons(busy){updateBusy=busy;for(const id of ['update-check','update-download','update-close','update-main','update-testing','testing-confirm','testing-cancel'])$('#'+id).disabled=busy;}
 function resetUpdateResult(){$('#update-download').hidden=true;$('#update-dismiss').hidden=true;$('#update-changelog').hidden=true;$('#update-progress').hidden=true;}
-async function showUpdates(){setMenu(false);$('#update-dialog').showModal();syncOverlay();resetUpdateResult();$('#testing-warning').hidden=true;$('#update-status').textContent='Loading update settings…';updateButtons(true);try{renderUpdateInfo(await api.updateInfo());$('#update-status').textContent='Check for a published update.';}catch(e){$('#update-status').textContent=e.message;}finally{updateButtons(false);}}
+async function showUpdates(){setMenu(false);$('#update-dialog').showModal();syncOverlay();resetUpdateResult();$('#testing-warning').hidden=true;$('#update-status').textContent='Loading update settings…';updateButtons(true);try{renderUpdateInfo(await api.updateInfo());$('#update-status').textContent='';}catch(e){$('#update-status').textContent=e.message;}finally{updateButtons(false);}}
 $('#update-close').onclick=()=>{$('#update-dialog').close();syncOverlay();};
 $('#update-dialog').addEventListener('cancel',e=>{if(updateBusy){e.preventDefault();return;}setTimeout(syncOverlay,0);});
 $('#update-check').onclick=()=>void(async()=>{updateButtons(true);resetUpdateResult();$('#update-status').textContent='Checking GitHub…';try{const result=await api.updateCheck();$('#update-status').textContent=result.message;if(result.status==='available'){const size=result.asset?.size;$('#update-download').textContent=size?`Download update · ${megabytes(size)}`:'Download update';if(size)$('#update-status').textContent=`${result.message} ${result.asset.kind==='app'?'App code only':'Full app and runtime'}: ${megabytes(size)} from GitHub.`;$('#update-download').hidden=false;$('#update-notes').textContent=result.notes||'';$('#update-changelog').hidden=!result.notes;}}catch(e){$('#update-status').textContent='Could not check for updates: '+e.message;}finally{updateButtons(false);}})();
@@ -136,60 +136,73 @@ if(/Mac/i.test(navigator.platform)){for(const key of document.querySelectorAll('
 $('#zoom-reset').onclick=()=>void task(()=>api.zoom(0));
 
 // Themes (docs/THEMES.md): one for Torque's own screens, one for the FTC Driver Station screen, which a saved robot can
-// override. Built-in themes come with the app; imported ones are folders the user picks, copied into the app's data folder.
-const Themes=window.DeckThemes;let imported=[],lastLook='';
+// override. Built-in themes come with the app; imported ones are folders the user picks, copied into the app's data
+// folder. Fonts work the same way: Inter and the computer's own come with it, and a font file added here is kept too.
+const Themes=window.DeckThemes;let imported=[],fonts=[],lastLook='';
 const robotThemes=()=>{try{return JSON.parse(prefs.get('torque-robot-themes','{}'))||{};}catch{return {};}};
 const themeList=kind=>[...Themes.BUILT_IN,...imported.filter(t=>t.for===kind)];
 const appTheme=()=>Themes.find(themeList('app'),prefs.get('torque-app-theme','torque'))||Themes.BUILT_IN[0];
 const stationThemeId=robot=>(robot&&robotThemes()[robot])||prefs.get('torque-station-theme','same');
 const stationTheme=robot=>{const id=stationThemeId(robot);return id==='same'?appTheme():Themes.find(themeList('station'),id)||appTheme();};
-const font=()=>prefs.get('torque-font','inter');
+const FONTS=[{id:'inter',name:'Inter',family:'Inter'},{id:'system',name:'This computer’s',family:'system-ui'}];
+const fontList=()=>[...FONTS,...fonts];
+const font=()=>fontList().find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0];
 // The Driver Station follows the robot that is open: its own theme, or the default.
-function sendStationLook(force=false){const robot=state.robot?.id||null,theme=stationTheme(robot),key=JSON.stringify([robot,theme.id,font(),imported.length]);if(key===lastLook&&!force)return;lastLook=key;
+function sendStationLook(force=false){const robot=state.robot?.id||null,theme=stationTheme(robot),key=JSON.stringify([robot,theme.id,font().id,imported.length]);if(key===lastLook&&!force)return;lastLook=key;
   api.stationLook?.({theme,font:font(),current:stationThemeId(robot),own:(robot&&robotThemes()[robot])||'default',robot:robot?state.robot.name:null,themes:[{id:'same',name:'Same as the app',swatch:Themes.swatch(appTheme())},...themeList('station').map(t=>({id:t.id,name:t.name,swatch:Themes.swatch(t)}))]});}
 function applyLooks(){Themes.apply(document,appTheme(),{font:font()});sendStationLook(true);renderThemes();}
-function themeCard(t,{checked,pick,label}){const b=el('button','theme-card'),view=el('span','theme-preview'),name=el('span','theme-name',label||t.name);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(checked));
-  const [bg,accent,lbg,laccent]=Themes.swatch(t);view.style.setProperty('--p-bg',bg);view.style.setProperty('--p-surface',t.dark.surface);view.style.setProperty('--p-text',t.dark.text);view.style.setProperty('--p-accent',accent);view.style.setProperty('--p-lbg',lbg);view.style.setProperty('--p-laccent',laccent);
+const PLUS='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+// A card in one of Settings' lists. Something the user added carries Remove under it.
+function choiceCard(cls,{checked,pick,label,remove}){const b=el('button',cls);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(checked));b.onclick=pick;
+  if(!remove)return b;const item=el('div','choice-item'),x=el('button','text-button choice-remove','Remove');x.type='button';x.setAttribute('aria-label',`Remove ${label}`);x.onclick=remove;item.append(b,x);return {item,card:b};}
+function addCard(cls,label,onclick){const b=el('button',`${cls} add-card`);b.type='button';const mark=el('span',cls==='theme-card'?'theme-preview':'font-sample');mark.innerHTML=PLUS;b.append(mark,el('span',cls==='theme-card'?'theme-name':'font-name',label));b.onclick=onclick;return b;}
+function themeCard(t,{checked,pick,label}){const name=label||t.name,made=choiceCard('theme-card',{checked,pick,label:name,remove:t.for?()=>removeTheme(t):null}),b=made.card||made,view=el('span','theme-preview');
+  // Its preview in both modes; the stylesheet shows the one the app is in.
+  for(const [mode,k] of [['dark','d'],['light','l']])for(const part of ['bg','surface','text','accent'])view.style.setProperty(`--p${k}-${part}`,t[mode][part]);
   if(t.background?.image)view.style.setProperty('--p-image',`url("${t.background.image}")`);view.append(el('i','p-bar'),el('i','p-line'),el('i','p-line short'),el('i','p-button'));
-  b.append(view,name);if(t.for)b.append(el('small','theme-from',t.author?`Imported, by ${t.author}`:'Imported'));b.onclick=pick;return b;}
+  b.append(view,el('span','theme-name',name));if(t.author)b.title=`By ${t.author}`;return made.item||b;}
+function fontCard(f){const made=choiceCard('font-card',{checked:f.id===font().id,pick:()=>{prefs.set('torque-font',f.id);applyLooks();},label:f.name,remove:f.custom?()=>removeFont(f):null}),b=made.card||made,sample=el('span','font-sample','Aa');
+  sample.style.setProperty('font-family',f.custom?`"${f.family}", system-ui, sans-serif`:f.family);b.append(sample,el('span','font-name',f.name));return made.item||b;}
 function renderThemes(){
   const app=appTheme().id,station=prefs.get('torque-station-theme','same');
-  $('#themes-app').replaceChildren(...themeList('app').map(t=>themeCard(t,{checked:t.id===app,pick:()=>{prefs.set('torque-app-theme',t.id);applyLooks();}})));
-  $('#themes-station').replaceChildren(themeCard({...appTheme(),id:'same'},{label:'Same as the app',checked:station==='same',pick:()=>{prefs.set('torque-station-theme','same');applyLooks();}}),...themeList('station').map(t=>themeCard(t,{checked:t.id===station,pick:()=>{prefs.set('torque-station-theme',t.id);applyLooks();}})));
+  $('#themes-app').replaceChildren(...themeList('app').map(t=>themeCard(t,{checked:t.id===app,pick:()=>{prefs.set('torque-app-theme',t.id);applyLooks();}})),addCard('theme-card','Import a theme',()=>importTheme('app')));
+  $('#themes-station').replaceChildren(themeCard({...appTheme(),id:'same',for:undefined,author:''},{label:'Same as the app',checked:station==='same',pick:()=>{prefs.set('torque-station-theme','same');applyLooks();}}),...themeList('station').map(t=>themeCard(t,{checked:t.id===station,pick:()=>{prefs.set('torque-station-theme',t.id);applyLooks();}})),addCard('theme-card','Import a theme',()=>importTheme('station')));
   // A saved FTC robot can keep a theme of its own on this computer.
   const map=robotThemes(),robots=(state.robots||[]).filter(r=>r.kind==='ftc');
   $('#robot-themes').replaceChildren(...(robots.length?[el('h3','','For one robot')]:[]),...robots.map(r=>{const row=el('label','robot-theme-row'),name=el('span'),pick=el('select');name.append(el('b','',r.name),el('small','',[hostOf(r.url),r.ssid?`on ${r.ssid}`:''].filter(Boolean).join(' · ')));
     pick.append(new Option('The default above','default'),new Option('Same as the app','same'),...themeList('station').map(t=>new Option(t.name,t.id)));pick.value=map[r.id]||'default';
     pick.onchange=()=>{const m=robotThemes();if(pick.value==='default')delete m[r.id];else m[r.id]=pick.value;prefs.set('torque-robot-themes',JSON.stringify(m));applyLooks();};row.append(name,pick);return row;}));
-  $('#themes-imported').replaceChildren(...imported.map(t=>{const row=el('div','imported-row'),name=el('div');name.append(el('b','',t.name),el('small','',[t.for==='app'?'App theme':'Driver Station theme',t.author?`by ${t.author}`:'',t.background?.image?'with a background picture':'',t.logo?'with a logo':''].filter(Boolean).join(' · ')));
-    const remove=el('button','text-button danger','Remove');remove.onclick=()=>void task(async()=>{await api.themes('remove',t.id);imported=imported.filter(x=>x.id!==t.id);if(prefs.get('torque-app-theme','')===t.id)prefs.set('torque-app-theme','torque');if(prefs.get('torque-station-theme','')===t.id)prefs.set('torque-station-theme','same');const m=robotThemes();for(const k of Object.keys(m))if(m[k]===t.id)delete m[k];prefs.set('torque-robot-themes',JSON.stringify(m));applyLooks();toast(`Removed ${t.name}.`);});
-    row.append(name,remove);return row;}));
-  for(const b of document.querySelectorAll('[data-font-choice]'))b.setAttribute('aria-pressed',String(b.dataset.fontChoice===font()));}
-async function loadThemes(){try{imported=(await api.themes('list')).filter(Themes.valid);}catch{imported=[];}applyLooks();}
-// Importing: the user picks the theme's folder; theme.json names its pictures, which are read from beside it.
-$('#theme-import').onclick=()=>{$('#theme-import-input').value='';$('#theme-import-input').click();};
-$('#theme-import-input').onchange=()=>void(async()=>{const files=[...$('#theme-import-input').files],status=$('#theme-import-status');if(!files.length)return;
+  $('#fonts').replaceChildren(...fontList().map(fontCard),addCard('font-card','Add a font',()=>{$('#font-input').value='';$('#font-input').click();}));}
+async function loadThemes(){try{imported=(await api.themes('list')).filter(Themes.valid);}catch{imported=[];}
+  try{fonts=(await api.fonts('list')).map(f=>({...f,family:'torque-'+f.id,custom:true}));}catch{fonts=[];}applyLooks();}
+function removeTheme(t){void task(async()=>{await api.themes('remove',t.id);imported=imported.filter(x=>x.id!==t.id);if(prefs.get('torque-app-theme','')===t.id)prefs.set('torque-app-theme','torque');if(prefs.get('torque-station-theme','')===t.id)prefs.set('torque-station-theme','same');const m=robotThemes();for(const k of Object.keys(m))if(m[k]===t.id)delete m[k];prefs.set('torque-robot-themes',JSON.stringify(m));applyLooks();toast(`Removed ${t.name}.`);});}
+function removeFont(f){void task(async()=>{await api.fonts('remove',f.id);fonts=fonts.filter(x=>x.id!==f.id);if(prefs.get('torque-font','')===f.id)prefs.set('torque-font','inter');applyLooks();toast(`Removed ${f.name}.`);});}
+// Importing: the + at the end of a list picks a theme's folder; theme.json names its pictures, read from beside it.
+let importKind='app';
+function importTheme(kind){importKind=kind;$(`#theme-${kind}-status`).textContent='';$('#theme-import-input').value='';$('#theme-import-input').click();}
+$('#theme-import-input').onchange=()=>void(async()=>{const kind=importKind,files=[...$('#theme-import-input').files],status=$(`#theme-${kind}-status`);if(!files.length)return;
   const json=files.filter(f=>f.name==='theme.json').sort((a,b)=>a.webkitRelativePath.split('/').length-b.webkitRelativePath.split('/').length)[0];
-  if(!json){status.textContent='That folder has no theme.json. Pick the theme’s own folder.';return;}
+  if(!json){status.textContent='That folder has no theme.json in it. Pick the folder the theme came in.';return;}
   const base=json.webkitRelativePath.slice(0,-'theme.json'.length),read=name=>{const f=files.find(x=>x.webkitRelativePath===base+name);return f?new Promise((ok,fail)=>{const r=new FileReader();r.onload=()=>ok(String(r.result));r.onerror=()=>fail(Error(`${name} could not be read.`));r.readAsDataURL(f);}):Promise.resolve(null);};
   status.textContent='Reading the theme…';
-  try{const theme=await Themes.fromPackage(await json.text(),read);await api.themes('save',theme);imported=[...imported,theme];
-    if(theme.for==='app')prefs.set('torque-app-theme',theme.id);else prefs.set('torque-station-theme',theme.id);applyLooks();
-    status.textContent=`Imported ${theme.name}, a ${theme.for==='app'?'theme for Torque’s screens':'Driver Station theme'}, and put it on. It is kept on this computer only.`;}
-  catch(e){status.textContent=`Not imported: ${e.message}`;}})();
-$('#theme-folder').onclick=()=>void task(()=>api.themes('folder'));
+  try{const theme=await Themes.fromPackage(await json.text(),read,kind);await api.themes('save',theme);imported=[...imported,theme];
+    prefs.set(kind==='app'?'torque-app-theme':'torque-station-theme',theme.id);applyLooks();status.textContent=`Imported ${theme.name} and put it on.`;}
+  catch(e){status.textContent=`Couldn’t import it. ${e.message}`;}})();
+// A font file: checked by loading it here first, then kept in the app's data folder.
+const fontName=file=>file.replace(/\.(ttf|otf|woff2?)$/i,'').replace(/[-_ ]*(\[[^\]]*\]|VariableFont.*|Variable|Regular|Book|Roman|Normal)$/i,'').replace(/[-_]+/g,' ').trim().slice(0,40)||'My font';
+function variableFont(bytes){try{const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),tag=String.fromCharCode(...bytes.subarray(0,4)),woff=tag==='wOFF',n=v.getUint16(woff?12:4),start=woff?44:12,size=woff?20:16;
+  if(tag==='wOF2')return false;for(let i=0;i<n;i++){const at=start+i*size;if(String.fromCharCode(...bytes.subarray(at,at+4))==='fvar')return true;}}catch{}return false;}
+$('#font-input').onchange=()=>void(async()=>{const file=$('#font-input').files[0],status=$('#font-status');if(!file)return;status.textContent='';
+  try{if(file.size>10e6)throw Error('A font file can be up to 10 MB.');const bytes=new Uint8Array(await file.arrayBuffer());
+    try{await new FontFace('torque-font-check',bytes).load();}catch{throw Error('That file isn’t a font Torque can read. Use a TTF, OTF, WOFF or WOFF2 file.');}
+    const entry=await api.fonts('save',{name:fontName(file.name),data:bytes,variable:variableFont(bytes)});fonts=[...fonts,{...entry,data:bytes,family:'torque-'+entry.id,custom:true}];
+    prefs.set('torque-font',entry.id);applyLooks();status.textContent=`Added ${entry.name} and switched to it.`;}
+  catch(e){status.textContent=`Couldn’t add it. ${e.message}`;}})();
 $('#theme-make-app').onclick=()=>void task(()=>api.themeGuide('app'));$('#theme-make-station').onclick=()=>void task(()=>api.themeGuide('station'));
-for(const b of document.querySelectorAll('[data-font-choice]'))b.onclick=()=>{prefs.set('torque-font',b.dataset.fontChoice);applyLooks();};
 $('#about-updates').onclick=()=>void task(showUpdates);$('#about-shortcuts').onclick=()=>openInfo('#shortcuts-dialog');$('#about-credits').onclick=()=>openInfo('#credits-dialog');
 // The Driver Station's own Settings can pick a theme for the robot it is on.
 api.onStationTheme?.(({robot,id})=>{if(robot){const m=robotThemes();if(id==='default')delete m[robot];else m[robot]=id;prefs.set('torque-robot-themes',JSON.stringify(m));}else prefs.set('torque-station-theme',id);applyLooks();});
-Themes.apply(document,appTheme(),{font:font()});
-
-// Drive's controller tiles draw each controller's sticks as they move, while the connect page shows.
-let padLoop=0;
-function drawSticks(info){for(let i=0;i<2;i++){const a=info?.readings?.[i]?.axes||[];for(const [side,x,y] of [['left',a[0],a[1]],['right',a[2],a[3]]]){const dot=$(`#pad-${i+1}-${side} b`);if(dot)dot.style.transform=`translate(${(Number(x)||0)*7}px,${(Number(y)||0)*7}px)`;}}}
-async function padTick(){padLoop=0;if($('#connect-view').hidden||document.hidden)return;try{if(api.controllerInfo)drawSticks(await api.controllerInfo());}catch{}padLoop=setTimeout(padTick,80);}
-new MutationObserver(()=>{if(!$('#connect-view').hidden&&!padLoop)void padTick();}).observe($('#connect-view'),{attributes:true,attributeFilter:['hidden']});
+Themes.apply(document,appTheme(),{font:prefs.get('torque-font','inter')==='system'?'system':'inter'});
 
 // Session clock and zoom badge follow the robot state; reloads keep the clock running.
 let sessionStart=0,sessionUrl='',lastPage='';

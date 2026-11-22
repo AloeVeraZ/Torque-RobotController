@@ -53,7 +53,7 @@
   const BUTTONS={right_trigger:'Right trigger',left_trigger:'Left trigger',right_bumper:'Right bumper',left_bumper:'Left bumper',a:'A / Cross',b:'B / Circle',x:'X / Square',y:'Y / Triangle',dpad_up:'D-pad up',dpad_down:'D-pad down',dpad_left:'D-pad left',dpad_right:'D-pad right',left_stick_button:'Left stick click',right_stick_button:'Right stick click',back:'Back / Share',start:'Start / Options'};
   // What a stick or a trigger can be followed by: up and right are positive, the right trigger one way and the left the other.
   const AXES={right_stick_y:'Right stick, up and down',right_stick_x:'Right stick, left and right',left_stick_y:'Left stick, up and down',left_stick_x:'Left stick, left and right',triggers:'Both triggers: right one way, left the other',right_trigger:'Right trigger',left_trigger:'Left trigger'};
-  const MODES={hold:'Runs while a button is held',toggle:'One button switches it on and off',updown:'Two buttons, one each way',axis:'Follows a stick or the triggers',positions:'A button for each position',flip:'One button flips between two positions',momentary:'Over while a button is held, back when let go',follow:'Follows a trigger or a stick',off:'Not in this TeleOp'};
+  const MODES={hold:'Runs while a button is held',toggle:'One button switches it on and off',updown:'Two buttons, one each way',axis:'Follows a stick or the triggers',positions:'A button for each position',flip:'One button flips between two positions',momentary:'Second position while a button is held',follow:'Follows a trigger or a stick',off:'Not in this TeleOp'};
   const ANALOG=new Set(['axis','follow']);
   const modesFor=kind=>kind==='servo'?['flip','positions','momentary','follow','off']:kind==='crservo'?['hold','toggle','axis','off']:['hold','toggle','updown','axis','off'];
   // The parts of the controller a control uses (both triggers are two), so that nothing is given two jobs.
@@ -251,7 +251,7 @@
   const NEW_STEER='new Steer(SERVO_SIGN[i], GAIN[i], LEAD_P_SECONDS[i], LEAD_N_SECONDS[i], CREEP_P[i], CREEP_N[i], CREEP_P_DEGREES_A_SECOND[i], CREEP_N_DEGREES_A_SECOND[i], DEGREES_A_SECOND_PER_POWER[i], TOP_DEGREES_A_SECOND[i], PUSH_P_DEGREES_A_SECOND[i], PUSH_N_DEGREES_A_SECOND[i], ZONE_DEGREES[i], EASE_DEGREES[i], STILL_DEGREES_A_SECOND[i], PUSH_WAIT_SECONDS[i], TOLERANCE_DEGREES)';
   // What a swerve still needs before anything is written for it: '' when it is ready.
   function swerveMissing(o){const p=o?.pods||[];if(!p.length)return 'This chassis has no pods to drive.';const bare=p.filter(x=>!x.servo||!x.encoder||!Number.isFinite(x.zero)).map(x=>x.label||x.drive);
-    return bare.length?`Set the wheels straight first, with an absolute encoder on every pod: ${bare.join(', ')}.`:'';}
+    return bare.length?`Set the wheels straight first in Calibrate → Mechanisms, with an absolute encoder on every pod. Not ready yet: ${bare.join(', ')}.`:'';}
   // The pieces another program needs to drive the same pods: {error} or {constants (lines), steer (the Steer class, lines),
   // newSteer (the expression that makes pod i's loop), imports}.
   function swerveParts(o){const error=swerveMissing(o);return error?{error}:{constants:swerveConstants(o),steer:STEER_CLASS.slice(),newSteer:NEW_STEER,imports:['com.qualcomm.hardware.lynx.LynxModule','com.qualcomm.robotcore.hardware.AnalogInput','com.qualcomm.robotcore.hardware.CRServo']};}
@@ -402,7 +402,7 @@
   // The U line. o: {job: 'tune' | 'check' | 'watch' (the heading only, while it is turned by hand), id, tolerance, turn (turnOf's numbers, for check), heading: {kind: 'hub' | 'pinpoint',
   // name}, mount: {logo, usb} or {quaternion: {w, x, y, z}}, scale (the yaw's factor: its scale, -1 when it counts backwards), motors:
   // [{name, power}] (each drive motor's power for a turn to the left, its direction in it)}. Returns the line, or {error}.
-  function turnLineOf(o){if(!o||!Array.isArray(o.motors)||!o.motors.length)return {error:'IMU tuning is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
+  function turnLineOf(o){if(!o||!Array.isArray(o.motors)||!o.motors.length)return {error:'IMU tuning works only on a chassis whose wheels do not steer: mecanum, X-drive, tank or kiwi.'};
     const job=['check','watch'].includes(o.job)?o.job:'tune',tol=Math.min(10,Math.max(.5,Number.isFinite(+o.tolerance)?+o.tolerance:2)),k={top:.25,least:.07,slowFrom:60,brake:.002,lag:.02,...(o.turn||{})};
     const fx=(v,d=4)=>String(+(+v||0).toFixed(d)),m=o.mount?.quaternion?`Q:${['w','x','y','z'].map(a=>fx(o.mount.quaternion[a],6)).join(':')}`:`L:${FACE[o.mount?.logo]||'UP'}:${FACE[o.mount?.usb]||'FORWARD'}`;
     const src=o.heading?.kind==='pinpoint'?`pin:${o.heading.name||'pinpoint'}`:`imu:${o.heading?.name||'imu'}`;
@@ -448,7 +448,7 @@
   // Returns {file, opMode, source}, or {error} saying what is not calibrated yet or not written for.
   function teleopOf(o){const m=mapOf(o.map),done=source=>({file:(o.className||NAME)+'.java',opMode:o.opMode||OP_MODE,source:withMechanisms(source,o)});
     if(o.kind==='swerve'){const error=swerveMissing(o);return error?{error}:done(swerve(o,m));}
-    if(Object.hasOwn(WHEELED,o.kind)){const need=o.kind==='kiwi'?3:o.kind==='tank'?2:4;if((o.motors||[]).length<need)return {error:`This chassis needs ${need} drive motors: Setup has ${(o.motors||[]).length}.`};return done(wheels(o,{...m,lock:'none'}));}
+    if(Object.hasOwn(WHEELED,o.kind)){const need=o.kind==='kiwi'?3:o.kind==='tank'?2:4;if((o.motors||[]).length<need)return {error:`This chassis needs ${need} drive motors, but Setup has ${(o.motors||[]).length}.`};return done(wheels(o,{...m,lock:'none'}));}
     if(/^diffSwerve/.test(o.kind||''))return {error:'A differential swerve needs its own calibration (each module’s angle from its two motors) before Torque can write its TeleOp: that is not built yet.'};
     return {error:'Torque writes this TeleOp for swerve, mecanum, X-drive, butterfly, kiwi and tank chassis.'};}
   const api={teleopOf,turnTestOf,TURN_TEST,turnLineOf,turnResultOf,TURN_TUNE,turnStep,turnState,TURN_LAW,TURN_JAVA,mapOf,MAP,DEFAULT,NAME,OP_MODE,FULL_NAME:'TorqueTeleOp',FULL_OP_MODE:'Torque TeleOp',BUTTONS,AXES,MODES,USES,usesOf,modesFor,mechOf,mechMap,mechCode,mechStep,clashes,chassisButtons,chassisParts,partsOf,command,swerveDrive,swerveParts,wheelPowers,wrapDeg,WHEELED,steerClass:()=>STEER_CLASS.slice()};

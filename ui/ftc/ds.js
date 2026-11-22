@@ -122,7 +122,7 @@ function stopCountdown(){if(countdown!==null){clearInterval(countdown);countdown
 // ---- Practice timer: a match clock independent of op modes (30 s Auto, 8 s transition, 2:00 TeleOp) ----
 let practice=null;
 const fmt=sec=>{sec=Math.max(0,Math.ceil(sec));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;};
-const PRACTICE_STARTS=[['auto','Autonomous','3 s lead-in, then the full match'],['transition','Auto → TeleOp Transition','8 s to pick up controllers, then TeleOp'],['teleop','TeleOp','2:00 driver-controlled period'],['endgame','Endgame','The last 30 seconds']];
+const PRACTICE_STARTS=[['auto','Autonomous','A 3-second countdown, then the whole match'],['transition','Transition to TeleOp','8 seconds to pick up the controllers, then TeleOp'],['teleop','TeleOp','The 2-minute driver-controlled period'],['endgame','Endgame','The last 30 seconds of TeleOp']];
 function startPractice(from){
   stopPractice(false);const [phase,seconds]={auto:['lead',3],transition:['transition',8],teleop:['teleop',120],endgame:['teleop',30]}[from];
   practice={phase,end:Date.now()+seconds*1000};
@@ -185,7 +185,7 @@ function inputsLive(){return inputsOn&&!document.hidden&&document.hasFocus();}
 function pollGamepads(){
   if(!session)return;const pads=Array.from(navigator.getGamepads?.()||[]),count=window.__deckControllerInput?.state().count||info.controllerCount||1;
   $('#pad-2').hidden=false;$('#pad-2').classList.toggle('standby',count<2);
-  if(count<2)$('#pad-2').title='Controller 2 is on standby. Choose Two controllers in this robot’s Settings to send User 2 input.';
+  if(count<2)$('#pad-2').title='Controller 2 is on standby. To use it, choose Two controllers for this robot on Torque’s Drive page.';
   for(const u of [1,2]){
     const p=u<=count?pads[u-1]:null,button=$('#pad-'+u),previous=users[u];users[u]=p?.connected?u-1:null;
     button.classList.toggle('assigned',users[u]!==null);
@@ -221,7 +221,7 @@ $('#menu-camera').onclick=()=>menu(openCamera);
 $('#system-action').onclick=()=>void updateRobotController();
 $('#menu-update-rc').hidden=!host?.updateRobotController;$('#menu-update-rc').onclick=()=>menu(()=>void updateRobotController());
 $('#menu-about').onclick=()=>menu(()=>{aboutQuiet=false;session.requestAbout();const r=session.state.robot;showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobocol: ${session.identity.version}${r?.sdk?`\nRobot Controller SDK: ${r.sdk}`:''}\n\nWaiting for the Robot Controller’s details…`);});
-$('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 in the app header, then press any button on that controller.\n\nFor a two-controller robot, select Two controllers in Settings, then click Controller 2 to assign or swap it.\n\nBuilt-in controls are preferred for Controller 1; other devices use the first detected controller.'));
+$('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 at the top of Torque’s window, then press any button on the controller you want to use.\n\nTo drive with two controllers, choose Two controllers for this robot on Torque’s Drive page. Then click Controller 2 and press a button on the second controller.\n\nOn a handheld such as a Steam Deck, its own controls are Controller 1 to begin with. Otherwise Controller 1 is the first controller Torque finds.'));
 $('#ds-close').hidden=!host?.closeRobot;$('#ds-fullscreen').hidden=!host?.fullscreen;
 $('#ds-close').onclick=()=>Promise.resolve(host.closeRobot()).catch(e=>toast(e.message));$('#ds-fullscreen').onclick=()=>Promise.resolve(host.fullscreen()).catch(e=>toast(e.message));
 $('#camera-image').onclick=()=>session.requestFrame();$('#camera-close').onclick=closeCamera;
@@ -243,7 +243,7 @@ document.addEventListener('keydown',e=>{
 // The theme Torque sent for this robot, for the Settings page's colour scheme.
 let look=null;
 async function boot(){
-  if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Open this robot from Torque Settings.';return;}
+  if(!host){$('#link-text').textContent='Driver Station Unavailable';$('#link-banner').className='banner bad';$('#status-line').textContent='Open this robot from Torque’s Drive page.';return;}
   try{info={...info,...await host.info()};}catch{}if(overUsb()&&info.ssid)robotNetwork=info.ssid;
   const applyTheme=t=>{if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;};
   applyTheme(info.theme);host.onTheme?.(applyTheme);
@@ -262,7 +262,7 @@ async function boot(){
   host.onOpen?.(page=>{if(page==='configure')window.DeckDsPages.configure();});if(info.open==='configure')window.DeckDsPages.configure();
   // The autonomous the simulator's Send to robot just built is selected once the robot lists it, unless one is chosen first.
   let sent=info.select||null;
-  session.on('state',s=>{if(!sent)return;if(selected||s.opModeState!=='stopped'){sent=null;return;}const m=opMode(sent);if(m){selected=m;sent=null;toast(`${m.name} is selected: Deck just sent it to the robot.`);queueRender();}});
+  session.on('state',s=>{if(!sent)return;if(selected||s.opModeState!=='stopped'){sent=null;return;}const m=opMode(sent);if(m){selected=m;sent=null;toast(`Torque just sent ${m.name} to the robot, so it is selected.`);queueRender();}});
   session.on('op-mode-ended',m=>{const next=m.autoTransition&&opMode(m.autoTransition);if(next&&next.flavor==='TELEOP'){selected=next;timerOn=false;session.initOpMode(next.name);toast(`Initializing ${next.name}`);}});
   session.on('toast',t=>toast(t.message,(t.duration||3)*1000));
   session.on('dialog',d=>{$('#ds-dialog').dataset.id=d.id;showDialog(d.title||'Robot Controller',d.message);});

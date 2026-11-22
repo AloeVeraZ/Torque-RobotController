@@ -91,7 +91,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     {const c=await page.locator('#mech-model-preview canvas').boundingBox();for(let i=0;i<12;i++)await page.mouse.move(c.x+c.width*(.3+i*.04),c.y+c.height*(.4+i*.02),{steps:2});await page.mouse.move(c.x+c.width*.43,c.y+c.height*.42,{steps:3});}
     await page.waitForFunction(()=>/click to (take|place it here)/.test(document.querySelector('#mech-model-help').textContent));
     await page.keyboard.press('Escape');
-    await page.click('[data-wheels-find]');await page.waitForFunction(()=>/Import the robot’s CAD first|No drive wheels found in the CAD|Found \d+ wheel/.test(document.querySelector('[data-wheels-said]').textContent));
+    await page.click('[data-wheels-find]');await page.waitForFunction(()=>/Import the robot’s CAD first|No drive wheels were found in the CAD|Found \d+ wheel/.test(document.querySelector('[data-wheels-said]').textContent));
     await page.click('[data-garage="chassis"]');await page.selectOption('#sim-drive-steer','servo');await page.waitForFunction(()=>/3 servos/.test(document.querySelector('#sim-drive-parts').textContent));
     {const p=await project(),models=['steerFront','steerBackLeft','steerBackRight'].map(k=>p.robot.wiring.devices['robot.'+k]?.model);assert.ok(models.every(Boolean),'every module steers with a servo: '+models);}
     await page.selectOption('#sim-drive-steer','crservo');await page.waitForFunction(()=>/3 continuous servos/.test(document.querySelector('#sim-drive-parts').textContent));

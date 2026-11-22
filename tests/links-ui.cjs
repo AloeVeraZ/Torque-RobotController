@@ -105,7 +105,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // The claw: a servo is enabled first (it goes to From and holds), then moved; it moves nothing, so it has no sensor.
     await pick('claw');assert.equal(await page.locator('[data-elec-go]').isDisabled(),true,'enable it first');
     await page.check('[data-elec-enable]');await soon('enabled at From',async()=>servoLines.includes('S\tclaw\t0.200'));await moveIt();assert.ok(servoLines.includes('S\tclaw\t0.800'),'moved to To');
-    assert.match(await page.textContent('[data-seen]'),/Nothing changed when claw moves positive/);await page.click('[data-seen-none]');
+    assert.match(await page.textContent('[data-seen]'),/Nothing changed when claw moves toward 1/);await page.click('[data-seen-none]');
     // The beam: nothing turns it; a game piece put in by hand.
     await pick('beam');await page.click('[data-elec-piece]');await page.waitForSelector('[data-elec-ready="1"]');
     beam=0;await page.waitForSelector('[data-seen-key="d:beam"]');assert.match(await seenRow('d:beam').innerText(),/goes LOW/);await seenRow('d:beam').locator('[data-seen-link]').click();beam=1;
@@ -119,7 +119,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await pick('imu');await page.click('[data-elec-hand]');await page.waitForSelector('[data-elec-ready="1"]');pitch=20;
     await page.waitForSelector('[data-hand-row="pitch"]',{timeout:15000});pitch=0;
     assert.match(await page.locator('[data-hand-row="pitch"]').innerText(),/Pitch.0.0°.20.0°.20.0°.Moved/);assert.match(await page.locator('[data-hand-row="yaw"]').innerText(),/Still/);
-    assert.match(await page.textContent('[data-elec-pick="imu"]'),/moved by hand/);await pick('rightFront');
+    assert.match(await page.textContent('[data-elec-pick="imu"]'),/Last time you moved it/);await pick('rightFront');
     // The board is in Setup: a line for each link; tap a cause, then what it moves, to add one; tap again to take it away.
     await pick('@setup');
     const lines=()=>page.locator('#cal-links svg .cal-board-line').count();assert.equal(await lines(),5);assert.equal(await page.locator('#cal-links svg .cal-board-line.pass').count(),4);
@@ -147,7 +147,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     // The list is Electronics' list: the Control Hub, the chassis' steps, then the mechanisms; one shows at a time.
     await page.click('[data-mech-pick=hub]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),true,'the hub card is here');assert.equal(await page.locator('#cal-chassis').isVisible(),false,'one part at a time');
     await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),false);
-    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/is not on the hub/);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/the hub has nothing by that name/);
     // A mecanum on motors only: nothing Electronics already checked is asked again, and plain motors have nothing to
     // calibrate. Its wheels are checked to roll forward, and it is good to use.
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['All wheels together','IMU tuning','Use it in your code','Drive it']);

@@ -50,8 +50,8 @@ test('Visualizer features: sequence waits, wait before and after, groups, many c
   assert.deepEqual([r.pins[1].path.heading,r.pins[2].path.heading],[90,135]);assert.match(notes,/Sweep: one turn across its 2 segments/);
   // Four control points: Deck keeps three; the through point is not used; facing a point becomes tracking it; "Aim" waits at the previous end point.
   assert.deepEqual(r.pins[3].path.controls,[{x:70,y:120},{x:90,y:125},{x:95,y:110}]);assert.deepEqual([r.pins[3].path.rotate,r.pins[3].path.target],['track',{x:72,y:72}]);assert.equal(r.pins[2].action,'Aim');
-  assert.match(notes,/Curve: 4 control points; Deck keeps 3/);assert.match(notes,/Curve: its 1 through point is not used/);
-  assert.equal(r.pins[4].path.rotate,'tangent');assert.match(notes,/Mixed: a heading in 2 parts; Deck uses its last part/);
+  assert.match(notes,/Curve: 4 control points; Torque keeps 3/);assert.match(notes,/Curve: its 1 through point is not used/);
+  assert.equal(r.pins[4].path.rotate,'tangent');assert.match(notes,/Mixed: a heading in 2 parts; Torque uses its last part/);
 });
 
 test('files that are not path files are refused with a reason',()=>{

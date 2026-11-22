@@ -44,7 +44,7 @@
   function audioClip(o){return {id:uid('c'),kind:'audio',track:o.track||'A1',start:o.start||0,in:o.in||0,out:o.out||0,asset:o.asset,volume:o.volume??1,muted:!!o.muted,fadeIn:o.fadeIn||0,fadeOut:o.fadeOut||0};}
   // A project from a file or storage, with anything out of range put right and anything unknown dropped.
   function sanitize(raw,{duration}={}){
-    if(!raw||raw.kind!=='deck-video-edit')throw Error('That is not a Deck video project.');
+    if(!raw||raw.kind!=='deck-video-edit')throw Error('That is not a Torque video project.');
     const base=create({});const D=finite(duration)?duration:finite(raw.duration)?raw.duration:0,num=(v,d,a=-Infinity,b=Infinity)=>finite(v)?clamp(v,a,b):d;
     const doc={...base,id:typeof raw.id==='string'?raw.id.slice(0,60):base.id,name:String(raw.name||'Run video').slice(0,80),recording:typeof raw.recording==='string'?raw.recording.slice(0,80):null,duration:D};
     const s=raw.settings||{};doc.settings={width:[1280,1920,2560,3840,720,1080].includes(s.width)?s.width:1920,height:[720,1080,1440,2160,1280,1920].includes(s.height)?s.height:1080,fps:[24,30,60].includes(s.fps)?s.fps:30};
@@ -178,7 +178,7 @@
   // ---------------------------------------------------------------- what happened in the run
   // Moments in the recording worth a camera: intake on and off, a ramp going down, shots, the turret swinging,
   // strafing, driving off and stopping, and each new period of a full match. {t (seconds from the start), kind, label, camera}.
-  const PERIODS={transition:'Transition',teleop:'Teleop starts'};
+  const PERIODS={transition:'Transition',teleop:'TeleOp starts'};
   function events(frames){
     const out=[];if(!frames?.length)return out;const t0=frames[0].time,push=(f,kind,label,camera)=>out.push({t:+(f.time-t0).toFixed(3),kind,label,camera});
     let intake=false,ramp=false,launched=null,picked=null,moving=false,strafing=false,swing=false,still=0,lastT=t0,period=null;

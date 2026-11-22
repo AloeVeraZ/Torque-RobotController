@@ -149,8 +149,8 @@ test('plain words for each device: what it is, where it is plugged in and what i
   assert.equal(say('sensor.turretTb'),'REV Through Bore "turretEncoder" on Expansion Hub encoder port 3. It tells where shooter 1 turret is. It is read through "turret", the motor on that port.');
   assert.equal(say('sensor.turretHome'),'REV Touch Sensor "turretHome" on Expansion Hub digital port 1. It tells when shooter 1 turret is at its zero.');
   assert.equal(say('robot.imu'),'IMU "imu": the Control Hub’s own IMU, on I2C bus 0. It tells which way the robot faces.');
-  assert.equal(say('kin.liftMotor'),'goBILDA 435 rpm (13.7:1) "lift": Deck picks its port; a limit switch tells when lift is at its zero.');
-  assert.match(H.explain({key:'kin.x',label:'Arm',role:'kin-motor',family:'motor',kind:'dcmotor',name:'arm'}),/^Motor "arm": Deck picks its port\. Runs to encoder counts/);
+  assert.equal(say('kin.liftMotor'),'goBILDA 435 rpm (13.7:1) "lift": Torque picks its port; a limit switch tells when lift is at its zero.');
+  assert.match(H.explain({key:'kin.x',label:'Arm',role:'kin-motor',family:'motor',kind:'dcmotor',name:'arm'}),/^Motor "arm": Torque picks its port\. Runs to encoder counts/);
   assert.deepEqual([rows.find(r=>r.key==='robot.frontLeft').planned,rows.find(r=>r.key==='shooters.0.hood').planned],[true,undefined]);
 });
 

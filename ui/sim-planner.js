@@ -145,7 +145,7 @@
   function bezier(points,t){let p=points.map(q=>({x:q.x,y:q.y}));while(p.length>1)p=p.slice(1).map((q,i)=>({x:p[i].x+(q.x-p[i].x)*t,y:p[i].y+(q.y-p[i].y)*t}));return p[0];}
   // Shared validation for every planner: pins, zones, start pose and clearance.
   function prepare(project,rawFootprint,fieldZones,rawField){
-    if(!project||!Array.isArray(project.pins)||project.pins.length>32||!Array.isArray(project.zones)||project.zones.length>24)throw Error('Use at most 32 pins and 24 barriers.');
+    if(!project||!Array.isArray(project.pins)||project.pins.length>32||!Array.isArray(project.zones)||project.zones.length>24)throw Error('You can have up to 32 pins and 24 obstacles.');
     const footprint=footprintOf(rawFootprint),field=fieldOf(rawField);
     const start=project.start;if(!start||![start.x,start.y,start.heading].every(finite))throw Error('Choose a finite starting pose.');
     const zones=project.zones.map(validateZone),all=zones.concat(fieldZones.map(validateZone));
@@ -239,9 +239,9 @@
     if(Math.hypot(dx,dy)<1e-9){const a=bezier(points,Math.max(0,t-1e-3)),b=bezier(points,Math.min(1,t+1e-3));dx=b.x-a.x;dy=b.y-a.y;}return Math.atan2(dy,dx)*180/Math.PI;}
   // Tangent segments face along the path (reverse: backwards along it), like Pedro Pathing's tangent heading.
   function headingAt(s,t){return s.tangent?tangentAt(s.points,t)+(s.reverse?180:0):s.target?bearing(bezier(s.points,t),s.target):finite(s.endHeading)?s.heading+(s.endHeading-s.heading)*t:s.heading;}
-  function pathDescription(raw,power=.8){const p=pathEffects(raw),bits=[`${Math.round((p.power??power)*100)}% motor power${p.power===null?' (setup)':''}`];
+  function pathDescription(raw,power=.8){const p=pathEffects(raw),bits=[`${Math.round((p.power??power)*100)}% motor power${p.power===null?' (default)':''}`];
     if(p.kind==='action')bits.push(`${p.action||'Action'} while driving${finite(p.actionSeconds)?` for the first ${p.actionSeconds} s`:''}`);
-    bits.push(p.rotate==='tangent'?'Face along the path (tangent)':p.rotate==='reverse'?'Face backwards along the path':p.rotate==='relative'?`Turn by ${p.angle>=0?'+':''}${p.angle}°`:p.rotate==='turn'?`Face field heading ${p.heading}°`:p.rotate==='spin'?`Spin ${Math.abs(p.spins)} ${p.spins<0?'clockwise':'counterclockwise'}`:p.rotate==='start'?'Return to starting heading':p.rotate==='track'?`Track target ${p.target?`(${p.target.x}, ${p.target.y}) in`:'not selected'}`:'Hold inherited heading');
+    bits.push(p.rotate==='tangent'?'Face along the path (tangent)':p.rotate==='reverse'?'Face backwards along the path':p.rotate==='relative'?`Turn by ${p.angle>=0?'+':''}${p.angle}°`:p.rotate==='turn'?`Face field heading ${p.heading}°`:p.rotate==='spin'?`Spin ${Math.abs(p.spins)} ${p.spins<0?'clockwise':'counterclockwise'}`:p.rotate==='start'?'Return to starting heading':p.rotate==='track'?`Track target ${p.target?`(${p.target.x}, ${p.target.y}) in`:'not selected'}`:'Keep the heading it arrives with');
     if(p.controls)bits.push(`Custom curve (${p.controls.length} handle${p.controls.length>1?'s':''})`);else if(p.style)bits.push(p.style==='spline'?'Smooth spline':'Straight segments');if(p.note)bits.push(p.note);return bits;}
   function pathAppearance(raw,power=.8){const p=pathEffects(raw),key=p.rotate==='track'?'track':p.rotate!=='keep'?'rotation':p.power!==null?'power':p.kind==='action'?'action':'normal';return {key,color:{track:'#49cbb3',rotation:'#b79bff',power:'#f2bc62',action:'#63c5ff',normal:'#aeb8c5'}[key],action:p.kind==='action',power:p.power??power};}
   // About how long a pin's steps hold the robot, for the preview: each step's own time, else 1.5 s for a Shoot and 1 s for others.

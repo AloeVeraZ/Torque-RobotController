@@ -21,8 +21,8 @@ test('Setup: how many of each, then the Control Hub, what is on the RS485 cable 
 test('Setup: what the configuration has, none found, and over Wi-Fi',()=>{
   const st={wiring:W.setHubCount(null,'expansion',0),rows:[]},html=W.scanHtml(st,{expansion:0,servoHub:0,others:[]},{rows:usb([CAM]).devices,conn:{how:'USB-C'},configured:[{name:'Webcam',tag:'Webcam',serial:'Ucamera001'}]});
   assert.match(col(html,'usb'),/Configured as “Webcam”/);assert.match(html,/Expansion Hubs<\/b><p class="hint">[^<]*<\/p><div class="sim-wire-stepper"><output>0</);assert.doesNotMatch(col(html,'hubs'),/data-hub-row="expansion"/);
-  assert.match(W.scanHtml(st,null,{conn:{how:'USB-C'},checking:true}),/Looking on the RS485 cable/);
-  const wifi=W.scanHtml(st,{expansion:0,servoHub:0,others:[{serial:'Ucamera001',type:'WEBCAM'}]},{conn:{how:'Wi-Fi'}});assert.match(col(wifi,'usb'),/Webcam/);assert.match(col(wifi,'usb'),/Over Wi-Fi this is only what the robot’s own Scan can see/);assert.doesNotMatch(wifi,/Blue USB/);
+  assert.match(W.scanHtml(st,null,{conn:{how:'USB-C'},checking:true}),/Looking for hubs on the RS485 cable/);
+  const wifi=W.scanHtml(st,{expansion:0,servoHub:0,others:[{serial:'Ucamera001',type:'WEBCAM'}]},{conn:{how:'Wi-Fi'}});assert.match(col(wifi,'usb'),/Webcam/);assert.match(col(wifi,'usb'),/Over Wi-Fi, this list is only what the robot’s own Scan can see/);assert.doesNotMatch(wifi,/Blue USB/);
   assert.match(W.scanHtml(st,{expansion:0,servoHub:0,others:[]},{rows:[],conn:{how:'USB-C'}}),/USB devices<\/b><p class="hint">[^<]*<\/p><div class="sim-wire-stepper"><output>0</);
   assert.match(W.scanHtml(st,null,{auto:{text:'1 new USB device'},conn:{how:'USB-C'}}),/data-auto-offer><span>1 new USB device<\/span><button[^>]*data-auto-configure/);
   const usbHub=W.scanHtml(hubsSt(),{expansion:1,servoHub:1,others:[]},{seen,conn:{how:'USB-C'},onUsb:id=>id==='expansion'});assert.match(usbHub,/Address 2 · on USB, not the RS485 cable/);
@@ -111,7 +111,7 @@ test('Debug: what is plugged in with its live result, and a way to Camera',()=>{
 });
 test('Debug: a Limelight says how it is',()=>{
   const NET=`1-1|1d6b|0104|00|0100|480|1|5|Some|Gadget||100mA|80|0|02/06/00/cdc_ether/eth0,`,LIME={iface:'eth0',hubAddress:'172.29.0.23',address:'172.29.0.1',scanKey:'EthernetOverUsb:eth0:172.29.0.23',status:{name:'limelight'}},list=usb([NET],{limelight:LIME});
-  assert.match(U.liveHtml(list,{lime:{temp:48.52,fps:90,pipelineIndex:2}}),/rs-pill ok">Answering · 48\.5 °C · 90 frames a second · pipeline 2/);assert.match(U.liveHtml(list,{lime:null}),/rs-pill warn">Not answering/);assert.match(U.liveHtml(list,{}),/Asking it how it is/);
+  assert.match(U.liveHtml(list,{lime:{temp:48.52,fps:90,pipelineIndex:2}}),/rs-pill ok">Answering · 48\.5 °C · 90 frames a second · pipeline 2/);assert.match(U.liveHtml(list,{lime:null}),/rs-pill warn">Not answering/);assert.match(U.liveHtml(list,{}),/Checking the Limelight…/);
 });
 test('Setup and Calibrate each have their own steps; Debug and the programmers sit beside Calibrate\u2019s, and USB devices are inside Debug, not Electronics',()=>{
   const src=fs.readFileSync(path.join(__dirname,'../ui/simulation.js'),'utf8');

@@ -24,7 +24,7 @@ function frames({contactAt=null,startWall=true,timeLimit=false}={}){
 test('teleop has no route result: it is reported only when asked to cover the whole run',()=>{
   const driven=run([[0,0,9],[1,0,20,20],[2,0,40,20,0,{contacts:['field-wall'],mechanisms:{score:12,shots:0,landed:0}}]]);
   assert.equal(R.build(driven,{pins}),null);
-  const r=R.build(driven,{pins,whole:true});assert.equal(r.driven,true);assert.match(r.title,/^Teleop ran for 2\.0 s, with 1 thing to check/);
+  const r=R.build(driven,{pins,whole:true});assert.equal(r.driven,true);assert.match(r.title,/^TeleOp ran for 2\.0 s, with 1 thing to check/);
   assert.equal(r.contacts[0].label,'teleop');assert.equal(r.legs.length,0);assert.ok(r.facts.some(([k,v])=>k==='Points'&&/^12/.test(v)));
   assert.ok(!R.nextSteps(r,{onExport(){}}).some(s=>s.id==='export'));
 });

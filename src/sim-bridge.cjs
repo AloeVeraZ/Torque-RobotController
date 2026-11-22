@@ -154,7 +154,7 @@ class SimulationHost{
     // A run video (MP4 or WebM, filmed in the window), saved where the team chooses.
     if(action==='video-save'){
       if(!data||!(data.bytes instanceof Uint8Array)||!data.bytes.length||data.bytes.length>2*1024*1024*1024||!['mp4','webm'].includes(data.ext))throw Error('Invalid run video.');
-      const base=String(data.name||'Deck run').replace(/[^\w -]+/g,'').trim().slice(0,80)||'Deck run';
+      const base=String(data.name||'Torque run').replace(/[^\w -]+/g,'').trim().slice(0,80)||'Torque run';
       const r=await dialog.showSaveDialog(win,{title:'Save run video',defaultPath:`${base}.${data.ext}`,filters:[{name:data.ext==='mp4'?'MP4 video':'WebM video',extensions:[data.ext]}]});if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,Buffer.from(data.bytes.buffer,data.bytes.byteOffset,data.bytes.length));return {name:path.basename(r.filePath),message:`Saved ${path.basename(r.filePath)}.`};
     }
     if(action==='teamcode-save'){

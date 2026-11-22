@@ -104,16 +104,16 @@
       if(typing||key===lastKey)return;lastKey=key;host.hidden=!cad||!all.length;if(host.hidden)return;
       const stale=done&&ranKey!==keyOf(),testable=all.filter(x=>canSweep(x.range)),sum=done?summary(all,combos):null,comboHits=combos.filter(c=>c.hits?.length);
       host.innerHTML=`<div class="sim-joints-head"><h3>Range of motion test</h3></div>
-        <p class="hint">Run this once every mechanism is set up. Your CAD is the robot at zero: each range below is how far that mechanism goes from where the CAD has it. On a big robot the test can take a few minutes.</p>
+        <p class="hint">Run this once every mechanism is set up. Torque treats your CAD as the robot at zero, so each range below is how far that mechanism moves from where the CAD has it. On a big robot the test can take a few minutes.</p>
         <label class="check"><input type="checkbox" data-mt-f="zeroed"${zeroed()?' checked':''}> Every mechanism in my CAD is at its zero (arms down, lifts in, turrets facing front)</label>
         <ol class="sim-motion-list">${all.map(row).join('')}</ol>
         <div class="sim-joint-buttons"><button type="button" class="primary" data-mt="${running?'stop':'run'}"${!running&&(!zeroed()||!testable.length)?' disabled':''}>${running?'Stop':done?'Run the test again':'Run the range of motion test'}</button></div>
-        ${(n=>n?`<p class="hint">Also tested, with nothing to set: ${n} part${n>1?'s':''} that spin or follow another (wheels, rollers, gears).</p>`:'')(everything().length-all.length)}
-        ${!zeroed()?'<p class="hint sim-joint-needs">Zero your CAD and tick the box to run the test: the ranges are measured from how the CAD has each mechanism.</p>':''}
+        ${(n=>n?`<p class="hint">Also tested, with nothing for you to set: ${n} part${n>1?'s':''} that spin or follow another part (wheels, rollers, gears).</p>`:'')(everything().length-all.length)}
+        ${!zeroed()?'<p class="hint sim-joint-needs">Put every mechanism in your CAD at its zero, then tick the box to run the test. Ranges are measured from where the CAD has each mechanism.</p>':''}
         <p class="hint sim-motion-caption" role="status">${esc(caption)}</p>
         ${sum&&!running?`<div class="sim-motion-summary" data-level="${sum.clear?'ok':sum.hits||sum.together?'hit':'warn'}"><strong>${esc(sum.text)}</strong>${stale?'<p class="hint">Something changed since this run. Run it again to check the new settings.</p>':''}</div>`:''}
         ${comboHits.length&&!running?`<span class="sim-mech-label">When moved together</span><ul class="sim-joint-alts">${comboHits.map(c=>{const a=k.joints.find(j=>j.id===c.a)?.name||c.a,b=k.joints.find(j=>j.id===c.b)?.name||c.b,h=c.hits[0];return `<li>${esc(a)} at ${fix(h.at[c.a],0)} with ${esc(b)} at ${fix(h.at[c.b],0)}: “${esc(h.names[0])}” hits “${esc(h.names[1])}”. <button type="button" class="text-button" data-mt="together" data-v="${esc(c.a+'|'+c.b)}">Show it</button></li>`;}).join('')}</ul>`:''}
-        ${done&&!running?`<p class="hint">Checked on your CAD’s real surfaces, one mechanism at a time and then in pairs that can reach each other, not every mechanism at once. Left out: belts, chains and cables (they bend), gears and anything they touch at zero, and other parts that already touch at zero unless one is pushed into the other. A contact is worth a look on the model; the real robot’s tolerances and flex are not known.</p>`:''}`;
+        ${done&&!running?`<p class="hint">Torque checked your CAD’s real surfaces, one mechanism at a time and then in pairs that can reach each other, but not every mechanism at once. It left out belts, chains and cables (they bend), gears and anything they touch at zero, and parts that already touch at zero unless one is pushed into the other. Treat a contact as something to look at on the model, because Torque does not know your real robot’s tolerances and flex.</p>`:''}`;
     }
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     // Moves a joint through its range on the model: out one way, back, out the other, back to zero.

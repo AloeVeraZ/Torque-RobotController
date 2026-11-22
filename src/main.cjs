@@ -321,7 +321,7 @@ ipcMain.on('app-theme',(e,theme)=>{if(e.sender!==win?.webContents||!['system','l
 // The Driver Station's theme (docs/THEMES.md): the app works out which one this robot has and sends it here; the Driver
 // Station's own Settings can pick another for this robot, which goes back to the app to keep.
 let stationLook=null;
-ipcMain.on('station-look',(e,look)=>{if(e.sender!==win?.webContents||!look||typeof look!=='object'||JSON.stringify(look).length>40e6)return;stationLook=look;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-look',look);}catch{}});
+ipcMain.on('station-look',(e,look)=>{if(e.sender!==win?.webContents||!look||typeof look!=='object')return;const bytes=look.font?.data;if(bytes!==undefined&&!(bytes instanceof Uint8Array&&bytes.length<=10e6))return;if(JSON.stringify({...look,font:{...look.font,data:null}}).length>40e6)return;stationLook=look;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-look',look);}catch{}});
 ipcMain.handle('ftc-station-theme',(e,id)=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');if(typeof id!=='string'||id.length>80)throw Error('Unknown theme.');emit('station-theme',{robot:active?.id||null,id});return true;});
 // A configuration saved or picked in the Driver Station's Configure Robot goes to Setup, Simulate and Calibrate.
 ipcMain.on('ftc-use-configuration',(e,c)=>{if(robotView&&e.sender===robotView.webContents&&typeof c?.xml==='string'&&c.xml.length<200000&&typeof c.name==='string')emit('robot-config',{name:c.name,xml:c.xml});});
@@ -411,8 +411,22 @@ handle('themes',async(action,data)=>{
     return names.map(n=>{try{return JSON.parse(fs.readFileSync(path.join(themeDir(),n),'utf8'));}catch{return null;}}).filter(Boolean);}
   if(action==='save'){const file=themeFile(data?.id),text=JSON.stringify(data);if(text.length>30e6)throw Error('This theme is larger than 30 MB.');fs.mkdirSync(themeDir(),{recursive:true});fs.writeFileSync(file+'.tmp',text);fs.renameSync(file+'.tmp',file);return true;}
   if(action==='remove'){const file=themeFile(data);fs.rmSync(file,{force:true});return true;}
-  if(action==='folder'){fs.mkdirSync(themeDir(),{recursive:true});await shell.openPath(themeDir());return true;}
   throw Error('Unknown theme action.');});
+// Fonts added in Settings → Text, kept the same way: the font file, and beside it a line naming it.
+const fontDir=()=>path.join(app.getPath('userData'),'fonts'),FONT_KINDS=['ttf','otf','woff','woff2'];
+const fontKind=bytes=>{const tag=Buffer.from(bytes.subarray(0,4)).toString('latin1');return tag==='wOF2'?'woff2':tag==='wOFF'?'woff':tag==='OTTO'?'otf':tag==='\0\x01\0\0'||tag==='true'?'ttf':null;};
+const fontId=id=>{if(typeof id!=='string'||!/^font-[a-z0-9-]{1,40}$/.test(id))throw Error('Unknown font.');return id;};
+handle('fonts',async(action,data)=>{
+  if(action==='list'){let names=[];try{names=fs.readdirSync(fontDir()).filter(n=>/^font-[a-z0-9-]{1,40}\.json$/.test(n));}catch{return [];}
+    return names.map(n=>{try{const f=JSON.parse(fs.readFileSync(path.join(fontDir(),n),'utf8'));fontId(f.id);if(!FONT_KINDS.includes(f.kind))return null;
+      return {id:f.id,name:String(f.name||'').slice(0,40),kind:f.kind,variable:!!f.variable,data:new Uint8Array(fs.readFileSync(path.join(fontDir(),f.id+'.'+f.kind)))};}catch{return null;}}).filter(Boolean);}
+  if(action==='save'){const bytes=data?.data;if(!(bytes instanceof Uint8Array)||!bytes.length)throw Error('No font file was given.');if(bytes.length>10e6)throw Error('A font file can be up to 10 MB.');
+    const kind=fontKind(bytes);if(!kind)throw Error('That file is not a TTF, OTF, WOFF or WOFF2 font.');
+    const name=String(data.name||'').trim().slice(0,40)||'My font',id='font-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,24)+'-'+randomUUID().slice(0,6);
+    fs.mkdirSync(fontDir(),{recursive:true});fs.writeFileSync(path.join(fontDir(),id+'.'+kind),bytes);const entry={id,name,kind,variable:!!data.variable};
+    fs.writeFileSync(path.join(fontDir(),id+'.json'),JSON.stringify(entry));return entry;}
+  if(action==='remove'){const id=fontId(data);for(const k of FONT_KINDS)fs.rmSync(path.join(fontDir(),id+'.'+k),{force:true});fs.rmSync(path.join(fontDir(),id+'.json'),{force:true});return true;}
+  throw Error('Unknown font action.');});
 // "Make your own": the theme guide on GitHub, for the branch this install follows.
 handle('theme-guide',which=>shell.openExternal(`https://github.com/AloeVeraZ/Torque-RobotController/blob/${meta.updateChannel==='testing'?'testing':'main'}/docs/THEMES.md#${which==='station'?'driver-station-themes':'app-themes'}`).then(()=>true));
 // Setup's Configure Robot button: the Driver Station's own page (its three-dot menu's Configure Robot), on the robot that is

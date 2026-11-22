@@ -222,6 +222,8 @@ jobs:
           xvfb-run -a node tests/design-ui.cjs
           echo "== tests/design-audit.cjs"
           xvfb-run -a node tests/design-audit.cjs
+          echo "== tests/themes-ui.cjs"
+          xvfb-run -a node tests/themes-ui.cjs
           echo "== tests/robot-fullscreen.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/robot-fullscreen.cjs
           echo "== tests/touch-ui.cjs"

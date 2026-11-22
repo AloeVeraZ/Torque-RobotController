@@ -55,7 +55,7 @@ test('a CAD box gives the position; the marker shows the face and arrow picked',
   assert.deepEqual(P.fromBox({lo:[0,0,0],hi:[1.634,.59,.661]},'externalImu','up','forward'),{x:.817,y:.295,z:.567});
   assert.deepEqual(P.fromBox({lo:[0,0,.3],hi:[1,1,.363]},'otos','up','forward'),{x:.5,y:.5,z:.379});
   assert.deepEqual(P.fromBox({lo:[0,0,0],hi:[1.689,1.579,.618]},'pinpoint','up','left'),{x:.845,y:.789,z:.309});
-  for(const kind of ['pinpoint','navx'])assert.match(P.chipNote({kind}),/does not publish where the IMU chip is, so its centre is used/,kind);
+  for(const kind of ['pinpoint','navx'])assert.match(P.chipNote({kind}),/does not publish where the IMU chip is, so Torque uses the board’s centre/,kind);
   assert.deepEqual(P.warnings({kind:'pinpoint',a:'up',b:'left'}),[],'the centre is not a warning');
   assert.deepEqual(P.warnings({kind:'otos',a:'up',b:'forward'}),[]);
   // Sticker up, a Pinpoint's X arrow points forward and its Y arrow left: goBILDA's own frame is the robot's.

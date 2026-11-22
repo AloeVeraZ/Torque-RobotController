@@ -70,7 +70,7 @@ test('the export range, markers and a project saved and opened again',()=>{
   const d=fresh();E.ops.cut(d,5,'chase');E.ops.marker(d,3,'Intake');d.range={in:2,out:9};
   assert.deepEqual(E.exportRange(d),{in:2,out:9});const e=E.sanitize(JSON.parse(JSON.stringify(d)));
   assert.deepEqual(e.clips.map(c=>[c.id,c.camera,c.start]),d.clips.map(c=>[c.id,c.camera,c.start]));assert.deepEqual(e.markers.map(m=>m.label),['Intake']);
-  assert.throws(()=>E.sanitize({kind:'nope'}),/not a Deck video project/);
+  assert.throws(()=>E.sanitize({kind:'nope'}),/not a Torque video project/);
   const bad=E.sanitize({...JSON.parse(JSON.stringify(d)),clips:[{kind:'video',track:'V1',start:-4,in:-1,out:99,camera:'drone',speed:900},{kind:'text',track:'V1'},{kind:'audio',track:'A1',asset:'missing'}]},{duration:20});
   assert.equal(bad.clips.length,1);assert.deepEqual([bad.clips[0].start,bad.clips[0].in,bad.clips[0].out,bad.clips[0].camera,bad.clips[0].speed],[0,0,20,'main',8]);
 });
@@ -84,7 +84,7 @@ test('run events: intake, ramp, shots, the turret, driving off, strafing and sto
 test('a full match marks each new period as a moment',()=>{
   const at=(time,phase)=>({time,truth:{x:0,y:0,heading:0},practice:{phase}});
   const ev=E.events([at(0,'auto'),at(1,'auto'),at(2,'transition'),at(3,'teleop'),at(4,'teleop')]).filter(e=>e.kind==='period');
-  assert.deepEqual(ev.map(e=>[e.t,e.label]),[[2,'Transition'],[3,'Teleop starts']]);
+  assert.deepEqual(ev.map(e=>[e.t,e.label]),[[2,'Transition'],[3,'TeleOp starts']]);
   assert.deepEqual(E.events([at(0,'teleop'),at(1,'teleop')]).filter(e=>e.kind==='period'),[]);
 });
 

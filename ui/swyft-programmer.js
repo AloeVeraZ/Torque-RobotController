@@ -59,13 +59,13 @@ window.DeckSwyft=(()=>{
     if(snap.busy)return {tone:'busy',main:snap.busy.text,sub:snap.busy.kind==='write'?'Keep the servo and programmer plugged in.':''};
     if(error)return {tone:'bad',main:error,sub:''};
     if(!snap.supported)return {tone:'warn',main:'This computer cannot reach the programmer',sub:'Programming SWYFT servos works on Windows for now. Everything here is a preview.'};
-    if(p.error)return {tone:'bad',main:'Torque could not reach the programmer',sub:`${p.error} Antivirus can block the small helper Torque uses for this. Restart Torque, and if this stays, tell your mentor.`};
-    if(p.rivals.length)return {tone:'warn',main:'SWYFT\'s own programmer app is open',sub:'It holds the same programmer, and two apps at once corrupt each other. Torque waits until it closes.',closeRivals:true};
+    if(p.error)return {tone:'bad',main:'Torque could not reach the programmer',sub:`${p.error} Antivirus software can block the small helper Torque uses to reach the programmer. Restart Torque, and if this keeps happening, tell your mentor.`};
+    if(p.rivals.length)return {tone:'warn',main:'SWYFT\'s own programmer app is open',sub:'It uses the same programmer, and two apps using it at once get in each other’s way. Torque waits until it closes.',closeRivals:true};
     if(p.held)return {tone:'warn',main:`${p.port} is open in another program`,sub:'Close the program using the SWYFT programmer. Torque connects by itself once it is free.'};
-    if(!p.ready)return {tone:'wait',main:'Plug in the SWYFT programmer to continue',sub:`Everything here is a preview of SWYFT's defaults until then.${p.others?.length?` ${p.others.map(o=>o.port).join(', ')} ${p.others.length===1?'is':'are'} plugged in, but ${p.others.length===1?'it is':'they are'} not a SWYFT programmer.`:''} If it is plugged in and this stays, it needs the Silicon Labs CP210x driver from SWYFT's download.`};
+    if(!p.ready)return {tone:'wait',main:'Plug in the SWYFT programmer to continue',sub:`Everything here is a preview of SWYFT's defaults until then.${p.others?.length?` ${p.others.map(o=>o.port).join(', ')} ${p.others.length===1?'is':'are'} plugged in, but ${p.others.length===1?'it is':'they are'} not a SWYFT programmer.`:''} If it is plugged in and this message stays, install the Silicon Labs CP210x driver that comes with SWYFT's software.`};
     if(p.silent)return {tone:'bad',main:'The programmer is not answering',sub:'Unplug it and plug it back in.'};
-    if(!s.present)return {tone:'wait',main:'Plug a SWYFT servo into the programmer',sub:'Match the servo\'s gray wire to the programmer\'s white wire. Torque finds it by itself.'};
-    if(repick&&n)return {tone:'warn',main:'Pick the servo that is plugged in',sub:'Under Servo: check the label on the servo. Then press Apply again. Nothing was written.',ready:true};
+    if(!s.present)return {tone:'wait',main:'Plug a SWYFT servo into the programmer',sub:'Match the servo\'s grey wire to the programmer\'s white wire. Torque finds the servo by itself.'};
+    if(repick&&n)return {tone:'warn',main:'Pick the servo that is plugged in',sub:'Nothing was written. Check the label on the servo, pick it under Servo, then press Apply again.',ready:true};
     if(result&&!result.ok)return {tone:'bad',main:'It did not take',sub:result.message,ready:n>0};
     if(n)return {tone:'good',main:`Ready to write ${n} ${n===1?'change':'changes'} to the servo`,sub:'Torque reads it back after writing, and shows what the servo reports.',ready:true};
     if(result)return {tone:'good',main:'Confirmed',sub:result.message};
@@ -125,7 +125,7 @@ window.DeckSwyft=(()=>{
     for(const r of box.querySelectorAll('input[type=range]'))setFill(r);
   }
   function renderHint(){
-    $('swyft-hint').textContent=pointing||(level==='advanced'?'Every setting SWYFT\'s own app offers. Point at one to see what it does. A dot marks a change not applied yet.':'The four settings every student should know. Advanced has SWYFT\'s signal and PID settings. A dot marks a change not applied yet.');
+    $('swyft-hint').textContent=pointing||(level==='advanced'?'Advanced shows every setting SWYFT\'s own app offers. Point at one to see what it does. A dot marks a change you have not applied yet.':'Simple shows the four settings most teams need. Advanced adds SWYFT\'s signal and PID settings. A dot marks a change you have not applied yet.');
   }
 
   // ---- what the servo and programmer report, and what happened

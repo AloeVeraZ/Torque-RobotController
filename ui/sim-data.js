@@ -52,7 +52,7 @@
     const at=(x,y)=>[x,-y],dir=deg=>-deg;
     const body=svg('g',{transform:'rotate(-90)'});mechView.append(body);
     body.append(svg('rect',{x:-L/2,y:-W/2,width:L,height:W,rx:4,class:'sim-data-chassis'+(highlight==='storage'?' highlight':'')}),svg('path',{d:`M${L/2-14} 0 L${L/2-4} 0 M${L/2-9} -5 L${L/2-4} 0 L${L/2-9} 5`,class:'sim-data-front'}));
-    if(!m?.enabled)return 'No parts yet: add an intake or a shooter.';
+    if(!m?.enabled)return 'No parts yet. Add an intake or a shooter in Setup → Mechanisms.';
     const cmd=ms?.command||{},on=!!cmd.intake,edge={front:[L/2,0,'v'],back:[-L/2,0,'v'],left:[0,W/2,'h'],right:[0,-W/2,'h']};
     // Each intake's box (its hitbox): a roller strip at the frame plus how far it sticks out, as wide as its mouth.
     m.intakes.forEach((intake,n)=>{for(const e of intake.sides){const [ex,ey,o]=edge[e],[cx,cy]=at(ex,ey),span=Math.min(intake.width??(o==='v'?robot.width:robot.length),o==='v'?robot.width:robot.length)*s,depth=Math.max(5,(intake.reach||0)*s+5),sign=e==='front'||e==='right'?1:-1;
@@ -79,7 +79,7 @@
   function create({panelHost,graphsHost=panelHost,timelineHost=null,total=null,onScrub,settings}){
     let frames=[],cursor=null,live=true;const chosen=new Set(SIGNALS.filter(s=>s.on).map(s=>s.key));
     const range=el('input',{type:'range',min:'0',max:'0',step:'0.01',value:'0','aria-label':'Run timeline'}),clock=el('output',{class:'sim-data-clock'}),liveButton=el('button',{type:'button',class:'secondary'},['Live']);
-    const track=el('div',{class:'sim-data-track'},[range]),summary=el('div',{class:'sim-analysis'}),empty=el('p',{class:'sim-data-empty',text:'No run recorded yet. Press Run beside the field: speed, heading, sensor error, drive power and mechanisms are graphed here while the robot drives.'});
+    const track=el('div',{class:'sim-data-track'},[range]),summary=el('div',{class:'sim-analysis'}),empty=el('p',{class:'sim-data-empty',text:'No run recorded yet. Press Run beside the field, and the speed, heading, sensor error, drive power and mechanisms are graphed here while the robot drives.'});
     const lanes=el('div',{class:'sim-data-lanes'}),picks=el('div',{class:'sim-data-series'}),boxes=new Map();
     for(const s of SIGNALS){const box=el('input',{type:'checkbox'});box.checked=chosen.has(s.key);box.onchange=()=>{box.checked?chosen.add(s.key):chosen.delete(s.key);render();};boxes.set(s.key,box);
       picks.append(el('label',{class:'check'},[box,swatch(s.color),el('span',{text:s.label})]));}

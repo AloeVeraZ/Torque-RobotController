@@ -68,13 +68,13 @@
     const def=finite(ctx.defaultPower)?ctx.defaultPower:1;
     for(const l of out){const power=pins[l.index]?.path?.power??def;if(l.pin!==null&&power<.75&&l.drive>=1){tips.push({pin:l.pin,text:`${l.label} drives at ${Math.round(power*100)}% motor power for ${s1(l.drive)}. If your robot stays in control, more power would shorten it.`});break;}}
     if(mech&&mech.shots>mech.landed)tips.push({pin:null,text:`${mech.shots-mech.landed} of ${mech.shots} shot${mech.shots>1?'s':''} missed the hive. Drag the timeline to replay each shot and see where it went.`});
-    if(ctx.optimized===false&&out.length>1)tips.push({pin:null,setting:'optimize',text:'Optimize (Path planning → Route options) test-drives straight and smooth shapes for your paths and keeps the fastest safe one.'});
-    if(!timedOut&&!issues.length&&auto&&auto-total>5)tips.push({pin:null,text:`${s1(auto-total)} of the autonomous period is left: room for another path or more scoring.`});
+    if(ctx.optimized===false&&out.length>1)tips.push({pin:null,setting:'optimize',text:'Try Optimize in Path planning → Route options. It test-drives straight and curved shapes for your paths and keeps the fastest one that stays clear.'});
+    if(!timedOut&&!issues.length&&auto&&auto-total>5)tips.push({pin:null,text:`${s1(auto-total)} of the autonomous period is left, so there is time for another path or more scoring.`});
     const level=timedOut?'bad':issues.some(i=>i.level==='bad')?'bad':issues.length?'warn':'ok';
-    const title=driven?`Teleop ran for ${s1(total)}${issues.length?`, with ${issues.length} thing${issues.length>1?'s':''} to check`:''}`:timedOut?'Autonomous ended before the route finished':issues.length?`Route finished in ${s1(total)}, with ${issues.length} thing${issues.length>1?'s':''} to check`:`Route finished cleanly in ${s1(total)}`;
+    const title=driven?`TeleOp ran for ${s1(total)}${issues.length?`, with ${issues.length} thing${issues.length>1?'s':''} to check`:''}`:timedOut?'Autonomous ended before the route finished':issues.length?`Route finished in ${s1(total)}, with ${issues.length} thing${issues.length>1?'s':''} to check`:`Route finished cleanly in ${s1(total)}`;
     const facts=[['Time',auto?`${s1(total)} of the ${auto} s autonomous${timedOut?'':` · ${s1(Math.max(0,auto-total))} to spare`}`:s1(total),timedOut?'bad':'']];
     if(finite(endError))facts.push(['Final position',`${endError.toFixed(1)} in from the last end point`,endError>2?'warn':'']);
-    if(finite(estimateError))facts.push(['Position tracking',`the robot’s own estimate was ${estimateError.toFixed(1)} in off at the end`,estimateError>2?'warn':'','Sensor estimate: how far the position the robot worked out from its odometry and IMU was from where it really was, at the end of the route. Large values mean its sensors or their offsets need checking.']);
+    if(finite(estimateError))facts.push(['Position tracking',`the robot’s own estimate was ${estimateError.toFixed(1)} in off at the end`,estimateError>2?'warn':'','How far the robot’s own position estimate, from its odometry and IMU, was from where it really was at the end of the route. A large number means you should check its sensors and their offsets.']);
     facts.push(['Contact',contacts.length?[...new Set(contacts.map(c=>KIND[c.kind]))].join(', '):'None',contacts.some(c=>c.kind!=='wall')||zones?'bad':contacts.length?'warn':'']);
     if(mech&&finite(mech.score))facts.push(['Points',`${mech.score}${mech.shots?` · ${mech.landed} of ${mech.shots} shots landed`:''}`,'']);
     // A full match's report is about its route; the points go on through teleop.
@@ -136,7 +136,7 @@
       choose(report.legs.find(l=>l.index===selected)||report.legs.reduce((a,b)=>b.total>a.total?b:a),false);
     }
     if(report.tips.length)parts.push(el('h4',{text:'What to try next'}),el('ol',{class:'sim-report-tips'},report.tips.map(t=>el('li',{},[el('span',{text:t.text}),...(t.pin!==null&&onEdit?[editButton(t.pin,`path ${t.pin+1}`,onEdit)]:[]),...(t.setting&&onSetting?[el('button',{type:'button',class:'text-button sim-report-edit','data-setting':t.setting,onclick:()=>onSetting(t.setting),text:`Open ${SETTINGS[t.setting]}`})]:[])]))));
-    parts.push(el('p',{class:'hint sim-report-note',text:'Simulated estimate. Battery charge, wheel traction, tuning and field differences change real results, so test on your robot before a match.'}));
+    parts.push(el('p',{class:'hint sim-report-note',text:'These numbers come from the simulation. Battery charge, wheel grip, tuning and differences between fields all change real results, so test on your robot before a match.'}));
     host.replaceChildren(...parts);
   }
   return {build,render,nextSteps,legOf,activity,action};

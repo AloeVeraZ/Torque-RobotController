@@ -31,13 +31,19 @@
   }
   // The CSS that puts a theme on a page: dark first, light where the page is light (as ui/tokens.css does), and the
   // names older stylesheets still use.
+  // A logo can come in two: one for dark, one for light.
   function css(theme){
-    const block=t=>TOKENS.map(k=>`--${k}:${t[k]};`).join('')+`--accent-text:${t.accent};--accent-bg:${t['accent-soft']};--accent-fill:${t.accent};--input-hover:${t['input-hover']};`;
-    return `:root{${block(theme.dark)}}:root[data-theme=light]{${block(theme.light)}}@media (prefers-color-scheme: light){:root:not([data-theme=dark]){${block(theme.light)}}}`;
+    const logo=url=>url?`--theme-logo:url("${url}");`:'';
+    const block=(t,mode)=>TOKENS.map(k=>`--${k}:${t[k]};`).join('')+`--accent-text:${t.accent};--accent-bg:${t['accent-soft']};--accent-fill:${t.accent};--input-hover:${t['input-hover']};`+logo(mode==='light'&&theme.logoLight||theme.logo);
+    return `:root{${block(theme.dark,'dark')}}:root[data-theme=light]{${block(theme.light,'light')}}@media (prefers-color-scheme: light){:root:not([data-theme=dark]){${block(theme.light,'light')}}}`;
   }
   // Puts a theme on a page (null, or Torque, takes it off). A constructed stylesheet, so the pages' content security
   // policy, which allows no inline styles, still holds. Pictures go in as custom properties the stylesheets draw with.
   const sheets=new WeakMap();
+  // A font added in Settings → Text arrives as its file's bytes; each page loads it once, under its own family name.
+  const fontsIn=new WeakMap();
+  function addFont(doc,f){if(!f||!f.data||!f.family)return;let have=fontsIn.get(doc);if(!have){have=new Set();fontsIn.set(doc,have);}if(have.has(f.family))return;have.add(f.family);
+    try{const face=new doc.defaultView.FontFace(f.family,f.data,f.variable?{weight:'100 900'}:{});doc.fonts.add(face);face.load().catch(()=>{});}catch{}}
   function apply(doc,theme,{font}={}){
     const root=doc.documentElement;let sheet=sheets.get(doc);
     if(!sheet&&typeof CSSStyleSheet==='function'){sheet=new CSSStyleSheet();sheets.set(doc,sheet);doc.adoptedStyleSheets=[...doc.adoptedStyleSheets,sheet];}
@@ -47,21 +53,26 @@
     const bg=theme?.background?.image,logo=theme?.logo;
     if(bg){root.style.setProperty('--theme-image',`url("${bg}")`);root.style.setProperty('--theme-image-position',theme.background.position||'center');root.style.setProperty('--theme-image-opacity',String(theme.background.opacity??.3));root.dataset.themeImage='';}
     else{root.style.removeProperty('--theme-image');delete root.dataset.themeImage;}
-    if(logo){root.style.setProperty('--theme-logo',`url("${logo}")`);root.dataset.themeLogo='';}else{root.style.removeProperty('--theme-logo');delete root.dataset.themeLogo;}
-    if(font==='system')root.dataset.font='system';else delete root.dataset.font;
+    if(logo&&custom)root.dataset.themeLogo='';else delete root.dataset.themeLogo;
+    // The font: Inter (none set), a built-in one by name (tokens.css), or one added here, which sets the faces itself.
+    const f=typeof font==='string'?{id:font}:font||{id:'inter'};addFont(doc,f);
+    if(f.id&&f.id!=='inter')root.dataset.font=f.custom?'custom':f.id;else delete root.dataset.font;
+    if(f.custom&&f.family){const stack=`"${f.family}", system-ui, sans-serif`;root.style.setProperty('--font',stack);root.style.setProperty('--font-display',stack);}
+    else{root.style.removeProperty('--font');root.style.removeProperty('--font-display');}
   }
   // Two colours that say what a theme looks like, for its swatch: its ground and its accent, dark.
   const swatch=t=>[t.dark.bg,t.dark.accent,t.light.bg,t.light.accent];
 
   // An imported theme: theme.json and the pictures it names, read from its folder. read(name) gives a picture as a data
-  // URL (or null when the folder has no file of that name). Returns the theme, or throws an Error that says what to fix.
-  async function fromPackage(json,read){
+  // URL (or null when the folder has no file of that name). kind is the list it is imported into ("app" or "station");
+  // without one, theme.json's "for" says. Returns the theme, or throws an Error that says what to fix.
+  async function fromPackage(json,read,want){
     let p;try{p=typeof json==='string'?JSON.parse(json):json;}catch(e){throw Error(`theme.json is not valid JSON: ${e.message}`);}
     if(typeof json==='string'&&json.length>LIMITS.json)throw Error('theme.json is larger than 200 KB.');
     if(!p||p.format!=='torque-theme')throw Error('theme.json needs "format": "torque-theme".');
     if(p.version!==1)throw Error('This theme is version '+p.version+'; Torque reads version 1.');
     const name=String(p.name||'').trim().slice(0,40);if(!name)throw Error('theme.json needs a "name".');
-    const kind=p.for==='app'||p.for==='station'?p.for:null;if(!kind)throw Error('"for" must be "app" (Torque\'s screens) or "station" (the FTC Driver Station screen).');
+    const kind=want==='app'||want==='station'?want:p.for==='app'||p.for==='station'?p.for:null;if(!kind)throw Error('"for" must be "app" (Torque\'s screens) or "station" (the FTC Driver Station screen).');
     const theme={id:'custom-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,24)+'-'+Math.random().toString(36).slice(2,7),name,for:kind,author:String(p.author||'').slice(0,60),imported:Date.now()};
     for(const mode of ['dark','light']){
       const c=p.colours?.[mode]||p.colors?.[mode];if(!c||typeof c!=='object')throw Error(`theme.json needs "colours": { "${mode}": { … } }.`);
@@ -80,11 +91,12 @@
       if(!/^(center|top|bottom|left|right)( (center|top|bottom|left|right))?$|^\d{1,3}% \d{1,3}%$/.test(position))throw Error('background.position is a word like "center" or "top", or two percentages like "50% 30%".');
       const opacity=b.opacity===undefined?.3:Number(b.opacity);if(!(opacity>=0&&opacity<=1))throw Error('background.opacity is a number from 0 to 1.');
       theme.background={image:await picture(b.image,'background.image'),position,opacity};}
-    if(p.logo)theme.logo=await picture(p.logo,'logo');
+    if(p.logo){const l=typeof p.logo==='string'?{dark:p.logo}:p.logo;if(!l||typeof l!=='object'||!(l.dark||l.light))throw Error('logo is a file name, or { "dark": "logo.png", "light": "logo-light.png" }.');
+      theme.logo=await picture(l.dark||l.light,l.dark?'logo.dark':'logo.light');if(l.dark&&l.light&&l.light!==l.dark)theme.logoLight=await picture(l.light,'logo.light');}
     return theme;
   }
   // Checks a stored theme (one this app imported earlier) before it is used again.
-  function valid(t){return !!t&&typeof t==='object'&&/^custom-[a-z0-9-]{1,40}$/.test(t.id)&&typeof t.name==='string'&&['app','station'].includes(t.for)&&['dark','light'].every(m=>t[m]&&TOKENS.every(k=>typeof t[m][k]==='string'&&(HEX.test(t[m][k])||/^#[0-9a-f]{8}$/i.test(t[m][k]))))&&(!t.background||!t.background.image||IMAGE.test(t.background.image))&&(!t.logo||IMAGE.test(t.logo));}
+  function valid(t){return !!t&&typeof t==='object'&&/^custom-[a-z0-9-]{1,40}$/.test(t.id)&&typeof t.name==='string'&&['app','station'].includes(t.for)&&['dark','light'].every(m=>t[m]&&TOKENS.every(k=>typeof t[m][k]==='string'&&(HEX.test(t[m][k])||/^#[0-9a-f]{8}$/i.test(t[m][k]))))&&(!t.background||!t.background.image||IMAGE.test(t.background.image))&&(!t.logo||IMAGE.test(t.logo))&&(!t.logoLight||IMAGE.test(t.logoLight));}
   const find=(list,id)=>list.find(t=>t.id===id)||null;
-  return {BUILT_IN,TOKENS,GIVEN,LIMITS,derive,css,apply,swatch,fromPackage,valid,find,contrast};
+  return {BUILT_IN,TOKENS,GIVEN,LIMITS,derive,css,apply,addFont,swatch,fromPackage,valid,find,contrast};
 });

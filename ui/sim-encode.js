@@ -56,14 +56,14 @@
           const mdhd=(scale,dur)=>full('mdhd',0,0,new Bytes().u32(0).u32(0).u32(scale).u32(dur).u16(0x55c4).u16(0));
           const hdlr=(t,name)=>full('hdlr',0,0,new Bytes().u32(0).str(t).zeros(12).str(name+'\0'));
           const dinf=box('dinf',full('dref',0,0,new Bytes().u32(1),full('url ',0,1)));
-          const vtrak=box('trak',tkhd(1,Math.round(vDur*movie/vt),0,video.width,video.height),box('mdia',mdhd(vt,vDur),hdlr('vide','Deck video'),box('minf',full('vmhd',0,1,new Bytes().zeros(8)),dinf,vstbl)));
+          const vtrak=box('trak',tkhd(1,Math.round(vDur*movie/vt),0,video.width,video.height),box('mdia',mdhd(vt,vDur),hdlr('vide','Torque video'),box('minf',full('vmhd',0,1,new Bytes().zeros(8)),dinf,vstbl)));
           let atrak=new Uint8Array();
           if(audio&&a.samples.length){
             const ch=audio.channels||2,entry=new Bytes().zeros(6).u16(1).zeros(8).u16(ch).u16(16).u16(0).u16(0).u32(aRate*65536);
             const sample=audio.codec==='aac'?box('mp4a',entry,full('esds',0,0,desc(3,cat([new Bytes().u16(2).u8(0).bytes(),desc(4,cat([new Bytes().u8(0x40).u8(0x15).u24(0).u32(audio.bitrate||192000).u32(audio.bitrate||192000).bytes(),desc(5,audio.description||new Uint8Array())])),desc(6,Uint8Array.of(2))]))))
               :box('Opus',entry,dOps(audio.description,ch,aRate));
             const astbl=box('stbl',full('stsd',0,0,new Bytes().u32(1),sample),stts(a.samples.map(s=>Math.round((s.duration||0)*aRate/1e6))),...one(a.samples.length,aOff),stsz(a.samples));
-            atrak=box('trak',tkhd(2,Math.round(aDur*movie/aRate),0x100,0,0),box('mdia',mdhd(aRate,aDur),hdlr('soun','Deck sound'),box('minf',full('smhd',0,0,new Bytes().u32(0)),dinf,astbl)));}
+            atrak=box('trak',tkhd(2,Math.round(aDur*movie/aRate),0x100,0,0),box('mdia',mdhd(aRate,aDur),hdlr('soun','Torque sound'),box('minf',full('smhd',0,0,new Bytes().u32(0)),dinf,astbl)));}
           const mvhd=full('mvhd',0,0,new Bytes().u32(0).u32(0).u32(movie).u32(movieDur).u32(0x10000).u16(0x100).zeros(10),MATRIX(),new Bytes().zeros(24).u32(3));
           return box('moov',mvhd,vtrak,atrak);};
         const ftyp=box('ftyp',new Bytes().str('isom').u32(512).str('isomiso2avc1mp41'));

@@ -1,12 +1,12 @@
 # Themes
 
 A theme changes how Torque looks: its colours and, if you like, a background picture and a logo. There are two kinds, and
-each changes different screens:
+each changes different screens. (The font is its own setting: see [Fonts](#fonts).)
 
-| Kind | `"for"` | What it changes |
-| --- | --- | --- |
-| **App theme** | `"app"` | Torque's own screens: the bar, Drive (your robots and adding one), Setup, Calibrate, Simulate and Settings. |
-| **Driver Station theme** | `"station"` | The FTC Driver Station screen you drive an FTC robot with: the op mode picker, INIT / START / STOP, telemetry and its own menu and pages. Like the Driver Hub's colour scheme. |
+| Kind | What it changes |
+| --- | --- |
+| **App theme** | Torque's own screens: the bar, Drive (your robots and adding one), Setup, Calibrate, Simulate and Settings. |
+| **Driver Station theme** | The FTC Driver Station screen you drive an FTC robot with: the op mode picker, INIT / START / STOP, telemetry and its own menu and pages. Like the Driver Hub's colour scheme. |
 
 Torque comes with six themes of each kind (Torque, Blue, Orange, Purple, Red and Mono). You can also make your own and
 import it.
@@ -37,18 +37,21 @@ night-shift/
   theme.json
   background.jpg
   logo.png
+  logo-light.png
 ```
 
 Two complete examples you can copy and change live in this repository:
 
-- [`docs/themes/night-shift`](themes/night-shift): a Driver Station theme with a background picture and a team logo.
+- [`docs/themes/night-shift`](themes/night-shift): a Driver Station theme with a background picture and a team logo
+  (white for dark, ink for light).
 - [`docs/themes/field-day`](themes/field-day): an app theme with a background picture.
 
-Then in Torque: **⋮ → Settings → Imported themes → Import a theme…**, and pick the theme's **folder** (not the
-`theme.json` inside it). Torque checks it, copies it, and puts it on. If something is wrong, it says what to fix and
-imports nothing.
+Then in Torque, open **⋮ → Settings**. Each list of themes ends in **+ Import a theme**: use the one under **App theme**
+for Torque's screens, or the one under **Driver Station theme** for the Driver Station. Pick the theme's **folder** (not
+the `theme.json` inside it). Torque checks it, copies it into that list and puts it on. If something is wrong, it says
+what to fix under the list and imports nothing.
 
-To change a theme after importing it, edit its folder, import it again, and remove the old copy from the same list.
+To change a theme after importing it, edit its folder, import it again, and use **Remove** under the old copy.
 
 ### theme.json
 
@@ -64,7 +67,7 @@ To change a theme after importing it, edit its folder, import it again, and remo
     "light": { "accent": "#b2560a", "background": "#f3f5fa", "surface": "#fcfdff", "text": "#121726", "muted": "#4a5268", "line": "#d9deea" }
   },
   "background": { "image": "background.jpg", "position": "center", "opacity": 0.45 },
-  "logo": "logo.png"
+  "logo": { "dark": "logo.png", "light": "logo-light.png" }
 }
 ```
 
@@ -73,11 +76,11 @@ To change a theme after importing it, edit its folder, import it again, and remo
 | `format` | yes | Always `"torque-theme"`. |
 | `version` | yes | Always `1`. |
 | `name` | yes | Up to 40 characters. Shown under the theme in Settings. |
-| `for` | yes | `"app"` or `"station"` (see the table at the top). |
+| `for` | no | `"app"` or `"station"`: the kind you made it as, for people reading the file. The **+** you import it with decides which list it goes in, so one theme can be both. |
 | `author` | no | Your team or name, up to 60 characters. |
 | `colours.dark`, `colours.light` | yes | One set of colours for each. Colours are hex: `#1a2b3c` or `#abc`. |
 | `background` | no | A picture behind the screen. See [Pictures](#pictures). |
-| `logo` | no | A logo beside the name. See [Pictures](#pictures). |
+| `logo` | no | A logo beside the name: one file, or one for dark and one for light. See [Pictures](#pictures). |
 
 ### Colours
 
@@ -123,23 +126,24 @@ together.
 | `opacity` | 0 to 1 (default **0.3**). The picture is faded over the theme's `background` colour by this much, so words stay readable. Busy photos want 0.1 to 0.2; quiet patterns can go to 0.5. |
 | Animated GIFs | They play, always. Keep the movement slow and small; nobody can drive with a strobe behind STOP. |
 
-**Logo** (`"logo": "logo.png"`)
+**Logo** (`"logo": "logo.png"`, or `"logo": { "dark": "logo.png", "light": "logo-light.png" }`)
 
 | | |
 | --- | --- |
 | Where it shows | An app theme: in the bar, before the name Torque. A Driver Station theme: before the Driver Station's name at the top left. |
 | Size | **96 px tall**, up to **288 px wide** (shown at 24 px tall, so it stays sharp on high-resolution screens). |
-| Format | PNG or WebP with a **transparent** background. Light shapes for dark themes; it is shown on both, so test both. |
+| Format | PNG or WebP with a **transparent** background. |
+| Dark and light | One file is shown in both modes, so it has to read on both grounds. A white logo disappears on a light bar: give it a second file in dark ink as `"light"`. |
 
 ## App themes
 
-An app theme (`"for": "app"`) changes Torque's own screens. Its background picture sits behind Drive's robot list, where
+An app theme changes Torque's own screens. Its background picture sits behind Drive's robot list, where
 you start; Setup, Calibrate and Simulate take only its colours, so their drawings and 3D views stay clear. Its logo goes in
 the bar.
 
 ## Driver Station themes
 
-A Driver Station theme (`"for": "station"`) changes the FTC Driver Station screen, and nothing else. Its picture fills the
+A Driver Station theme changes the FTC Driver Station screen, and nothing else. Its picture fills the
 screen behind the op mode controls and telemetry, and its logo goes before the Driver Station's name. INIT, START and STOP
 keep their own green and red.
 
@@ -148,7 +152,7 @@ the Driver Station's **⋮ → Settings → Colour scheme**). A robot is one sav
 
 ## Where themes are kept
 
-Imported themes are files in Torque's data folder, one per theme (**Settings → Show the themes folder** opens it):
+Imported themes are files in Torque's data folder, one per theme:
 
 | System | Folder |
 | --- | --- |
@@ -158,3 +162,18 @@ Imported themes are files in Torque's data folder, one per theme (**Settings →
 
 On a computer that had Torque under its old name, the folder is in `Deck Driver Station` instead of `Torque`. Removing a
 theme in Settings deletes its file; anything using it goes back to the default.
+
+## Fonts
+
+**⋮ → Settings → Text** picks the typeface for all of Torque, the Driver Station included: Inter (Torque's own), or the
+one your computer uses for its menus. The last card, **+ Add a font**, takes a font file of your own:
+
+| | |
+| --- | --- |
+| Formats | TTF, OTF, WOFF or WOFF2, up to **10 MB**. One file is one font: pick its Regular, and Torque makes the bold. A variable font (one file with every weight) keeps its own weights. |
+| Name | Taken from the file name: `Atkinson Hyperlegible-Regular.ttf` shows as *Atkinson Hyperlegible*. |
+| Where it goes | Everywhere text is: words, headings and the big readings. |
+| Licence | Fonts are licensed like any software. Use one whose licence lets you install it, such as the SIL Open Font License most free fonts use. |
+
+Like themes, a font is copied into Torque's data folder (`fonts` beside `themes`) and never uploaded. **Remove** under it
+deletes the copy and puts Inter back.

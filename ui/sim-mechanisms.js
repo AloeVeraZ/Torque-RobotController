@@ -602,7 +602,7 @@
     // logo up and USB forward; the Pinpoint on the front cross channel, sticker up, X arrow forward; both 4-Bar pods behind the middle channel, the X (forward) pod 92 mm right of the centre
     // and the Y (strafe) pod 45.5 mm ahead of it. adjustable: its size, weight, wheels (wheels: the sets its CAD has) and power, where its motors are plugged in, which have their encoder
     // cable, whether it has odometry, and where its hub, Pinpoint and pods sit.
-    startermecanum:{name:'Starter Mecanum',blurb:'goBILDA Strafer chassis kit: 104 mm mecanum wheels on 312 RPM motors, Control Hub IMU and motor encoders, pushes pieces. Say where its motors are plugged in',adjustable:true,robot:{drivetrain:'mecanum',length:17.32,width:17.79,heightIn:7.25,massLb:9.41,driveRpm:312,wheelDiameterMm:104,
+    startermecanum:{name:'Starter Mecanum',blurb:'The goBILDA Strafer chassis kit, with 104 mm mecanum wheels on 312 RPM motors, the Control Hub’s IMU and motor encoders. It pushes pieces. Say where its motors are plugged in.',adjustable:true,robot:{drivetrain:'mecanum',length:17.32,width:17.79,heightIn:7.25,massLb:9.41,driveRpm:312,wheelDiameterMm:104,
       wheelPos:{frontLeft:{x:6.614,y:8.15},frontRight:{x:6.614,y:-8.15},backLeft:{x:-6.614,y:8.15},backRight:{x:-6.614,y:-8.15}},odometry:{pinpoint:{pods:'4bar',xOffset:KIT.podX.y,yOffset:KIT.podY.x}},
       hubLogo:'up',hubUsb:'forward',sensorPlace:{imu:{kind:'controlHub',...KIT.imu,from:'cad',part:'REV Control Hub'},pinpoint:{...KIT.pinpoint,from:'cad',part:'goBILDA Pinpoint',a:'up'}}},wheels:KIT.wheels,
       // Where a setup saved before the kit's CAD had its own hub, Pinpoint and pods kept them: moved to where the CAD has them.

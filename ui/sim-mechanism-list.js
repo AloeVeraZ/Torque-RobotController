@@ -13,11 +13,11 @@
   // The BIOBUZZ game's own mechanisms: the game physics picks up and shoots pieces with them.
   const GAME=[
     {id:'game:intake:sweeper',name:'Intake · sweeper roller',blurb:'A roller across an edge sweeps pieces off the floor into the robot.'},
-    {id:'game:intake:siderollers',name:'Intake · side rollers',blurb:'Two rollers grip pieces from the sides; reaches into flowers.'},
-    {id:'game:intake:ramp',name:'Intake · deployable ramp',blurb:'A servo folds a ramp with rollers down in front of the robot; reaches into flowers.'},
+    {id:'game:intake:siderollers',name:'Intake · side rollers',blurb:'Two rollers grip pieces from the sides. It can reach into flowers.'},
+    {id:'game:intake:ramp',name:'Intake · deployable ramp',blurb:'A servo folds a ramp with rollers down in front of the robot. It can reach into flowers.'},
     {id:'game:intake:kicker',name:'Intake · kicker',blurb:'A servo arm swings down, scoops pieces and swings them in.'},
     {id:'game:shooter:turret',name:'Shooter · turret',blurb:'A flywheel on a turntable that turns to aim by itself.'},
-    {id:'game:shooter:fixed',name:'Shooter · fixed',blurb:'A flywheel fixed to the frame; the robot turns to aim.'}];
+    {id:'game:shooter:fixed',name:'Shooter · fixed',blurb:'A flywheel fixed to the frame. The robot turns to aim it.'}];
   // On BIOBUZZ these types are the game's own intake or shooter (the physics picks up and shoots with them).
   const AS_GAME={'roller-intake':['intake','sweeper'],'deploy-intake':['intake','ramp'],flywheel:['shooter','fixed'],turret:['shooter','turret']};
   // What drives a part: FTC's four, then other robots' actuators.
@@ -36,7 +36,7 @@
     const unitOf=j=>j.type==='prismatic'?'in':'°';
     const opt=(v,t,on)=>`<option value="${esc(v)}"${on?' selected':''}>${esc(t)}</option>`;
     const num=(attr,v,{label,min='',max='',step='any',hint=''}={})=>`<div><label>${label}<input type="number" data-slider="off" ${attr} value="${finite(v)?+(+v).toPrecision(6):''}" min="${min}" max="${max}" step="${step}"${hint?` title="${esc(hint)}"`:''}></label></div>`;
-    function badge(j){if(j.source==='metadata')return ['sure','From the file'];if(j.matched||j.source==='inferred'&&j.parts?.length)return [(j.confidence??.7)>=.7||j.matched?'likely':'check',j.matched?'Found in your CAD':'Found · please check'];
+    function badge(j){if(j.source==='metadata')return ['sure','From the file'];if(j.matched||j.source==='inferred'&&j.parts?.length)return [(j.confidence??.7)>=.7||j.matched?'likely':'check',j.matched?'Found in your CAD':'Found, check it'];
       if(j.parts?.length)return ['user','Parts chosen'];return ['stand','Not in your CAD yet'];}
     // Named positions: as the part moves, and as the robot code sends them.
     function positions(j,a){
@@ -46,7 +46,7 @@
         ${servoLike?`<label>Servo<input type="number" data-slider="off" aria-label="${esc(k)}, servo position" data-m-state-pos value="${fix(A().position(a,v),3)}" min="0" max="1" step="0.005"></label>`:motor?`<span class="sim-mech-ticks" title="RUN_TO_POSITION target">${A().ticks(a,v)} counts</span>`:''}
         <button type="button" class="secondary" data-m="state-show" data-v="${esc(k)}">Show</button><button type="button" class="icon-button" data-m="unstate" data-v="${esc(k)}" aria-label="Remove ${esc(k)}">×</button></div>`).join('');
       return `<span class="sim-mech-label">Named positions</span>${rows}<button type="button" class="secondary" data-m="state">+ Position</button>
-        <p class="hint">${st.length?`A route action named “${esc(j.name)} ${esc(st[0][0])}” moves it there. `:''}${u==='in'?'Inches':'Degrees'} are from where your CAD has it${servoLike?'; the servo column is the position the code sends (Servo.setPosition)':motor?'; counts are the encoder targets the code sends (RUN_TO_POSITION)':''}.</p>`;}
+        <p class="hint">${st.length?`A route action named “${esc(j.name)} ${esc(st[0][0])}” moves it there. `:''}${u==='in'?'Inches':'Degrees'} are measured from where your CAD has it.${servoLike?' The servo column is the position the code sends (Servo.setPosition).':motor?' Counts are the encoder targets the code sends (RUN_TO_POSITION).':''}</p>`;}
     // What drives it, and the numbers the robot code needs.
     function actuator(j,a){
       const kinds=K().ACTUATORS,kind=a?.kind||'none',u=unitOf(j),Ax=A();
@@ -58,30 +58,30 @@
       const kindSelect=`<select data-m-f="actuator" aria-label="Driven by">${opt('dcmotor','DC motor',kind==='dcmotor')}${opt(isServo?kind:'servo','Servo',isServo)}${others.map(k=>opt(k,ftc?`${kinds[k]} (not legal on an FTC robot)`:kinds[k],k===kind)).join('')}${opt('none','Nothing: it moves at its own speed',kind==='none')}</select>`;
       const servoSelect=isServo?`<div><label>Servo type<select data-m-f="actuator" aria-label="Servo type">${SERVO_KINDS.map(([k,t])=>opt(k,t,k===kind)).join('')}</select></label></div>`:'';
       let body='';
-      if(!a)body=`<div class="start-xy">${num('data-m-f="speed"',j.speed??90,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">Without a motor or servo it moves to each named position at this speed.</p>`;
+      if(!a)body=`<div class="start-xy">${num('data-m-f="speed"',j.speed??90,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">With no motor or servo, it moves to each named position at this speed.</p>`;
       else{
         const models=Ax?Ax.of(a.kind):[],model=models.length?`<div><label>Model<select data-m-f="model">${opt('','Another one (set its numbers)',!a.model)}${models.map(md=>opt(md.id,md.name,md.id===a.model)).join('')}</select></label></div>`:'';
         const rev=a.kind==='servo'||a.kind==='linear'?'Higher positions move it the other way':'Turns the other way (REVERSE)';
         body=`<div class="start-xy">${model}<div><label>Name in the robot configuration<input data-m-f="device" maxlength="40" autocomplete="off" spellcheck="false" value="${esc(a.device||Ax?.camel(a.name)||'')}"></label></div></div>
           <label class="check sim-mech-reverse"><input type="checkbox" data-m-f="reversed"${a.reversed?' checked':''}> ${rev}</label>
-          ${['dcmotor','servo','crservo','linear'].includes(a.kind)?`<div class="start-xy"><div><label>Second ${a.kind==='dcmotor'?'motor':'servo'} on this part (optional)<input data-m-f="device2" maxlength="40" autocomplete="off" spellcheck="false" placeholder="None" value="${esc(a.device2||'')}"></label></div>${a.device2?`<label class="check sim-mech-reverse"><input type="checkbox" data-m-f="reversed2"${a.reversed2?' checked':''}> It is mounted mirrored (turns the other way)</label>`:''}</div>${moreDevices(a)}<p class="hint">A lift on two motors (left and right) or a wrist on two servos: all of them get the same commands.</p>`:''}`;
+          ${['dcmotor','servo','crservo','linear'].includes(a.kind)?`<div class="start-xy"><div><label>Second ${a.kind==='dcmotor'?'motor':'servo'} on this part (optional)<input data-m-f="device2" maxlength="40" autocomplete="off" spellcheck="false" placeholder="None" value="${esc(a.device2||'')}"></label></div>${a.device2?`<label class="check sim-mech-reverse"><input type="checkbox" data-m-f="reversed2"${a.reversed2?' checked':''}> It is mounted mirrored (turns the other way)</label>`:''}</div>${moreDevices(a)}<p class="hint">Use this for a lift on two motors (left and right) or a wrist on two servos. They all get the same commands.</p>`:''}`;
         if((a.kind==='servo'||a.kind==='linear')&&Ax){const s=Ax.servo(a),lim=Ax.limits(a),per=Ax.perUnit(a),lu=a.kind==='linear'?'in':'°';
           body+=`<span class="sim-mech-label">Servo positions · 0–1</span><div class="sim-grid3">${num('data-m-servo="min"',s.min,{label:'Lowest it may go',min:0,max:1,step:.01})}${num('data-m-servo="center"',s.center,{label:'Where your CAD has it',min:0,max:1,step:.01})}${num('data-m-servo="max"',s.max,{label:'Highest it may go',min:0,max:1,step:.01})}</div>
             <div class="start-xy">${num('data-m-servo="range"',s.range,{label:`Turns across its rated pulses · ${lu}`,min:1})}<div><label>Pulses for 0 and 1<select data-m-servo="pwm">${opt('standard','600–2400 µs (FTC default)',s.pwm.join()==='600,2400')}${opt('full','500–2500 µs (setPwmRange)',s.pwm.join()==='500,2500')}${!['600,2400','500,2500'].includes(s.pwm.join())?opt('custom',`${s.pwm[0]}–${s.pwm[1]} µs`,true):''}</select></label></div></div>
             <p class="hint">${esc(Ax.describe(a,u))} From ${fix(s.min,2)} to ${fix(s.max,2)} it moves the part from ${fix(lim[0],1)} to ${fix(lim[1],1)} ${u==='in'?'in':'°'}. ${per*(1)>0?`Position ${fix(s.center,2)} holds it where your CAD has it. `:''}Find each position on the robot by stepping the servo 0.05 at a time from ${fix(s.center,2)}.</p>`;}
         else if(a.kind==='dcmotor'&&Ax){const stages=a.transmission||[];
           body+=`<div class="start-xy">${num('data-m-f="cpr"',finite(a.cpr)?a.cpr:Ax.MODELS[a.model]?.cpr,{label:'Encoder counts per turn of its output',min:.01})}${num('data-m-f="power"',a.power??1,{label:'Power · 0–1',min:.05,max:1,step:.05})}</div>
-            <p class="hint">${esc(Ax.describe(a,u))} ${stages.length?`Gearing after the motor: ${stages.map(st=>({gearbox:`${fix(st.ratio,2)}:1 gearbox`,belt:`${st.driver}:${st.driven} belt or gears`,spool:`${fix(st.diameter,2)} in spool`,rack:`${fix(st.diameter,2)} in pinion on a rack`,screw:`${fix(st.lead,3)} in lead screw`})[st.kind]).join(', then ')}.`:'Straight onto the part (no gearing after the motor).'}
+            <p class="hint">${esc(Ax.describe(a,u))} ${stages.length?`Gearing after the motor: ${stages.map(st=>({gearbox:`${fix(st.ratio,2)}:1 gearbox`,belt:`${st.driver}:${st.driven} belt or gears`,spool:`${fix(st.diameter,2)} in spool`,rack:`${fix(st.diameter,2)} in pinion on a rack`,screw:`${fix(st.lead,3)} in lead screw`})[st.kind]).join(', then ')}.`:'The motor drives the part directly, with no gearing after it.'}
             <button type="button" class="text-button" data-m="gearing">Edit gearing</button></p>`;}
-        else if(a.kind==='crservo'&&Ax)body+=`<div class="start-xy">${num('data-m-f="power"',a.power??1,{label:'Power while it runs · 0–1',min:.05,max:1,step:.05})}</div><p class="hint">${esc(Ax.describe(a,u))} CRServo.setPower: positive one way, negative the other.</p>`;
-        else body+=`<div class="start-xy">${num('data-m-f="speed"',a.speed,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">Not an FTC part: it moves at this speed.</p>`;}
+        else if(a.kind==='crservo'&&Ax)body+=`<div class="start-xy">${num('data-m-f="power"',a.power??1,{label:'Power while it runs · 0–1',min:.05,max:1,step:.05})}</div><p class="hint">${esc(Ax.describe(a,u))} The code runs it with CRServo.setPower: positive power turns it one way, negative the other.</p>`;
+        else body+=`<div class="start-xy">${num('data-m-f="speed"',a.speed,{label:`Moves at · ${u}/s`,min:.01})}</div><p class="hint">This is not an FTC part, so it moves at this speed.</p>`;}
       return `<span class="sim-mech-label">Driven by</span><div class="start-xy"><div><label>Driven by${kindSelect}</label></div>${servoSelect}</div>${body}`;}
     function card(j,depth){
       const T=TY(),t=T.TYPES[j.kind],k=kin(),a=k.actuators.find(x=>x.joint===j.id),[lv,said]=badge(j),parent=depth?k.joints.find(x=>x.id===j.parent):null,cad=api.cad();
-      const where=j.matched?`In your CAD: “${esc(j.matched)}”.`:j.parts?.length?'Its parts are chosen on the model.':cad?'Configure from CAD finds it by its name in your CAD, or choose its parts on the model.':'Import your robot’s CAD (step 2) to see it move.';
+      const where=j.matched?`In your CAD: “${esc(j.matched)}”.`:j.parts?.length?'Its parts are chosen on the model.':cad?'Press Configure from CAD to find it in your CAD by its name, or choose its parts on the model.':'Import your robot’s CAD in Setup → Robot to see it move.';
       return `<section class="sim-mech-part sim-mech-moving" data-mech="${esc(j.id)}" data-depth="${Math.min(depth,3)}"${parent?` data-parent="${esc(parent.id)}"`:''}><div class="sim-mech-head"><h4>${esc(j.name)}<em class="sim-joint-kind">${esc(t.name)}${parent?` · on ${esc(parent.name)}`:''}</em></h4><small class="sim-joint-badge" data-level="${lv}">${said}</small><button type="button" class="icon-button" data-m="remove" aria-label="Remove ${esc(j.name)}" title="Remove">×</button></div>
         <p class="hint">${esc(t.blurb)} ${where}</p>${j.product?`<p class="sim-mech-product" data-product><b>${esc(j.product.vendor)}</b> ${esc(j.product.name)}${j.product.sku?` · <code>${esc(j.product.sku)}</code>`:''}${j.product.url?` · <span class="hint">${esc(j.product.url.replace(/^https:\/\/(www\.)?/,'').split('/')[0])}</span>`:''}</p>`:''}
-        <div class="sim-joint-buttons">${cad?`<button type="button" class="secondary" data-m="show">Show on model</button><button type="button" class="secondary" data-m="choose">${j.parts?.length?'Change its parts':'Choose its parts'}</button>`:''}<button type="button" class="secondary" data-m="sub" title="A mechanism that rides on this one: a claw on an arm, a wrist on a lift">+ Add to ${esc(j.name)}</button></div>
+        <div class="sim-joint-buttons">${cad?`<button type="button" class="secondary" data-m="show">Show on model</button><button type="button" class="secondary" data-m="choose">${j.parts?.length?'Change its parts':'Choose its parts'}</button>`:''}<button type="button" class="secondary" data-m="sub" title="Add a mechanism that rides on this one, like a claw on an arm or a wrist on a lift">+ Add to ${esc(j.name)}</button></div>
         <div class="start-xy"><div><label>Name<input data-m-f="name" maxlength="40" autocomplete="off" value="${esc(j.name)}"></label></div><div><label>Mechanism<select data-m-f="kind">${T.grouped().map(g=>`<optgroup label="${esc(g.name)}">${g.types.map(x=>opt(x.id,x.name,x.id===j.kind)).join('')}</optgroup>`).join('')}</select></label></div></div>
         ${positions(j,a)}${actuator(j,a)}<div class="sim-wire-block" data-wire-for="kin:${esc(j.id)}"></div></section>`;}
     // + Add mechanism: a pop-up. Categories across the top (what it does), then where it comes from: Generic (any team's own
@@ -111,13 +111,13 @@
       const legal=r.legality||{},host=u=>{try{return new URL(u).hostname.replace(/^www\./,'');}catch{return '';}};
       const refs=(r.refs||[]).map(f=>`<li><b>${esc(f.title)}</b> <span class="hint">${esc(host(f.url))} · ${esc(f.kind)}</span> <button type="button" class="text-button" data-m="ref" data-v="${esc(f.url)}">${root.deck?.openExternal?'Open':'Copy link'}</button></li>`).join('');
       const kind=r.image?Lb.IMAGES[r.image.kind]||'':'';
-      return `<div class="sim-mech-lib-top"><button type="button" class="secondary" data-lib-back>← All mechanisms</button><span class="sim-mech-lib-chip">${esc(Lb.ENTRIES[r.entry]||r.entry)}</span></div>
+      return `<div class="sim-mech-lib-top"><button type="button" class="secondary" data-lib-back>All mechanisms</button><span class="sim-mech-lib-chip">${esc(Lb.ENTRIES[r.entry]||r.entry)}</span></div>
         <div class="sim-mech-lib-hero"><figure><span class="sim-mech-type-art"${fig?` data-fig="${esc(fig)}"`:''}>${C?C.picFor(r.type||''):''}</span>${kind?`<figcaption class="sim-mech-lib-img">${esc(kind)}${r.image.shows?`: ${esc(r.image.shows)}`:''}${r.image.credit?` · ${esc(r.image.credit)}`:''}</figcaption>`:''}</figure>
         <div><h3>${esc(r.name)}</h3>${r.aliases?.length?`<p class="hint">Also called ${r.aliases.map(esc).join(', ')}</p>`:''}
-        ${r.type?(partial(r)?`<button type="button" class="primary" data-m="add" data-v="lib:${esc(r.id)}" data-lib-add>Add one ${esc(TY().TYPES[r.type]?.name.toLowerCase()||'part')}</button><p class="hint">This is a whole ${r.entry==='architecture'?'robot design':'mechanism'} with ${Number.isInteger(r.dof)?`${r.dof} degrees of freedom`:'several parts'}: this adds one of its joints. Add the others the same way and put them on it.</p>`:`<button type="button" class="primary" data-m="add" data-v="lib:${esc(r.id)}" data-lib-add>Add to robot</button>`):`<button type="button" class="secondary" data-lib-add disabled>Reference only: nothing moves on the model</button>`}</div></div>
+        ${r.type?(partial(r)?`<button type="button" class="primary" data-m="add" data-v="lib:${esc(r.id)}" data-lib-add>Add one ${esc(TY().TYPES[r.type]?.name.toLowerCase()||'part')}</button><p class="hint">This is a whole ${r.entry==='architecture'?'robot design':'mechanism'} with ${Number.isInteger(r.dof)?`${r.dof} degrees of freedom`:'several parts'}, and this adds one of its joints. Add the others the same way, each on the one it rides on.</p>`:`<button type="button" class="primary" data-m="add" data-v="lib:${esc(r.id)}" data-lib-add>Add to robot</button>`):`<button type="button" class="secondary" data-lib-add disabled>Reference only: nothing moves on the model</button>`}</div></div>
         <section data-lib-section="overview"><h4>Overview</h4><p>${esc(r.short)}</p><dl>${row('What it is',esc(Lb.ENTRIES[r.entry]||r.entry))}${row('Difficulty',esc(r.difficulty))}${row('Status',esc(r.status))}${row('Used in',(r.seasons||[]).map(s=>esc(seasonName(s))).join(', '))}</dl>${list('Where it is used',r.uses)}</section>
         <section data-lib-section="how"><h4>How it works</h4><p>${esc(r.how)}</p><dl>${r.motion?row('Motion',`${esc(r.motion.input)} → ${esc(r.motion.output)}`):''}${row('Degrees of freedom',r.dof==null?'':esc(r.dof))}${row('Driven by',esc(r.actuation))}${r.type?row('Moves on the model as',esc(TY().TYPES[r.type]?.name||r.type)):''}</dl></section>
-        ${params?`<section data-lib-section="configure"><h4>Configure</h4><ul class="sim-mech-lib-params">${params}</ul>${(r.params||[]).some(p=>p.estimate)?'<p class="hint">An estimate is a starting point: measure it on your robot.</p>':''}</section>`:''}
+        ${params?`<section data-lib-section="configure"><h4>Configure</h4><ul class="sim-mech-lib-params">${params}</ul>${(r.params||[]).some(p=>p.estimate)?'<p class="hint">An estimate is only a starting point. Measure it on your robot.</p>':''}</section>`:''}
         <section data-lib-section="notes"><h4>Engineering notes</h4><div class="sim-mech-lib-cols">${list('Pros',r.pros)}${list('Cons',r.cons)}${list('How it fails',r.failures)}</div>
           <dl>${row('Legality',esc(LEGAL[legal.status]||legal.status||'')+(legal.rules?.length?` (${legal.rules.map(esc).join(', ')})`:'')+(legal.note?` · ${esc(legal.note)}`:''))}${row('Confidence',esc(r.confidence))}${row('Last checked',esc(r.verified))}</dl></section>
         <section data-lib-section="refs"><h4>References</h4><ul class="sim-mech-lib-refs">${refs}</ul></section>`;}
@@ -164,8 +164,8 @@
         ${records.length?filtersHtml(records):''}
         <div class="sim-mech-srcs" role="group" aria-label="Only one company’s parts"><span class="sim-mech-srcs-label">Only from</span>${srcs.map(([k,n])=>`<button type="button" class="sim-mech-src" data-pick-src="${esc(k)}" aria-pressed="${k===pickSrc}">${esc(n)}</button>`).join('')}</div>
         <div class="sim-mech-type-grid">${cards.join('')}</div><div class="sim-mech-lib-detail" role="region" aria-label="About this mechanism" hidden></div>
-        <p class="hint sim-mech-types-none" hidden>Nothing here. Try another category or source, or Your own: something that pivots, slides or spins.</p>
-        <p class="hint sim-mech-types-foot">Every photo is from the company’s own store listing (hover it for which). A company’s part comes with its numbers (travel, gearing, motor or servo); change any of them on its card.</p></div>`;}
+        <p class="hint sim-mech-types-none" hidden>Nothing matches. Try another category or company, or pick Your own for something that pivots, slides or spins.</p>
+        <p class="hint sim-mech-types-foot">Each photo comes from the company’s own store listing; point at it to see which. A company’s part comes with its numbers (travel, gearing, motor or servo), and you can change any of them on its card.</p></div>`;}
     // What shows: the category and source picked, or every category matching the search.
     // Filters (the library's kind, difficulty, what drives it, season, a photo) narrow what shows; a card from outside the
     // library has none of those, so it shows only for Has a photo.
@@ -208,8 +208,8 @@
     function add(id){
       // A library record adds as its joint type; one with none moves nothing and is not added.
       const rec=libOf(id);if(rec){if(!rec.type||!TY().TYPES[rec.type])return;id=rec.type;}
-      if(id.startsWith('game:')){const [,what,kind]=id.split(':');const label=api.addGame(what,kind);setPicking(false);status(label?`${label} added. Configure from CAD finds it in your CAD by name.`:`The robot already has as many ${what}s as BIOBUZZ allows.`);return;}
-      if(api.game()&&AS_GAME[id]){const label=api.addGame(...AS_GAME[id]);if(label){setPicking(false);status(`${label} added: on BIOBUZZ it is the game’s own ${AS_GAME[id][0]}. Configure from CAD finds it in your CAD by name.`);return;}}
+      if(id.startsWith('game:')){const [,what,kind]=id.split(':');const label=api.addGame(what,kind);setPicking(false);status(label?`${label} added. Press Configure from CAD to find it in your CAD by its name.`:`The robot already has as many ${what}s as BIOBUZZ allows.`);return;}
+      if(api.game()&&AS_GAME[id]){const label=api.addGame(...AS_GAME[id]);if(label){setPicking(false);status(`${label} added. On the BIOBUZZ field it works as the game’s ${AS_GAME[id][0]}. Press Configure from CAD to find it in your CAD by its name.`);return;}}
       const C=root.DeckMechCatalog,item=id.startsWith('cat:')?C?.ITEMS.find(x=>x.id===id.slice(4)):null;if(item)id=item.type;
       if(item&&api.game()&&item.biobuzz){const as=AS_GAME[item.type]||(item.biobuzz==='shooter'?['shooter','fixed']:['intake','sweeper']),label=api.addGame(...as);if(label){setPicking(false);status(`${item.name} added as ${label}: on BIOBUZZ it is the game’s own ${as[0]}.`);return;}}
       const on=parentOf,jid=api.joints().add(id,item?{name:item.name}:rec?{name:shortName(rec)}:{});setPicking(false);if(!jid)return;
@@ -223,7 +223,7 @@
       // Added to another mechanism: it rides on it.
       if(on&&kin().joints.some(x=>x.id===on))change(next=>{const j=jointOf(next,jid);if(!j)return false;j.parent=on;});
       const j=kin().joints.find(x=>x.id===jid),host_=on&&kin().joints.find(x=>x.id===on);
-      status(`${j?.name||'Mechanism'} added${host_?` on ${host_.name}`:''}. ${api.cad()?'Press Configure from CAD to find it in your CAD by name, or choose its parts on the model.':'Import your robot’s CAD to see it move.'}`);
+      status(`${j?.name||'Mechanism'} added${host_?` on ${host_.name}`:''}. ${api.cad()?'Press Configure from CAD to find it in your CAD by its name, or choose its parts on the model.':'Import your robot’s CAD in Setup → Robot to see it move.'}`);
       requestAnimationFrame(()=>host.querySelector(`[data-mech="${CSS.escape(jid)}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'}));}
     // Positions kept as the code sends them while a servo's center moves (the team found them on the robot); the part's
     // limits follow its servo's lowest and highest positions.
@@ -258,7 +258,7 @@
       const el=e.target,id=el.closest('[data-mech]')?.dataset.mech;if(!id)return;const v=el.type==='number'?el.valueAsNumber:el.type==='checkbox'?el.checked:el.value;
       const row=el.closest('[data-state]')?.dataset.state;
       if(el.matches('[data-m-state-name]')){const name=String(v).trim().slice(0,24);if(!name||name===row)return;change(next=>{const j=jointOf(next,id);if(name in j.states)return false;j.states=Object.fromEntries(Object.entries(j.states).map(([k,x])=>[k===row?name:k,x]));});return;}
-      if(el.dataset.mMore!==undefined){const name=String(v).trim();if(!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A configuration name starts with a letter and uses letters, digits, spaces, _ . or -.');return;}change(next=>{const x=actOf(next,id)?.more?.[+el.dataset.mMore];if(!x)return false;x.device=name;});return;}
+      if(el.dataset.mMore!==undefined){const name=String(v).trim();if(!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A name in the robot configuration must start with a letter and use only letters, digits, spaces, _ . or -.');return;}change(next=>{const x=actOf(next,id)?.more?.[+el.dataset.mMore];if(!x)return false;x.device=name;});return;}
       if(el.dataset.mMoreRev!==undefined){change(next=>{const x=actOf(next,id)?.more?.[+el.dataset.mMoreRev];if(!x)return false;if(v)x.reversed=true;else delete x.reversed;});return;}
       if(el.matches('[data-m-state-value]')){if(!finite(v))return;change(next=>{const j=jointOf(next,id);j.states[row]=v;});return;}
       if(el.matches('[data-m-state-pos]')){if(!finite(v))return;change(next=>{const j=jointOf(next,id),a=actOf(next,id);if(!a)return false;j.states[row]=+A().valueAt(a,Math.max(0,Math.min(1,v))).toFixed(3);});return;}
@@ -266,7 +266,7 @@
         if(f==='pwm'){if(v==='custom')return false;servoChange(next,j,a,{pwm:A().PWM[v]});return;}if(!finite(v))return false;
         servoChange(next,j,a,{[f]:f==='range'?Math.max(1,v):Math.max(0,Math.min(1,v))});});return;}
       const f=el.dataset.mF;if(!f)return;
-      if(f==='name'){const name=String(v).trim().slice(0,40);if(!name)return;change(next=>{if(next.joints.some(x=>x.id!==id&&x.name.toLowerCase()===name.toLowerCase())){status(`Another part is already called “${name}”; route actions find parts by name.`);return false;}
+      if(f==='name'){const name=String(v).trim().slice(0,40);if(!name)return;change(next=>{if(next.joints.some(x=>x.id!==id&&x.name.toLowerCase()===name.toLowerCase())){status(`Another part is already called “${name}”. Give each part its own name, because route actions find parts by name.`);return false;}
         const j=jointOf(next,id),a=actOf(next,id);j.name=name;if(a){a.name=name;}});return;}
       if(f==='kind'){const t=TY().TYPES[v];if(!t)return;change(next=>{const j=jointOf(next,id),r=TY().retype(j,v,{rows:api.rows?.()});for(const k of Object.keys(j))delete j[k];Object.assign(j,r);
         const a=actOf(next,id),spec=TY().motorFor(v);if(!a||a.kind!==spec.kind){next.actuators=next.actuators.filter(x=>x.joint!==id);if(j.drive?.signal==='action'&&t.motor)next.actuators.push({...A().create({id:a?.id||motorId(next,id),joint:id,name:j.name,spec,speed:j.speed??90,travel:A().travelOf(j),states:j.states}),...(a?.device?{device:a.device}:{})});}
@@ -276,8 +276,8 @@
         const fresh=A()&&FTC_KINDS.includes(v)?A().create({id:a?.id||motorId(next,id),joint:id,name:j.name,spec,speed:j.speed??90,travel:A().travelOf(j),states:j.states}):{id:a?.id||motorId(next,id),name:j.name,joint:id,kind:v,mode:'position',speed:j.speed??90,...(v==='pneumatic'?{response:'pneumatic'}:{})};
         if(a?.device)fresh.device=a.device;if(a?.reversed)fresh.reversed=true;next.actuators.push(fresh);fitLimits(j,fresh);});return;}
       if(f==='model'){change(next=>{const j=jointOf(next,id),i=next.actuators.findIndex(x=>x.joint===id);if(i<0)return false;next.actuators[i]=A().withModel(next.actuators[i],v);fitLimits(j,next.actuators[i]);});return;}
-      if(f==='device'){const name=String(v).trim();if(!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A configuration name starts with a letter and uses letters, digits, spaces, _ . or -.');return;}change(next=>{actOf(next,id).device=name;});return;}
-      if(f==='device2'){const name=String(v).trim();if(name&&!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A configuration name starts with a letter and uses letters, digits, spaces, _ . or -.');return;}change(next=>{const a=actOf(next,id);if(!a)return false;if(name)a.device2=name;else{delete a.device2;delete a.reversed2;delete a.more;}});return;}
+      if(f==='device'){const name=String(v).trim();if(!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A name in the robot configuration must start with a letter and use only letters, digits, spaces, _ . or -.');return;}change(next=>{actOf(next,id).device=name;});return;}
+      if(f==='device2'){const name=String(v).trim();if(name&&!/^[A-Za-z][\w .-]{0,39}$/.test(name)){status('A name in the robot configuration must start with a letter and use only letters, digits, spaces, _ . or -.');return;}change(next=>{const a=actOf(next,id);if(!a)return false;if(name)a.device2=name;else{delete a.device2;delete a.reversed2;delete a.more;}});return;}
       if(f==='reversed2'){change(next=>{const a=actOf(next,id);if(v)a.reversed2=true;else delete a.reversed2;});return;}
       if(f==='reversed'){change(next=>{const a=actOf(next,id);if(v)a.reversed=true;else delete a.reversed;fitLimits(jointOf(next,id),a);});return;}
       if(['cpr','power'].includes(f)){if(!finite(v)||v<=0)return;change(next=>{actOf(next,id)[f]=f==='power'?Math.min(1,v):v;});return;}

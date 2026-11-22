@@ -5,15 +5,15 @@
   const finite=n=>typeof n==='number'&&Number.isFinite(n),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
   const Mech=()=>globalThis.DeckMechanisms||require('./sim-mechanisms.js');
   const INFO={Intake:'Runs the intake rollers. At a pin it runs for the time set; with no time it stays on for the steps after it, so “Intake, Shoot for 2 s” shoots while intaking. While driving it runs for the whole path or the time set, and a Shoot on the same path shoots each piece as it comes in. A ramp stays where it is.',
-    'Ramp down':'Folds the ramp down, and it stays down until a Ramp up. Down, the intake reaches into a flower for its pollen.',
+    'Ramp down':'Folds the ramp down. It stays down until a Ramp up step, and while it is down the intake reaches into a flower for its pollen.',
     'Ramp up':'Folds the ramp back up. The rollers still take pieces off the floor.',
-    Shoot:'Spins up, aims and shoots: everything held, or a set number. At a pin it holds the robot until the shots are done.',
+    Shoot:'Spins up, aims and shoots every piece it holds, or a set number. At a pin, the robot waits there until the shots are done.',
     'Spin up':'Starts the flywheel early, so a later Shoot fires right away. It keeps spinning until that Shoot.',
     Aim:'Turns the turret toward the hive, so a later Shoot does not wait for it.',
     Turret:'Turns the turret to an angle from the robot’s front (+ left, − right). At a pin the robot waits until it is there.',
-    Wait:'Waits a set time before the next step (at a pin). While driving it does nothing.',
-    part:'Moves this part of your robot (Setup → Moving parts). At a pin the robot waits until it arrives.',
-    own:'Your own action: the export adds a method with this name for your code, and it runs for the time set (or finishes at once).'};
+    Wait:'At a pin, waits a set time before the next step. While driving, it does nothing.',
+    part:'Moves this part of your robot (Setup → Mechanisms → Moving parts). At a pin, the robot waits until it gets there.',
+    own:'Your own action. The export adds a method with this name for your code, and it runs for the time you set (or finishes at once).'};
   // What can be added for this setup: only what the robot has parts for. Intake needs an intake, Ramp down and Ramp up a
   // ramp, Spin up and Shoot a shooter, Aim and Turret angle a turret (Setup → Mechanisms); then moving parts with their
   // named positions, the setup's saved part actions, Wait, and the team's own named actions. A robot with no

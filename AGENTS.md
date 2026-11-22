@@ -14,5 +14,7 @@
 - Stylesheets are layered (`base`, `features`, `system`, declared in `ui/tokens.css`): a screen's own file goes in `features`; `ui/shell.css` and `ui/workspace.css` are `system` and win over it.
 - A new part is a title and rows before it is a box: one level of boxes, no capsules, no tracked capitals, no arrows on buttons, no badge that is not a state, no helper line that repeats its label. Numbers that matter are set in the display face (`.reading`).
 - The mark is τ (`MARK` in `ui/sim-video.js`); every icon and the installer's pictures are drawn from it by `npx electron tools/icons.cjs`. Never hand-edit `ui/icon.*` or `packaging/installer*`.
+- A bar that sticks while its pane scrolls is clear where it starts and fills with the theme's ground once it sticks (`container-type: scroll-state` in `ui/workspace.css`), so nothing shows through its words.
+- On-screen words read like a person wrote them: plain full sentences that say what to do, buttons and places named exactly as they appear (Setup → Mechanisms), "Torque" and never "Deck". Cut a line that only repeats its label. Words copied from the real FTC Driver Station stay as they are.
 - After changing the UI, run `tests/design-audit.cjs` (it measures these rules on the real app in both themes) with `tests/layout-audit.cjs` and `tests/window-fit-ui.cjs`.
 

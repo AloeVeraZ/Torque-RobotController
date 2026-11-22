@@ -8,7 +8,7 @@
   // A video ends on this card unless it is removed (Words on the video): "Edited with Torque" fades in over its last END_CARD seconds,
   // or, after an autonomous on its own, as the transition starts, and stays for the whole transition.
   const BRAND='Torque',END_CARD=2.5;
-  const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'},{id:'side',name:'Field side',label:'Field side · one steady shot',key:'7',color:'#7fd18b',hint:'A camera on a tripod beside the field, the way teams film a real autonomous: it stays put and only turns slowly to keep the robot in the picture.'},{id:'auto',name:'Follow the action',label:'Follow the action · one moving shot',key:'8',color:'#f08fb5',hint:'One camera that walks round the robot without cutting: behind it looking at the goal while it scores, at its front while it takes pieces in, further back while it drives.'},{id:'orbit',name:'Orbit',label:'Orbit · round the field',key:'9',color:'#f0884d',hint:'One slow sweep half way round the outside of the field, looking at the robot, for the whole run.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
+  const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Looks straight down at the whole field, the way 2D recordings film it.'},{id:'side',name:'Field side',label:'Field side · one steady shot',key:'7',color:'#7fd18b',hint:'A camera on a tripod beside the field, the way teams film a real autonomous. It stays put and turns slowly to keep the robot in the picture.'},{id:'auto',name:'Follow the action',label:'Follow the action · one moving shot',key:'8',color:'#f08fb5',hint:'One camera that moves around the robot without cutting: behind it while it scores, in front while it takes pieces in, and further back while it drives.'},{id:'orbit',name:'Orbit',label:'Orbit · round the field',key:'9',color:'#f0884d',hint:'Sweeps slowly half way round the outside of the field for the whole run, always looking at the robot.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
   const OVERLAYS={match:'Period, clock & points',velocity:'Speed & what the robot is doing',path:'Field map in the corner',camera:'Camera name',position:'Position & heading',timestamp:'Run time',guides:'Planned path, pins, aim lines and outlines'};
   const SPEEDS={0.25:'¼× (slow motion)',0.5:'½×',1:'1× (real speed)',1.5:'1.5×',2:'2×',4:'4×'};
   const SIZES={'1280x720':'1280 × 720 (720p)','1920x1080':'1920 × 1080 (1080p)'},HEAD=96,FONT='Inter, system-ui, "Segoe UI", sans-serif';
@@ -25,7 +25,7 @@
   function create(opts){
     const host=opts.host;
     host.innerHTML=`<div class="studio-head">
-        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><label class="studio-part" id="studio-part-box" title="A full match can be edited whole, or just its autonomous or teleop; each keeps its own edit" hidden>Part<select id="studio-part"></select></label><span id="studio-meta" class="hint"></span></div>
+        <div class="studio-name"><input id="studio-name" maxlength="80" aria-label="Video name" spellcheck="false"><label class="studio-part" id="studio-part-box" title="Edit the whole match, or only its autonomous or teleop. Each part keeps its own edits." hidden>Part<select id="studio-part"></select></label><span id="studio-meta" class="hint"></span></div>
         <div class="studio-head-actions">
           <button type="button" class="secondary" id="studio-undo" title="Undo (Ctrl+Z)">Undo</button><button type="button" class="secondary" id="studio-redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
           <button type="button" class="secondary" id="studio-discard" title="Throw away this recording">Discard</button>
@@ -278,7 +278,7 @@
     for(const b of $$('[data-act]'))b.onclick=e=>act(b.dataset.act,e.shiftKey);
     function cutTo(camera){
       if(!editor||exporting)return;const id=editor.change(`Cut to ${CAM[camera].name}`,d=>E.ops.cut(d,t,camera,'V1'));
-      if(id){say(`${CAM[camera].name} camera from ${E.timecode(t)}. Move the red line and pick another to switch again.`);selected.clear();refresh();}else say('Move the red line over the Camera row to switch cameras there.');
+      if(id){say(`Switched to the ${CAM[camera].name} camera at ${E.timecode(t)}. Move the red line and pick another camera to switch again.`);selected.clear();refresh();}else say('Move the red line over the Camera row to switch cameras there.');
     }
     function changed(){
       selected=new Set([...selected].filter(id=>editor.doc.clips.some(c=>c.id===id)));
@@ -299,7 +299,7 @@
     $('#studio-name').onchange=e=>{const v=e.target.value.trim().slice(0,80)||'Run video';editor?.change('Rename',d=>{d.name=v;});};
     $('#studio-save').onclick=()=>exporting?exporting.abort():void exportVideo();
     $('#studio-more').onclick=()=>{const box=$('#studio-more-tools'),open=box.hidden;box.hidden=!open;$('#studio-more').setAttribute('aria-expanded',String(open));$('#studio-more').textContent=open?'Fewer tools':'More tools';};
-    $('#studio-discard').onclick=()=>{const b=$('#studio-discard');if(Date.now()-discardArmed>4000){discardArmed=Date.now();b.textContent='Discard? Click again';b.classList.add('danger');setTimeout(()=>{b.textContent='Discard';b.classList.remove('danger');},4000);return;}
+    $('#studio-discard').onclick=()=>{const b=$('#studio-discard');if(Date.now()-discardArmed>4000){discardArmed=Date.now();b.textContent='Click again to discard';b.classList.add('danger');setTimeout(()=>{b.textContent='Discard';b.classList.remove('danger');},4000);return;}
       discardArmed=0;b.textContent='Discard';b.classList.remove('danger');clear();opts.discard();};
 
     // ------------------------------------------------------------ side panes
@@ -316,7 +316,7 @@
     function recrash(d){d.markers=d.markers.filter(m=>m.color!==E.CRASH_COLOR);E.addCrashes(d,take.crashes);}
     function camerasPane(){
       const p=pane('cameras');if(!take){p.innerHTML='';return;}
-      p.innerHTML=`<p class="hint">Pick a camera: the video switches to it from the red line.</p>
+      p.innerHTML=`<p class="hint">Pick a camera and the video switches to it from the red line onward.</p>
         <div class="studio-cams">${CAMS.map(c=>`<button type="button" class="studio-cam" data-cam="${c.id}" data-css="--c:${c.color}" title="${esc(c.hint)}"><kbd>${c.key}</kbd><span>${esc(c.name)}</span></button>`).join('')}</div>
         <p class="hint studio-cam-hint" id="studio-cam-hint"></p>
         <div class="studio-row-buttons"><button type="button" class="secondary" id="studio-autocut" title="Cuts between the robot's cameras by what it is doing: the turret while it shoots, the intake while it collects, the chase camera while it drives">Pick cameras for me</button><button type="button" class="secondary" id="studio-onecam" title="Go back to one camera for the whole video">Start over</button></div>
@@ -326,7 +326,7 @@
       pane('moments').innerHTML=moments.length?`<label>Jump to a moment<select id="studio-moment"><option value="">Choose what happened…</option>${moments.map(e=>`<option value="${e.t}">${E.timecode(e.t)} · ${esc(e.label)}</option>`).join('')}</select></label>`:'<p class="hint">Nothing stood out in this run.</p>';css(pane('moments'));
       css(p);for(const b of p.querySelectorAll('[data-cam]'))b.onclick=()=>cutTo(b.dataset.cam);
       const moment=pane('moments').querySelector('#studio-moment');if(moment)moment.onchange=()=>{if(moment.value==='')return;pause();setTime(+moment.value);};
-      p.querySelector('#studio-autocut').onclick=()=>{const clips=E.autoCut(take.frames,{duration:take.duration,cuts:true});if(!clips.length)return say('This run is too short to cut.');editor.change('Pick cameras',d=>{E.ops.replaceTrack(d,'V1',clips);recrash(d);});selected.clear();refresh();{const used=[...new Set(clips.map(c=>CAM[c.camera]?.name||c.camera))];say(clips.length>1?`${clips.length} shots across ${used.length} cameras (${used.join(', ')}), switching with what the robot does. Press Play to watch; Undo puts it back.`:'Nothing in this run called for a second camera, so it is one shot. Undo puts it back.');}};
+      p.querySelector('#studio-autocut').onclick=()=>{const clips=E.autoCut(take.frames,{duration:take.duration,cuts:true});if(!clips.length)return say('This run is too short to cut.');editor.change('Pick cameras',d=>{E.ops.replaceTrack(d,'V1',clips);recrash(d);});selected.clear();refresh();{const used=[...new Set(clips.map(c=>CAM[c.camera]?.name||c.camera))];say(clips.length>1?`${clips.length} shots across ${used.length} cameras (${used.join(', ')}), switching with what the robot does. Press Play to watch, or Undo to go back.`:'Nothing in this run needed a second camera, so it stays one shot. Press Undo to go back.');}};
       p.querySelector('#studio-onecam').onclick=()=>{const camera=take.view==='2d'?'top':'side';editor.change('Start over',d=>{E.ops.replaceTrack(d,'V1',[E.videoClip({start:0,in:0,out:take.duration,camera})]);recrash(d);});selected.clear();refresh();say('Back to one camera for the whole video.');};
       cameraMarks();
     }
@@ -336,10 +336,10 @@
       for(const b of p.querySelectorAll('[data-cam]'))b.setAttribute('aria-pressed',String(b.dataset.cam===id));
       const hint=p.querySelector('#studio-cam-hint');if(hint)hint.textContent=id?`Showing now: ${CAM[id].label}. ${CAM[id].hint}`:'Nothing on the Camera row at the red line.';
       const body=$('#studio-tune-body');if(!body)return;const key=id||'';if(body.dataset.cam===key&&!body.dataset.stale)return;body.dataset.cam=key;delete body.dataset.stale;
-      if(!id||id==='main'||id==='top'||id==='side'||id==='auto'||id==='orbit'){body.innerHTML=`<p class="hint">${id?`${CAM[id].name} has nothing to adjust: it films the way the recordings always have.`:'Move the playhead over a clip.'}</p>`;return;}
+      if(!id||id==='main'||id==='top'||id==='side'||id==='auto'||id==='orbit'){body.innerHTML=`<p class="hint">${id?`${CAM[id].name} has no settings to change.`:'Move the red line over a clip.'}</p>`;return;}
       const s=K.settings(editor.doc.cameras)[id],modes=K.CAMERAS.find(x=>x.id===id).modes||{};
       const slider=(k,label,min,max,step,unit='')=>`<label>${label} <output>${s[k]}${unit}</output><input type="range" data-tune="${k}" min="${min}" max="${max}" step="${step}" value="${s[k]}"></label>`;
-      body.innerHTML=`<label>Mode<select data-tune="mode">${options(modes,s.mode)}</select></label>${slider('distance','Distance',.5,2.5,.05,'×')}${slider('height','Height',.3,3,.05,'×')}${slider('swing','Swing round',-90,90,1,'°')}${slider('fov','Field of view',25,90,1,'°')}<button type="button" class="text-button" data-tune-reset>Back to how it was designed</button>`;
+      body.innerHTML=`<label>Mode<select data-tune="mode">${options(modes,s.mode)}</select></label>${slider('distance','Distance',.5,2.5,.05,'×')}${slider('height','Height',.3,3,.05,'×')}${slider('swing','Swing round',-90,90,1,'°')}${slider('fov','Field of view',25,90,1,'°')}<button type="button" class="text-button" data-tune-reset>Reset to the default</button>`;
       for(const input of body.querySelectorAll('[data-tune]')){const k=input.dataset.tune;
         input.onfocus=()=>{focusSnap=JSON.stringify(editor.doc);};
         input.oninput=()=>{const v=k==='mode'?input.value:+input.value;if(input.previousElementSibling?.tagName==='OUTPUT')input.previousElementSibling.textContent=input.value+(k==='distance'||k==='height'?'×':'°');
@@ -355,12 +355,12 @@
       const num=(k,label,v,min,max,step,unit='s')=>`<label>${label}<span class="studio-num"><input type="number" data-field="${k}" value="${+v.toFixed(2)}" min="${min}" max="${max}" step="${step}"><span>${unit}</span></span></label>`;
       const head=`<div class="studio-clip-head"><h4 class="studio-sub">${c.kind==='text'?'Words':c.freeze?'Freeze frame':'Chosen clip'} <span class="hint">${E.timecode(c.start)}–${E.timecode(E.end(c))}</span></h4><button type="button" class="secondary" data-clip-done>Done</button></div>`;
       const fades=`<div class="studio-pair">${num('fadeIn','Fade in',c.fadeIn,0,10,.1)}${num('fadeOut','Fade out',c.fadeOut,0,10,.1)}</div>`,remove=`<button type="button" class="text-button studio-remove" data-clip-remove>Delete this clip</button>`;
-      if(c.kind==='text')p.innerHTML=`${head}<label>Words<input data-field="text" maxlength="200" value="${esc(c.text)}"></label><label>Look<select data-field="style">${options(E.TEXT_STYLES,c.style)}</select></label>${num('dur','Shows for',c.dur,E.MIN,600,.1)}
+      if(c.kind==='text')p.innerHTML=`${head}<label>Words<input data-field="text" maxlength="200" value="${esc(c.text)}"></label><label>Style<select data-field="style">${options(E.TEXT_STYLES,c.style)}</select></label>${num('dur','Shows for',c.dur,E.MIN,600,.1)}
         <details class="sim-fold studio-tune"><summary>More</summary><label>Second line<input data-field="sub" maxlength="200" value="${esc(c.sub)}" placeholder="Optional"></label>${fades}</details>${remove}`;
       else p.innerHTML=`${head}<div class="studio-cams small">${CAMS.map(k=>`<button type="button" class="studio-cam" data-clipcam="${k.id}" data-css="--c:${k.color}" aria-pressed="${k.id===c.camera}" title="${esc(k.label)}"><kbd>${k.key}</kbd><span>${esc(k.name)}</span></button>`).join('')}</div>
         ${c.freeze?num('hold','Hold for',c.hold,E.MIN,600,.1):`<label>Speed<select data-field="speed">${options(SPEEDS,c.speed)}${SPEEDS[c.speed]?'':`<option value="${c.speed}" selected>${c.speed}×</option>`}</select></label>`}
-        <details class="sim-fold studio-tune"><summary>More</summary><label>Change into this clip with<select data-field="transition">${options(E.TRANSITIONS,c.transition)}</select></label>${c.transition!=='cut'?num('transitionLength','Change takes',c.transitionLength,.05,5,.05):''}
-        ${fades}<label class="studio-check"><input type="checkbox" data-field="pip"${c.pip?' checked':''}> Small, in the corner</label></details>${remove}`;
+        <details class="sim-fold studio-tune"><summary>More</summary><label>Transition into this clip<select data-field="transition">${options(E.TRANSITIONS,c.transition)}</select></label>${c.transition!=='cut'?num('transitionLength','Transition length',c.transitionLength,.05,5,.05):''}
+        ${fades}<label class="studio-check"><input type="checkbox" data-field="pip"${c.pip?' checked':''}> Show small in a corner</label></details>${remove}`;
       css(p);p.querySelector('[data-clip-done]').onclick=()=>{selected.clear();refresh();};p.querySelector('[data-clip-remove]').onclick=()=>act('remove');for(const b of p.querySelectorAll('[data-clipcam]'))b.onclick=()=>editor.change('Change camera',d=>E.ops.setCamera(d,[c.id],b.dataset.clipcam));
       for(const input of p.querySelectorAll('[data-field]')){const k=input.dataset.field;
         const value=()=>input.type==='checkbox'?input.checked:input.type==='number'||k==='speed'?+input.value:input.value;
@@ -371,7 +371,7 @@
     }
     function lookPane(){
       const p=pane('look');if(!editor){p.innerHTML='';return;}const o=editor.doc.overlays;
-      p.innerHTML=`<p class="hint">Shown on top of the picture. For your own words, use + Text.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
+      p.innerHTML=`<p class="hint">Pick what to show on top of the picture. To add your own words, use + Text.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
       p.querySelector('#studio-end-card').onclick=()=>{const on=editor.doc.endCard===false;editor.change(on?'Add end card':'Remove end card',d=>{d.endCard=on;});lookPane();requestDraw();};
       for(const input of p.querySelectorAll('[data-overlay]'))input.onchange=()=>editor.change(input.checked?'Show overlay':'Hide overlay',d=>{d.overlays[input.dataset.overlay]=input.checked;});
     }
@@ -392,7 +392,7 @@
       for(const s of p.querySelectorAll('[data-exp]'))s.onchange=()=>{const k=s.dataset.exp;exportSettings[k]=k==='fps'||k==='format'?+s.value:s.value;exportPane();};
       p.querySelector('#studio-original').onclick=async e=>{const b=e.currentTarget;b.disabled=true;say('Choose where to save the recording…');try{say(await opts.saveOriginal());}catch(err){say(err.message);}b.disabled=false;};
       const f=await probe();if(exporting||!p.isConnected)return;const sel=p.querySelector('#studio-format');if(!sel)return;$('#studio-save').disabled=!f?.video?.length;
-      if(!f?.video?.length){sel.innerHTML='<option>None available</option>';sel.disabled=true;p.querySelector('#studio-export-note').textContent=f?.webcodecs===false?'This computer cannot save edited videos. Save the recording as filmed keeps it as it was.':'This computer cannot save this size and rate. Try 720p or 30 per second.';return;}
+      if(!f?.video?.length){sel.innerHTML='<option>None available</option>';sel.disabled=true;p.querySelector('#studio-export-note').textContent=f?.webcodecs===false?'This computer cannot save edited videos. Use Save the recording as filmed to keep the original.':'This computer cannot save this size and rate. Try 720p or 30 per second.';return;}
       exportSettings.format=Math.min(exportSettings.format,f.video.length-1);sel.innerHTML=f.video.map((v,i)=>`<option value="${i}"${i===exportSettings.format?' selected':''}>${formatName(v)}</option>`).join('');
     }
     async function exportVideo(){
@@ -461,7 +461,7 @@
       if(!kept){if(doc.clips[0])doc.clips[0].camera=next.view==='2d'?'top':'side';Object.assign(doc.overlays,{match:true,velocity:true,path:next.view!=='2d'});E.addCrashes(doc,take.crashes);}
       editor=new E.Editor(doc,{onChange:changed});paths={};pathKeys={};warmPaths();trail=buildTrail(F);events=E.events(F);selected.clear();t=0;
       $('#studio-name').value=doc.name;$('#studio-meta').textContent=`${E.timecode(take.duration).replace(/\.\d+$/,'')} long`;
-      say(take.crashes.length?`The robot touched something ${take.crashes.length===1?'once':`${take.crashes.length} times`}: the video stops and zooms in on each one (red on the timeline). Press Play to watch it.`:'Press Play to watch it. Save video keeps it; changing it first is optional.');
+      say(take.crashes.length?`The robot touched something ${take.crashes.length===1?'once':`${take.crashes.length} times`}. The video pauses and zooms in on each contact, marked red on the timeline. Press Play to watch.`:'Press Play to watch the run. Save video saves it as a file, and you can edit it first if you like.');
       camerasPane();requestAnimationFrame(fitZoom);refresh();
       $('#studio-loading').hidden=false;$('#studio-loading').textContent='Getting the cameras ready…';
       try{cam=await opts.camera();$('#studio-loading').hidden=true;}catch(e){$('#studio-loading').textContent=e.message||'The cameras could not load.';}

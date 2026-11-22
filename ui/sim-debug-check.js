@@ -17,7 +17,7 @@
   // heldNow: known to be held (a touch sensor says so); otherwise where it reads now counts as let go.
   const digitalStart=(value,heldNow=false)=>({need:heldNow?3:2,held:heldNow,seen:0,last:value,done:false});
   function digitalStep(s,value){if(value===undefined||value===s.last)return s;const seen=s.seen+1;return {...s,seen,last:value,held:!s.held,done:seen>=s.need};}
-  const digitalPrompt=s=>s.done?'It works: it changed and came back.':s.held?'Let go of it now.':s.seen?'Press or trigger it again, then let go.':'Press or trigger it now.';
+  const digitalPrompt=s=>s.done?'It works. It changed and came back.':s.held?'Let go of it now.':s.seen?'Press or trigger it again, then let go.':'Press or trigger it now.';
   // ---- analog: it reads, it changes when turned, and it stays where it is left.
   const TURNED=.15,HOLD_MS=3000;
   const analogStart=()=>({stage:'read',base:null,mark:null,at:0,value:null});
@@ -27,6 +27,6 @@
     // Told to stop, the team has 3 s to let go; where it reads then is where it stays.
     if(s.stage==='stop')return now-s.at>=HOLD_MS?{...s,stage:'done',value}:{...s,value};
     return s;}
-  const analogPrompt=s=>{const v=Number.isFinite(s.value)?` Reading ${s.value.toFixed(2)} V.`:'';return s.stage==='read'?'Waiting for a reading…':s.stage==='turn'?`Rotate it until you are told to stop.${v}`:s.stage==='stop'?`Stop and let go.${v}`:`It works: it rests at ${s.value.toFixed(2)} V.`;};
+  const analogPrompt=s=>{const v=Number.isFinite(s.value)?` Reading ${s.value.toFixed(2)} V.`:'';return s.stage==='read'?'Waiting for a reading…':s.stage==='turn'?`Rotate it until you are told to stop.${v}`:s.stage==='stop'?`Stop and let go.${v}`:`It works. It stays at ${s.value.toFixed(2)} V when you let go.`;};
   return {DEFAULTS,MIN_APART,SERVO_SPAN,SERVO_RANGES,SAFE_SPEED,speeds,servoChoices,deviceParams,problem,position,digitalStart,digitalStep,digitalPrompt,analogStart,analogStep,analogPrompt};
 });

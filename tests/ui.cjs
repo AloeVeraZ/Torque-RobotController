@@ -27,7 +27,7 @@ const launchArgs=[root,...(process.env.DECK_ELECTRON_TEST_NO_SANDBOX==='1'?['--n
     }
     if(process.env.DECK_UI_LAYOUT_ONLY==='1'){console.log('PASS: LCD/1366/1920/4K/portrait Drive connect layouts, no horizontal overflow, aligned header and visible primary setup action.');return;}
     await window.evaluate(w=>w.setContentSize(1280,800));
-    assert.equal(await page.locator('.version').textContent(),require('../package.json').version+' · '+require('../package.json').updateChannel);
+    assert.ok((await page.locator('#about-version').textContent()).startsWith(`Torque ${require('../package.json').version}, `),'About names the version');
     assert.equal(await page.locator('#drive-tab').getAttribute('aria-current'),'page');
     await page.locator('#network-chip').click();await page.keyboard.press('Escape');assert.equal(await page.locator('#network-chip').getAttribute('aria-expanded'),'false');
     await page.locator('#more').click();await page.screenshot({path:path.join(out,'menu.png'),scale:'css'});await page.keyboard.press('Escape');assert.equal(await page.locator('#more').getAttribute('aria-expanded'),'false');

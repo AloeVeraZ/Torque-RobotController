@@ -133,11 +133,14 @@ it. Three changes answer that without giving up the rules above.
   nothing bounces, and what repeats all day (typing, keyboard actions) does not animate. Live things breathe: a ring goes
   out from a connected dot every few seconds. Reduced motion stops all of it.
 - **Drive is where you connect.** With no robot open, Drive shows your robots (one tap to connect, the likeliest one
-  first), a form to add one, and both controllers with their sticks moving live. The Wi-Fi list drops down from the
-  bar's Wi-Fi button. A running robot stays connected while you look at the list (the toolbar's **Robots**).
+  first) and a form to add one. The controllers live in the bar, so Drive does not repeat them. The Wi-Fi list drops
+  down from the bar's Wi-Fi button. A running robot stays connected while you look at the list (the toolbar's
+  **Robots**).
 
-Settings is now Torque's own settings: the app theme, the Driver Station theme (one for every robot, or one per robot),
-imported themes, the font, keeping the screen awake, and About. Keyboard shortcuts and the licenses open from the menu
+Settings is now Torque's own settings, across the window's width and scrolling as one page: the app theme, the Driver
+Station theme (one for every robot, or one per robot), the font, keeping the screen awake, and About. Each group has its
+title and a line on the left and what it sets on the right. Each list ends in **+**: a theme imported there goes into
+that list, a font file added there joins the fonts, and what you added carries **Remove**. Keyboard shortcuts and the licenses open from the menu
 as well; the menu lost Report a bug (the bar has it) and Competition mode (Torque is not used at an event).
 
 ### Themes
@@ -147,6 +150,12 @@ theme keeps the same contrast, and picks an accent that holds 4.5:1 on its groun
 constructed stylesheet (the pages' content security policy allows no inline styles) and, for pictures, custom properties
 the stylesheets draw with. Imported themes are validated (`fromPackage`: names, hex colours, contrast, picture types and
 sizes) and kept as JSON files in the app's data folder. [docs/THEMES.md](THEMES.md) is the guide for making one.
+A font added in Settings is checked by loading it, kept as its file in the data folder, and put on with `FontFace`
+from its bytes (in the Driver Station too, which gets them with the theme), setting `--font` and `--font-display`.
+
+A bar that sticks while its pane scrolls (Calibrate's "Before you start", Debug's run bar) is clear where it starts and,
+once it sticks, fills with the theme's ground (`container-type: scroll-state`, `@container scroll-state(stuck: top)`), so
+nothing that scrolls under it shows through its words.
 
 ## The mark (2026-11-22)
 

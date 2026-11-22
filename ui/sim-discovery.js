@@ -421,7 +421,7 @@
       // The biggest plates that swing, by name, to say what was found.
       const swung=deploy?[...new Set([...deploy.moving].filter(k=>!rev(k)).sort((x,y)=>feat(y).area-feat(x).area).map(k=>`“${nameOf(ctx,k)}”`))].slice(0,2).join(' and '):'';
       if(deploy){add_({id:did,name:`${named} · ${label.toLowerCase()}`,type:'revolute',parts:refs(deploy.moving),origin:deploy.origin,axis:deploy.axis,states:{raised:0,lowered:deploy.lowered??60},drive:{signal:'deploy',of:'intake:'+n},source:'inferred',confidence:deploy.confidence,
-        note:`Swings here because ${deploy.why}. ${deploy.lowered!==null?`Down is where it touches the floor (${deploy.lowered}°).`:'It did not reach the floor within 150°; set how far it goes down.'} Up is how it sits in the CAD.`});for(const k of deploy.moving)claimed.add(k);
+        note:`Swings here because ${deploy.why}. ${deploy.lowered!==null?`Down is where it touches the floor (${deploy.lowered}°).`:'It did not reach the floor within 150°, so set how far it goes down.'} Up is how it sits in the CAD.`});for(const k of deploy.moving)claimed.add(k);
         if(!deploys){kinds.push({intake:n,kind,joint:did,why:`${swung||'its plate'} swing${swung.includes(' and ')?'':'s'} down on ${deploy.why.replace(/^it hinges on /,'')}${kind==='ramp'?' in front of its rollers':''}`});
           report.push(`${label}: ${swung||'a plate'} swing${swung.includes(' and ')?'':'s'} down on a hinge in your CAD, so it is a ${kind==='ramp'?'deployable ramp':'kicker'}.`);}}
       // Rollers are taken only from parts named for the intake (guessing from its side would find the drive wheels).
@@ -430,7 +430,7 @@
         const onRamp=deploy&&[...g].some(k=>deploy.moving.has(k)),arm=onRamp?null:rollerArm(g,own),aid=arm&&uniqueId(`arm${n+1}`);
         if(arm){const sl=arm.slot?`the ${arm.slot.kind} in “${nameOf(ctx,arm.slot.k)}”`:'the frame';
           add_({id:aid,name:`Roller arm${groups.length>1?' '+(i+1):''} · ${label.toLowerCase()}`,type:'revolute',parts:refs(arm.moving),origin:arm.origin,axis:arm.axis,lower:arm.lower,upper:arm.upper,home:[arm.lower],states:{rest:arm.lower,up:arm.upper},gaps:arm.gaps,speed:360,drive:{signal:'float',of:'intake:'+n},source:'inferred',confidence:arm.confidence,
-            note:`Its plates (${arm.plates.map(k=>`“${nameOf(ctx,k)}”`).filter((x,j,a)=>a.indexOf(x)===j).join(', ')}) hold the roller and turn on ${arm.why}; ${sl} lets the roller’s axle travel ${arm.lower<-.5?`${fix1(-arm.lower)}° down and `:''}${fix1(arm.upper)}° up from where your CAD has it. Nothing drives it: it rests at the bottom (${arm.gaps.rest} in under the roller) and a bigger piece lifts it, up to ${arm.gaps.up} in.`});
+            note:`Its plates (${arm.plates.map(k=>`“${nameOf(ctx,k)}”`).filter((x,j,a)=>a.indexOf(x)===j).join(', ')}) hold the roller and turn on ${arm.why}; ${sl} lets the roller’s axle travel ${arm.lower<-.5?`${fix1(-arm.lower)}° down and `:''}${fix1(arm.upper)}° up from where your CAD has it. Nothing drives it. It rests at the bottom (${arm.gaps.rest} in under the roller), and a bigger piece lifts it up to ${arm.gaps.up} in.`});
           for(const k of arm.moving)if(!g.has(k))claimed.add(k);report.push(`${label}: its roller rides on a swing arm in ${sl}: ${arm.gaps.rest} in under it at rest, ${arm.gaps.up} in at the top of the slot.`);}
         // Star or flex wheels on its axle turn with it.
         const wheels=wheelsOn(g,own.filter(k=>!claimed.has(k)||arm?.moving.has(k))),turning=g.size;for(const k of wheels)g.add(k);

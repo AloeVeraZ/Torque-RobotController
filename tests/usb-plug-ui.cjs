@@ -62,7 +62,7 @@ const XML=`<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><Robot type="
     // Pulled: at once, and how long from main to the page having drawn it.
     await page.evaluate(()=>{window.__drawn=0;new MutationObserver(()=>{window.__drawn||=Date.now();}).observe(document.querySelector('#hub-dropped'),{attributes:true,attributeFilter:['open']});});
     const recovers=(await u()).recovers;await app.evaluate(()=>{global.__u.plugged=false;});const told=said(null,{drop:'unplugged'});await push(told);
-    await soon('the dialog',dropped);assert.equal((await u()).recovers,recovers,'Windows said so: nothing to try first, no second look');await soon('the plug line',()=>says(/Plug the Control Hub in by USB-C/));assert.match(await usbLink(),/Not plugged in/);assert.equal(await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count(),0,'what it read goes with it');
+    await soon('the dialog',dropped);assert.equal((await u()).recovers,recovers,'Windows said so: nothing to try first, no second look');await soon('the plug line',()=>says(/Plug the Control Hub into this computer with a USB-C cable/));assert.match(await usbLink(),/Not plugged in/);assert.equal(await page.locator('#rs-configs .rs-config:has([data-cfg=edit])').count(),0,'what it read goes with it');
     const drawn=await page.evaluate(()=>window.__drawn)-told.at;assert.ok(drawn<300,`from main to the page in ${drawn} ms`);console.log(`main to page: ${drawn} ms`);
 
     // Plugged in: says so before ADB has said anything, and closes the dialog by itself. Nothing is read yet.

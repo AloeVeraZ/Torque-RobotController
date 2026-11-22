@@ -129,7 +129,7 @@ test('Configure from Control Hub: two feeders sharing “indexer” both take th
   assert.deepEqual([by('shooters.0.indexer')?.name,by('shooters.1.indexer')?.name],['indexer','indexer']);
   assert.equal(by('shooters.1.indexer').port,2);assert.ok(by('shooters.0.indexer').shared||by('shooters.1.indexer').shared);
   assert.ok(!r.missing.some(m=>/indexer/.test(m.key)),JSON.stringify(r.missing));
-  assert.match(HS.lines(r)[0].text,/Pinpoint reads its 2 goBILDA odometry pods.*Control Hub’s IMU is used too/);
+  assert.match(HS.lines(r)[0].text,/Pinpoint reads its 2 goBILDA odometry pods.*Control Hub’s IMU is the backup for heading/);
 });
 
 test('an Axon MINI configured on the robot as a plain servo takes its positional twin, and back',()=>{

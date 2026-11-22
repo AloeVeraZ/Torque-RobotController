@@ -81,8 +81,8 @@ test('Debug says a device is there only when the hub heard it',()=>{
   require('../ui/sim-debug.js');const L=globalThis.DeckLiveDebug;
   assert.deepEqual(L.i2cState(1),['Connected','ok']);assert.deepEqual(L.i2cState(0),['Not answering: check its cable','warn']);assert.deepEqual(L.i2cState(-1),['Checking…','']);assert.deepEqual(L.i2cState(undefined),['In the configuration','']);
   assert.deepEqual(L.strayI2c([0x28,0x29,0x31],[0x31],0),[0x29],'the hub’s own IMU is not a stray, and neither is what is configured');assert.deepEqual(L.strayI2c([0x28],[],1),[0x28],'on another bus 0x28 is someone’s sensor');assert.deepEqual(L.strayI2c(undefined,[],1),[]);
-  assert.equal(L.strayI2cWords([0x52]),'Something answers at 0x52, not in the configuration: often a REV Color Sensor V3.');assert.equal(L.strayI2cWords([0x41]),'Something answers at 0x41, not in the configuration.');
-  assert.deepEqual(L.strayAnalog([0,.001,1.65,3.2],[3]),[[2,1.65]],'empty ports read about 0 V, and a configured one says so on its own tile');assert.equal(L.strayAnalogWords([[2,1.65]]),'Something on analog port 2 reads 1.65 V, not in the configuration.');
+  assert.equal(L.strayI2cWords([0x52]),'Something not in the configuration answers at 0x52. It is often a REV Color Sensor V3.');assert.equal(L.strayI2cWords([0x41]),'Something not in the configuration answers at 0x41.');
+  assert.deepEqual(L.strayAnalog([0,.001,1.65,3.2],[3]),[[2,1.65]],'empty ports read about 0 V, and a configured one says so on its own tile');assert.equal(L.strayAnalogWords([[2,1.65]]),'Something not in the configuration reads 1.65 V on analog port 2.');
   const code=fs.readFileSync(path.join(__dirname,'../src/onbot/TorqueDebug.java'),'utf8');assert.match(code,/new LynxI2cReadSingleByteCommand\(hub, bus, at\)\.send\(\)/,'the hub asks directly: a sensor’s own read hands back zeros');
 });
 

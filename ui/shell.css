@@ -125,7 +125,7 @@
   .page-status[data-kind=error] h2 { color: var(--bad); }
   .page-status .secondary { margin: 4px; }
 
-  /* Drive with no robot open: your robots on the left, a new one on the right, the controllers underneath. An app theme's
+  /* Drive with no robot open: your robots on the left, a new one on the right. An app theme's
      picture (docs/THEMES.md) lies behind it, faded under the page's ground so the words stay readable. */
   #connect-view { position: relative; isolation: isolate; max-width: var(--page-max); min-height: calc(100dvh - var(--bar-height)); margin: 0 auto; padding: 28px var(--page-gutter) 32px; }
   :root[data-theme-image] #connect-view::before { content: ""; position: fixed; inset: var(--bar-height) 0 0; z-index: -1; background: var(--theme-image) var(--theme-image-position, center) / cover no-repeat; opacity: var(--theme-image-opacity, .3); pointer-events: none; }
@@ -137,7 +137,7 @@
   .connect-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); gap: 0 48px; align-items: start; }
   .connect-grid > * { min-width: 0; }
   .connect-main { display: grid; align-content: start; }
-  .connect-grid h2, .connect-pads h2 { margin: 0; font-size: var(--display-sm); }
+  .connect-grid h2 { margin: 0; font-size: var(--display-sm); }
   .connect-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--h-lg); margin-bottom: 8px; }
   .connect-title input { max-width: 220px; }
   .connect-add { padding-left: 48px; border-left: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) 60ms both; }
@@ -166,24 +166,6 @@
   .connect-empty p { display: grid; gap: 4px; margin: 0; }
   .connect-empty b { font-size: var(--text-lg); }
   .connect-empty span { color: var(--muted); }
-  /* The controllers: each one's name and its sticks, which move as you move them. */
-  .connect-pads { margin-top: 32px; animation: rise-in var(--dur-3) var(--ease-out) 120ms both; }
-  .connect-pads h2 { margin-bottom: 12px; }
-  .pad-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .pad-tile { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 76px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); color: var(--text); text-align: left; font-weight: 400; }
-  .pad-tile:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface); }
-  .pad-tile .pad-icon { width: 28px; height: 28px; }
-  .pad-tile.live { border-color: var(--ok-line); }
-  .pad-tile.live .pad-icon { color: var(--ok); }
-  .pad-num { color: var(--text); font: 700 24px/1 var(--font-display); }
-  .pad-text { min-width: 0; }
-  .pad-text b { display: block; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  .pad-text small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--text-sm); }
-  .pad-tile.live .pad-text small { color: var(--ok); }
-  .pad-sticks { display: flex; gap: 8px; }
-  .stick { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 1.5px solid var(--line-strong); border-radius: 50%; }
-  .stick b { width: 10px; height: 10px; border-radius: 50%; background: var(--quiet); transition: transform 80ms linear, background-color var(--dur-2) var(--ease); }
-  .pad-tile.live .stick b { background: var(--accent); }
   .connect-note { margin: 16px 0 0; }
 
   /* The robot to open. */
@@ -200,60 +182,62 @@
   #discovery-results button { text-align: left; white-space: normal; overflow-wrap: anywhere; animation: rise-in var(--dur-3) var(--ease-out) both; }
   :is(.connect-add, dialog) :is(h1, h2, h3, p, .network-binding, .hint, summary) { overflow-wrap: anywhere; }
 
-  /* ---- Settings: Torque's own settings, one column of groups. Each group is a title, a line, then what it sets. ---- */
-  #settings-view { max-width: 920px; margin: 0 auto; padding: 24px var(--page-gutter) 48px; }
-  .settings-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
-  .settings-heading > div { min-width: 0; }
+  /* ---- Settings: Torque's own settings across the window's width. Each group has its title and a line on the left and
+     what it sets on the right. The page scrolls as one under the bar. ---- */
+  .settings-page { max-width: var(--page-max); margin: 0 auto; padding: 24px var(--page-gutter) 48px; }
+  .settings-heading { padding-bottom: 14px; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
   .settings-heading h1 { margin: 0; font-size: var(--display-lg); line-height: 1; }
-  .version { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
   .settings-sheet { display: grid; }
-  /* Settings fits the window as the other views do: the heading stays and the groups scroll under it. A short or narrow
-     window scrolls as one page. */
   @media (min-width: 861px) and (min-height: 560px) {
-    #settings-view:not([hidden]) { display: flex; flex-direction: column; height: calc(100dvh - var(--bar-height)); padding-bottom: 0; overflow: clip; }
-    #settings-view > .settings-heading { flex: none; }
-    #settings-view > .settings-sheet { flex: 1; min-height: 0; align-content: start; margin-right: calc(-1 * var(--page-gutter)); padding: 0 var(--page-gutter) 40px 0; overflow-y: auto; overscroll-behavior: contain; }
+    #settings-view:not([hidden]) { height: calc(100dvh - var(--bar-height)); overflow-y: auto; overscroll-behavior: contain; }
   }
-  .settings-group { padding: 22px 0 24px; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
+  .settings-group { display: grid; grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); gap: 14px 56px; padding: 28px 0; border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
   .settings-group:nth-child(2) { animation-delay: 40ms; } .settings-group:nth-child(3) { animation-delay: 80ms; } .settings-group:nth-child(n+4) { animation-delay: 120ms; }
   .settings-group:last-child { border-bottom: 0; }
-  .settings-group > h2, .settings-group-head h2 { margin: 0; font-size: var(--display-sm); }
-  .settings-group > h2 { margin-bottom: 12px; }
-  .settings-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-  .settings-group-head > div { min-width: 0; }
-  .settings-group-head p { max-width: 64ch; margin: 4px 0 0; color: var(--muted); font-size: var(--text-md); }
-  .settings-group-head .text-button { flex-shrink: 0; }
-  .setting-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-  .setting-row .setting-label { margin: 0; }
-  .setting-row .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); min-width: 280px; }
-  .about-version { margin: 0 0 12px; color: var(--muted); }
-  #theme-import-status:empty { display: none; }
-  /* A theme is a small window in its own colours: its ground, a line of text and its accent. Picking one rings it. */
-  .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
-  .theme-card { display: grid; gap: 8px; align-content: start; min-height: 0; padding: 6px 6px 8px; border: 1px solid var(--line); border-radius: var(--r-box); background: none; color: var(--text); text-align: left; font-weight: 500; }
-  .theme-card:hover:not(:disabled) { border-color: var(--line-strong); background: none; }
-  .theme-card[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  .theme-preview { position: relative; display: block; height: 64px; overflow: hidden; border-radius: var(--r-ctl); background: var(--p-image, none) center / cover, var(--p-bg); box-shadow: inset 0 0 0 1px #ffffff14; }
+  .settings-group-head { display: grid; align-content: start; justify-items: start; gap: 6px; min-width: 0; }
+  .settings-group-head h2 { margin: 0; font-size: var(--display-sm); }
+  .settings-group-head p { margin: 0; color: var(--muted); font-size: var(--text-md); }
+  .settings-group-body { display: grid; align-content: start; gap: 14px; min-width: 0; }
+  .settings-status { margin: 0; }
+  .settings-status:empty { display: none; }
+  .about-version { margin: 0; color: var(--muted); }
+  /* A theme is a small window in its own colours: its ground, a line of text and its accent. A font shows its letters.
+     Picking one rings it; the last card in each list adds one of your own. */
+  :is(.theme-grid, .font-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); align-items: start; gap: 12px; }
+  :is(.theme-card, .font-card) { display: grid; gap: 8px; align-content: start; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-box); background: none; color: var(--text); text-align: left; font-weight: 500; }
+  :is(.theme-card, .font-card):hover:not(:disabled) { border-color: var(--line-strong); background: none; }
+  :is(.theme-card, .font-card)[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .theme-card { padding: 6px 6px 8px; }
+  .font-card { padding: 10px 12px 12px; }
+  .theme-preview { --p-bg: var(--pd-bg); --p-surface: var(--pd-surface); --p-text: var(--pd-text); --p-accent: var(--pd-accent); position: relative; display: block; height: 64px; overflow: hidden; border-radius: var(--r-ctl); background: var(--p-image, none) center / cover, var(--p-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-text) 12%, transparent); }
+  :root[data-theme=light] .theme-preview { --p-bg: var(--pl-bg); --p-surface: var(--pl-surface); --p-text: var(--pl-text); --p-accent: var(--pl-accent); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme=dark]) .theme-preview { --p-bg: var(--pl-bg); --p-surface: var(--pl-surface); --p-text: var(--pl-text); --p-accent: var(--pl-accent); } }
   .theme-preview > i { position: absolute; display: block; border-radius: 2px; }
   .theme-preview .p-bar { inset: 0 0 auto; height: 12px; background: var(--p-surface); }
   .theme-preview .p-line { top: 22px; left: 10px; width: 56%; height: 5px; background: var(--p-text); opacity: .85; }
   .theme-preview .p-line.short { top: 32px; width: 34%; opacity: .45; }
   .theme-preview .p-button { right: 10px; bottom: 9px; width: 34px; height: 12px; border-radius: 3px; background: var(--p-accent); }
   .theme-card[aria-checked=true] .p-button { animation: breathe 2.4s var(--ease) infinite; }
-  .theme-name { padding: 0 4px; font-size: var(--text-md); }
-  .theme-from { padding: 0 4px; color: var(--quiet); font-size: var(--text-xs); }
-  .robot-themes { display: grid; margin-top: 18px; }
+  :is(.theme-name, .font-name) { min-width: 0; overflow: hidden; font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
+  .theme-name { padding: 0 4px; }
+  .font-sample { display: flex; align-items: center; height: 44px; font-size: 32px; font-weight: 400; line-height: 1; }
+  :is(.theme-card, .font-card).add-card { border-style: dashed; color: var(--muted); }
+  :is(.theme-card, .font-card).add-card:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+  .add-card .theme-preview { display: grid; place-items: center; background: none; box-shadow: none; }
+  .add-card .ui-icon { width: 24px; height: 24px; }
+  .choice-item { display: grid; align-content: start; justify-items: start; min-width: 0; }
+  .choice-item > :is(.theme-card, .font-card) { justify-self: stretch; }
+  .choice-remove { min-height: var(--h-lg); padding-inline: 4px; color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
+  .choice-remove:hover:not(:disabled) { color: var(--bad); }
+  .robot-themes { display: grid; margin-top: 4px; }
+  .robot-themes:empty { display: none; }
   .robot-themes h3 { margin: 0 0 6px; color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
   .robot-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 8px 0; border-top: 1px solid var(--line); }
   .robot-theme-row > span { min-width: 0; }
   .robot-theme-row b { display: block; font-weight: 500; overflow-wrap: anywhere; }
   .robot-theme-row small { color: var(--quiet); font-size: var(--text-sm); }
   .robot-theme-row select { width: auto; min-width: 200px; }
-  .imported-list { display: grid; margin-top: 12px; }
-  .imported-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
-  .imported-row > div { min-width: 0; }
-  .imported-row b { display: block; font-weight: 500; }
-  .imported-row small { color: var(--quiet); font-size: var(--text-sm); }
+  @media (max-width: 860px) { .settings-group { grid-template-columns: minmax(0, 1fr); } }
   .shortcut-list { margin: 0 0 8px; }
   .shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid var(--line); font-size: var(--text-md); }
   .shortcut-list dt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--quiet); }
@@ -288,6 +272,7 @@
   .testing-warning h3 { color: var(--warn); }
   .testing-warning p { color: var(--text); }
   #update-status { margin: 16px 0 0; color: var(--text); }
+  #update-status:empty { margin: 0; }
   #update-progress { margin: 12px 0 0; }
   #update-changelog { margin-top: 20px; }
   #update-notes { max-height: 180px; margin: 0; padding: 12px; overflow: auto; border-radius: var(--r-ctl); background: var(--well); color: var(--muted); font: var(--text-sm)/1.6 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -356,7 +341,6 @@
     .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
     .connect-grid { grid-template-columns: minmax(0, 1fr); }
     .connect-add { margin-top: 24px; padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
-    .pad-tiles { grid-template-columns: minmax(0, 1fr); }
     .browser-toolbar { flex-wrap: wrap; gap: 4px 8px; padding: 4px 8px; }
     .url-display { order: -1; flex: 1 0 100%; min-height: 28px; }
     .browser-actions { margin-right: auto; }
@@ -384,14 +368,9 @@
     #connect-view { padding: 20px 16px 32px; }
     .connect-head h1 { font-size: var(--display-md); }
     .connect-back { width: 100%; }
-    #settings-view { padding: 16px 16px 32px; }
-    .settings-group-head { flex-direction: column; }
-    .setting-row .segmented { min-width: 0; width: 100%; }
+    .settings-page { padding: 16px 16px 32px; }
     .robot-theme-row { flex-direction: column; align-items: stretch; }
     .robot-theme-row select { min-width: 0; width: 100%; }
-    .pad-tile { grid-template-columns: auto auto minmax(0, 1fr); }
-    .pad-sticks { display: none; }
-    .settings-heading { flex-wrap: wrap; gap: 8px; }
     .settings-heading h1 { font-size: var(--display-md); }
     .connect-title { flex-wrap: wrap; }
     .connect-title input { max-width: none; }

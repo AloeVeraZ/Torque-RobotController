@@ -90,7 +90,7 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.id=0;this.cbs=new Map
     const target=await until(async()=>(await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`)).json()).find(t=>t.url.includes('ui/ftc/index.html')),20000,'Drive view');
     drive=new Cdp(target.webSocketDebuggerUrl);await drive.ready;
     const picked=await until(()=>drive.eval(`(()=>{const l=document.querySelector('#opmode-label').textContent;return l==='BIOBUZZ red auto (Deck)'?{label:l,config:document.querySelector('#config').textContent,toast:document.querySelector('#ds-toast').textContent}:null;})()`),20000,'the autonomous selected in Drive');
-    assert.equal(picked.config,'competition Deck');assert.match(picked.toast,/BIOBUZZ red auto \(Deck\) is selected: Deck just sent it to the robot\.|Controller/);
+    assert.equal(picked.config,'competition Deck');assert.match(picked.toast,/Torque just sent BIOBUZZ red auto \(Deck\) to the robot, so it is selected\.|Controller/);
     await drive.shot(path.join(out,'a-drive.png'));drive.close();drive=null;
 
     // ---- B: no configuration on the robot; back to the simulator, which closes the robot in Drive.

@@ -134,11 +134,11 @@
   // Which way the Pinpoint's heading counts: its IMU turns about its own Z, so a board label down counts a left turn as a right one.
   const pinpointYawSign=a=>a==='down'?-1:1;
   // What to tell the team about a pick: a mounting the maker does not support, an IMU the exports cannot read.
-  function warnings(p){const out=[];if(p.kind==='pinpoint'&&p.a==='down')out.push('goBILDA says to mount the Pinpoint sticker side up. Upside down, its heading counts the wrong way round: turn it over, or check the quarter turn in Calibrate.');
-    if(KINDS[p.kind]?.sdkImu===false)out.push('The FTC SDK reads a navX2-Micro as a gyroscope, not as an IMU, so Torque’s exports and Calibrate cannot use it for heading: they need the Control Hub’s IMU. The navX sets which way is up on the board itself (OmniMount).');
-    if(p.kind==='expansionHub')out.push('Expansion Hubs bought after December 2021 have no IMU: the Manage page on the robot says whether this one does.');return out;}
+  function warnings(p){const out=[];if(p.kind==='pinpoint'&&p.a==='down')out.push('goBILDA says to mount the Pinpoint sticker side up. Upside down, its heading counts the wrong way: turn it over, or check the quarter turn in Calibrate.');
+    if(KINDS[p.kind]?.sdkImu===false)out.push('The FTC SDK reads a navX2-Micro as a gyroscope, not as an IMU, so Torque’s exports and Calibrate cannot use it for heading. Use the Control Hub’s IMU instead. The navX sets which way is up on the board itself (OmniMount).');
+    if(p.kind==='expansionHub')out.push('Expansion Hubs bought after December 2021 have no IMU. The robot’s Manage page says whether this one has one.');return out;}
   // Said beside it, not as a warning: where the chip is taken to be when its maker does not say.
-  const chipNote=p=>KINDS[p.kind]?.chipKnown===false?`${KINDS[p.kind].maker} does not publish where the IMU chip is, so its centre is used: close enough, heading does not depend on it.`:'';
+  const chipNote=p=>KINDS[p.kind]?.chipKnown===false?`${KINDS[p.kind].maker} does not publish where the IMU chip is, so Torque uses the board’s centre. That is close enough, because heading does not depend on it.`:'';
   // ---- Road Runner ----
   // The values Road Runner 1.0's quickstart takes, from a TeamCode export's hardware (DeckFtc.hardware): MecanumDrive.PARAMS'
   // logo and USB directions and inPerTick, and the localizer's Params. Road Runner's frame is x forward, y left, and its pod
@@ -186,6 +186,6 @@
     return `<div class="sim-chassis-pos">${num('x','Forward · in',-36,36)}${num('y','Left · in',-36,36)}${key==='otos'?num('z','Up · in',0,36):''}<small>${esc(p.from==='cad'&&p.part?`From the CAD: “${p.part}”`:p.from==='cad'?'From the CAD':'')}</small></div>`;}
   // Said under the boxes: where the IMU chip comes out, as the two offsets added.
   function chipSaid(p){if(!finite(p.x)||!finite(p.y))return '';const m=middle(p),o=chipOffset(p),n=v=>(v<0?'−':'+')+Math.abs(v).toFixed(2);
-    return `IMU chip from the chassis’s middle: forward ${m.x.toFixed(2)} ${n(o[0])} = ${p.x.toFixed(2)} in, left ${m.y.toFixed(2)} ${n(o[1])} = ${p.y.toFixed(2)} in (the device’s middle, plus the chip’s place inside it).`;}
+    return `IMU chip, measured from the chassis centre: forward ${m.x.toFixed(2)} ${n(o[0])} = ${p.x.toFixed(2)} in, left ${m.y.toFixed(2)} ${n(o[1])} = ${p.y.toFixed(2)} in (the board’s centre plus where the chip sits on it).`;}
   return {FACES,KINDS,IMU_KINDS,KEYS,kindOfTag,rolesOf,faces,matrix,sanitize,of,place,fromBox,boxFits,marker,words,where,otosHeading,otosArrow,pinpointYawSign,warnings,chipNote,chipOffset,middle,chipSaid,roadRunner,facesHtml,posHtml,esc};
 });

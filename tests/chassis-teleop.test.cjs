@@ -24,7 +24,7 @@ test('a swerve’s TeleOp carries each pod as calibrated, with no package so eve
   assert.match(s,/boolean flip = Math\.abs\(error\) > 95;/);assert.match(s,/if \(flip\) \{ error -= Math\.signum\(error\) \* 180; wheel = -wheel; \}/);
   assert.equal(s.split('{').length,s.split('}').length,'braces balance');
   assert.match(T.teleopOf({...kiwi,pods:[pod('frontPod',8,0,{zero:undefined})]}).error,/Set the wheels straight first.*frontPod/);
-  assert.match(T.teleopOf({kind:'kiwi',motors:[{key:'front',name:'f'}]}).error,/needs 3 drive motors: Setup has 1/);
+  assert.match(T.teleopOf({kind:'kiwi',motors:[{key:'front',name:'f'}]}).error,/needs 3 drive motors, but Setup has 1/);
   assert.match(T.teleopOf({kind:'diffSwerve',motors:[]}).error,/differential swerve needs its own calibration/);});
 
 test('the controller is mapped the way the team picked',()=>{

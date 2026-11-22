@@ -95,13 +95,13 @@
   const MECH_ANY={...ANGLE,potentiometer:'position',throughBore:'position',...HOME,...PIECE};
   const R=(name,family,kinds,sensors,explain,o={})=>({name,family,kinds,sensors,explain,...o});
   const ROLES={
-    drive:R('Drive motor','motor',['dcmotor'],{motorEncoder:'position',throughBore:'position',...ANGLE},'Turns a wheel. Its encoder counts the wheel’s turns when the robot finds its place from the drive motors.'),
+    drive:R('Drive motor','motor',['dcmotor'],{motorEncoder:'position',throughBore:'position',...ANGLE},'Turns a wheel. When the robot works out where it is from its drive motors, this motor’s encoder counts the wheel’s turns.'),
     steer:R('Swerve steering','servo',['crservo','servo','dcmotor'],{...ANGLE,throughBore:'position',motorEncoder:'position'},'Turns a swerve module to its angle. An absolute encoder (an Axon\u2019s feedback wire, a Through Bore V2) tells where it points.'),
     pod:R('Odometry pod','motor',[],{},'A free wheel with an encoder, plugged into a motor port’s encoder input. The robot reads it through the name configured on that port.'),
-    imu:R('IMU','i2c',[],{},'The hub’s own IMU, on I2C bus 0: it tells which way the robot faces.'),
+    imu:R('IMU','i2c',[],{},'The hub’s built-in IMU, on I2C bus 0. It tells which way the robot faces.'),
     pinpoint:R('goBILDA Pinpoint','i2c',[],{},'Reads both odometry pods and its own IMU and tells where the robot is. It goes on an I2C bus other than the IMU’s bus 0.'),
     otos:R('SparkFun OTOS','i2c',[],{},'Watches the floor and tells where the robot is. It goes on an I2C bus other than the IMU’s bus 0.'),
-    roller:R('Intake roller','motor',['dcmotor','crservo'],{...MECH_ANY,...PIECE,motorEncoder:'velocity'},'Spins the intake rollers on power, so it needs no sensor. A colour or distance sensor can tell a piece is in.'),
+    roller:R('Intake roller','motor',['dcmotor','crservo'],{...MECH_ANY,...PIECE,motorEncoder:'velocity'},'Spins the intake rollers at a set power, so it needs no sensor. A colour or distance sensor can tell when a piece is in.'),
     ramp:R('Ramp','servo',['servo','linear','crservo','dcmotor'],{...MECH_ANY,...ANGLE,potentiometer:'position',throughBore:'position',...HOME},'Lowers the ramp to take pieces and lifts it back. A servo goes to set positions; an Axon’s feedback wire or a potentiometer tells where it really is.'),
     kicker:R('Kicker','servo',['servo','linear'],{...MECH_ANY,...ANGLE,potentiometer:'position',throughBore:'position',...HOME},'Swings down to scoop pieces in and back up. A servo goes to set positions; an Axon’s feedback wire or a potentiometer tells where it really is.'),
     flywheel:R('Flywheel','motor',['dcmotor'],{...PIECE,motorEncoder:'velocity'},'Spins the flywheel at a set speed. Only its motor’s own encoder can read that speed.'),
@@ -596,10 +596,10 @@
       // encoder (usually a drive motor): the robot reads it through that motor's name.
       if(!placed&&r.role==='pod'){const m=[...used.entries()].find(([slot,o])=>/:motor:/.test(slot)&&o.family==='motor'&&!o.encoder&&o.role!=='pod'&&!used.has(slot.replace(':motor:',':encoder:')));
         if(m){const [hub,,port]=m[0].split(':'),p={hub,port:+port};used.set(`${hub}:encoder:${port}`,r);assign[r.key]={...p,wired:false,label:label(r,p),via:m[1].name};
-          problems.push(problem('amber',[r.key],`${r.label} goes on the encoder input of ${label(r,p)}, beside "${m[1].name}": the code reads it as "${r.name}", so name it "${m[1].name}" in Mechanisms → Chassis → Control Hub → Device names.`));continue;}}
+          problems.push(problem('amber',[r.key],`${r.label} goes on the encoder input of ${label(r,p)}, beside "${m[1].name}". The robot reads it through that motor, so name it "${m[1].name}" (it is "${r.name}" now) in Setup → Mechanisms → Chassis → Control Hub → Device names.`));continue;}}
       if(!placed){const fam=FAMILIES[r.family];problems.push(portProblem('amber',[r.key],`No ${fam} is free for ${r.label}.${r.family==='motor'?(w.hubs.expansion?' Run a roller on a continuous servo, or free a motor port.':' Add an Expansion Hub, or run a roller on a continuous servo.'):r.family==='servo'?(w.hubs.servoHub?' Free a servo port.':' Add a Servo Hub or an Expansion Hub.'):w.hubs.expansion?'':' Add an Expansion Hub.'}`));continue;}
       take(r,placed,false);
-      if(r.fast&&r.family==='encoder'&&!hubSpec(placed.hub).fastEncoders.includes(placed.port))problems.push(problem('amber',[r.key],`${r.label} is on ${assign[r.key].label}: ports 1 and 2 count in software and can miss counts from its ${SENSOR_MODELS[r.model]?.cpr||8192} a turn. Encoder ports 0 and 3 are taken.`));}
+      if(r.fast&&r.family==='encoder'&&!hubSpec(placed.hub).fastEncoders.includes(placed.port))problems.push(problem('amber',[r.key],`${r.label} is on ${assign[r.key].label}: ports 1 and 2 count in software and can miss some of its ${SENSOR_MODELS[r.model]?.cpr||8192} counts a turn. Encoder ports 0 and 3 are taken.`));}
     return {assign,problems};
   }
   // Rows with their planned ports filled in (planned: Deck picked it).
@@ -614,10 +614,10 @@
         if(md.kind!==r.kind&&!(md.kind==='linear'&&r.kind==='servo')&&r.role!=='pod')out.push(problem('red',[r.key],`${r.label} is set to run on ${A_KIND[r.kind]||r.kind}, but its model, ${md.short}, is ${A_KIND[md.kind]||md.kind}.`));
         else if(role&&role.kinds.length&&!role.kinds.includes(md.kind))out.push(problem('red',[r.key],`A ${role.name.toLowerCase()} cannot run on ${md.short}.`));
         if(md.legal===false)out.push(problem('amber',[r.key],`${md.short} on ${r.label} is not on the 2026-27 pre-verified list: bring its data sheet to inspection.`));
-        if(md.simulated===false&&!finite(md.cpr))out.push(problem('amber',[r.key],`Enter the counts a turn of ${md.short} on ${r.label}: Deck has no figure for it.`));}
+        if(md.simulated===false&&!finite(md.cpr))out.push(problem('amber',[r.key],`Enter the counts a turn of ${md.short} on ${r.label}, because Torque has no figure for it.`));}
       if(r.role==='sensor'){const dev=list.find(x=>x.key===r.for),allowed=dev?ROLES[dev.role]?.sensors||{}:null;
         if(!dev&&!/^kin\./.test(r.for||''))out.push(problem('amber',[r.key],`${r.label} measures a device this robot no longer has.`));
-        else if(allowed&&!Object.hasOwn(allowed,r.kind))out.push(problem(dev.role==='flywheel'?'red':'amber',[r.key],dev.role==='flywheel'?`${dev.label}: only its motor’s own encoder can read its speed (a ${SENSOR_MODELS[r.model]?.short||'sensor'} overflows the hub’s speed reading).`:`Deck’s robot code does not use a ${SENSOR_MODELS[r.model]?.short||r.kind} on ${dev.label.toLowerCase()}.`));
+        else if(allowed&&!Object.hasOwn(allowed,r.kind))out.push(problem(dev.role==='flywheel'?'red':'amber',[r.key],dev.role==='flywheel'?`${dev.label}: only its motor’s own encoder can read its speed (a ${SENSOR_MODELS[r.model]?.short||'sensor'} overflows the hub’s speed reading).`:`Torque’s robot code does not use a ${SENSOR_MODELS[r.model]?.short||r.kind} on ${dev.label.toLowerCase()}.`));
         if(r.kind==='axonFeedback'&&dev){const dm=MODELS[dev.model];if(dev.kind!=='servo'&&dev.kind!=='crservo')out.push(problem('amber',[r.key],`${r.label}: the feedback wire comes from an Axon servo, and ${dev.label.toLowerCase()} runs on ${A_KIND[dev.kind]||dev.kind}.`));
           else if(dm&&dm.feedback!=='analog')out.push(problem('amber',[r.key],`${r.label}: ${dm.short} has no feedback wire; pick an Axon for ${dev.label.toLowerCase()}, or another sensor.`));}
         if(r.hub&&r.channels==='odd'&&r.port%2===0)out.push(portProblem('red',[r.key],`${r.label} is on ${portLabel(r,r.family,w)}; it reads only on odd digital channels (1, 3, 5 and 7).`));
@@ -654,7 +654,7 @@
   // One sentence on a row: what it is, where it is plugged in, and what its sensors tell ("Axon MAX on Control Hub servo
   // port 2; its feedback wire on analog port 0 tells where shooter 1 hood is."). Pass rows from placed() for planned ports.
   function explain(row,wiring){
-    if(!row)return '';const w=wiring?sanitizeWiring(wiring)||EMPTY():null,md=MODELS[row.model],sm=SENSOR_MODELS[row.model],where=row.hub?portLabel(row,row.family,w)+(row.spm?`, through Servo Power Module ${row.spm} (6 V)`:''):'',at=where?` on ${where}`:': Deck picks its port';
+    if(!row)return '';const w=wiring?sanitizeWiring(wiring)||EMPTY():null,md=MODELS[row.model],sm=SENSOR_MODELS[row.model],where=row.hub?portLabel(row,row.family,w)+(row.spm?`, through Servo Power Module ${row.spm} (6 V)`:''):'',at=where?` on ${where}`:': Torque picks its port';
     if(row.role==='imu')return `${row.label} "${row.name}": the Control Hub’s own IMU, on I2C bus 0. It tells which way the robot faces.`;
     if(row.role==='sensor'){const what=lower(String(row.label).split(':')[0]),via=row.via?` It is read through "${row.via}", the motor on that port.`:'';
       return `${sm?.short||'Sensor'} "${row.name}"${at}. It tells ${(TELLS[row.use]||TELLS.position)(what)}.${via}`;}

@@ -42,7 +42,7 @@ test('a game piece: the cause of a sensor nothing turns',()=>{
 test('judging a check: right way, backwards, a swapped cable, and staying the same',()=>{
   const d=L.devices(READOUT,null),before=[still],link={causes:[{name:'leftFront',kind:'motor',dir:1}],effect:{key:'m:leftFront:pos',dir:1}};
   assert.equal(L.judge(link,d,before,[{...still,'m:leftFront:pos':120}]).state,'pass');
-  const back=L.judge(link,d,before,[{...still,'m:leftFront:pos':-120}]);assert.equal(back.state,'backwards');assert.match(L.resultText(back,link,d),/opposite of the link/);
+  const back=L.judge(link,d,before,[{...still,'m:leftFront:pos':-120}]);assert.equal(back.state,'backwards');assert.match(L.resultText(back,link,d),/opposite of what the link says/);
   const r=L.judge(link,d,before,[{...still,'m:leftBack:pos':90}]);assert.equal(r.state,'other');assert.match(L.resultText(r,link,d),/leftBack · encoder did/);
   const spin={causes:[{name:'leftFront',kind:'motor',dir:1}],effect:{key:'i:imu:yaw',dir:0}};
   assert.equal(L.judge(spin,d,[still],[{...still,'i:imu:yaw':179.9}]).state,'pass');assert.equal(L.judge(spin,d,[still],[{...still,'i:imu:yaw':170}]).state,'moved');

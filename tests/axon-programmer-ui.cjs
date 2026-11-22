@@ -30,7 +30,7 @@ const root=path.resolve(__dirname,'..');
     // It opens directly from Calibrate's row, in Calibrate's own panel, and says up front what is needed.
     await page.click('#calibrate-view [data-flow=axon]');await page.waitForSelector('#calibrate-view:not([hidden]) #cal-panel-axon:not([hidden]) #rs-step-axon:not([hidden])');
     assert.equal(await page.getAttribute('#calibrate-view [data-flow=axon]','data-here'),'');assert.equal(await page.locator('#axon-open').count(),0,'no button in front of it');
-    await page.waitForFunction(()=>/Simple is what every student needs/.test(document.querySelector('#axon-hint').textContent));
+    await page.waitForFunction(()=>/Simple shows the settings most teams need/.test(document.querySelector('#axon-hint').textContent));
     // Test with nothing plugged in: a preview of one move from the factory values, and it cannot start.
     // A V1 servo has settings only: the V1 programmer cannot drive a servo, so there is no Test.
     assert.equal(await page.locator('[data-view=test]').count(),0,'no Test for a V1 servo');await page.click('#axon-model-max2');await page.waitForSelector('#axon-f-left');
@@ -54,7 +54,7 @@ const root=path.resolve(__dirname,'..');
     // A rival app: it waits, says so and can ask it to close.
     await until(/Axon Bridge is open/);assert.equal(await sim(()=>global.__axon.transport.opened),0,'it leaves the programmer to the other app');await page.click('#axon-close-rivals');
     // No programmer, and no other app holding it: the whole tab stays, as a preview to look around in, and the bar says to plug it in.
-    await until(/^Plug in an Axon programmer to continue/);assert.match(await banner(),/The V2 programmer \(MK2\) or the V1 one\./);assert.match(await page.locator('#axon-chips').textContent(),/No programmer/);
+    await until(/^Plug in an Axon programmer to continue/);assert.match(await banner(),/Use the V2 programmer for MK2 servos and the V1 programmer for MAX\+ and MINI\+ servos/);assert.match(await page.locator('#axon-chips').textContent(),/No programmer/);
     for(const s of ['#axon-models','#axon-modes','#axon-settings','#axon-apply','#axon-level','#axon-banner'])assert.equal(await page.locator(s).isVisible(),true,s+' is there to preview');
     assert.equal(await page.isDisabled('#axon-apply'),true);assert.equal(await page.isDisabled('#axon-read'),true);
     assert.deepEqual(await page.$$eval('#rs-step-axon .axon-picks, #rs-step-axon .axon-main',e=>e.map(x=>x.inert)),[true,true],'out of reach until a programmer is plugged in');
@@ -79,7 +79,7 @@ const root=path.resolve(__dirname,'..');
       assert.equal(await page.$$eval('[data-axon-field] small',s=>s.filter(x=>x.textContent.trim().length<8).length),0,'every setting has a note beside it');
       assert.equal(await page.$$eval('[data-axon-field] small',s=>s.filter(x=>x.scrollWidth>x.clientWidth).length),0,'and every note fits');
       assert.deepEqual(await page.$$eval('.axon-seg',g=>g.flatMap(s=>[...s.children].filter(b=>b.scrollWidth>b.clientWidth+1||b.getBoundingClientRect().right>s.getBoundingClientRect().right+1).map(b=>b.textContent))),[],'no choice runs into the next');
-      await page.hover('[data-axon-field=pwm] small');await page.waitForFunction(()=>/Axon suggests about 66%/.test(document.querySelector('#axon-hint').textContent));await page.hover('#axon-report');await page.waitForFunction(()=>/Simple is what every student needs/.test(document.querySelector('#axon-hint').textContent));
+      await page.hover('[data-axon-field=pwm] small');await page.waitForFunction(()=>/Axon suggests about 66%/.test(document.querySelector('#axon-hint').textContent));await page.hover('#axon-report');await page.waitForFunction(()=>/Simple shows the settings most teams need/.test(document.querySelector('#axon-hint').textContent));
       assert.equal(await page.locator('#axon-recover-go').isVisible(),false,'Recover is Advanced');assert.equal(await page.locator('[style]').evaluateAll(e=>e.filter(x=>x.closest('#rs-step-axon')&&x.getAttribute('style')&&!/^--fill:/.test(x.getAttribute('style'))).length),0,'no inline styles');}
     // Change settings like Axon Bridge's rows: slider, minus and plus, a pick-one and a switch. Nothing is sent until applied.
     const frames=await sim(()=>global.__axon.link.writeFrames);

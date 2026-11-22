@@ -3,9 +3,9 @@
   // Run videos: a camera of their own films the run (not the window), in 2D straight down at the field or in 3D
   // behind the robot, with the period, the clock, the points and what the robot is doing drawn over it.
   // Filmed live while a run plays, or afterwards by replaying the recorded run.
-  const SECTIONS={all:'Whole run',auto:'Autonomous',teleop:'Teleop'};
+  const SECTIONS={all:'Whole run',auto:'Autonomous',teleop:'TeleOp'};
   const VIEWS={'2d':'2D · top-down','3d':'3D · follows the robot'};
-  const PHASES={auto:['Autonomous','#2f8f5b'],transition:['Transition','#7a7f87'],teleop:['Teleop','#2f6fb5'],finished:['Finished','#7a7f87']};
+  const PHASES={auto:['Autonomous','#2f8f5b'],transition:['Transition','#7a7f87'],teleop:['TeleOp','#2f6fb5'],finished:['Finished','#7a7f87']};
   // MP4 (H.264) plays everywhere a team shares videos; WebM is the fallback where the recorder lacks it.
   const TYPES=['video/mp4;codecs=avc1.640028','video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
   function pickType(supported=t=>globalThis.MediaRecorder?.isTypeSupported?.(t)){const type=TYPES.find(t=>{try{return supported(t);}catch{return false;}});return type?{type,ext:type.startsWith('video/mp4')?'mp4':'webm'}:null;}
@@ -39,7 +39,7 @@
   }
   const safeName=s=>String(s||'').replace(/[^\w -]+/g,'').replace(/\s+/g,' ').trim().slice(0,60);
   // The suggested file name, without its extension: "Red auto - Autonomous - 3D".
-  const title=(name,section,view)=>`${safeName(name)||'Deck run'} - ${SECTIONS[section]||'Run'}${VIEWS[view]?` - ${view.toUpperCase()}`:''}`;
+  const title=(name,section,view)=>`${safeName(name)||'Torque run'} - ${SECTIONS[section]||'Run'}${VIEWS[view]?` - ${view.toUpperCase()}`:''}`;
 
   // The app's two faces: Inter reads, Barlow Condensed sets the clock and the points (ui/tokens.css).
   const FONT='Inter, system-ui, "Segoe UI", sans-serif',DISPLAY='"Barlow Condensed", Inter, system-ui, sans-serif';

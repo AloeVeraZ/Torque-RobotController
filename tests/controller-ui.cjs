@@ -31,7 +31,6 @@ const root=path.join(__dirname,'..'),out=path.join(root,'test-results','controll
    assert.equal(await page.locator('#controller-visual svg').getAttribute('data-device-view'),'standard');
    assert.equal(await page.locator('#controller-driver-name').textContent(),id);
    assert.equal(await page.locator('#controller-1 small').textContent(),name);
-   assert.equal(await page.locator('#pad-name-1').textContent(),name);
    assert.deepEqual((await page.locator('[data-pad-button]').evaluateAll(nodes=>nodes.map(n=>Number(n.dataset.padButton)))).sort((a,b)=>a-b),Array.from({length:17},(_,i)=>i));
    assert.equal(await page.locator('[data-pad-button].pressed').count(),3);
    assert.equal(await page.locator('#trigger-left-fill').getAttribute('height'),'22.1');

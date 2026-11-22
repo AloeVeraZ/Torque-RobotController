@@ -11,18 +11,18 @@
   const mech=()=>root.DeckMechanisms||(typeof require==='function'?require('./sim-mechanisms.js'):null);
   const CAMERAS=[
     {id:'main',name:'Main',label:'Main · follow camera',key:'1',color:'#4ea1ff',
-      hint:'The original run-video camera: behind and above the robot, turning to the goal while it shoots, with the whole field in the corner.'},
+      hint:'The original run-video camera. It sits behind and above the robot, turns to the goal while the robot shoots, and shows the whole field in a corner.'},
     {id:'mech',name:'Front corner',label:'Front corner · what it reaches for',key:'2',color:'#f2bc62',
-      hint:'Low at the robot’s front corner, on whatever it reaches for: pieces on the floor or in a field element.',
+      hint:'Sits low at the robot’s front corner and watches whatever it reaches for, whether pieces on the floor or in a field element.',
       modes:{track:'Tracks the action',fixed:'Fixed on the robot'}},
     {id:'turret',name:'Scoring',label:'Scoring · each piece to the goal',key:'3',color:'#b79bff',
-      hint:'Rides behind each piece that leaves the robot (shot, lifted or dropped) until it lands; between them it waits behind where pieces leave, looking at the goal.',
+      hint:'Follows each piece that leaves the robot, whether shot, lifted or dropped, until it lands. Between pieces it waits behind where they leave, looking at the goal.',
       modes:{piece:'Follows each piece',follow:'Behind where pieces leave',pov:'Over the shooter, looking where it aims',fixed:'Fixed on the robot'}},
     {id:'chase',name:'Rear chase',label:'Rear chase',key:'4',color:'#49cbb3',
-      hint:'Low behind the chassis, trailing it smoothly through turns and strafes, further back the faster it drives.',
+      hint:'Follows low behind the chassis through turns and strafes, dropping further back the faster the robot drives.',
       modes:{smooth:'Smooth chase',tight:'Tight chase'}},
     {id:'intake',name:'Pick-up',label:'Pick-up · pieces coming in',key:'5',color:'#e5484d',
-      hint:'In front of where pieces come into the robot, looking back at it, so each one is seen going in.',
+      hint:'Sits in front of where pieces come into the robot and looks back at it, so you see each one go in.',
       modes:{follow:'Dynamic follow',fixed:'Fixed close-up'}}];
   const IDS=CAMERAS.map(c=>c.id),byId=Object.fromEntries(CAMERAS.map(c=>[c.id,c]));
   // Fine-tuning per camera: its mode, how far and how high it sits (1 is as designed), how far it swings round the

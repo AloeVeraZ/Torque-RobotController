@@ -60,10 +60,6 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
       const pad=info.slots?.[i],identity=identify(pad),row=$('#controller-'+(i+1)),standby=i===1&&info.count===1;
       row.hidden=false;row.classList.toggle('standby',standby);row.querySelector('small').textContent=pad?(pad.mapping!=='standard'?'Unmapped · ':standby?'Standby · ':'')+identity.name:standby?'Not connected':'Set up gamepad';
       row.querySelector('.dot').className='dot'+(pad?(pad.mapping==='standard'?' live':' error'):'');row.title='Test or assign controller '+(i+1)+(standby?' · optional for this robot':'');
-      // Drive's controller tiles: each one's name and whether it is ready, with its sticks drawn live by app.js.
-      const tile=$('#pad-tile-'+(i+1));if(tile){tile.classList.toggle('live',!!pad&&pad.mapping==='standard');tile.classList.toggle('standby',standby&&!!pad);
-        $('#pad-name-'+(i+1)).textContent=pad?identity.name:i===0&&hardware().builtInController?hardware().model+' controls':'Not connected';
-        $('#pad-state-'+(i+1)).textContent=pad?(pad.mapping!=='standard'?'Not mapped: set it to XInput or gamepad mode':standby?'Standby: this robot drives with one controller':'Ready to drive'):i===0?'Press a button on a controller':'Plug in a second one for a second driver';}
     }
     const unmapped=info.devices?.some(p=>p.mapping!=='standard');
     $('#input-notice').hidden=!((hardware().builtInController||unmapped)&&!info.slots?.[0]);
@@ -76,7 +72,7 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
   async function start(){if(!api.controllerCapture){toast('Use the installed app to assign controllers.');return;}if(info.capture){render(await api.controllerCancel());return;}render(await api.controllerCapture(slot));}
   async function close(){if(info.capture&&api.controllerCancel)render(await api.controllerCancel());dialog.close();syncOverlay();}
   const task=fn=>void Promise.resolve().then(fn).catch(error=>toast(error.message));
-  for(const selected of [1,2]){const open=()=>task(async()=>{show(selected);if(!info.slots?.[selected-1])await start();});$('#controller-'+selected).onclick=open;const tile=$('#pad-tile-'+selected);if(tile)tile.onclick=open;}
+  for(const selected of [1,2]){const open=()=>task(async()=>{show(selected);if(!info.slots?.[selected-1])await start();});$('#controller-'+selected).onclick=open;}
   for(const b of document.querySelectorAll('#input-source [data-source]'))b.onclick=()=>task(async()=>{if(info.capture&&api.controllerCancel)render(await api.controllerCancel());lastKeyboardInput='';render(await api.controllerSource(b.dataset.source));captureMessage='';renderMonitor();});
   $('#controller-assign').onclick=()=>task(start);$('#controller-auto').onclick=()=>task(async()=>{render(await api.controllerAutomatic());captureMessage='Automatic assignment selected. Built-in controls are preferred; center sticks and release buttons before driving.';renderMonitor();});
   $('#controller-cancel').onclick=()=>task(close);$('#controller-done').onclick=()=>task(close);dialog.addEventListener('cancel',event=>{event.preventDefault();task(close);});

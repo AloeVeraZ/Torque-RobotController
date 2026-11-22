@@ -193,6 +193,11 @@
   /* The open thing's title, and the question asked before anything moves. */
   .cal-hub-head h3, .cal-elec-device > .cal-hub-head h3 { font: 700 var(--display-sm)/1.15 var(--font-display); letter-spacing: .01em; }
   .cal-elec-zero { border-bottom: 1px solid var(--line); }
+  /* A bar that sticks while its pane scrolls is clear where it starts; once it sticks, the theme's ground fills it so
+     what scrolls under it is covered instead of showing through its text. */
+  :is(#cal-links .cal-elec-zero, .cal-debug-run) { container-type: scroll-state; isolation: isolate; background: none; }
+  :is(#cal-links .cal-elec-zero, .cal-debug-run)::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; transition: background-color var(--dur-2) var(--ease-out); }
+  @container scroll-state(stuck: top) { :is(#cal-links .cal-elec-zero, .cal-debug-run)::before { background-color: var(--bg); } }
   .cal-elec-slots th, .cal-elec-slots td { border-color: var(--line); }
 
   /* Debug: where the link stands as three words in a row; each port is a device you act on, so each is one surface. */

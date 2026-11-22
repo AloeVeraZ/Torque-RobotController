@@ -244,26 +244,26 @@ ${parts.map(leg).join(',\n')}
       if(!p?.endPoint)return;const end=at(p.endPoint);if(!end)throw Error(`Path ${atoms.length+1} in the file has no end point.`);
       atoms.push({line:p,end,from:prev,group});prev=end;};
     for(const item of order){
-      if(item?.kind==='wait'){const ms=Math.max(0,+item.durationMs||0);if(!ms)continue;if(atoms.length){const a=atoms.at(-1);a.extraWait=(a.extraWait||0)+ms;if(item.name&&!a.extraName)a.extraName=item.name;}else notes.push(`A ${ms} ms wait before the first path was left out (Deck starts driving at once).`);continue;}
+      if(item?.kind==='wait'){const ms=Math.max(0,+item.durationMs||0);if(!ms)continue;if(atoms.length){const a=atoms.at(-1);a.extraWait=(a.extraWait||0)+ms;if(item.name&&!a.extraName)a.extraName=item.name;}else notes.push(`A ${ms} ms wait before the first path was left out (Torque starts driving at once).`);continue;}
       addPath(item.line||byId.get(item.lineId));}
     if(!atoms.length)throw Error('The path file has no paths.');
     // One Deck pin per drawn line, except that consecutive lines of one Deck path (deckPath) form one pin again.
     const pins=[];let heading=start.heading;
     atoms.forEach((a,i)=>{const p=a.line,label=p.name||`Path ${i+1}`;
       const before=Math.max(0,+(p.waitBeforeMs??p.waitBefore?.durationMs)||0),beforeName=p.waitBeforeName||p.waitBefore?.name||'';
-      if(before||beforeName){if(pins.length){const q=pins.at(-1);q.wait=+(((q.wait||0)+before/1000).toFixed(3));if(beforeName&&!q.action)q.action=beforeName;}else notes.push(`${label}: its wait before driving was left out (Deck starts driving at once).`);}
+      if(before||beforeName){if(pins.length){const q=pins.at(-1);q.wait=+(((q.wait||0)+before/1000).toFixed(3));if(beforeName&&!q.action)q.action=beforeName;}else notes.push(`${label}: its wait before driving was left out (Torque starts driving at once).`);}
       let controls=(p.controlPoints||[]).map(at).filter(Boolean);
-      if(controls.length>3){notes.push(`${label}: ${controls.length} control points; Deck keeps 3 (first, middle and last).`);controls=[controls[0],controls[Math.floor(controls.length/2)],controls.at(-1)];}
-      if(Array.isArray(p.throughPoints)&&p.throughPoints.length)notes.push(`${label}: its ${p.throughPoints.length} through point${p.throughPoints.length>1?'s are':' is'} not used (Deck drives the curve from its control points).`);
+      if(controls.length>3){notes.push(`${label}: ${controls.length} control points; Torque keeps 3 (first, middle and last).`);controls=[controls[0],controls[Math.floor(controls.length/2)],controls.at(-1)];}
+      if(Array.isArray(p.throughPoints)&&p.throughPoints.length)notes.push(`${label}: its ${p.throughPoints.length} through point${p.throughPoints.length>1?'s are':' is'} not used (Torque drives the curve from its control points).`);
       const path={};if(controls.length)path.controls=controls;else path.style='sharp';
       const h=p.heading&&typeof p.heading==='object'?p.heading:legacy(p),segs=h.type==='piecewise'?(h.piecewiseHeading?.segments||[]):[];
       if(h.type==='tangential')Object.assign(path,{rotate:h.reverse?'reverse':'tangent'});
-      else if(h.type==='constant'){Object.assign(path,{rotate:'turn',heading:normDeg(+h.degrees||0)});if(Math.abs(shortestDeg(heading,+h.degrees||0))>1)notes.push(`${label}: holds ${round3(+h.degrees||0)}° from the start of the path; Deck turns to it while driving.`);}
-      else if(h.type==='linear'){const turn=shortestDeg(+h.startDeg||0,+h.endDeg||0);Object.assign(path,{rotate:'turn',heading:normDeg(+h.endDeg||0)});if(Math.abs(shortestDeg(heading,+h.startDeg||0))>1)notes.push(`${label}: its turn starts at ${round3(+h.startDeg||0)}° but the robot arrives at ${round3(heading)}°; Deck turns from where the robot is.`);void turn;}
+      else if(h.type==='constant'){Object.assign(path,{rotate:'turn',heading:normDeg(+h.degrees||0)});if(Math.abs(shortestDeg(heading,+h.degrees||0))>1)notes.push(`${label}: holds ${round3(+h.degrees||0)}° from the start of the path; Torque turns to it while driving.`);}
+      else if(h.type==='linear'){const turn=shortestDeg(+h.startDeg||0,+h.endDeg||0);Object.assign(path,{rotate:'turn',heading:normDeg(+h.endDeg||0)});if(Math.abs(shortestDeg(heading,+h.startDeg||0))>1)notes.push(`${label}: its turn starts at ${round3(+h.startDeg||0)}° but the robot arrives at ${round3(heading)}°; Torque turns from where the robot is.`);void turn;}
       else if(segs.length&&segs.every(s=>(s.interpolationType||'linear')==='linear')){const total=segs.reduce((sum,s)=>sum+shortestDeg(+s.parameters?.startDeg||0,+s.parameters?.endDeg||0),0),endDeg=+segs.at(-1).parameters?.endDeg||0;
         Object.assign(path,Math.abs(total)<179?{rotate:'turn',heading:normDeg(endDeg)}:{rotate:'relative',angle:round3(total)});}
       else if(segs.length===1&&segs[0].interpolationType==='facing-point'&&at(segs[0].parameters?.point))Object.assign(path,{rotate:'track',target:at(segs[0].parameters.point)});
-      else if(segs.length){const last=segs.at(-1),t=last.interpolationType;notes.push(`${label}: a heading in ${segs.length} parts; Deck uses its last part.`);
+      else if(segs.length){const last=segs.at(-1),t=last.interpolationType;notes.push(`${label}: a heading in ${segs.length} parts; Torque uses its last part.`);
         if(t==='facing-point'&&at(last.parameters?.point))Object.assign(path,{rotate:'track',target:at(last.parameters.point)});else if(t==='tangential')Object.assign(path,{rotate:last.reversed?'reverse':'tangent'});else if(t==='constant')Object.assign(path,{rotate:'turn',heading:normDeg(+last.parameters?.degrees||0)});else Object.assign(path,{rotate:'turn',heading:normDeg(+last.parameters?.endDeg||0)});}
       // Deck's own fields, when the file came from Deck.
       if(finite(+p.motorPower)&&p.motorPower!==null)path.power=Math.max(0,Math.min(1,+p.motorPower));if(p.actionPath){path.kind='action';if(Array.isArray(p.deckMovingSteps))path.steps=p.deckMovingSteps;else if(p.actionName)path.action=String(p.actionName).slice(0,40);}
@@ -278,13 +278,13 @@ ${parts.map(leg).join(',\n')}
       if(merge){Object.assign(last,{x:pin.x,y:pin.y,wait:pin.wait,action:pin.action,actionSeconds:pin.actionSeconds,turn:pin.turn,turnMode:pin.turnMode});if(path.style==='spline')last.path.style='spline';for(const k of Object.keys(last))if(last[k]===undefined)delete last[k];}else pins.push(pin);
       heading=path.rotate==='turn'?path.heading:path.rotate==='relative'?normDeg(heading+path.angle):path.rotate==='track'?Math.atan2(path.target.y-a.end.y,path.target.x-a.end.x)*180/Math.PI:path.rotate==='tangent'||path.rotate==='reverse'?(()=>{const q=controls.at(-1)||a.from;return Math.atan2(a.end.y-q.y,a.end.x-q.x)*180/Math.PI+(path.rotate==='reverse'?180:0);})():heading;
       if(finite(pin.turn))heading=pin.turn;});
-    if(pins.length>32)throw Error(`The path file has ${pins.length} paths; Deck holds up to 32.`);
+    if(pins.length>32)throw Error(`The path file has ${pins.length} paths; Torque holds up to 32.`);
     let zones=[];const shapes=Array.isArray(data.shapes)?data.shapes:[];
-    if(field!=='empty'&&shapes.length)notes.push(`${shapes.length} shape${shapes.length>1?'s':''} from the file ${shapes.length>1?'were':'was'} left out: Deck's field already has the game's structures.`);
+    if(field!=='empty'&&shapes.length)notes.push(`${shapes.length} shape${shapes.length>1?'s':''} from the file ${shapes.length>1?'were':'was'} left out, because Torque’s field already has the game’s structures.`);
     else zones=shapes.map((s,i)=>({s,points:(s.vertices||[]).map(at).filter(Boolean)})).filter(z=>z.points.length>=3&&z.points.length<=40).map((z,i)=>({id:`pp${i+1}`,type:'polygon',points:z.points}));
     // The Visualizer saves the robot size it drew for (Deck writes its collision footprint there); a different robot
     // may not clear the same paths.
-    const drawn=[+data.settings?.rWidth,+data.settings?.rHeight];if(robot&&drawn.every(v=>finite(v)&&v>0)&&finite(robot.length)&&finite(robot.width)){const a=[...drawn].sort((x,y)=>x-y),b=[robot.length,robot.width].sort((x,y)=>x-y);if(Math.abs(a[0]-b[0])>.5||Math.abs(a[1]-b[1])>.5)notes.push(`The file was drawn for a ${round3(drawn[0])} × ${round3(drawn[1])} in robot; this one is ${round3(robot.length)} × ${round3(robot.width)} in, so check the clearances Deck reports.`);}
+    const drawn=[+data.settings?.rWidth,+data.settings?.rHeight];if(robot&&drawn.every(v=>finite(v)&&v>0)&&finite(robot.length)&&finite(robot.width)){const a=[...drawn].sort((x,y)=>x-y),b=[robot.length,robot.width].sort((x,y)=>x-y);if(Math.abs(a[0]-b[0])>.5||Math.abs(a[1]-b[1])>.5)notes.push(`The file was drawn for a ${round3(drawn[0])} × ${round3(drawn[1])} in robot; this one is ${round3(robot.length)} × ${round3(robot.width)} in, so check the clearances Torque reports.`);}
     return {start,pins,zones,notes,exact:false};
   }
   return {legs,java,pp,fromPP,validName,actions,sequences,slot,pySlot,where,describe,pathIndex};

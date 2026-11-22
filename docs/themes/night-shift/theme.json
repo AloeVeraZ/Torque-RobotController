@@ -9,5 +9,5 @@
     "light": { "accent": "#b2560a", "background": "#f3f5fa", "surface": "#fcfdff", "text": "#121726", "muted": "#4a5268", "line": "#d9deea" }
   },
   "background": { "image": "background.jpg", "position": "center", "opacity": 0.45 },
-  "logo": "logo.png"
+  "logo": { "dark": "logo.png", "light": "logo-light.png" }
 }

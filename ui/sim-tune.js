@@ -33,25 +33,25 @@
     return {kind:'timed',sensor:null,wrap:false,unit:u};}
   // ---- templates and gates -------------------------------------------------------------------------------------------
   const GATES={
-    G0:{name:'Control Hub',short:'Hub',what:'Every device in the configuration read from the Control Hub (Set up from the Control Hub, or Live debug).',pass:'The devices are read, and the configuration has not changed since.'},
-    G1:{name:'Link to the robot',short:'Link',what:'Simulate lists what this mechanism runs on and what measures it. Say which motor, servo and sensor of the robot’s configuration each one is.',pass:'Its motor or servo and every sensor Simulate lists on it is on a port the configuration has.'},
-    G2:{name:'Bind and direction',short:'Direction',what:'Run it briefly and watch every input: only its own sensor should move, and + should mean the way you call positive.',pass:'Its sensor answered and you confirmed which way is positive.'},
-    G3:{name:'Units',short:'Units',what:'Turn sensor counts or volts into the mechanism’s own units: the gear or belt ratio between sensor and output, the spool or the angle a turn makes.',pass:'A known move reads within 2 % (or two readings agree).'},
-    G4:{name:'Zero',short:'Zero',what:'Where 0 is: a switch, a gentle stall against a stop, an absolute sensor, or where it starts.',pass:'Three zeroings agree within 0.5° or 2 counts.'},
-    G5:{name:'Range',short:'Range',what:'How far it may go each way: jog to each stop and keep a margin inside it.',pass:'Both limits set inside the hard stops.'},
-    G6:{name:'Feedforward',short:'Feedforward',what:'The power it needs before any correction: against friction (kS), against gravity (kG) and per unit of speed (kV), measured by ramps on the robot.',pass:'The fit explains the readings (R² ≥ 0.95), or the hold ramp found kG and kS.'},
-    G7:{name:'Feedback',short:'Feedback',what:'PID gains and a tolerance: step it to a target and score how fast it gets there, how far it swings past and when it settles.',pass:'It settles within the tolerance and holds there.'},
-    GT:{name:'Sensor thresholds',short:'Thresholds',what:'Read the sensor with and without a game piece (or pressed and released); the threshold sits between, with a margin.',pass:'The two groups of readings do not overlap.'},
-    G8:{name:'Commit',short:'Commit',what:'Keep the values with this setup and put them in the code: the constants file, and the settings the hardware forgets re-sent each op mode.',pass:'Saved, with the battery voltage and date they were measured at.'}};
+    G0:{name:'Control Hub',short:'Hub',what:'Torque reads every device in the robot’s configuration from the Control Hub, with Set up from the Control Hub or with live debug.',pass:'The devices are read, and the configuration has not changed since.'},
+    G1:{name:'Link to the robot',short:'Link',what:'Setup lists the motor or servo this mechanism runs on and the sensors that measure it. Pick which device in the robot’s configuration each one is.',pass:'Its motor or servo, and every sensor Setup lists for it, is on a port in the configuration.'},
+    G2:{name:'Sensor and direction',short:'Direction',what:'Run it briefly while Torque watches every input. Only its own sensor should change, and positive power should move it the way you call positive.',pass:'Its sensor changed, and you confirmed which way is positive.'},
+    G3:{name:'Units',short:'Units',what:'Turn sensor counts or volts into the mechanism’s own units, such as degrees or millimetres. This needs the gear or belt ratio between the sensor and the output, and the spool size or the angle one turn makes.',pass:'A known move reads within 2% (or two readings agree).'},
+    G4:{name:'Zero',short:'Zero',what:'Set where 0 is: at a switch, by stalling gently against a stop, from an absolute sensor, or where the mechanism starts.',pass:'Three zeroings agree within 0.5° or 2 counts.'},
+    G5:{name:'Range',short:'Range',what:'Set how far it may go each way: jog it to each hard stop and keep a margin inside it.',pass:'Both limits are set inside the hard stops.'},
+    G6:{name:'Feedforward',short:'Feedforward',what:'Measure the power it needs before any correction: to overcome friction (kS), to hold against gravity (kG) and for each unit of speed (kV). Torque finds these by ramping the power up on the robot.',pass:'The measured numbers fit the readings (R² ≥ 0.95), or the hold ramp found kG and kS.'},
+    G7:{name:'Feedback',short:'Feedback',what:'Tune the PID gains and a tolerance: Torque moves it to a target and scores how fast it gets there, how far it swings past and when it settles.',pass:'It settles within the tolerance and holds there.'},
+    GT:{name:'Sensor thresholds',short:'Thresholds',what:'Read the sensor with and without a game piece (or pressed and released). The threshold sits between the two, with a margin.',pass:'The two groups of readings do not overlap.'},
+    G8:{name:'Save',short:'Save',what:'Keep the values with this setup and put them in your code: in the constants file, and in the hardware settings sent again at the start of each op mode, because the hub forgets them.',pass:'Saved, with the battery voltage and the date they were measured.'}};
   const ALL=['G0','G1','G2','G3','G4','G5','G6','G7','G8'];
   const TEMPLATES={
-    T1:{name:'Gravity-loaded position',gates:ALL,ff:'gravity',note:'kG is constant for a lift; for an arm it is kG·cos(angle), with 0 at horizontal.'},
-    T2:{name:'Free or wrapping position',gates:ALL,ff:'friction',note:'No gravity: kS in each direction matters. A turret has soft limits; a swerve pod or spindexer takes the shortest way round.'},
-    T3:{name:'Velocity',gates:['G0','G1','G2','G3','G6','G7','G8'],ff:'velocity',note:'Speed from the encoder: hub readings step in 20 ticks/s and wrap past 32767 ticks/s.'},
-    T4:{name:'Servo with feedback',gates:['G0','G1','G2','G3','G4','G5','G7','G8'],ff:null,note:'The servo closes its own loop; its feedback wire tells where it really got to, so arrival and stalls can be checked.'},
-    T5:{name:'Blind actuator',gates:['G0','G1','G2','G5','G8'],ff:null,note:'Nothing measures it: its positions are commands and its timing is the only calibration.'},
-    T6:{name:'Threshold sensing',gates:['G0','G1','GT','G8'],ff:null,note:'A colour, distance or limit sensor that says yes or no: a piece is in, the slide is home.'},
-    T7:{name:'Drivetrain and localization',gates:['G0','G1','G2','G8'],ff:null,note:'Drive motors, odometry pods, Pinpoint, OTOS and the IMU: the guided check measures them, as Road Runner and Pedro Pathing tune them.'}};
+    T1:{name:'Gravity-loaded position',gates:ALL,ff:'gravity',note:'For a lift, kG is constant. For an arm it is kG·cos(angle), with 0° pointing level.'},
+    T2:{name:'Free or wrapping position',gates:ALL,ff:'friction',note:'Gravity doesn’t pull on it, so kS in each direction matters. A turret has soft limits, and a swerve pod or spindexer takes the shortest way round.'},
+    T3:{name:'Velocity',gates:['G0','G1','G2','G3','G6','G7','G8'],ff:'velocity',note:'Its speed comes from the encoder. The hub reports speed in steps of 20 ticks/s, and readings wrap around past 32767 ticks/s.'},
+    T4:{name:'Servo with feedback',gates:['G0','G1','G2','G3','G4','G5','G7','G8'],ff:null,note:'The servo runs its own control loop. Its feedback wire tells where it really got to, so Torque can check whether it arrived or stalled.'},
+    T5:{name:'Blind actuator',gates:['G0','G1','G2','G5','G8'],ff:null,note:'Nothing measures it, so its positions are only commands and its timing is the only thing to calibrate.'},
+    T6:{name:'Threshold sensing',gates:['G0','G1','GT','G8'],ff:null,note:'A colour, distance or limit sensor that answers yes or no, such as whether a piece is in or the slide is home.'},
+    T7:{name:'Drivetrain and localization',gates:['G0','G1','G2','G8'],ff:null,note:'Drive motors, odometry pods, a Pinpoint, an OTOS and the IMU. The guided check measures them, the way Road Runner and Pedro Pathing tune them.'}};
   // Each mechanism type's template by what usually moves it and reads it (the research's table); feedback can move it.
   const TYPE_TEMPLATE={};
   for(const [t,ids] of Object.entries({

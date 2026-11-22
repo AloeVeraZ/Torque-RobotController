@@ -27,7 +27,7 @@ window.DeckServoTest=(()=>{
   const setFill=r=>r.style.setProperty('--fill',`${(+r.value-+r.min)/Math.max(1,+r.max-+r.min)*100}%`);
   const clamp=v=>Math.max(range.from,Math.min(range.to,Math.round(v/STEP)*STEP));
   // What a pulse means, in plain words, for a servo in either mode.
-  const meaning=v=>v===1500?'The middle: a continuous servo stops here':v<1500?'Toward one end: a continuous servo spins one way':'Toward the other end: a continuous servo spins the other way';
+  const meaning=v=>v===1500?'The middle of the range. A continuous servo stops here.':v<1500?'Toward one end. A continuous servo spins one way.':'Toward the other end. A continuous servo spins the other way.';
   // The hub was told to turn the port on and still says off: almost always no battery, which servo ports take their power from.
   const portRefused=()=>live()&&!run.starting&&run.hub?.on===false&&Date.now()-(run.liveAt||Date.now())>OFF_GRACE_MS;
 
@@ -43,10 +43,10 @@ window.DeckServoTest=(()=>{
   function render(){
     if(!root)return;
     const others=hubs.filter(h=>!h.parent);
-    setHtml('st-hubs',`<span class="servo-test-dot" data-on="${hubIn()}"></span>${hubIn()?`<div class="segmented axon-seg" role="group" aria-label="Connected to" data-count="${1+others.length}"><button type="button" data-st="hub" data-v="0" aria-pressed="${hub===0}"${live()&&hub!==0?' disabled':''}>Control Hub <small>USB-C</small></button>${others.map(h=>`<button type="button" data-st="hub" data-v="${h.address}" aria-pressed="${hub===h.address}"${live()&&hub!==h.address?' disabled':''}>Expansion Hub ${h.address}</button>`).join('')}</div>`:'<span class="servo-test-none">No Control Hub on USB. Plug it in with the USB-C cable, battery on.</span>'}`);
+    setHtml('st-hubs',`<span class="servo-test-dot" data-on="${hubIn()}"></span>${hubIn()?`<div class="segmented axon-seg" role="group" aria-label="Connected to" data-count="${1+others.length}"><button type="button" data-st="hub" data-v="0" aria-pressed="${hub===0}"${live()&&hub!==0?' disabled':''}>Control Hub <small>USB-C</small></button>${others.map(h=>`<button type="button" data-st="hub" data-v="${h.address}" aria-pressed="${hub===h.address}"${live()&&hub!==h.address?' disabled':''}>Expansion Hub ${h.address}</button>`).join('')}</div>`:'<span class="servo-test-none">No Control Hub on USB. Connect it with the USB-C cable, with its battery plugged in and switched on.</span>'}`);
     setHtml('st-ports',[0,1,2,3,4,5].map(n=>`<button type="button" data-st="port" data-v="${n}" aria-pressed="${n===port}"${live()&&n!==port?' disabled':''} aria-label="Servo port ${n}">${n}</button>`).join(''));
     setHtml('st-port-note',`Plug the servo into servo port ${port} on the ${targetName()}.`);
-    setHtml('st-range',`<label>From <select id="st-from" aria-label="Range from">${FROM.map(v=>`<option value="${v}"${v===range.from?' selected':''}>${v} µs</option>`).join('')}</select></label><label>to <select id="st-to" aria-label="Range to">${TO.map(v=>`<option value="${v}"${v===range.to?' selected':''}>${v} µs</option>`).join('')}</select></label><span>The hub sends ${HUB_MIN}–${HUB_MAX} µs.</span>`);
+    setHtml('st-range',`<label>From <select id="st-from" aria-label="Range from">${FROM.map(v=>`<option value="${v}"${v===range.from?' selected':''}>${v} µs</option>`).join('')}</select></label><label>to <select id="st-to" aria-label="Range to">${TO.map(v=>`<option value="${v}"${v===range.to?' selected':''}>${v} µs</option>`).join('')}</select></label><span>The hub can send ${HUB_MIN}–${HUB_MAX} µs.</span>`);
     paintPulse();paintSide();paintBar();
     setHtml('servo-test-chips',`<span class="axon-chip" data-tone="${hubIn()?'good':'wait'}"><i aria-hidden="true"></i>${esc(hubIn()?`${targetName()}, port ${port}`:'No Control Hub')}</span><span class="axon-chip" data-tone="${live()?(portRefused()?'warn':'good'):'wait'}"><i aria-hidden="true"></i>${esc(live()?`Sending ${us} µs`:'Not sending')}</span>`);
   }
@@ -62,7 +62,7 @@ window.DeckServoTest=(()=>{
   function bar(){
     if(!api)return {tone:'warn',main:'The Servo Test needs the installed app',sub:''};
     if(error)return {tone:'bad',main:error,sub:'',action:hubIn()?['Start sending','run']:null};
-    if(!hubIn())return {tone:'wait',main:'Plug in a Control Hub',sub:'With the USB-C cable, its battery plugged in and switched on. The test never goes over Wi-Fi.'};
+    if(!hubIn())return {tone:'wait',main:'Plug in a Control Hub',sub:'Use the USB-C cable, with the robot’s battery plugged in and switched on. The test never goes over Wi-Fi.'};
     if(live()){
       if(run.starting)return {tone:'busy',main:run.starting,sub:'',action:['Stop','stop']};
       if(portRefused())return {tone:'warn',main:`The hub did not turn servo port ${port} on`,sub:`Plug in and switch on the robot's 12 V battery: servo ports get their power from it.${run.volts!==null&&run.volts!==undefined?` The hub reads ${run.volts.toFixed(1)} V.`:''}`,action:['Stop','stop']};
@@ -137,8 +137,8 @@ window.DeckServoTest=(()=>{
         </div>
       </section>
       <aside class="servo-test-side" aria-labelledby="st-side-title"><h3 id="st-side-title" class="axon-side-title">Hub reports</h3><div id="st-report"></div>
-        <p class="hint">Read from the hub while it sends: the pulse on the servo port, whether the port is on, and the battery the servo ports run from.</p>
-        <p class="hint">USB only. Nothing is written to the servo’s settings. Stop, Space, leaving this tab or unplugging turns the port off; so does Torque going quiet for 3 s. An Expansion Hub must be in the robot’s active configuration.</p></aside>
+        <p class="hint">While Torque sends a pulse, the hub reports the pulse on the servo port, whether the port is on, and the battery voltage the servo ports run on.</p>
+        <p class="hint">This works over USB only and never changes the servo’s settings. The port turns off when you press Stop or Space, leave this tab or unplug the hub, or when Torque stops talking to the robot for 3 seconds. To test a servo on an Expansion Hub, the hub must be in the robot’s active configuration.</p></aside>
     </div>
     <div class="axon-bar"><div id="servo-test-banner" class="axon-banner notice" role="status" data-tone="wait"></div><button id="servo-test-go" class="primary" type="button" hidden></button></div>
   </div>`;

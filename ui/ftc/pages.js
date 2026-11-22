@@ -72,10 +72,10 @@ function renderList(){
 // Setup, Simulate and Calibrate take this configuration's hubs, motors, servos and sensors.
 async function useInSetup(f){let xml='';await run(`Reading “${f.name}”…`,async()=>{xml=await ask('CMD_REQUEST_PARTICULAR_CONFIGURATION',JSON.stringify(f));C.parse(xml);});if(!xml)return;
   ctx.host.useConfiguration?.({name:f.name,xml});ctx.toast(`Setup, Simulate and Calibrate now use “${f.name}”.`,4000);}
-const nameCheck=v=>!C.validName(v)?'Use letters, digits, spaces, - and _ (up to 40), starting with a letter or digit.':files.some(f=>f.name.toLowerCase()===v.toLowerCase())?`The robot already has a configuration named “${v}”.`:'';
+const nameCheck=v=>!C.validName(v)?'Use up to 40 letters, digits, spaces, hyphens and underscores, starting with a letter or digit.':files.some(f=>f.name.toLowerCase()===v.toLowerCase())?`The robot already has a configuration named “${v}”.`:'';
 // New, as the Driver Hub's New then Scan: the hubs the robot finds, the Control Hub's IMU on its I2C bus 0 as "imu".
 async function newConfiguration(){
-  const name=await ask2({title:'New configuration',text:'Name the configuration. Deck scans the robot for its Control Hub, Expansion Hubs and Servo Hubs; then press Edit to add hubs that are not plugged in yet and say what is on each port.',input:C.configurationName('robot',files.map(f=>f.name)),ok:'Create',check:nameCheck});if(!name)return;
+  const name=await ask2({title:'New configuration',text:'Name the new configuration. Torque scans the robot for its Control Hub, Expansion Hubs and Servo Hubs. Then press Edit to say what is plugged into each port, and to add any hub that is not plugged in yet.',input:C.configurationName('robot',files.map(f=>f.name)),ok:'Create',check:nameCheck});if(!name)return;
   await run(`Scanning the robot for hubs…`,async()=>{
     // The robot has its Control Hub open, so the scan leaves that IMU UNKNOWN; its web server says which one it is.
     const portals=await scanPortals();
@@ -87,7 +87,7 @@ async function newConfiguration(){
 }
 // Writes xml under name (the robot makes it active), then reads it back to be sure the robot has it.
 async function save(name,xml){
-  if(xml.includes(';'))throw Error('A name has ; & < > " or \' in it, which the robot cannot take.');if(new TextEncoder().encode(xml).length>60000)throw Error('This configuration is too large to send.');
+  if(xml.includes(';'))throw Error('A name in this configuration has ; & < > " or \' in it, which the robot cannot save. Take it out and save again.');if(new TextEncoder().encode(xml).length>60000)throw Error('This configuration is too large to send.');
   const want=C.parse(xml).devices,unsaved=`The robot did not save “${name}”. Check the Robot Controller app, then try again.`;
   // The robot must have taken the save itself: when the configuration being edited is the active one, its name alone says nothing,
   // and reading back the old file (which matches in names and ports) would call a save that never arrived "Saved".
@@ -101,7 +101,7 @@ async function activate(f){await run(`Activating “${f.name}”…`,async()=>{a
   await until(s=>s.activeConfig?.name===f.name,10000,`The robot did not make “${f.name}” active.`);changed=true;ctx.toast(`“${f.name}” is active. The robot restarts when you leave Configure Robot.`,4000);});renderList();}
 async function remove(f){
   const active=ctx.session.state.activeConfig?.name===f.name;
-  if(!await ask2({title:`Delete “${f.name}”?`,text:`The robot deletes this configuration file. This cannot be undone.${active?' It is the active configuration, so the robot will have none until you activate another.':''}`,ok:'Delete'}))return;
+  if(!await ask2({title:`Delete “${f.name}”?`,text:`This deletes the configuration from the robot, and you cannot undo it.${active?' It is the active configuration, so the robot has none until you activate another.':''}`,ok:'Delete'}))return;
   await run(`Deleting “${f.name}”…`,async()=>{await taken(ctx.session.command('CMD_DELETE_CONFIGURATION',JSON.stringify(f)),10000,`The robot did not delete “${f.name}”.`);
     for(let i=0;i<10;i++){await delay(250);await readList();if(!files.some(x=>x.name===f.name))break;}
     if(files.some(x=>x.name===f.name))throw Error(`The robot did not delete “${f.name}”.`);if(active)changed=true;ctx.toast(`Deleted “${f.name}”.`);});renderList();}
@@ -139,7 +139,7 @@ async function openEditor(f){
   // connected: the hubs found plugged in, null when the robot could not be asked.
   const onHubs=devices.filter(d=>d.module),match=C.matchHubs(lynx,scan,onHubs);
   edit={file:f,xml,hubs:match.hubs,portals:[...new Set(match.hubs.map(h=>h.portal))],view:[],dirty:match.added.length+match.fixed.length>0,connected:scan?match.connected:null,devices:onHubs.map(d=>({...d,...(notes[d.name]||{}),family:familyOf(d.tag)})),other:devices.filter(d=>!d.module)};
-  const said=[...(match.added.length?[`Found ${match.added.join(', ')} plugged in and added it.`]:[]),...(match.fixed.length?[`Corrected ${match.fixed.join(', ')} to what the robot reports.`]:[]),...match.wrong.map(w=>`${w.name} is really a ${w.is}. Move the devices on it, then open this again.`)];
+  const said=[...(match.added.length?[`Found ${match.added.join(', ')} plugged in and added it.`]:[]),...(match.fixed.length?[`Corrected ${match.fixed.join(', ')} to what the robot reports.`]:[]),...match.wrong.map(w=>`The robot says ${w.name} is a ${w.is}. Move its devices to another hub, then open this configuration again and Torque corrects it.`)];
   if(said.length)ctx.toast(`${said.join(' ')}${edit.dirty?' Press Save to keep this.':''}`,6000);
   $('#page-back').onclick=()=>editBack();renderEditor();
 }
@@ -213,14 +213,14 @@ function renderEditor(){
   if(!e.view.length){body.push(el('h3','cfg-heading','USB Devices in configuration'));
     for(const p of e.portals){const hubs=e.hubs.filter(h=>h.portal===p);body.push(entry(portalName(p),hubs.map(h=>h.name).join(', '),()=>go({portal:p})));}
     if(!e.portals.length)body.push(el('p','cfg-empty','This configuration has no hubs. Delete it and press New to scan the robot again.'));
-    if(e.other.length)body.push(el('h3','cfg-heading','Other devices'),el('p','cfg-none',`${e.other.map(d=>`${d.name} (${d.tag})`).join(', ')}: kept as they are.`));}
+    if(e.other.length)body.push(el('h3','cfg-heading','Other devices'),el('p','cfg-none',`${e.other.map(d=>`${d.name} (${d.tag})`).join(', ')}. Saving keeps these as they are.`));}
   else if(!hub){body.push(el('h3','cfg-heading',`Hubs in ${portalName(v.portal)}`));
     // The Control Hub first, then the hubs on its RS485 wire by address.
     e.hubs.map((h,i)=>[h,i]).sort(([a],[b])=>Number(b.parent)-Number(a.parent)||(a.tag==='ServoHub')-(b.tag==='ServoHub')||a.address-b.address).forEach(([h,i])=>{if(h.portal!==v.portal)return;const n=e.devices.filter(d=>sameHub(d,h)).length;body.push(entry(h.name,`${h.tag==='ServoHub'?'Servo Hub':h.parent?'Control Hub':'Expansion Hub'}, address ${h.address}, ${n?count(n,'device'):'nothing set up on it yet'}${e.connected?(e.connected.has(C.hubKey(h.portal,h.address))?', connected':', not found on the robot'):''}`,()=>go({portal:v.portal,hub:i})));});
     // A hub on the RS485 chain can be written in before it is plugged in; the robot warns it is missing until it is.
     const addHub=(word,tag)=>button(`Add ${word}`,'cfg-btn cfg-add secondary',()=>{const h=C.newHub(e.hubs,tag,v.portal);if(!h){status('Every RS485 address from 1 to 10 is taken.','error');return;}e.hubs.push(h);e.dirty=true;renderEditor();});
     // A hub that is plugged in stays: only one the robot did not find can be taken out, and if the robot could not be asked, only after saying so.
-    for(const h of [...e.hubs])if(h.portal===v.portal&&!h.parent&&!e.devices.some(d=>sameHub(d,h))&&!e.connected?.has(C.hubKey(h.portal,h.address)))body.push(button(`Remove ${h.name}`,'cfg-btn danger',async()=>{if(!e.connected&&!await ask2({title:`Remove ${h.name}?`,text:'Deck could not check what is plugged in. If this hub is connected, keep it here: the robot needs it in its configuration to use it.',ok:'Remove'}))return;e.hubs.splice(e.hubs.indexOf(h),1);e.dirty=true;renderEditor();}));
+    for(const h of [...e.hubs])if(h.portal===v.portal&&!h.parent&&!e.devices.some(d=>sameHub(d,h))&&!e.connected?.has(C.hubKey(h.portal,h.address)))body.push(button(`Remove ${h.name}`,'cfg-btn danger',async()=>{if(!e.connected&&!await ask2({title:`Remove ${h.name}?`,text:'Torque could not check what is plugged into the robot. If this hub is connected, keep it: the robot can only use a hub that is in its configuration.',ok:'Remove'}))return;e.hubs.splice(e.hubs.indexOf(h),1);e.dirty=true;renderEditor();}));
     body.push(button('Scan for new hubs','cfg-btn cfg-add secondary',()=>void run('Scanning the robot for hubs…',async()=>{const found=await scanPortals();if(!found.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
       const m=C.matchHubs(e.hubs,found,e.devices);e.hubs.splice(0,e.hubs.length,...m.hubs);e.connected=m.connected;e.portals=[...new Set(e.hubs.map(h=>h.portal))];if(m.added.length+m.fixed.length)e.dirty=true;
       ctx.toast(m.added.length?`Found ${m.added.join(', ')}. Press Save to keep it.`:'No new hubs found.',4500);renderEditor();})));
@@ -260,7 +260,7 @@ async function saveEdit(){
     xml=C.withNotes(C.rebuild(e.xml,[...e.devices.filter(d=>d.family!=='i2c'),...out].map(({name,tag,port,bus,module})=>({name,tag,port,...(bus!==undefined?{bus}:{}),module})),e.hubs),notesFrom(e.devices));
   }catch(err){status(err.message,'error');return;}
   let ok=false;await run(`Saving “${e.file.name}”…`,async()=>{await save(e.file.name,xml);await keepNotes(e.file.name,notesFrom(e.devices));ok=true;});
-  if(ok){ctx.host.useConfiguration?.({name:e.file.name,xml});changed=true;e.dirty=false;ctx.toast(`Saved “${e.file.name}”. It is the active configuration; the robot restarts when you leave Configure Robot.`,4500);edit=null;$('#page-back').onclick=()=>{if(onBack)onBack();else close();};await loadList();}
+  if(ok){ctx.host.useConfiguration?.({name:e.file.name,xml});changed=true;e.dirty=false;ctx.toast(`Saved “${e.file.name}” as the active configuration. The robot restarts when you leave Configure Robot.`,4500);edit=null;$('#page-back').onclick=()=>{if(onBack)onBack();else close();};await loadList();}
 }
 
 // ---- Pinout: a configuration as a wiring diagram (pinout.js), with the product photos of what is in it, to read here
@@ -292,7 +292,7 @@ function renderPinout(unsaved){
   actions(button('Save PNG','ok primary',()=>void savePinout('png')),button('Save SVG','cfg-btn secondary',()=>void savePinout('svg')));
   const notes=[];if(unsaved)notes.push(el('p','pin-note notice','This shows your changes before they are saved to the robot.'));
   for(const w of s.warnings)notes.push(el('p','pin-note notice bad',w));
-  if(p.missing.length&&ctx.host.devicePhoto){const n=p.missing.filter(t=>A.photoOf(t)).length;if(n)notes.push(el('p','pin-note notice',`${n} product photo${n===1?' is':'s are'} not on this computer yet, so ${n===1?'its':'their'} drawing${n===1?' is':'s are'} shown. Deck saves them the next time this computer is online.`));}
+  if(p.missing.length&&ctx.host.devicePhoto){const n=p.missing.filter(t=>A.photoOf(t)).length;if(n)notes.push(el('p','pin-note notice',`${n} product photo${n===1?' is':'s are'} not on this computer yet, so ${n===1?'its':'their'} drawing${n===1?' is':'s are'} shown. Torque downloads them the next time this computer is online.`));}
   const img=el('img','pin-sheet');img.src=p.url;img.alt=`Wiring diagram of ${p.name}: ${s.rows.length} connections`;
   const view=el('div','pin-view');view.tabIndex=0;view.setAttribute('aria-label','Wiring diagram. Scroll to move around.');view.append(img);
   const label=el('span','pin-zoom-label');
@@ -317,23 +317,23 @@ function settings(){
   const row=(title,detail,control)=>{const r=el('div','set-row'),text=el('div','set-text');text.append(el('b','',title));if(detail)text.append(el('small','',detail));r.append(text);if(control)r.append(control);rows.push(r);return r;};
   const toggle=(key,label)=>{const l=el('label','switch'),i=el('input');i.type='checkbox';i.checked=!!p[key];i.setAttribute('aria-label',label);i.onchange=()=>{p[key]=i.checked;ctx.savePrefs();};l.append(i,el('i'));return l;};
   rows.push(el('h3','set-group','Driver Station'));
-  row('Driver Station name',`${ctx.dsName()}: taken from the robot’s network name, as a Driver Hub pairs ####-RC with ####-DS.`);
+  row('Driver Station name',`${ctx.dsName()}. Torque takes this from the robot’s network name, the way a Driver Hub named ####-DS pairs with a robot named ####-RC.`);
   row('Pair with Robot Controller','Choose the robot, its address and its Wi-Fi on Torque’s Drive page. The robot stays connected while you are there.',button('Open','cfg-btn secondary',()=>Promise.resolve(ctx.host.openSettings?.()).catch(e=>ctx.toast(e.message))));
   // The Driver Hub's colour scheme, here a theme for this robot: Torque keeps it on this computer and puts it on whenever
   // this robot connects. docs/THEMES.md says how to make one.
   {const l=ctx.look?.();if(l?.themes?.length&&ctx.host.pickTheme){const pick=el('select','cfg-type');pick.setAttribute('aria-label','Colour scheme for this robot');
     pick.append(new Option('Torque’s default','default'),...l.themes.map(t=>new Option(t.name,t.id)));pick.value=l.own||'default';
     pick.onchange=()=>Promise.resolve(ctx.host.pickTheme(pick.value)).then(()=>ctx.toast(pick.value==='default'?'This robot follows Torque’s default theme.':`${pick.selectedOptions[0].textContent} is this robot’s colour scheme.`,3000)).catch(e=>ctx.toast(e.message));
-    row('Colour scheme',`For ${l.robot||'this robot'}, kept on this computer. Torque’s Settings has every theme, and imports new ones.`,pick);}}
+    row('Colour scheme',`Used for ${l.robot||'this robot'} on this computer. Torque’s Settings lists every theme and can import new ones.`,pick);}}
   const pad=el('select','cfg-type');pad.setAttribute('aria-label','Gamepad type');for(const [v,l] of [['auto','Detect from the controller'],['XBOX_360','Xbox 360 / Xbox'],['SONY_PS4','Sony PS4 / PS5'],['LOGITECH_F310','Logitech F310']])pad.append(new Option(l,v));
   pad.value=p.gamepadType||'auto';pad.onchange=()=>{p.gamepadType=pad.value;ctx.savePrefs();};
-  row('Gamepad type','What the robot is told each controller is. Code that reads gamepad1.type or uses PS button names sees this.',pad);
+  row('Gamepad type','Tells the robot which kind of controller each one is. Code that reads gamepad1.type, or uses PlayStation button names, sees this.',pad);
   row('Gamepad assignment','Click User 1 in the header, then press a button on that controller. For User 2, choose Two controllers for this robot on Torque’s Drive page.');
-  row('Show Robot Controller battery','The Control Hub or phone battery next to the robot voltage.',toggle('showRcBattery','Show Robot Controller battery'));
-  row('Autonomous timer on by default','Stop an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
+  row('Show Robot Controller battery','Shows the Control Hub’s or phone’s battery level next to the robot battery.',toggle('showRcBattery','Show Robot Controller battery'));
+  row('Autonomous timer on by default','Stops an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
   rows.push(el('h3','set-group','Robot Controller'));
-  row('Robot Controller settings','The robot’s name, Wi-Fi password and channel are in Program & Manage → Manage, served by the robot.',button('Program & Manage','cfg-btn secondary',()=>Promise.resolve(ctx.host.programAndManage?.()).catch(e=>ctx.toast(e.message))));
-  row('Restart Robot','Restart the robot’s software, as the menu’s Restart Robot does.',button('Restart','cfg-btn secondary',()=>{ctx.restart();}));
+  row('Robot Controller settings','Change the robot’s name, Wi-Fi password and Wi-Fi channel in Program & Manage → Manage.',button('Program & Manage','cfg-btn secondary',()=>Promise.resolve(ctx.host.programAndManage?.()).catch(e=>ctx.toast(e.message))));
+  row('Restart Robot','Restarts the Robot Controller app, the same as Restart Robot in the menu.',button('Restart','cfg-btn secondary',()=>{ctx.restart();}));
   const list=el('div','set-list');list.append(...rows);$('#page-body').replaceChildren(list);
 }
 
@@ -361,7 +361,7 @@ function report(kind){
 const MARK={ok:['Passes','good','Passes'],warn:['Allowed','tag warn','Allowed'],bad:['Fails','tag bad','Fails inspection']};
 function paint(rows,{note=''}={}){
   const box=$('#inspect-report');if(!box)return;const bad=rows.filter(r=>r.mark==='bad').length,warn=rows.filter(r=>r.mark==='warn').length;
-  const top=el('div','inspect-verdict notice '+(bad?'bad':warn?'warn':'good'));top.append(el('strong','',bad?`${bad} ${bad===1?'thing fails':'things fail'} inspection`:warn?'Passes inspection, with warnings':'Passes inspection'),el('span','',bad?'Fix every red mark: inspectors fail a report with any.':warn?'Orange marks are allowed, but worth fixing.':'No red marks.'));
+  const top=el('div','inspect-verdict notice '+(bad?'bad':warn?'warn':'good'));top.append(el('strong','',bad?`${bad} ${bad===1?'thing fails':'things fail'} inspection`:warn?'Passes inspection, with warnings':'Passes inspection'),el('span','',bad?'Fix every red mark. Inspectors fail a report that has any.':warn?'Orange marks are allowed, but worth fixing.':''));
   const t=el('dl','inspect-rows');
   for(const r of rows){
     if(r.head){t.append(el('dt','inspect-group',r.label));continue;}
@@ -375,7 +375,7 @@ function paint(rows,{note=''}={}){
 async function readReport(kind,quiet=false){
   if(kind==='rc'){
     if(!connected()){paint([{label:'Robot',value:'Not connected',mark:'bad',fix:'Connect to the robot first: plug in the USB cable, or join its Wi-Fi.'}]);return;}
-    try{const r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',6000));paint(I.rows(r,{kind:'rc',viewer:DS_VERSION}),{note:`Compared with this Driver Station: Torque speaks to the robot as Driver Station ${DS_VERSION.major}.${DS_VERSION.minor}. Your Driver Hub's own report compares with its app's version.`});}
+    try{const r=JSON.parse(await ask('CMD_REQUEST_INSPECTION_REPORT','',6000));paint(I.rows(r,{kind:'rc',viewer:DS_VERSION}),{note:`This report compares the robot with Torque, which talks to it as Driver Station ${DS_VERSION.major}.${DS_VERSION.minor}. Your Driver Hub’s own report compares it with the Driver Hub’s app.`});}
     catch(e){if(!quiet)paint([{label:'Report',value:e.message,mark:'bad'}]);}
     return;
   }
@@ -383,8 +383,8 @@ async function readReport(kind,quiet=false){
   if(hub?.found){const r=hub.report;paint(I.rows(r,{kind:'ds'}),{note:`Read from the Driver Hub plugged into this computer (${hub.serial}). Nothing on it was changed.`});return;}
   // No Driver Hub on USB: Torque is the Driver Station here, and it is not one an event allows.
   const name=ctx.dsName();
-  paint([{label:'Driver Station',value:'Torque on this computer'},{label:'Driver Station Name',value:name,mark:I.DS_NAME.test(name)?'ok':'bad',fix:I.DS_NAME.test(name)?undefined:'Torque takes its name from the robot: rename the robot to your team number and -RC, and Torque is ####-DS.'},
-    {label:'Allowed at events',value:'No',mark:'bad',fix:'At inspection and in matches the Driver Station must be an Android device, like a REV Driver Hub, running the FTC Driver Station app. Rule R901. Plug your Driver Hub into this computer with USB to inspect it here.'}],
+  paint([{label:'Driver Station',value:'Torque on this computer'},{label:'Driver Station Name',value:name,mark:I.DS_NAME.test(name)?'ok':'bad',fix:I.DS_NAME.test(name)?undefined:'Torque takes its name from the robot. Name the robot with your team number and -RC, and Torque becomes ####-DS.'},
+    {label:'Allowed at events',value:'No',mark:'bad',fix:'At inspection and in matches, the Driver Station must be an Android device running the FTC Driver Station app, such as a REV Driver Hub (rule R901). To inspect your Driver Hub here, plug it into this computer with a USB cable.'}],
     {note:hub?.error?`Could not look for a Driver Hub: ${hub.error}`:'No Driver Hub is plugged into this computer.'});
 }
 window.DeckDsPages={init(c){ctx=c;ctx.session.on('state',()=>{if(!$('#ds-page').hidden&&!edit&&!working)refreshButtons();});},configure:()=>void configure(),settings,inspect,

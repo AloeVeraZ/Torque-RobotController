@@ -50,7 +50,7 @@ test('the bottom line says how fast the robot goes and what its shooter does',()
 
 test('file names are safe and say which part of the run and which camera they are',()=>{
   assert.equal(V.title('Red: auto / cycles','auto','3d'),'Red auto cycles - Autonomous - 3D');
-  assert.equal(V.title('','teleop','2d'),'Deck run - Teleop - 2D');
+  assert.equal(V.title('','teleop','2d'),'Torque run - TeleOp - 2D');
   assert.equal(V.title('../..\\x','all'),'x - Whole run');
   assert.deepEqual(Object.keys(V.VIEWS),['2d','3d']);
 });
