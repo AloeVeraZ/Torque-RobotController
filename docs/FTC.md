@@ -10,7 +10,7 @@ address on it: a Control Hub is `192.168.43.1`, and a Robot Controller phone usi
 Direct is `192.168.49.1`.
 
 1. In Settings, join the robot's Wi-Fi.
-2. Under **Robot type**, choose **FTC · Control Hub**. The address is `192.168.43.1`; for a
+2. Under **Robot type**, choose **FTC Control Hub**. The address is `192.168.43.1`; for a
    Robot Controller phone press **Use a different address** and enter `192.168.49.1`.
 3. Press **Open on Wi-Fi**, or plug the Control Hub's USB-C into this computer and press
    **Open on USB**. Drive shows the Driver Station; the banner turns green:

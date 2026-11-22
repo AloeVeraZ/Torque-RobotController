@@ -58,12 +58,12 @@ async function loadList(){edit=null;renderList();
   await run('Reading the robot’s configurations…',readList);renderList();}
 function renderList(){
   $('#page-title').textContent='Configure Robot';const active=ctx.session.state.activeConfig?.name||'';
-  const add=button('New','ok',()=>void newConfiguration());add.dataset.needsRobot='';actions(add);
+  const add=button('New','ok primary',()=>void newConfiguration());add.dataset.needsRobot='';actions(add);
   const head=el('div','cfg-active');head.append(el('span','','Active configuration'),el('b','',files.some(f=>f.name===active)?active:'<No Config Set>'));
   const list=el('div','cfg-list');list.setAttribute('role','list');
   if(!files.length)list.append(el('p','cfg-empty',connected()?'This robot has no saved configurations. Press New to scan the robot’s hubs and make one.':'Not connected to the robot.'));
-  for(const f of files){const row=el('div','cfg-row'+(f.name===active?' active':''));row.setAttribute('role','listitem');const name=el('div','cfg-name');name.append(el('b','',f.name));if(f.name===active)name.append(el('small','','Active'));
-    const fixed=f.location&&f.location!=='LOCAL_STORAGE';if(fixed)name.append(el('small','muted','Built into the robot app'));
+  for(const f of files){const row=el('div','cfg-row'+(f.name===active?' active':''));row.setAttribute('role','listitem');const name=el('div','cfg-name');name.append(el('b','',f.name));if(f.name===active)name.append(el('small','tag ok','Active'));
+    const fixed=f.location&&f.location!=='LOCAL_STORAGE';if(fixed)name.append(el('small','muted tag','Built into the robot app'));
     const buttons=el('div','cfg-buttons'),e=button('Edit','cfg-btn',()=>void openEditor(f)),a=button('Activate','cfg-btn',()=>void activate(f)),d=button('Delete','cfg-btn danger',()=>void remove(f)),g=button('Get pinout','cfg-btn pinout',()=>void pinoutOf(f)),u=button('Use in Setup','cfg-btn',()=>void useInSetup(f));
     for(const b of [e,a,d,g,u])b.dataset.needsRobot='';a.dataset.active=f.name===active?'1':'0';if(fixed){e.disabled=d.disabled=true;delete e.dataset.needsRobot;delete d.dataset.needsRobot;}
     buttons.append(u,e,a,d,g);row.append(name,buttons);list.append(row);}
@@ -165,7 +165,7 @@ let menu=null;
 function closeMenu(){if(!menu)return false;const m=menu;menu=null;m.backdrop.remove();m.remove();m.anchor?.isConnected&&m.anchor.focus();return true;}
 function typeSelect(family,tag,label,onPick,{nothing=true}={}){
   const b=button('','dev-pick',()=>openMenu(b,family,tag,onPick,nothing));b.setAttribute('aria-label',`${label}: ${tag?nameOf(family,tag):'Nothing'}`);b.setAttribute('aria-haspopup','dialog');
-  b.append(figure(tag,'small'),el('span','dev-pick-name',tag?nameOf(family,tag):'Nothing'),el('i','dev-caret','▾'));return b;}
+  b.append(figure(tag,'small'),el('span','dev-pick-name',tag?nameOf(family,tag):'Nothing'),el('i','dev-caret'));return b;}
 function openMenu(anchor,family,tag,onPick,nothing){
   closeMenu();const m=el('div','dev-menu'),backdrop=el('div','dev-backdrop'),list=el('div','dev-list'),view=el('div','dev-view');
   m.setAttribute('role','dialog');m.setAttribute('aria-label',`Choose what is on this ${SINGULAR[family]||'I2C'} port`);list.setAttribute('role','listbox');
@@ -173,7 +173,7 @@ function openMenu(anchor,family,tag,onPick,nothing){
     if(!t){view.replaceChildren(figure('','big'),el('h3','','Nothing'),el('p','','Leave this port empty.'));return;}
     const fact=(k,v)=>{if(v)facts.append(el('dt','',k),el('dd','',v));};
     fact('Plugs into',i.builtIn?'Nothing: it is built into the hub, on I2C bus 0.':PLUGS[family]);if(i.addr!==undefined)fact('I2C address',A.hex(i.addr));
-    if(A.GEARING[t])fact('Gearing','Choose its gear ratio on the port after picking it.');fact('Picture',p?`${p.caption} · ${p.site}`:'Drawing (no store listing)');
+    if(A.GEARING[t])fact('Gearing','Choose its gear ratio on the port after picking it.');fact('Picture',p?`${p.caption}, ${p.site}`:'Drawing (no store listing)');
     view.replaceChildren(figure(t,'big'),el('h3','',nameOf(family,t)),el('small','dev-maker',i.maker),el('p','',i.what),facts);};
   const options=[],add=(t,l)=>{const o=button('','dev-option'+(t===(tag||'')?' chosen':''),()=>{closeMenu();if(t!==(tag||''))onPick(t);});o.setAttribute('role','option');o.setAttribute('aria-selected',String(t===(tag||'')));
     const words=el('span','dev-option-text');words.append(el('b','',l),el('small','',t?A.info(t).maker:'Port left empty'));o.append(figure(t,'small'),words);o.onpointerenter=()=>show(t);o.onfocus=()=>show(t);options.push(o);return o;};
@@ -181,7 +181,7 @@ function openMenu(anchor,family,tag,onPick,nothing){
   const types=[...TYPES[family]];if(tag&&!types.some(([t])=>t===tag))types.push([tag,tag]);const groups=new Map();
   for(const [t,l] of types){const g=A.info(t).maker||'Other';if(!groups.has(g))groups.set(g,[]);groups.get(g).push([t,l]);}
   for(const [g,items] of groups){list.append(el('h4','dev-group',g));for(const [t,l] of items)list.append(add(t,l));}
-  const head=el('div','dev-head');head.append(el('b','',family==='i2c'?'Choose an I2C device':`Choose a ${SINGULAR[family]}`),button('Close','cfg-btn dev-close',()=>closeMenu()));
+  const head=el('div','dev-head');head.append(el('b','',family==='i2c'?'Choose an I2C device':`Choose a ${SINGULAR[family]}`),button('Close','cfg-btn dev-close text-button',()=>closeMenu()));
   const panes=el('div','dev-panes');panes.append(list,view);m.append(head,panes);
   m.onkeydown=e=>{const i=options.indexOf(document.activeElement);
     if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();options[Math.max(0,Math.min(options.length-1,(i<0?0:i)+(e.key==='ArrowDown'?1:-1)))].focus();}
@@ -203,11 +203,11 @@ function motorDetails(d){
 function nameInput(d,label){const i=el('input','cfg-device-name');i.value=d.name||'';i.placeholder='Device name';i.maxLength=40;i.spellcheck=false;i.setAttribute('aria-label',label);
   i.oninput=()=>{d.name=i.value.trim();edit.dirty=true;i.classList.remove('bad');};return i;}
 // A row that opens the next level: its title and what is in it.
-function entry(title,detail,fn){const b=button('','cfg-entry',fn);const t=el('span','cfg-entry-text');t.append(el('b','',title),el('small','',detail));b.append(t,el('i','cfg-chevron','›'));return b;}
+function entry(title,detail,fn){const b=button('','cfg-entry',fn);const t=el('span','cfg-entry-text');t.append(el('b','',title),el('small','',detail));b.append(t,el('i','cfg-chevron'));return b;}
 const count=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
 function renderEditor(){
   const e=edit,v=e.view.at(-1)||{},hub=v.hub!==undefined?e.hubs[v.hub]:null,on=d=>hub&&sameHub(d,hub);
-  const saveBtn=button('Save','ok',()=>void saveEdit());saveBtn.dataset.needsRobot='';actions(button('Pinout','cfg-btn',()=>void showPinout(e.file.name,editedConfig(),{unsaved:e.dirty})),button('Cancel','cfg-btn',()=>void leaveEditor()),saveBtn);if(!connected())saveBtn.disabled=true;
+  const saveBtn=button('Save','ok primary',()=>void saveEdit());saveBtn.dataset.needsRobot='';actions(button('Pinout','cfg-btn secondary',()=>void showPinout(e.file.name,editedConfig(),{unsaved:e.dirty})),button('Cancel','cfg-btn secondary',()=>void leaveEditor()),saveBtn);if(!connected())saveBtn.disabled=true;
   const crumbs=[e.file.name,...e.view.map(s=>s.family?(s.family==='i2c'?`I2C Bus ${s.bus}`:TITLES[s.family]):s.hub!==undefined?e.hubs[s.hub].name:portalName(s.portal))];
   $('#page-title').textContent=crumbs.at(-1);const body=[el('p','cfg-trail',crumbs.join('  ›  '))];
   if(!e.view.length){body.push(el('h3','cfg-heading','USB Devices in configuration'));
@@ -216,33 +216,33 @@ function renderEditor(){
     if(e.other.length)body.push(el('h3','cfg-heading','Other devices'),el('p','cfg-none',`${e.other.map(d=>`${d.name} (${d.tag})`).join(', ')}: kept as they are.`));}
   else if(!hub){body.push(el('h3','cfg-heading',`Hubs in ${portalName(v.portal)}`));
     // The Control Hub first, then the hubs on its RS485 wire by address.
-    e.hubs.map((h,i)=>[h,i]).sort(([a],[b])=>Number(b.parent)-Number(a.parent)||(a.tag==='ServoHub')-(b.tag==='ServoHub')||a.address-b.address).forEach(([h,i])=>{if(h.portal!==v.portal)return;const n=e.devices.filter(d=>sameHub(d,h)).length;body.push(entry(h.name,`${h.tag==='ServoHub'?'Servo Hub':h.parent?'Control Hub':'Expansion Hub'} · address ${h.address} · ${n?count(n,'device'):'nothing set up on it yet'}${e.connected?(e.connected.has(C.hubKey(h.portal,h.address))?' · connected':' · not found on the robot'):''}`,()=>go({portal:v.portal,hub:i})));});
+    e.hubs.map((h,i)=>[h,i]).sort(([a],[b])=>Number(b.parent)-Number(a.parent)||(a.tag==='ServoHub')-(b.tag==='ServoHub')||a.address-b.address).forEach(([h,i])=>{if(h.portal!==v.portal)return;const n=e.devices.filter(d=>sameHub(d,h)).length;body.push(entry(h.name,`${h.tag==='ServoHub'?'Servo Hub':h.parent?'Control Hub':'Expansion Hub'}, address ${h.address}, ${n?count(n,'device'):'nothing set up on it yet'}${e.connected?(e.connected.has(C.hubKey(h.portal,h.address))?', connected':', not found on the robot'):''}`,()=>go({portal:v.portal,hub:i})));});
     // A hub on the RS485 chain can be written in before it is plugged in; the robot warns it is missing until it is.
-    const addHub=(word,tag)=>button(`Add ${word}`,'cfg-btn cfg-add',()=>{const h=C.newHub(e.hubs,tag,v.portal);if(!h){status('Every RS485 address from 1 to 10 is taken.','error');return;}e.hubs.push(h);e.dirty=true;renderEditor();});
+    const addHub=(word,tag)=>button(`Add ${word}`,'cfg-btn cfg-add secondary',()=>{const h=C.newHub(e.hubs,tag,v.portal);if(!h){status('Every RS485 address from 1 to 10 is taken.','error');return;}e.hubs.push(h);e.dirty=true;renderEditor();});
     // A hub that is plugged in stays: only one the robot did not find can be taken out, and if the robot could not be asked, only after saying so.
     for(const h of [...e.hubs])if(h.portal===v.portal&&!h.parent&&!e.devices.some(d=>sameHub(d,h))&&!e.connected?.has(C.hubKey(h.portal,h.address)))body.push(button(`Remove ${h.name}`,'cfg-btn danger',async()=>{if(!e.connected&&!await ask2({title:`Remove ${h.name}?`,text:'Deck could not check what is plugged in. If this hub is connected, keep it here: the robot needs it in its configuration to use it.',ok:'Remove'}))return;e.hubs.splice(e.hubs.indexOf(h),1);e.dirty=true;renderEditor();}));
-    body.push(button('Scan for new hubs','cfg-btn cfg-add',()=>void run('Scanning the robot for hubs…',async()=>{const found=await scanPortals();if(!found.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
+    body.push(button('Scan for new hubs','cfg-btn cfg-add secondary',()=>void run('Scanning the robot for hubs…',async()=>{const found=await scanPortals();if(!found.length)throw Error('The scan found no hubs. Check the hubs are powered and connected, then try again.');
       const m=C.matchHubs(e.hubs,found,e.devices);e.hubs.splice(0,e.hubs.length,...m.hubs);e.connected=m.connected;e.portals=[...new Set(e.hubs.map(h=>h.portal))];if(m.added.length+m.fixed.length)e.dirty=true;
       ctx.toast(m.added.length?`Found ${m.added.join(', ')}. Press Save to keep it.`:'No new hubs found.',4500);renderEditor();})));
     body.push(addHub('an Expansion Hub','LynxModule'),addHub('a Servo Hub','ServoHub'));
     if(e.hubs.filter(h=>h.portal===v.portal&&!h.parent&&h.tag==='LynxModule').length>1)body.push(el('p','cfg-none','A competition robot may have only one Expansion Hub with its Control Hub (R701).'));}
   else if(!v.family){
     const families=hub.tag==='ServoHub'?['servo']:['motor','servo','digital','analog'];
-    for(const f of families){const n=e.devices.filter(d=>on(d)&&d.family===f).length;body.push(entry(TITLES[f],`Ports 0–${C.PORT_COUNT[f]-1} · ${n} configured`,()=>go({...v,family:f})));}
+    for(const f of families){const n=e.devices.filter(d=>on(d)&&d.family===f).length;body.push(entry(TITLES[f],`Ports 0–${C.PORT_COUNT[f]-1}, ${n} configured`,()=>go({...v,family:f})));}
     if(hub.tag!=='ServoHub')for(let bus=0;bus<4;bus++){const list=e.devices.filter(d=>on(d)&&d.family==='i2c'&&d.bus===bus);body.push(entry(`I2C Bus ${bus}`,list.length?list.map(d=>d.name||'(no name)').join(', '):'No devices',()=>go({...v,family:'i2c',bus})));}}
   else if(v.family!=='i2c'){const f=v.family,box=el('div','cfg-ports');
     for(let port=0;port<C.PORT_COUNT[f];port++){const d=e.devices.find(x=>on(x)&&x.family===f&&x.port===port),label=`${hub.name} ${SINGULAR[f]} port ${port}`;
       const row=el('div','cfg-port'+(d?' used':''));row.append(el('span','cfg-port-no',`Port ${port}`),typeSelect(f,d?.tag,`${label} type`,tag=>{
         if(!tag)e.devices.splice(e.devices.indexOf(d),1);else if(d)d.tag=tag;else e.devices.push({name:'',tag,port,family:f,module:{portal:hub.portal,address:hub.address,...(hub.tag==='ServoHub'?{servoHub:true}:{})}});
         e.dirty=true;renderEditor();if(tag&&!d)document.querySelectorAll('.cfg-port')[port]?.querySelector('input')?.focus();}));
-      row.append(d?nameInput(d,`${label} name`):el('span','cfg-none','NO DEVICE ATTACHED'));if(d&&f==='motor')row.append(motorDetails(d));box.append(row);}
+      row.append(d?nameInput(d,`${label} name`):el('span','cfg-none','No device attached'));if(d&&f==='motor')row.append(motorDetails(d));box.append(row);}
     if(f==='digital')body.push(el('p','cfg-none','A REV Touch Sensor reads on the odd channel of each digital connector (1, 3, 5, 7).'));
     body.push(box);}
   else{const bus=v.bus,list=e.devices.filter(d=>on(d)&&d.family==='i2c'&&d.bus===bus).sort((a,b)=>a.port-b.port),box=el('div','cfg-ports');
     if(!list.length)box.append(el('p','cfg-none','No devices on this bus. Press Add for each sensor plugged into it.'));
     list.forEach((d,i)=>{const row=el('div','cfg-port used'),label=`${hub.name} I2C bus ${bus} device ${i}`;row.append(el('span','cfg-port-no',`Port ${i}`),typeSelect('i2c',d.tag,`${label} type`,tag=>{d.tag=tag;e.dirty=true;renderEditor();},{nothing:false}),nameInput(d,`${label} name`));
       const x=button('Delete','cfg-btn danger',()=>{e.devices.splice(e.devices.indexOf(d),1);e.dirty=true;renderEditor();});x.setAttribute('aria-label',`Delete ${d.name||'device'} from I2C bus ${bus}`);row.append(x);box.append(row);});
-    body.push(box,button('Add','cfg-btn cfg-add',()=>{e.devices.push({name:'',tag:'RevColorSensorV3',port:list.length?Math.max(...list.map(x=>x.port))+1:0,bus,family:'i2c',module:{portal:hub.portal,address:hub.address}});e.dirty=true;renderEditor();[...document.querySelectorAll('.cfg-device-name')].at(-1)?.focus();}));}
+    body.push(box,button('Add','cfg-btn cfg-add secondary',()=>{e.devices.push({name:'',tag:'RevColorSensorV3',port:list.length?Math.max(...list.map(x=>x.port))+1:0,bus,family:'i2c',module:{portal:hub.portal,address:hub.address}});e.dirty=true;renderEditor();[...document.querySelectorAll('.cfg-device-name')].at(-1)?.focus();}));}
   $('#page-body').replaceChildren(...body);
 }
 // The wiring notes of the motors being edited, by name.
@@ -289,15 +289,15 @@ function leavePinout(){if(!pin)return;if(pin.url)URL.revokeObjectURL(pin.url);co
   if(from==='editor'&&edit){$('#page-back').onclick=()=>editBack();renderEditor();}else{$('#page-back').onclick=()=>{if(onBack)onBack();else close();};renderList();}}
 function renderPinout(unsaved){
   const p=pin,s=p.sheet;$('#ds-page').classList.add('wide');$('#page-title').textContent=`Pinout · ${p.name}`;$('#page-back').onclick=()=>leavePinout();
-  actions(button('Save PNG','ok',()=>void savePinout('png')),button('Save SVG','cfg-btn',()=>void savePinout('svg')));
-  const notes=[];if(unsaved)notes.push(el('p','pin-note','This shows your changes before they are saved to the robot.'));
-  for(const w of s.warnings)notes.push(el('p','pin-note bad','⚠ '+w));
-  if(p.missing.length&&ctx.host.devicePhoto){const n=p.missing.filter(t=>A.photoOf(t)).length;if(n)notes.push(el('p','pin-note',`${n} product photo${n===1?' is':'s are'} not on this computer yet, so ${n===1?'its':'their'} drawing${n===1?' is':'s are'} shown. Deck saves them the next time this computer is online.`));}
+  actions(button('Save PNG','ok primary',()=>void savePinout('png')),button('Save SVG','cfg-btn secondary',()=>void savePinout('svg')));
+  const notes=[];if(unsaved)notes.push(el('p','pin-note notice','This shows your changes before they are saved to the robot.'));
+  for(const w of s.warnings)notes.push(el('p','pin-note notice bad',w));
+  if(p.missing.length&&ctx.host.devicePhoto){const n=p.missing.filter(t=>A.photoOf(t)).length;if(n)notes.push(el('p','pin-note notice',`${n} product photo${n===1?' is':'s are'} not on this computer yet, so ${n===1?'its':'their'} drawing${n===1?' is':'s are'} shown. Deck saves them the next time this computer is online.`));}
   const img=el('img','pin-sheet');img.src=p.url;img.alt=`Wiring diagram of ${p.name}: ${s.rows.length} connections`;
   const view=el('div','pin-view');view.tabIndex=0;view.setAttribute('aria-label','Wiring diagram. Scroll to move around.');view.append(img);
   const label=el('span','pin-zoom-label');
-  const zoom=z=>{const fitZ=Math.max(.1,(view.clientWidth-20)/s.width);p.zoom=z===0?0:Math.max(.1,Math.min(3,z));const now=p.zoom||fitZ;img.style.width=Math.round(s.width*now)+'px';label.textContent=p.zoom?`${Math.round(now*100)}%`:`Fit · ${Math.round(now*100)}%`;};
-  const tools=el('div','pin-tools');tools.append(button('Fit','cfg-btn',()=>zoom(0)),button('−','cfg-btn',()=>zoom((p.zoom||view.clientWidth/s.width)/1.25)),button('+','cfg-btn',()=>zoom((p.zoom||view.clientWidth/s.width)*1.25)),button('100%','cfg-btn',()=>zoom(1)),label);
+  const zoom=z=>{const fitZ=Math.max(.1,(view.clientWidth-20)/s.width);p.zoom=z===0?0:Math.max(.1,Math.min(3,z));const now=p.zoom||fitZ;img.style.width=Math.round(s.width*now)+'px';label.textContent=p.zoom?`${Math.round(now*100)}%`:`Fit ${Math.round(now*100)}%`;};
+  const tools=el('div','pin-tools');tools.append(button('Fit','cfg-btn secondary',()=>zoom(0)),button('−','cfg-btn secondary',()=>zoom((p.zoom||view.clientWidth/s.width)/1.25)),button('+','cfg-btn secondary',()=>zoom((p.zoom||view.clientWidth/s.width)*1.25)),button('100%','cfg-btn secondary',()=>zoom(1)),label);
   for(const b of tools.querySelectorAll('button'))b.setAttribute('aria-label',{'−':'Zoom out','+':'Zoom in'}[b.textContent]||b.textContent);
   $('#page-body').replaceChildren(...notes,tools,view);requestAnimationFrame(()=>zoom(p.zoom));
 }
@@ -317,8 +317,8 @@ function settings(){
   const row=(title,detail,control)=>{const r=el('div','set-row'),text=el('div','set-text');text.append(el('b','',title));if(detail)text.append(el('small','',detail));r.append(text);if(control)r.append(control);rows.push(r);return r;};
   const toggle=(key,label)=>{const l=el('label','switch'),i=el('input');i.type='checkbox';i.checked=!!p[key];i.setAttribute('aria-label',label);i.onchange=()=>{p[key]=i.checked;ctx.savePrefs();};l.append(i,el('i'));return l;};
   rows.push(el('h3','set-group','Driver Station'));
-  row('Driver Station name',`${ctx.dsName()} · taken from the robot’s network name, as a Driver Hub pairs ####-RC with ####-DS.`);
-  row('Pair with Robot Controller','Choose the robot, its address and its Wi-Fi in Deck’s Settings. The robot stays connected while you are there.',button('Open','cfg-btn',()=>Promise.resolve(ctx.host.openSettings?.()).catch(e=>ctx.toast(e.message))));
+  row('Driver Station name',`${ctx.dsName()}: taken from the robot’s network name, as a Driver Hub pairs ####-RC with ####-DS.`);
+  row('Pair with Robot Controller','Choose the robot, its address and its Wi-Fi in Deck’s Settings. The robot stays connected while you are there.',button('Open','cfg-btn secondary',()=>Promise.resolve(ctx.host.openSettings?.()).catch(e=>ctx.toast(e.message))));
   const pad=el('select','cfg-type');pad.setAttribute('aria-label','Gamepad type');for(const [v,l] of [['auto','Detect from the controller'],['XBOX_360','Xbox 360 / Xbox'],['SONY_PS4','Sony PS4 / PS5'],['LOGITECH_F310','Logitech F310']])pad.append(new Option(l,v));
   pad.value=p.gamepadType||'auto';pad.onchange=()=>{p.gamepadType=pad.value;ctx.savePrefs();};
   row('Gamepad type','What the robot is told each controller is. Code that reads gamepad1.type or uses PS button names sees this.',pad);
@@ -326,14 +326,14 @@ function settings(){
   row('Show Robot Controller battery','The Control Hub or phone battery next to the robot voltage.',toggle('showRcBattery','Show Robot Controller battery'));
   row('Autonomous timer on by default','Stop an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
   rows.push(el('h3','set-group','Robot Controller'));
-  row('Robot Controller settings','The robot’s name, Wi-Fi password and channel are in Program & Manage → Manage, served by the robot.',button('Program & Manage','cfg-btn',()=>Promise.resolve(ctx.host.programAndManage?.()).catch(e=>ctx.toast(e.message))));
-  row('Restart Robot','Restart the robot’s software, as the menu’s Restart Robot does.',button('Restart','cfg-btn',()=>{ctx.restart();}));
+  row('Robot Controller settings','The robot’s name, Wi-Fi password and channel are in Program & Manage → Manage, served by the robot.',button('Program & Manage','cfg-btn secondary',()=>Promise.resolve(ctx.host.programAndManage?.()).catch(e=>ctx.toast(e.message))));
+  row('Restart Robot','Restart the robot’s software, as the menu’s Restart Robot does.',button('Restart','cfg-btn secondary',()=>{ctx.restart();}));
   const list=el('div','set-list');list.append(...rows);$('#page-body').replaceChildren(list);
 }
 
 // ---- Self Inspect -------------------------------------------------------------------------------------------------------
-// As the Driver Hub's: two reports to pick, each a list of rows with the app's own marks (✓ green, ▲ orange: allowed, ! red:
-// fails inspection) and, under every mark that is not green, what to change and the rule behind it (ui/ftc/inspection.js).
+// As the Driver Hub's: two reports to pick, each a list of rows with the app's own marks said in words (Passes in green,
+// Allowed in orange, Fails in red) and, under every mark that is not green, what to change and the rule behind it (ui/ftc/inspection.js).
 // The Robot Controller's comes from the robot (CMD_REQUEST_INSPECTION_REPORT, asked again every 5 s, as the app does). The
 // Driver Station's is a Driver Hub plugged into this computer, read over USB; with none, it says what Torque itself is.
 // Not here: the report's QR code (for FTC Live at events, where the Driver Station is the Driver Hub anyway).
@@ -348,14 +348,14 @@ function inspect(){
 function stopInspect(){clearInterval(inspectTimer);inspectTimer=null;}
 function report(kind){
   stopInspect();open(kind==='rc'?'Robot Controller Inspection Report':'Driver Station Inspection Report',()=>{stopInspect();inspect();});
-  actions(button('Refresh','cfg-btn',()=>void readReport(kind)));
+  actions(button('Refresh','cfg-btn secondary',()=>void readReport(kind)));
   const box=el('div','inspect-report');box.id='inspect-report';box.append(el('p','cfg-none','Reading…'));$('#page-body').replaceChildren(box);
   void readReport(kind);if(kind==='rc')inspectTimer=setInterval(()=>{if($('#ds-page').hidden||!$('#inspect-report'))return stopInspect();void readReport(kind,true);},5000);
 }
-const MARK={ok:['✓','good','Passes'],warn:['▲','warn','Allowed'],bad:['!','bad','Fails inspection']};
+const MARK={ok:['Passes','good','Passes'],warn:['Allowed','tag warn','Allowed'],bad:['Fails','tag bad','Fails inspection']};
 function paint(rows,{note=''}={}){
   const box=$('#inspect-report');if(!box)return;const bad=rows.filter(r=>r.mark==='bad').length,warn=rows.filter(r=>r.mark==='warn').length;
-  const top=el('div','inspect-verdict '+(bad?'bad':warn?'warn':'good'));top.append(el('strong','',bad?`${bad} ${bad===1?'thing fails':'things fail'} inspection`:warn?'Passes inspection, with warnings':'Passes inspection'),el('span','',bad?'Fix every red mark: inspectors fail a report with any.':warn?'Orange marks are allowed, but worth fixing.':'No red marks.'));
+  const top=el('div','inspect-verdict notice '+(bad?'bad':warn?'warn':'good'));top.append(el('strong','',bad?`${bad} ${bad===1?'thing fails':'things fail'} inspection`:warn?'Passes inspection, with warnings':'Passes inspection'),el('span','',bad?'Fix every red mark: inspectors fail a report with any.':warn?'Orange marks are allowed, but worth fixing.':'No red marks.'));
   const t=el('dl','inspect-rows');
   for(const r of rows){
     if(r.head){t.append(el('dt','inspect-group',r.label));continue;}

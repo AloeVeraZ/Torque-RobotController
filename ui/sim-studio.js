@@ -8,7 +8,7 @@
   // A video ends on this card unless it is removed (Words on the video): "Edited with Torque" fades in over its last END_CARD seconds,
   // or, after an autonomous on its own, as the transition starts, and stays for the whole transition.
   const BRAND='Torque',END_CARD=2.5;
-  const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'},{id:'side',name:'Field side',label:'Field side · one steady shot',key:'7',color:'#7fd18b',hint:'A camera on a tripod beside the field, the way teams film a real autonomous: it stays put and only turns slowly to keep the robot in the picture.'},{id:'auto',name:'Follow the action',label:'Follow the action · one moving shot',key:'8',color:'#f08fb5',hint:'One camera that walks round the robot without cutting: behind it looking at the goal while it scores, at its front while it takes pieces in, further back while it drives.'},{id:'orbit',name:'Orbit',label:'Orbit · round the field',key:'9',color:'#b79cf0',hint:'One slow sweep half way round the outside of the field, looking at the robot, for the whole run.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
+  const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'},{id:'side',name:'Field side',label:'Field side · one steady shot',key:'7',color:'#7fd18b',hint:'A camera on a tripod beside the field, the way teams film a real autonomous: it stays put and only turns slowly to keep the robot in the picture.'},{id:'auto',name:'Follow the action',label:'Follow the action · one moving shot',key:'8',color:'#f08fb5',hint:'One camera that walks round the robot without cutting: behind it looking at the goal while it scores, at its front while it takes pieces in, further back while it drives.'},{id:'orbit',name:'Orbit',label:'Orbit · round the field',key:'9',color:'#f0884d',hint:'One slow sweep half way round the outside of the field, looking at the robot, for the whole run.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
   const OVERLAYS={match:'Period, clock & points',velocity:'Speed & what the robot is doing',path:'Field map in the corner',camera:'Camera name',position:'Position & heading',timestamp:'Run time',guides:'Planned path, pins, aim lines and outlines'};
   const SPEEDS={0.25:'¼× (slow motion)',0.5:'½×',1:'1× (real speed)',1.5:'1.5×',2:'2×',4:'4×'};
   const SIZES={'1280x720':'1280 × 720 (720p)','1920x1080':'1920 × 1080 (1080p)'},HEAD=96,FONT='system-ui, "Segoe UI", sans-serif';
@@ -33,9 +33,9 @@
       <div class="studio-body">
         <div class="studio-viewer"><div class="studio-screen" id="studio-screen"><canvas id="studio-canvas" width="960" height="540" aria-label="Video preview"></canvas><p class="studio-loading" id="studio-loading">Getting the cameras ready…</p></div>
           <div class="studio-transport">
-            <button type="button" class="secondary" id="studio-start" title="Go to the start (Home)" aria-label="Go to the start">⏮</button><button type="button" class="secondary" id="studio-back" title="Back one frame (←, Shift+← one second)" aria-label="Back one frame">◂</button>
-            <button type="button" class="primary" id="studio-play" title="Play or pause (Space)">Play</button>
-            <button type="button" class="secondary" id="studio-fwd" title="Forward one frame (→, Shift+→ one second)" aria-label="Forward one frame">▸</button><button type="button" class="secondary" id="studio-end" title="Go to the end (End)" aria-label="Go to the end">⏭</button>
+            <button type="button" class="secondary" id="studio-start" title="Go to the start (Home)" aria-label="Go to the start"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M19 6v12l-9-6z"/></svg></button><button type="button" class="secondary" id="studio-back" title="Back one frame (←, Shift+← one second)" aria-label="Back one frame"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 7-5 5 5 5"/></svg></button>
+            <button type="button" class="secondary" id="studio-play" title="Play or pause (Space)">Play</button>
+            <button type="button" class="secondary" id="studio-fwd" title="Forward one frame (→, Shift+→ one second)" aria-label="Forward one frame"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 5 5-5 5"/></svg></button><button type="button" class="secondary" id="studio-end" title="Go to the end (End)" aria-label="Go to the end"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 6v12l9-6z"/></svg></button>
             <output id="studio-time" class="studio-time"></output><p id="studio-status" class="studio-status hint" role="status"></p></div></div>
         <aside class="studio-side" aria-label="Video settings">
           <div class="studio-side-tabs" role="tablist" aria-label="Video settings"><button type="button" role="tab" data-sidetab="clip" hidden>Clip</button><button type="button" role="tab" data-sidetab="cameras">Cameras</button><button type="button" role="tab" data-sidetab="look">Overlays</button><button type="button" role="tab" data-sidetab="export">Export</button></div>
@@ -54,7 +54,7 @@
             <button type="button" class="secondary" data-act="pip" title="Show a second camera small in a corner (P)">+ Corner camera</button><span class="studio-sep" aria-hidden="true"></span>
             <button type="button" class="secondary" data-act="in" title="Save only from the red line (I)">Start here</button><button type="button" class="secondary" data-act="out" title="Save only up to the red line (O)">End here</button><button type="button" class="secondary" data-act="clear-range" title="Save the whole video">Whole video</button></span>
           <span class="studio-spacer" aria-hidden="true"></span>
-          <button type="button" class="secondary" data-act="zoom-out" title="Zoom out (Ctrl+wheel)" aria-label="Zoom out">−</button><button type="button" class="secondary" data-act="fit" title="Fit the whole video">Fit</button><button type="button" class="secondary" data-act="zoom-in" title="Zoom in (Ctrl+wheel)" aria-label="Zoom in">+</button></div>
+          <span class="studio-zoom"><button type="button" class="secondary" data-act="zoom-out" title="Zoom out (Ctrl+wheel)" aria-label="Zoom out"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button><button type="button" class="secondary" data-act="fit" title="Fit the whole video">Fit</button><button type="button" class="secondary" data-act="zoom-in" title="Zoom in (Ctrl+wheel)" aria-label="Zoom in"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button></span></div>
         <div class="studio-scroll" id="studio-scroll"><div class="studio-tracks" id="studio-tracks"></div></div></div>`;
     const $=s=>host.querySelector(s),$$=s=>[...host.querySelectorAll(s)];
     const canvas=$('#studio-canvas'),pctx=canvas.getContext('2d'),scroll=$('#studio-scroll'),tracks=$('#studio-tracks'),screen=$('#studio-screen');
@@ -203,8 +203,8 @@
     function rulerStep(){return [.25,.5,1,2,5,10,15,30,60].find(s=>s*pps>=56)||60;}
     function clipLabel(c){
       if(c.kind==='text')return c.text||'Title';const cam=CAM[c.camera]?.name||c.camera;
-      if(c.focus)return `Contact replay · ${c.focus.label}`;
-      return c.freeze?`${cam} · freeze`:`${cam}${c.speed!==1?` · ${c.speed}×`:''}${c.pip?' · corner':''}`;
+      if(c.focus)return `Contact replay: ${c.focus.label}`;
+      return c.freeze?`${cam}, freeze`:`${cam}${c.speed!==1?`, ${c.speed}×`:''}${c.pip?', corner':''}`;
     }
     function timeline(){
       if(!editor)return;const doc=editor.doc,D=Math.max(duration(),take.duration)+3,width=Math.ceil(D*pps),step=rulerStep();
@@ -311,7 +311,7 @@
     function recrash(d){d.markers=d.markers.filter(m=>m.color!==E.CRASH_COLOR);E.addCrashes(d,take.crashes);}
     function camerasPane(){
       const p=pane('cameras');if(!take){p.innerHTML='';return;}
-      p.innerHTML=`<p class="hint">Pick a camera: the video switches to it from the red line in the timeline.</p>
+      p.innerHTML=`<p class="hint">Pick a camera: the video switches to it from the red line.</p>
         <div class="studio-cams">${CAMS.map(c=>`<button type="button" class="studio-cam" data-cam="${c.id}" data-css="--c:${c.color}" title="${esc(c.hint)}"><kbd>${c.key}</kbd><span>${esc(c.name)}</span></button>`).join('')}</div>
         <p class="hint studio-cam-hint" id="studio-cam-hint"></p>
         <div class="studio-row-buttons"><button type="button" class="secondary" id="studio-autocut" title="Cuts between the robot's cameras by what it is doing: the turret while it shoots, the intake while it collects, the chase camera while it drives">Pick cameras for me</button><button type="button" class="secondary" id="studio-onecam" title="Go back to one camera for the whole video">Start over</button></div>
@@ -366,7 +366,7 @@
     }
     function lookPane(){
       const p=pane('look');if(!editor){p.innerHTML='';return;}const o=editor.doc.overlays;
-      p.innerHTML=`<p class="hint">Shown on top of the picture. To add your own words, use + Text under the video.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
+      p.innerHTML=`<p class="hint">Shown on top of the picture. For your own words, use + Text.</p>${Object.entries(OVERLAYS).map(([k,v])=>`<label class="studio-check"><input type="checkbox" data-overlay="${k}"${o[k]?' checked':''}> ${esc(v)}</label>`).join('')}<div class="button-row"><button type="button" class="secondary" id="studio-end-card">${editor.doc.endCard===false?'Add “Edited with Torque” at the end':'Remove “Edited with Torque” at the end'}</button></div>`;
       p.querySelector('#studio-end-card').onclick=()=>{const on=editor.doc.endCard===false;editor.change(on?'Add end card':'Remove end card',d=>{d.endCard=on;});lookPane();requestDraw();};
       for(const input of p.querySelectorAll('[data-overlay]'))input.onchange=()=>editor.change(input.checked?'Show overlay':'Hide overlay',d=>{d.overlays[input.dataset.overlay]=input.checked;});
     }
@@ -379,7 +379,7 @@
     async function exportPane(){
       const p=pane('export');if(!editor){p.innerHTML='';return;}if(exporting)return;const r=E.exportRange(editor.doc),hasRange=!!editor.doc.range;if(!hasRange)exportSettings.part='all';
       const span=exportSettings.part==='range'?r.out-r.in:duration();
-      p.innerHTML=`<p class="hint">The defaults suit almost everyone. A ${span.toFixed(1)} s video takes a few seconds to save.</p>
+      p.innerHTML=`<p class="hint">A ${span.toFixed(1)} s video takes a few seconds to save.</p>
         <label>Size<select data-exp="size">${options(SIZES,exportSettings.size)}</select></label><label>Frame rate<select data-exp="fps">${options({30:'30 per second',60:'60 per second (smoother, twice as long to export)'},exportSettings.fps)}</select></label>
         <label>Format<select data-exp="format" id="studio-format"><option>Checking what this computer can encode…</option></select></label>
         <label>Part<select data-exp="part">${options({all:'The whole video',...(hasRange?{range:`Only ${E.timecode(r.in)} to ${E.timecode(r.out)}`}:{})},exportSettings.part)}</select></label>

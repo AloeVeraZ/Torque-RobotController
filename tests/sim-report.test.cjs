@@ -66,9 +66,9 @@ test('legs are only linked to planner paths when the run has one leg per path',(
 test('after a run the next step is fixing the path where something went wrong, else exporting the clean route',()=>{
   const go={onEdit:()=>{},onExport:()=>{},onOutput:()=>{}};
   const clean=R.nextSteps(R.build(frames(),{pins,autoSeconds:30}),go);assert.deepEqual(clean.map(s=>[s.id,s.primary]),[['export',true],['output',false]]);
-  const hit=R.nextSteps(R.build(frames({contactAt:2.5}),{pins,autoSeconds:30}),go);assert.deepEqual(hit.map(s=>[s.id,s.primary]),[['fix',true],['export',false],['output',false]]);assert.equal(hit[0].label,'Fix path 2 →');
+  const hit=R.nextSteps(R.build(frames({contactAt:2.5}),{pins,autoSeconds:30}),go);assert.deepEqual(hit.map(s=>[s.id,s.primary]),[['fix',true],['export',false],['output',false]]);assert.equal(hit[0].label,'Fix path 2');
   // Out of time with no contact: the fix is the path it was on when the period ended.
-  const late=R.nextSteps(R.build(frames({timeLimit:true}),{pins,autoSeconds:7}),go);assert.equal(late[0].label,'Fix path 3 →');
+  const late=R.nextSteps(R.build(frames({timeLimit:true}),{pins,autoSeconds:7}),go);assert.equal(late[0].label,'Fix path 3');
   assert.deepEqual(R.nextSteps(R.build(frames(),{pins,autoSeconds:30}),{}),[],'no actions without handlers');
 });
 

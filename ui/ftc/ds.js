@@ -57,7 +57,7 @@ function render(){
     :s.robotState==='EMERGENCY_STOP'?'EMERGENCY STOP':state==='running'?`Running ${name}`:state==='init'?`Initialized ${name}`:'Robot is stopped';
   // Live regions announce changes, not every heartbeat/telemetry packet.
   if($('#status-line').textContent!==statusText)$('#status-line').textContent=statusText;
-  const sys=$('#system-message'),message=s.systemError||s.systemWarning||'';sys.hidden=!message;if($('#system-text').textContent!==message)$('#system-text').textContent=message;sys.className='system '+(s.systemError?'error':'warning');
+  const sys=$('#system-message'),message=s.systemError||s.systemWarning||'';sys.hidden=!message;if($('#system-text').textContent!==message)$('#system-text').textContent=message;sys.className='system notice '+(s.systemError?'error bad':'warning warn');
   // An out-of-date Robot Controller is fixed from here: one button installs the current app over the cable.
   const act=$('#system-action'),rcOld=/Robot Controller (app )?is obsolete|apps are obsolete|update the Robot Controller/i.test(message)&&!!host.updateRobotController;act.hidden=!rcOld;if(rcOld&&!act.disabled)act.textContent='Update Robot Controller';
   renderGame(connected);
@@ -138,10 +138,10 @@ function tickPractice(){
 }
 function stopPractice(show=true){if(practice)clearInterval(practice.ticker);practice=null;if(show)renderPractice();}
 function renderPractice(){
-  const p=practice;let time=150,label='30 s Auto · 8 s · 2:00 TeleOp';
+  const p=practice;let time=150,label='30 s Auto, 8 s, 2:00 TeleOp';
   if(p){const left=Math.max(0,(p.end-Date.now())/1000);
     if(p.phase==='lead')label=`Starting in ${Math.ceil(left)}`;else if(p.phase==='auto'){time=left+120;label='Autonomous';}
-    else if(p.phase==='transition'){time=120;label=`Pick up controllers · ${Math.ceil(left)}`;}else{time=left;label=left<=30?'Endgame':'TeleOp';}}
+    else if(p.phase==='transition'){time=120;label=`Pick up controllers: ${Math.ceil(left)}`;}else{time=left;label=left<=30?'Endgame':'TeleOp';}}
   $('#practice-time').textContent=fmt(time);$('#practice-phase').textContent=label;$('#practice-icon').className=p?'stop':'play';
   $('.practice').classList.toggle('running',!!p);$('#practice-play').setAttribute('aria-label',p?'Stop practice timer':'Start practice timer');
 }

@@ -7,13 +7,13 @@ app (SWYFT Servo Programmer V2, 2.0.0) offers, laid out like the Axon Programmer
 
 - **Always there:** with no programmer plugged in, the whole tab stays as a preview of SWYFT's defaults, greyed and out
   of reach (`inert`), and the bar at the bottom says what to plug in. The Axon Programmer tab does the same.
-- **Top:** status chips (the programmer and its COM port, the servo) and a Simple | Advanced switch.
-- **1 Servo:** Speed, Balance, Torque, Slim and Nano: SWYFT's programmable servos. (SWYFT's continuous-rotation-only
+- **Top:** the state of the programmer (with its COM port) and of the servo, in words, and a Simple | Advanced switch.
+- **Servo:** Speed, Balance, Torque, Slim and Nano: SWYFT's programmable servos. (SWYFT's continuous-rotation-only
   Speed is left out: SWYFT says it is not programmable.) The programmer cannot tell SWYFT servos apart: no reply names
   a model. The student picks one, it is remembered, and it only changes what is shown, never what is written.
-- **2 Mode:** Servo Mode or Continuous rotation. In SWYFT servos continuous rotation is a setting, not firmware: both
+- **Mode:** Servo Mode or Continuous rotation. In SWYFT servos continuous rotation is a setting, not firmware: both
   travel sides at 255. SWYFT says it is full speed either way only.
-- **3 Settings:** Simple is four tiles: Travel, Direction, Max power (as a percentage) and Stall protection. Advanced is
+- **Settings:** Simple is four settings: Travel, Direction, Max power (as a percentage) and Stall protection. Advanced is
   rows, and adds Min, Middle and Max
   signal, Ramp mode, Dead zone, and the P, I, D and Integral speed coefficients, with SWYFT's default beside each.
   With no servo plugged in, the rows preview SWYFT's defaults, disabled.

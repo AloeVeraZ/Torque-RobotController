@@ -1,6 +1,5 @@
-#robot-fullscreen{display:inline-grid;place-items:center;min-width:40px;min-height:36px;border:1px solid var(--line);border-radius:999px;background:var(--control);color:var(--text);padding:8px;flex-shrink:0}
-#robot-fullscreen:hover:not(:disabled){border-color:var(--accent)}
-#robot-fullscreen-exit{position:fixed;top:12px;right:12px;z-index:100;width:40px;height:40px;border:1px solid #676b70;border-radius:50%;background:#111214ed;color:#f7f4ed;font:28px/1 system-ui;padding:0;cursor:pointer}
+/* The robot's page over the whole window. Not in a layer: nothing may show the bar or toolbar while it is up. */
+#robot-fullscreen-exit{position:fixed;top:12px;right:12px;z-index:100;width:44px;height:44px;min-height:0;padding:0;border:1px solid #ffffff3d;border-radius:50%;background:#0c0f0de6;color:#ebf0ed;font:26px/1 system-ui;cursor:pointer}
 body.robot-fullscreen{overflow:hidden}
 body.robot-fullscreen>header,body.robot-fullscreen .browser-toolbar,body.robot-fullscreen .input-notice,body.robot-fullscreen footer{display:none!important}
 body.robot-fullscreen #drive-view{position:fixed;inset:0;height:100dvh!important;margin:0;padding:0}

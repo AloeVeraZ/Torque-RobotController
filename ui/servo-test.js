@@ -48,7 +48,7 @@ window.DeckServoTest=(()=>{
     setHtml('st-port-note',`Plug the servo into servo port ${port} on the ${targetName()}.`);
     setHtml('st-range',`<label>From <select id="st-from" aria-label="Range from">${FROM.map(v=>`<option value="${v}"${v===range.from?' selected':''}>${v} µs</option>`).join('')}</select></label><label>to <select id="st-to" aria-label="Range to">${TO.map(v=>`<option value="${v}"${v===range.to?' selected':''}>${v} µs</option>`).join('')}</select></label><span>The hub sends ${HUB_MIN}–${HUB_MAX} µs.</span>`);
     paintPulse();paintSide();paintBar();
-    setHtml('servo-test-chips',`<span class="axon-chip" data-tone="${hubIn()?'good':'wait'}"><i aria-hidden="true"></i>${esc(hubIn()?`${targetName()} · port ${port}`:'No Control Hub')}</span><span class="axon-chip" data-tone="${live()?(portRefused()?'warn':'good'):'wait'}"><i aria-hidden="true"></i>${esc(live()?`Sending ${us} µs`:'Not sending')}</span>`);
+    setHtml('servo-test-chips',`<span class="axon-chip" data-tone="${hubIn()?'good':'wait'}"><i aria-hidden="true"></i>${esc(hubIn()?`${targetName()}, port ${port}`:'No Control Hub')}</span><span class="axon-chip" data-tone="${live()?(portRefused()?'warn':'good'):'wait'}"><i aria-hidden="true"></i>${esc(live()?`Sending ${us} µs`:'Not sending')}</span>`);
   }
   function paintPulse(){
     const slider=$('st-slider');slider.min=range.from;slider.max=range.to;if(+slider.value!==us)slider.value=us;setFill(slider);
@@ -124,23 +124,23 @@ window.DeckServoTest=(()=>{
   const PAGE=`<div class="axon-tab servo-test-tab">
     <div class="axon-top"><h2>Servo Test</h2><div id="servo-test-chips" class="axon-chips"></div></div>
     <div class="servo-test-main">
-      <section class="cal-card servo-test-card" aria-label="Servo Test">
+      <section class="servo-test-card" aria-label="Servo Test">
         <div class="servo-test-setup">
           <span class="servo-test-label">Connected to</span><div id="st-hubs" class="servo-test-hub"></div>
-          <span class="servo-test-label">Port</span><div class="servo-test-port"><span id="st-ports" class="servo-test-ports" role="group" aria-label="Servo port"></span><span id="st-port-note"></span></div>
+          <span class="servo-test-label">Port</span><div class="servo-test-port"><span id="st-ports" class="servo-test-ports segmented" role="group" aria-label="Servo port"></span><span id="st-port-note"></span></div>
           <span class="servo-test-label">Range</span><div id="st-range" class="servo-test-range"></div>
         </div>
         <div class="servo-test-pulse">
-          <div class="servo-test-readout"><output id="st-us">${us}</output><span>µs</span><p id="st-meaning"></p></div>
+          <div class="servo-test-readout"><output id="st-us" class="reading">${us}</output><span>µs</span><p id="st-meaning"></p></div>
           <div class="servo-test-slider"><span id="st-min"></span><input id="st-slider" class="num-slider axon-slider" type="range" min="${HUB_MIN}" max="${HUB_MAX}" step="${STEP}" value="${us}" aria-label="Pulse in microseconds"><span id="st-max"></span></div>
-          <div class="servo-test-presets" role="group" aria-label="Presets">${PRESETS.map(([id,name,v])=>`<button id="st-preset-${id}" type="button" class="axon-card" data-st="preset" data-us="${v}" aria-pressed="false"><strong>${esc(name)}</strong><span>${v} µs</span></button>`).join('')}</div>
+          <div class="servo-test-presets" role="group" aria-label="Presets">${PRESETS.map(([id,name,v])=>`<button id="st-preset-${id}" type="button" class="axon-card secondary" data-st="preset" data-us="${v}" aria-pressed="false"><strong>${esc(name)}</strong><span>${v} µs</span></button>`).join('')}</div>
         </div>
       </section>
-      <aside class="cal-card servo-test-side" aria-labelledby="st-side-title"><h3 id="st-side-title" class="axon-side-title">Hub reports</h3><div id="st-report"></div>
+      <aside class="servo-test-side" aria-labelledby="st-side-title"><h3 id="st-side-title" class="axon-side-title">Hub reports</h3><div id="st-report"></div>
         <p class="hint">Read from the hub while it sends: the pulse on the servo port, whether the port is on, and the battery the servo ports run from.</p>
         <p class="hint">USB only. Nothing is written to the servo’s settings. Stop, Space, leaving this tab or unplugging turns the port off; so does Torque going quiet for 3 s. An Expansion Hub must be in the robot’s active configuration.</p></aside>
     </div>
-    <div class="axon-bar"><div id="servo-test-banner" class="axon-banner" role="status" data-tone="wait"></div><button id="servo-test-go" class="primary" type="button" hidden></button></div>
+    <div class="axon-bar"><div id="servo-test-banner" class="axon-banner notice" role="status" data-tone="wait"></div><button id="servo-test-go" class="primary" type="button" hidden></button></div>
   </div>`;
   return {
     install(box,deck,context){if(!box)return;root=box;ctx=context||{};api=deck&&typeof deck.robotLink==='function'?deck:null;box.innerHTML=PAGE;box.addEventListener('click',onClick);box.addEventListener('input',onInput);box.addEventListener('change',onInput);

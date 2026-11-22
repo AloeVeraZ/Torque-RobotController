@@ -220,6 +220,8 @@ jobs:
           xvfb-run -a node tests/simulation-ui.cjs
           echo "== tests/design-ui.cjs"
           xvfb-run -a node tests/design-ui.cjs
+          echo "== tests/design-audit.cjs"
+          xvfb-run -a node tests/design-audit.cjs
           echo "== tests/robot-fullscreen.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/robot-fullscreen.cjs
           echo "== tests/touch-ui.cjs"
@@ -241,6 +243,7 @@ jobs:
             test-results/recovery/*.png
             test-results/layout-audit/*.png
             test-results/layout-audit/report.json
+            test-results/design-audit/report.json
       - uses: actions/checkout@v4
         if: matrix.target == 'steamdeck'
         with:

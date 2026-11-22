@@ -1,324 +1,501 @@
-/* The Driver Station in Torque's design language: same tokens, panels and buttons as every other tab.
-   Colour is kept for what the robot is doing; everything else stays neutral. */
-html { height: 100%; background: var(--bg); }
-body { margin: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 13px/1.5 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; }
-button { color: inherit; border: 0; background: transparent; padding: 0; }
-svg { fill: currentColor; }
-.ui-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-h2, h3 { font-family: var(--font); }
+/* The Driver Station: the instrument that starts and stops a robot, drawn on Torque's tokens (../tokens.css) and shared
+   controls (../base.css). One big round control; the rest is type, space and hairlines. Colour is the robot's state:
+   green is live, amber is look here, red is stop. Buttons, tags and notices are the shared ones; this file lays the
+   page out and draws only what the station alone has: the round action, the switch, the readings and its pages. */
+@layer features {
+  /* The page's own measures: the same gutter and column as the app shell above it. */
+  :root {
+    --ds-pad: var(--page-gutter);
+    --ds-gutter: max(var(--ds-pad), calc((100vw - var(--page-max)) / 2 + var(--ds-pad)));
+    --ds-edge: max(12px, calc((100vw - var(--page-max)) / 2 + 12px));
+    --ds-col: 880px;
+    /* The ground under a device drawing. The drawings are made for a light sheet, in either theme. */
+    --ds-figure: #e9edeb;
+  }
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none; }
 
-/* Context bar, laid out as a Driver Hub's: who this station is, the link, the two users, then the menu. */
-.bar { flex-shrink: 0; min-height: var(--bar-height); display: flex; align-items: center; gap: 16px; padding: 4px 12px 4px var(--page-gutter); background: var(--bg); border-bottom: 1px solid var(--line); position: relative; z-index: 6; }
-.brand { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-width: 0; }
-.brand span { font-weight: 650; font-size: 14px; letter-spacing: -.01em; white-space: nowrap; }
-.banner { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px; border-radius: 999px; font-weight: 600; font-size: 12px; white-space: nowrap; }
-.banner::before { content: ''; width: 7px; height: 7px; background: currentColor; border-radius: 50%; }
-.banner.connected { background: var(--connected-bg); color: var(--connected); }
-.banner.searching { background: var(--warning-bg); color: var(--warning); } .banner.searching::before { animation: ds-blink 1.2s ease-in-out infinite; }
-.banner.bad { background: var(--danger-bg); color: var(--danger); }
-@keyframes ds-blink { 50% { opacity: .25; } }
-.net { margin-left: auto; display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--surface); }
-.net-item { display: flex; align-items: baseline; gap: 6px; padding-right: 10px; white-space: nowrap; min-width: 0; font-size: 12px; }
-.net-item span { color: var(--quiet); } .net-item b { font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-.signal { display: flex; align-items: flex-end; gap: 2px; height: 14px; padding: 0 8px 0 2px; flex-shrink: 0; }
-.signal i { width: 3px; background: var(--line-strong); border-radius: 1px; }
-.signal i:nth-child(1) { height: 4px; } .signal i:nth-child(2) { height: 7px; } .signal i:nth-child(3) { height: 10px; } .signal i:nth-child(4) { height: 14px; }
-.signal.on i { background: var(--connected); }
-.signal.on.fair i:nth-child(4), .signal.on.poor i:nth-child(n+3) { background: var(--line-strong); }
-.signal.on.poor i { background: var(--warning); }
-.pads { display: flex; gap: 4px; flex-shrink: 0; }
-.pad { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--quiet); flex-shrink: 0; min-width: 44px; min-height: 40px; padding: 0 12px; border-radius: 999px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--line); transition: background .15s, color .15s; }
-.pad:hover { background: var(--raised); color: var(--text); }
-.pad svg { width: 22px; height: 14px; color: var(--quiet); }
-.pad.assigned { color: var(--text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--connected) 45%, transparent); } .pad.assigned svg { color: var(--connected); }
-.pad.active { background: var(--connected-bg); }
-.pad.standby { opacity: .55; }
-.bar-end { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.bar-btn { min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); background: var(--raised); font-weight: 600; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
-.bar-btn:hover { background: var(--hover); }
-.bar-icon { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: var(--radius-control); color: var(--muted); flex-shrink: 0; }
-.bar-icon:hover, .bar-icon[aria-expanded=true] { background: var(--raised); color: var(--text); }
-.more svg { width: 20px; height: 20px; }
-/* Robot fullscreen: the app's exit button sits over this corner. */
-body.fullscreen .bar { padding-right: 72px; } body.fullscreen #ds-fullscreen { display: none; }
-.menu { position: absolute; right: 12px; top: calc(var(--bar-height) - 4px); width: 240px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); padding: 6px; box-shadow: var(--shadow); }
-.menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; min-height: 44px; padding: 10px 12px; font-size: 13px; font-weight: 500; border-radius: var(--radius-detail); }
-.menu button:hover { background: var(--raised); }
-.menu .leaves { color: var(--quiet); }
-.menu #menu-restart { margin-bottom: 4px; } .menu #menu-about { margin-top: 4px; box-shadow: 0 -1px 0 var(--line); border-radius: 0 0 var(--radius-detail) var(--radius-detail); }
+  /* ---- The bar: which station this is and the link, said in words; then the link's numbers, the two controllers
+     and the ways out. It stands where the shell's browser toolbar does, at that height. ------------------------------ */
+  .bar { position: relative; z-index: var(--z-bar); flex: none; display: flex; align-items: center; gap: var(--space-4); min-height: 48px; padding: 0 var(--ds-edge) 0 var(--ds-gutter); border-bottom: 1px solid var(--line); background: var(--bg); }
+  .brand { flex: none; display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+  #ds-name { font: 700 var(--display-sm)/1 var(--font-display); letter-spacing: .01em; white-space: nowrap; }
+  .banner { color: var(--muted); font-size: var(--text-md); font-weight: 600; white-space: nowrap; }
+  .banner.connected { color: var(--ok); }
+  .banner.searching { color: var(--warn); }
+  .banner.bad { color: var(--bad); }
 
-/* The operator's controls on the left, everything the robot says on the right: a Driver Hub's two halves. */
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 7fr); gap: 12px; width: 100%; max-width: var(--page-max); margin-inline: auto; padding: 12px var(--page-gutter) 16px; box-sizing: border-box; }
-.left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
-.tile .label { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.value { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.value b { font-weight: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.value small { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--quiet); white-space: nowrap; }
+  .net { display: flex; align-items: center; gap: var(--space-4); min-width: 0; margin-left: auto; overflow: hidden; }
+  .net-item { display: flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
+  .net-item b { max-width: 180px; overflow: hidden; color: var(--text); font-size: var(--text-md); font-weight: 500; text-overflow: ellipsis; }
+  .net-item .reading { font-size: 18px; font-weight: 700; line-height: 1.2; }
+  /* Signal: four bars. Green while the robot answers; the tall ones go out as the ping grows. */
+  .signal { flex: none; display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+  .signal i { width: 3px; border-radius: 1px; background: var(--line-strong); }
+  .signal i:nth-child(1) { height: 4px; }
+  .signal i:nth-child(2) { height: 7px; }
+  .signal i:nth-child(3) { height: 10px; }
+  .signal i:nth-child(4) { height: 14px; }
+  .signal.on i { background: var(--ok-fill); }
+  .signal.on.poor i { background: var(--warn-fill); }
+  .signal.on.fair i:nth-child(4), .signal.on.poor i:nth-child(n+3) { background: var(--line-strong); }
 
-/* One op mode control: Autonomous list on the left, TeleOp on the right, the chosen name between. */
-.opbar { flex-shrink: 0; min-height: 64px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: stretch; gap: 4px; padding: 4px; background: var(--surface); border-radius: var(--radius-panel); }
-.tri { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 96px; padding: 0 14px; border-radius: var(--radius-control); background: var(--raised); font-size: 12px; font-weight: 650; letter-spacing: .02em; }
-.tri svg { width: 14px; height: 14px; opacity: .8; }
-.tri:hover:not(:disabled) { background: var(--hover); }
-.opname { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; padding: 4px 8px; border-radius: var(--radius-control); }
-.opname:hover:not(:disabled) { background: var(--raised); }
-.opname span { font-size: 14px; font-weight: 500; color: var(--muted); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.opname small { font-size: 12px; color: var(--quiet); }
-.opname.chosen span { font-size: 17px; font-weight: 650; letter-spacing: -.01em; color: var(--text); }
-.opname:disabled, .tri:disabled { opacity: 1; } .tri:disabled { color: var(--quiet); }
+  /* A controller slot: the pad and whose it is. Green when a pad is in it, a green ground while it is being used. */
+  .pads { flex: none; display: flex; gap: 2px; }
+  .pad { display: flex; align-items: center; gap: var(--space-2); padding: 0 10px; border: 0; background: none; color: var(--muted); white-space: nowrap; }
+  .pad:hover:not(:disabled) { background: var(--control); color: var(--text); }
+  .pad svg { width: 22px; height: 14px; fill: currentColor; color: var(--quiet); }
+  .pad.assigned { color: var(--text); }
+  .pad.assigned svg { color: var(--ok); }
+  .pad.active { background: var(--ok-bg); }
+  .pad.standby, .pad.standby svg { color: var(--quiet); }
 
-/* The one big button, round like a Driver Hub's: INIT, then START, then STOP. */
-.stage { flex: 1; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--surface); border-radius: var(--radius-panel); padding: 16px; position: relative; }
-.actions { display: flex; align-items: center; justify-content: center; gap: 16px; }
-.go { --size: clamp(120px, 30vh, 208px); width: var(--size); height: var(--size); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--accent); color: var(--on-accent); font-size: clamp(20px, 4vh, 28px); font-weight: 750; letter-spacing: .06em; box-shadow: 0 0 0 6px var(--bg), 0 0 0 7px var(--line-strong); transition: transform .12s, background .15s, box-shadow .2s; }
-.go:hover:not(:disabled) { background: var(--accent-hover); } .go:active:not(:disabled) { transform: scale(.97); }
-.go b { font-weight: inherit; }
-.go:disabled { background: var(--raised); color: var(--quiet); opacity: 1; box-shadow: 0 0 0 6px var(--surface), 0 0 0 7px var(--line); }
-.go.start { background: var(--go); color: var(--on-go); box-shadow: 0 0 0 6px var(--surface), 0 0 0 8px color-mix(in srgb, var(--go) 55%, transparent); animation: ds-ready 1.6s ease-in-out infinite; }
-.go.start:hover:not(:disabled) { background: var(--go); filter: brightness(1.08); }
-.go.stop { background: var(--stop); color: var(--on-stop); box-shadow: 0 0 0 6px var(--surface), 0 0 0 8px color-mix(in srgb, var(--stop) 55%, transparent); }
-.go.stop:hover:not(:disabled) { background: var(--stop); filter: brightness(1.1); }
-.go.start b, .go.stop b { display: none; }
-.go.start::after { content: 'START'; font-size: .6em; } .go.stop::after { content: 'STOP'; font-size: .6em; }
-.go.start i { width: 0; height: 0; border-style: solid; border-width: 18px 0 18px 28px; border-color: transparent transparent transparent currentColor; margin-left: 8px; }
-.go.stop i { width: 30px; height: 30px; background: currentColor; border-radius: 4px; }
-.go.waiting { opacity: .7; }
-@keyframes ds-ready { 50% { box-shadow: 0 0 0 6px var(--surface), 0 0 0 12px color-mix(in srgb, var(--go) 25%, transparent); } }
-.abort { width: 64px; height: 64px; flex-shrink: 0; border-radius: 50%; background: var(--danger-bg); display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; color: var(--danger); font-size: 10px; font-weight: 750; letter-spacing: .04em; }
-.abort i { width: 14px; height: 14px; background: currentColor; border-radius: 2px; }
-.abort::after { content: 'STOP'; }
-.abort:hover { filter: brightness(1.2); }
-.side { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); min-height: 44px; padding: 0 4px 0 0; border-radius: 999px; background: var(--raised); }
-.side-label { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.stopwatch { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; border-radius: 999px; color: var(--muted); }
-.stopwatch:hover { color: var(--text); }
-.stopwatch svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
-.stopwatch span { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--warning); }
-.stopwatch.off { color: var(--quiet); } .stopwatch.counting { color: var(--warning); }
-.switch { position: relative; display: block; width: 44px; height: 44px; flex-shrink: 0; cursor: pointer; }
-.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-.switch i { position: absolute; left: 0; right: 0; top: 11px; height: 22px; border-radius: 11px; background: var(--line-strong); pointer-events: none; }
-.switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); transition: left .15s; }
-.switch input:checked + i { background: var(--accent); } .switch input:checked + i::after { left: 25px; background: var(--on-accent); }
-.switch input:disabled + i { opacity: .5; }
-.switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .bar-end { flex: none; display: flex; align-items: center; gap: 2px; }
+  /* Close robot: a compact button to look at, a finger's height to hit (the transparent edge is part of it). */
+  .bar-btn { flex: none; margin-right: 2px; padding: 0 10px; border: 4px solid transparent; border-radius: 10px; background-clip: padding-box; white-space: nowrap; }
+  .bar-btn:focus-visible { outline-offset: -2px; }
+  .bar-icon, .page-back { flex: none; display: inline-grid; place-items: center; padding: 0; border: 0; background: none; color: var(--muted); }
+  :is(.bar-icon, .page-back):hover:not(:disabled), .bar-icon[aria-expanded=true] { background: var(--control); color: var(--text); }
+  .more svg { width: 18px; height: 18px; fill: currentColor; }
+  /* Robot fullscreen: the app's exit button sits over this corner. */
+  body.fullscreen :is(.bar, .page-head) { padding-right: 72px; }
+  body.fullscreen #ds-fullscreen { display: none; }
+  /* The three-dot menu, as the shell's. */
+  .bar > .menu { top: calc(100% - 4px); right: calc(var(--ds-edge) - 4px); width: 240px; max-height: calc(100dvh - 56px); overflow-y: auto; }
+  body.fullscreen .bar > .menu { right: 68px; }
+  .bar > .menu > button:last-child { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-ctl) var(--r-ctl); }
 
-/* The practice match clock: a strip under the button, apart from op modes. */
-.practice { flex-shrink: 0; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 8px 8px 16px; background: var(--surface); border-radius: var(--radius-panel); }
-.practice-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.practice-text small { font-size: 11px; color: var(--quiet); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#practice-time { font-size: 26px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-.practice.running #practice-time, .practice.running .practice-text small { color: var(--warning); }
-.round-play { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--raised); display: grid; place-items: center; }
-.round-play:hover { background: var(--hover); }
-.round-play i.play { width: 0; height: 0; border-style: solid; border-width: 7px 0 7px 11px; border-color: transparent transparent transparent var(--text); margin-left: 3px; }
-.round-play i.stop { width: 12px; height: 12px; background: var(--text); border-radius: 2px; }
+  /* ---- Two halves, as a Driver Hub's: what the driver does on the left, what the robot says on the right, a rule
+     between them. Nothing here is boxed; each half is rows set apart by hairlines that line up across the rule. ------ */
+  .grid { flex: 1; display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 7fr); min-height: 0; width: 100%; max-width: var(--page-max); margin-inline: auto; padding: 0 var(--ds-pad); }
+  .left, .right { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-block: var(--space-4); }
+  .left { container: deck / inline-size; padding-right: var(--space-5); }
+  .right { container: status / inline-size; padding-left: var(--space-5); border-left: 1px solid var(--line); }
 
-/* What the robot says: its state, the readouts a Driver Hub keeps on screen, its message, then telemetry. */
-.status { flex: 1; min-height: 0; background: var(--surface); border-radius: var(--radius-panel); display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
-.status-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.status-heading { font-size: 15px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; margin: 0; }
-#status-line { display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 12px; border-radius: 999px; background: var(--raised); font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-#status-line::before { content: ''; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--quiet); }
-body[data-robot-state=running] #status-line { color: var(--connected); background: var(--connected-bg); } body[data-robot-state=running] #status-line::before { background: var(--connected); }
-body[data-robot-state=init] #status-line { color: var(--text); } body[data-robot-state=init] #status-line::before { background: var(--text); }
-body[data-robot-state=disconnected] #status-line { color: var(--warning); background: var(--warning-bg); } body[data-robot-state=disconnected] #status-line::before { background: var(--warning); animation: ds-blink 1.2s ease-in-out infinite; }
-body[data-robot-state=emergency] #status-line { color: var(--danger); background: var(--danger-bg); } body[data-robot-state=emergency] #status-line::before { background: var(--danger); }
-.stats { flex-shrink: 0; display: grid; grid-template-columns: 1.25fr .8fr .9fr 1.25fr; border-radius: var(--radius-control); background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
-.stats .tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; min-width: 0; }
-.stats .tile + .tile { box-shadow: -1px 0 0 var(--line); }
-.stats .value { font-size: 20px; }
-.volts.caution .value b { color: var(--warning); }
-.volts.danger .value b { color: var(--danger); }
-.volts.none .value b, .rc-batt.none .value b { color: var(--quiet); }
-.batt { position: relative; display: inline-flex; align-items: center; justify-content: space-between; border: 1.5px solid var(--quiet); border-radius: 3px; flex-shrink: 0; margin-right: 4px; align-self: center; }
-.batt::after { content: ''; position: absolute; right: -5px; top: 50%; width: 3px; height: 6px; margin-top: -3px; background: var(--quiet); border-radius: 0 1px 1px 0; }
-.batt.small { width: 26px; height: 13px; padding: 2px; } .batt.small i { display: block; height: 100%; width: 0; background: var(--muted); border-radius: 1px; }
-.system { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.system[hidden] { display: none; }
-.system span { flex: 1; min-width: 200px; }
-.system.error, .system.warning { padding: 10px 12px; border-radius: var(--radius-control); border: 1px solid; }
-.system.error { color: var(--danger); background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
-.system.warning { color: var(--warning); background: var(--warning-bg); border-color: color-mix(in srgb, var(--warning) 35%, transparent); }
-.system-action { flex-shrink: 0; min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); background: currentColor; font-weight: 650; font-size: 12px; white-space: nowrap; }
-.system-action > * , .system-action { color: inherit; } .system.warning .system-action { background: var(--warning); color: var(--warning-bg); } .system.error .system-action { background: var(--danger); color: var(--danger-bg); }
-.system-action:hover:not(:disabled) { filter: brightness(1.1); } .system-action:disabled { opacity: .6; }
-.lines { flex: 1; min-height: 0; overflow: auto; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; font-variant-numeric: tabular-nums; }
-.lines > div { padding-block: 2px; }
-.lines.monospace { font-family: var(--mono); font-size: 12px; }
-.lines:empty { display: none; }
-/* Searching: the robot's last words stay on top, the game takes the rest. */
-body[data-robot-state=disconnected] .lines { flex: 0 1 auto; max-height: 35%; }
-/* While no robot answers, the telemetry area holds a game to pass the wait. */
-.waiting-game { flex: 1; min-height: 160px; position: relative; display: flex; flex-direction: column; justify-content: center; border-radius: var(--radius-control); overflow: hidden; }
-.waiting-game[hidden] { display: none; }
-.camera { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-.camera img { width: 100%; height: calc(100% - 28px); object-fit: contain; cursor: pointer; background: #000; border-radius: var(--radius-control); }
-.camera figcaption { font-size: 11px; color: var(--muted); }
-.link { font-size: 13px; font-weight: 500; color: var(--muted); min-height: 36px; padding: 6px; border-radius: var(--radius-detail); }
-.link:hover { color: var(--text); }
+  /* The op mode: the Autonomous list on the left, the TeleOp list on the right, the chosen one named between them. */
+  .opbar { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+  .tri { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 92px; padding: 0 8px 0 14px; }
+  .tri .ui-icon { width: 16px; height: 16px; color: var(--muted); }
+  /* Held while a robot is busy or away: the lists read as words, and the name stays at full strength. */
+  .tri:disabled { opacity: 1; background: none; color: var(--quiet); }
+  .tri:disabled .ui-icon { color: var(--line-strong); }
+  .opname { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 0 var(--space-2); border: 0; background: none; text-align: center; }
+  .opname:hover:not(:disabled) { background: var(--control); }
+  .opname:disabled { opacity: 1; }
+  .opname span { max-width: 100%; overflow: hidden; color: var(--muted); font-size: var(--text-base); text-overflow: ellipsis; white-space: nowrap; }
+  .opname small { max-width: 100%; overflow: hidden; color: var(--quiet); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+  .opname.chosen span { color: var(--text); font: 700 var(--display-md)/1.3 var(--font-display); letter-spacing: .01em; }
+  .opname.none span { color: var(--warn); }
 
-/* A controller still to assign takes a strip of its own, so it never covers telemetry. */
-.assign { flex-shrink: 0; order: 1; display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px var(--page-gutter); background: var(--surface); border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
-.assign b { color: var(--text); font-weight: 600; }
-.progress, .toast { position: fixed; left: 50%; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line-strong); border-radius: var(--radius-control); padding: 12px 16px; max-width: calc(100% - 32px); box-shadow: var(--shadow); font-size: 13px; }
-.progress { top: 64px; display: flex; flex-direction: column; gap: 6px; z-index: 9; min-width: 260px; }
-.progress progress { accent-color: var(--accent); }
-.toast { bottom: 24px; z-index: 12; }
-body:has(#assign-hint:not([hidden])) .toast { bottom: 56px; }
-kbd { font: 600 11px var(--font); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; background: var(--well); }
-/* One row and one column the size of the screen: a long list scrolls inside the card. (Sized by its content, a long list made the row taller than the screen and the centred card landed below it.) */
-.picker { position: fixed; inset: 0; background: var(--backdrop); display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; z-index: 10; padding: 16px; }
-.picker-card { width: min(520px, 100%); max-height: min(560px, 100%); min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); box-shadow: var(--shadow); }
-.picker-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 12px 12px 20px; border-bottom: 1px solid var(--line); }
-.picker-head h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-.picker-list { overflow: auto; min-height: 0; padding: 6px; }
-.picker-list h3 { margin: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--quiet); }
-.picker-list button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; text-align: left; min-height: 44px; padding: 8px 12px; font-size: 13px; font-weight: 500; border-radius: var(--radius-detail); }
-.picker-list button:hover { background: var(--raised); } .picker-list button.selected { background: var(--raised); box-shadow: inset 2px 0 0 var(--text); }
-.picker-list small { font-size: 12px; font-weight: 400; color: var(--quiet); } .picker-list .none { color: var(--muted); padding: 16px 12px; margin: 0; }
-dialog { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); color: var(--text); padding: 24px; width: min(620px, calc(100% - 32px)); box-shadow: var(--shadow); }
-dialog::backdrop { background: var(--backdrop); }
-dialog h2 { margin: 0 0 12px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
-dialog pre { margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 var(--font); color: var(--muted); user-select: text; -webkit-user-select: text; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.ok { background: var(--accent); color: var(--on-accent); min-height: 44px; padding: 10px 18px; border-radius: var(--radius-control); font-weight: 600; }
-.ok:hover:not(:disabled) { background: var(--accent-hover); }
-@media (max-width: 1180px) { #ds-name { display: none; } .net-item b { max-width: 120px; } }
-@media (max-width: 980px) { .pad span { display: none; } .net-item:first-child { display: none; } .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stats .tile:nth-child(3) { box-shadow: 0 -1px 0 var(--line); } .stats .tile:nth-child(4) { box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line); } }
-@media (max-width: 720px) {
-  :root { --page-gutter: 12px; }
-  body { overflow: auto; } .bar { flex-wrap: wrap; padding: 4px 8px 4px 12px; gap: 4px 8px; } .net { display: none; } .pads { margin-left: auto; }
-  .grid { display: flex; flex-direction: column; overflow: visible; padding: 12px; }
-  .left, .right { flex-shrink: 0; } .stage { min-height: 260px; } .status { min-height: 360px; } .tri { min-width: 72px; } .stats .value { flex-wrap: wrap; row-gap: 0; }
-  .assign { flex-wrap: wrap; gap: 4px 12px; }
-}
-@media (max-height: 600px) and (min-width: 721px) {
-  .grid { padding-block: 8px; gap: 8px; } .left, .right { gap: 8px; } .status { gap: 8px; padding-block: 12px; }
-  .opbar { min-height: 52px; } .stage { min-height: 150px; gap: 8px; padding: 8px; } .go { --size: clamp(96px, 26vh, 150px); } .practice { min-height: 48px; padding-block: 4px; }
-  .stats .tile { padding-block: 6px; } .stats .value { font-size: 17px; }
-}
-/* Settings, Configure Robot and Self Inspect: full-screen pages over the station, as on a Driver Hub. */
-.ds-page { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: var(--bg); }
-.page-head { flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: var(--bar-height); padding: 4px 16px 4px 12px; background: var(--bg); border-bottom: 1px solid var(--line); }
-.page-back { font-size: 24px; line-height: 1; color: var(--muted); min-width: 44px; min-height: 44px; border-radius: var(--radius-control); }
-.page-back:hover { background: var(--raised); color: var(--text); }
-.page-head h2 { margin: 0; flex: 1; min-width: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.page-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.page-status { margin: 0; padding: 10px var(--page-gutter); font-size: 13px; background: var(--raised); border-bottom: 1px solid var(--line); }
-.page-status.error { background: var(--danger-bg); color: var(--danger); } .page-status.warning { background: var(--warning-bg); color: var(--warning); }
-.page-body { flex: 1; overflow: auto; padding: 16px var(--page-gutter); display: flex; flex-direction: column; gap: 8px; max-width: 968px; width: 100%; margin: 0 auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
-.cfg-btn { min-height: 44px; padding: 10px 18px; border-radius: var(--radius-control); background: var(--raised); font-weight: 600; font-size: 13px; }
-.cfg-btn:hover:not(:disabled) { background: var(--hover); } .cfg-btn.danger { color: var(--danger); }
-.ds-page button:disabled, #page-ask button:disabled { opacity: .45; cursor: default; }
-.cfg-active { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 12px 16px; border-radius: var(--radius-panel); background: var(--surface); }
-.cfg-active span { color: var(--muted); } .cfg-active b { font-size: 15px; font-weight: 650; }
-.cfg-list { display: flex; flex-direction: column; gap: 8px; }
-.cfg-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px 10px 16px; border-radius: var(--radius-panel); background: var(--surface); }
-.cfg-row.active { box-shadow: inset 0 0 0 1px var(--line-strong); }
-.cfg-name { flex: 1; min-width: 160px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .cfg-name b { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
-.cfg-name small { font-size: 12px; font-weight: 500; color: var(--connected); } .cfg-name small.muted { color: var(--muted); }
-.cfg-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-.cfg-empty, .cfg-none { color: var(--muted); margin: 0; } .cfg-empty { padding: 24px 4px; }
-.cfg-trail { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
-.cfg-heading { margin: 12px 0 0; font-size: 12px; font-weight: 600; color: var(--quiet); }
-.cfg-entry { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 56px; padding: 10px 16px; border-radius: var(--radius-panel); background: var(--surface); }
-.cfg-entry:hover { background: var(--raised); }
-.cfg-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; } .cfg-entry b { font-size: 14px; font-weight: 650; }
-.cfg-entry small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cfg-chevron { font-style: normal; font-size: 22px; color: var(--quiet); }
-.cfg-ports { display: flex; flex-direction: column; gap: 8px; }
-.cfg-port { display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-panel); background: var(--surface); }
-.cfg-port.used { box-shadow: inset 0 0 0 1px var(--line-strong); }
-.cfg-port-no { font-weight: 600; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
-.cfg-type, .cfg-device-name, #page-ask input, .set-row select { min-height: 44px; min-width: 0; padding: 6px 10px; border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: var(--well); color: var(--text); font: inherit; }
-.cfg-type:focus, .cfg-device-name:focus, #page-ask input:focus, .set-row select:focus { border-color: var(--text); outline: none; }
-.cfg-device-name.bad { border-color: var(--danger); outline: 1px solid var(--danger); }
-.cfg-add { align-self: flex-start; margin-top: 4px; }
-#page-ask input { width: 100%; box-sizing: border-box; margin-top: 12px; }
-#page-ask p { margin: 0; line-height: 1.5; color: var(--muted); } #page-ask .page-ask-error { color: var(--danger); min-height: 1.5em; margin-top: 6px !important; }
-#page-ask .dialog-actions { gap: 8px; }
-.set-list { display: flex; flex-direction: column; gap: 8px; }
-.set-group { margin: 12px 0 0; font-size: 12px; font-weight: 600; color: var(--quiet); }
-.set-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; min-height: 48px; border-radius: var(--radius-panel); background: var(--surface); }
-.set-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .set-text b { font-size: 13px; font-weight: 600; } .set-text small { color: var(--muted); font-size: 12px; }
-/* Device pictures: the product photo sits on white, a drawing on the card's well. */
-/* The picture fills the box itself, so a tall or wide photo is letterboxed, never cropped. */
-.dev-fig { position: relative; display: block; flex-shrink: 0; border-radius: var(--radius-detail); background: #eef1f5; overflow: hidden; }
-.dev-fig svg, .dev-fig img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; }
-.dev-fig.photo img { inset: 4%; width: 92%; height: 92%; }
-.dev-fig.photo { background: #fff; } .dev-fig.empty { background: var(--well); border: 1px dashed var(--line-strong); }
-.dev-fig.small { width: 56px; height: 42px; } .dev-fig.big { width: 100%; aspect-ratio: 4 / 3; max-height: 260px; border-radius: var(--radius-control); }
-.dev-pick { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 52px; padding: 4px 10px 4px 4px; border-radius: var(--radius-control); border: 1px solid var(--line-strong); background: var(--well); text-align: left; }
-.dev-pick:hover { border-color: var(--input-hover); } .dev-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dev-pick-name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .dev-caret { font-style: normal; color: var(--muted); }
-.dev-backdrop { position: fixed; inset: 0; z-index: 20; background: var(--backdrop); }
-.dev-menu { position: fixed; z-index: 21; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); box-shadow: var(--shadow); overflow: hidden; user-select: none; -webkit-user-select: none; }
-.dev-head { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--line); } .dev-head b { flex: 1; font-size: 15px; font-weight: 650; }
-.dev-close { min-height: 40px; padding: 6px 14px; }
-.dev-panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
-.dev-list { overflow: auto; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
-.dev-group { margin: 10px 8px 4px; font-size: 12px; font-weight: 600; color: var(--quiet); } .dev-group:first-child { margin-top: 4px; }
-.dev-option { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 8px 4px 4px; border-radius: var(--radius-detail); text-align: left; }
-.dev-option:hover, .dev-option:focus-visible { background: var(--raised); outline: none; } .dev-option.chosen { background: var(--raised); box-shadow: inset 2px 0 0 var(--text); }
-.dev-option-text { min-width: 0; display: flex; flex-direction: column; } .dev-option-text b { font-weight: 600; } .dev-option-text small { color: var(--muted); font-size: 12px; }
-.dev-view { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; user-select: text; -webkit-user-select: text; }
-.dev-view h3 { margin: 8px 0 0; font-size: 15px; font-weight: 650; } .dev-maker { color: var(--muted); font-weight: 600; } .dev-view p { margin: 4px 0; line-height: 1.5; }
-.dev-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 6px 0 0; font-size: 12px; } .dev-facts dt { color: var(--muted); } .dev-facts dd { margin: 0; }
-.cfg-motor-details { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 2px 0 0 74px; }
-.cfg-detail { display: flex; align-items: center; gap: 10px; color: var(--muted); } .cfg-detail span { white-space: nowrap; }
-/* The pinout page uses the whole width for the diagram. */
-.ds-page.wide .page-body { max-width: none; }
-.pin-note { margin: 0; padding: 8px 12px; border-radius: var(--radius-control); background: var(--raised); color: var(--muted); } .pin-note.bad { background: var(--danger-bg); color: var(--danger); }
-.pin-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .pin-tools .cfg-btn { min-width: 48px; padding: 8px 14px; } .pin-zoom-label { color: var(--muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
-.pin-view { flex: 1; min-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-panel); background: #fff; } .pin-view:focus-visible { outline: 2px solid var(--accent); }
-.pin-sheet { display: block; max-width: none; height: auto; }
-@media (max-width: 720px) {
-  .page-body { padding: 12px; }
-  .dev-panes { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); } .dev-view { order: -1; flex-direction: row; flex-wrap: wrap; border-bottom: 1px solid var(--line); max-height: 40vh; }
-  .dev-view .dev-fig.big { width: 140px; } .cfg-motor-details { padding-left: 0; }
-  .cfg-port { grid-template-columns: 56px minmax(0, 1fr); } .cfg-port > :nth-child(n+3) { grid-column: 1 / -1; }
-  .set-row { flex-wrap: wrap; }
-}
+  /* ---- The one big button, round like a Driver Hub's: INIT in ink, START in green, STOP in red. It is the only
+     round button and the only thing this size, and it never moves when its neighbours come and go. The plain look
+     below is INIT's (.go.init); .start, .stop, .waiting and :disabled each change it. ---------------------------- */
+  .stage {
+    /* Its size follows the window's height; the lane beside it is kept for the small Stop. */
+    --lane: 108px;
+    --size: min(clamp(120px, 32vh, 264px), 100cqw - var(--lane) - 4px);
+    /* Where it sits: centred in what the window leaves under the bar, worked out from the window and never from the
+       rows around it, so the hint strip coming or going cannot move it. The fixed rows of this half come to 248 px
+       without that strip and 285 with it; 266 splits the difference. Centred across the half too, unless that would
+       leave no room for the lane. */
+    --top: max(20px, calc((100vh - 266px - var(--size)) / 2));
+    --left: max(0px, min(calc((100cqw - var(--size)) / 2), calc(100cqw - var(--size) - var(--lane))));
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+  }
+  .actions { position: relative; flex: 1; display: flex; align-items: flex-start; justify-content: flex-start; min-height: calc(var(--size) + 40px); padding-top: var(--top); }
+  .go { position: relative; flex: none; margin-left: var(--left); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .26em; width: var(--size); height: var(--size); padding: 0; border: 1.5px solid transparent; border-radius: 50%; background: var(--ink); color: var(--on-ink); font: 700 var(--display-lg)/1 var(--font-display); letter-spacing: .01em; }
+  /* Its bezel: a thin ring in the colour of what the button will do. */
+  .go::before { content: ""; position: absolute; inset: -10px; border: 1.5px solid var(--line-strong); border-radius: 50%; pointer-events: none; }
+  .go b { font-weight: inherit; }
+  .go i { display: none; background: currentColor; }
+  .go:hover:not(:disabled) { background: var(--ink-hover); }
+  .go:active:not(:disabled) { background: var(--ink-active); }
+  .go.start { background: var(--go); color: var(--on-go); }
+  .go.stop { background: var(--stop); color: var(--on-stop); }
+  .go.start::before { border-color: var(--go); }
+  .go.stop::before { border-color: var(--stop); }
+  .go:is(.start, .stop):hover:not(:disabled) { filter: brightness(1.07); }
+  .go:is(.start, .stop):active:not(:disabled) { filter: brightness(.93); }
+  .go.start:is(:hover, :active):not(:disabled) { background: var(--go); }
+  .go.stop:is(:hover, :active):not(:disabled) { background: var(--stop); }
+  /* The label element always says INIT (ds.js); START and STOP are drawn here, each under its own shape. */
+  .go:is(.start, .stop) b { display: none; }
+  .go.start::after { content: "START"; }
+  .go.stop::after { content: "STOP"; }
+  .go.start i { display: block; width: .74em; height: .84em; margin-left: .16em; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+  .go.stop i { display: block; width: .74em; height: .74em; border-radius: var(--r-mark); }
+  .go.waiting { opacity: .7; }
+  /* Nothing to start: an empty ring. Not dimmed, so it still reads from across a pit. */
+  .go:disabled, .go:is(.start, .stop):disabled { opacity: 1; border-color: var(--line-strong); background: none; color: var(--quiet); }
+  .go:disabled::before { border-color: var(--line); }
+  .go:focus-visible { outline-offset: 3px; }
+  /* Stop an op mode that is initialized but not started. Beside the button, so START stays where INIT was. */
+  .abort { position: absolute; top: calc(var(--top) + var(--size) / 2); left: calc(var(--left) + var(--size) + 28px); translate: 0 -50%; display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 14px; border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); font-weight: 600; white-space: nowrap; }
+  .abort:hover:not(:disabled), .abort:active:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); }
+  .abort i { width: 10px; height: 10px; border-radius: var(--r-mark); background: currentColor; }
+  .abort::after { content: "Stop"; }
+  /* A narrow half: the small Stop stands its square over its word, and the lane is that much slimmer. */
+  @container deck (max-width: 479px) {
+    .stage { --lane: 80px; }
+    .abort { left: calc(var(--left) + var(--size) + 20px); flex-direction: column; justify-content: center; gap: 5px; width: 56px; min-height: 56px; padding: 0; font-size: var(--text-sm); }
+    /* The lists step aside and the name takes two lines, a size down, rather than lose its end. */
+    .tri { min-width: 0; padding: 0 4px 0 10px; }
+    .opname { padding: 0 2px; }
+    .opname span { white-space: normal; overflow-wrap: anywhere; }
+    .opname.chosen span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: var(--display-sm); line-height: 1.1; }
+  }
 
-/* Self Inspect, laid out as the Driver Hub's: the two reports to pick, then a report's rows with the app's marks. */
-.inspect-menu { display: grid; max-width: 760px; }
-.inspect-head { margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.inspect-choice { display: grid; gap: 2px; justify-items: start; padding: 14px 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
-.inspect-choice:hover { background: var(--hover); }
-.inspect-choice strong { font-size: 18px; font-weight: 500; }
-.inspect-choice span { font-size: 13px; color: var(--muted); }
-.inspect-report { display: grid; gap: 12px; max-width: 760px; }
-.inspect-verdict { display: grid; gap: 2px; padding: 12px 16px; border-left: 4px solid var(--connected); border-radius: var(--radius-control); background: var(--surface); }
-.inspect-verdict.warn { border-left-color: var(--warning); } .inspect-verdict.bad { border-left-color: var(--danger); }
-.inspect-verdict strong { font-size: 15px; } .inspect-verdict span { font-size: 13px; color: var(--muted); }
-.inspect-rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; margin: 0; padding: 14px 16px; border-radius: var(--radius-panel); background: var(--surface); align-items: center; }
-.inspect-rows dt { font-size: 14px; color: var(--muted); }
-.inspect-rows dd { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 0; font-size: 14px; text-align: right; white-space: pre-line; overflow-wrap: anywhere; }
-.inspect-rows dd.tone-good span { color: var(--connected); } .inspect-rows dd.tone-warn span { color: var(--warning); }
-.inspect-rows .inspect-group { grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 650; color: var(--text); }
-.inspect-mark { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-style: normal; font-weight: 800; color: #fff; }
-.inspect-mark.good { background: var(--connected); } .inspect-mark.warn { background: var(--warning); } .inspect-mark.bad { background: var(--danger); }
-.inspect-rows .inspect-fix { grid-column: 1 / -1; justify-content: flex-start; margin: -4px 0 2px; padding: 8px 10px; border-radius: var(--radius-control); font-size: 12px; line-height: 1.35; text-align: left; white-space: normal; }
-.inspect-rows .inspect-fix.bad { background: var(--danger-bg); } .inspect-rows .inspect-fix.warn { background: var(--warning-bg); }
-.inspect-note { margin: 0; font-size: 12px; color: var(--muted); }
+  /* Under the button, two rows: the 30 second stop for Autonomous, then the practice match clock. */
+  .side { flex: none; display: flex; align-items: center; gap: var(--space-1); min-height: 52px; border-top: 1px solid var(--line); }
+  .stopwatch { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-left: -12px; padding: 0 12px; border: 0; background: none; color: var(--text); }
+  .stopwatch:hover:not(:disabled) { background: var(--control); }
+  .stopwatch .ui-icon { width: 20px; height: 20px; }
+  .stopwatch.off { color: var(--quiet); }
+  .stopwatch.counting { color: var(--warn); }
+  .stopwatch .reading { font-size: var(--display-md); }
+  .stopwatch .reading:empty { display: none; }
+  .side-label { flex: 1; min-width: 0; color: var(--text); font-size: var(--text-md); }
+  .side > .switch { margin-right: -4px; }
+  /* The switch: a track and a knob. Green when on, like every switch in the app. */
+  .switch { position: relative; flex: none; display: block; width: 44px; height: 44px; margin: 0; cursor: pointer; }
+  .switch input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; border: 0; border-radius: 0; background: none; opacity: 0; cursor: pointer; }
+  .switch i { position: absolute; top: 12px; left: 4px; width: 36px; height: 20px; border-radius: 10px; background: var(--track); box-shadow: inset 0 0 0 1px var(--field); pointer-events: none; }
+  .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); }
+  .switch input:checked + i { background: var(--ok-fill); box-shadow: none; }
+  .switch input:checked + i::after { translate: 16px 0; background: var(--on-go); }
+  .switch input:disabled { cursor: default; }
+  .switch input:disabled + i { opacity: var(--disabled-opacity); }
+  .switch input:focus-visible + i { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-.opname.none #opmode-label { color: var(--warning); }
+  .practice { flex: none; display: flex; align-items: center; gap: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+  .practice-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .practice .label { color: var(--text); font-size: var(--text-md); white-space: nowrap; }
+  .practice-text small { overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
+  #practice-time { color: var(--muted); font-size: var(--display-lg); }
+  .practice.running #practice-time, .practice.running .practice-text small { color: var(--text); }
+  .round-play { flex: none; display: inline-grid; place-items: center; padding: 0; }
+  .round-play i { display: block; background: currentColor; }
+  .round-play i.play { width: 11px; height: 13px; margin-left: 2px; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+  .round-play i.stop { width: 11px; height: 11px; border-radius: var(--r-mark); }
 
-/* ---- The BuildLens language (2026-11-21), as in ../design-system.css: capsule buttons, 28 px corners for what floats, shapes
-   nested in a card take the card's corner less the gap between them, and menus and dialogs arrive on the step spring. */
-.bar-btn, .cfg-btn, .ok, .system-action, .link, .page-back { border-radius: var(--radius-pill); }
-.bar-icon { border-radius: 50%; }
-.ok { font-weight: 700; }
-.opbar > .tri, .opbar > .opname { border-radius: calc(var(--radius-panel) - 4px); }
-.practice { border-radius: var(--radius-pill); padding-left: 24px; }
-.menu { border-radius: var(--radius-panel); padding: 8px; }
-.menu button, .picker-list button { border-radius: 16px; }
-.menu #menu-about { border-radius: 0 0 16px 16px; }
-dialog, .picker-card { border-radius: var(--radius-sheet); }
-.progress, .toast { border-radius: var(--radius-pill); padding-inline: 20px; }
-@media (prefers-reduced-motion: no-preference) {
-  .menu:not([hidden]) { animation: bl-pop var(--dur-step) var(--ease-step); transform-origin: top right; }
-  .picker:not([hidden]) > .picker-card { animation: bl-pop var(--dur-step) var(--ease-step); }
-  .ds-page:not([hidden]) { animation: bl-fade var(--dur) ease-out; }
+  /* ---- What the robot says: its state in words, its readings in a ruled row, any message, then telemetry. --------- */
+  .status { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .status-top { flex: none; display: flex; flex-wrap: wrap; align-items: baseline; align-content: center; justify-content: space-between; gap: 0 var(--space-4); min-height: 57px; padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+  .status-heading { margin: 0; }
+  #status-line { min-width: 0; margin: 0; color: var(--muted); font-size: var(--text-md); font-weight: 500; overflow-wrap: anywhere; }
+  body[data-robot-state=init] #status-line { color: var(--text); }
+  body[data-robot-state=running] #status-line { color: var(--ok); font-weight: 600; }
+  /* The one dot on the page: an op mode is running. */
+  body[data-robot-state=running] #status-line::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: var(--space-2); border-radius: 50%; background: var(--ok-fill); vertical-align: 1px; }
+  body[data-robot-state=disconnected] #status-line { color: var(--warn); }
+  /* An emergency stop is the one state that gets a ground of its own: it must not be read past. */
+  body[data-robot-state=emergency] #status-line { padding: 4px 10px; border: 1px solid var(--bad-line); border-radius: var(--r-ctl); background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+
+  /* Readings: a quiet label over a number in the display face, the row divided by hairlines. */
+  .stats { flex: none; display: flex; border-bottom: 1px solid var(--line); }
+  .stats .tile { flex: 1 1 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--space-3) var(--space-4); }
+  .stats .tile:first-child { padding-left: 0; }
+  .stats .tile:last-child { padding-right: 0; }
+  .stats .tile + .tile { border-left: 1px solid var(--line); }
+  .stats :is(.volts, .config) { flex-grow: 1.35; }
+  .stats .rc-batt { flex-grow: .8; }
+  .stats .ds-batt { flex-grow: .95; }
+  .stats .label { color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
+  .value { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; min-width: 0; }
+  /* A strut the height of a reading, so every value in the row sits on one baseline whatever its size. */
+  .value::before { content: "\200b"; margin-right: -10px; font: 700 var(--display-lg)/1.1 var(--font-display); }
+  /* A number is never cut short: its note drops under it first. A name may be. */
+  .value b { flex: none; font: 700 var(--display-lg)/1.1 var(--font-display); letter-spacing: .01em; white-space: nowrap; }
+  .config .value { flex-wrap: nowrap; }
+  .value #config { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .value small { min-width: 0; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
+  /* The configuration is a name, not a number: the same face a size down. */
+  #config { font-size: var(--display-md); line-height: 1.3; }
+  .volts.caution .value b { color: var(--warn); }
+  .volts.danger .value b { color: var(--bad); }
+  .volts.none .value b, .rc-batt.none .value b { color: var(--quiet); }
+  .batt { position: relative; flex: none; align-self: center; width: 26px; height: 13px; padding: 2px; border: 1.5px solid var(--quiet); border-radius: var(--r-mark); }
+  .batt::after { content: ""; position: absolute; top: 50%; right: -5px; width: 2.5px; height: 5px; translate: 0 -50%; border-radius: 0 1px 1px 0; background: var(--quiet); }
+  .batt i { display: block; width: 0; height: 100%; border-radius: 1px; background: var(--muted); }
+  /* A narrow half: two readings to a row, each row under its own rule. */
+  @container status (max-width: 599px) {
+    .status-top { border-bottom: 0; }
+    .stats { flex-wrap: wrap; }
+    .stats .tile, .stats .tile:first-child, .stats .tile:last-child, .stats .tile + .tile { flex: 1 1 50%; padding-inline: 0 var(--space-3); border-top: 1px solid var(--line); border-left: 0; }
+  }
+
+  /* The robot's own message, with the one thing that fixes it. */
+  .system { flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-3); padding: 10px var(--space-3); font-size: var(--text-md); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .system > span { flex: 1; min-width: 200px; }
+  .system-action { flex: none; white-space: nowrap; }
+  /* Telemetry: the robot's lines, as it sent them. Its monospace format is its program's own output. */
+  .lines { flex: 1; min-height: 0; margin-top: var(--space-3); overflow: auto; font-size: var(--text-base); line-height: 1.6; font-variant-numeric: tabular-nums; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .lines > div { padding-block: 2px; }
+  .lines.monospace { font-family: var(--mono); font-size: var(--text-md); }
+  .lines:empty { display: none; }
+  .lines :is(h1, h2, h3, h4, h5, h6) { margin: 0; font: 600 var(--text-base)/1.6 var(--font); letter-spacing: 0; }
+  .lines :is(p, pre, blockquote) { margin: 0; color: inherit; }
+  .lines :is(ul, ol) { margin: 0; padding-left: 20px; }
+  .lines :is(pre, code, tt) { font-family: var(--mono); font-size: var(--text-md); }
+  /* Searching: the robot's last words stay on top and the game takes the rest. */
+  body[data-robot-state=disconnected] .lines { flex: 0 1 auto; max-height: 35%; }
+  /* While no robot answers, the telemetry area holds a game to pass the wait. It is its own dark picture. */
+  .waiting-game { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 160px; margin-top: var(--space-3); }
+  .trip-run-canvas { border-radius: var(--r-box); }
+  .trip-run-mute { display: inline-grid; place-items: center; }
+  .camera { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; margin: var(--space-3) 0 0; }
+  .camera img { flex: 1; width: 100%; min-height: 0; border-radius: var(--r-box); background: var(--well); object-fit: contain; cursor: pointer; }
+  .camera figcaption { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--quiet); font-size: var(--text-sm); }
+  .link { padding: 0 var(--space-2); }
+  .camera .link { margin-right: calc(-1 * var(--space-2)); }
+
+  /* A controller still to assign: one quiet line under everything, so it never covers telemetry. */
+  .assign { flex: none; display: flex; align-items: center; gap: var(--space-3); min-height: 36px; padding: 6px var(--ds-gutter); border-top: 1px solid var(--line); color: var(--quiet); font-size: var(--text-sm); }
+  .assign b { flex: none; color: var(--text); }
+
+  /* ---- What floats: the op mode list, the robot's dialogs, progress and toasts. ------------------------------------ */
+  .picker { position: fixed; inset: 0; z-index: 30; }
+  .picker::before { content: ""; position: fixed; inset: 0; background: var(--backdrop); }
+  .picker-card { position: fixed; inset: 0; display: flex; flex-direction: column; width: min(480px, calc(100% - 32px)); height: fit-content; max-height: min(560px, calc(100% - 32px)); margin: auto; border-radius: var(--r-float); background: var(--surface); box-shadow: var(--shadow); }
+  .picker-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-3) var(--space-1) var(--space-5); }
+  .picker-head h2 { margin: 0; font-size: var(--display-md); }
+  .picker-list { min-height: 0; padding: 0 var(--space-2) var(--space-2); overflow: auto; }
+  .picker-list h3 { margin: var(--space-3) var(--space-4) var(--space-1); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
+  .picker-list button { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; min-height: 48px; padding: var(--space-2) var(--space-4); border: 0; background: none; font-size: var(--text-base); font-weight: 400; text-align: left; }
+  .picker-list button:hover:not(:disabled) { background: var(--control); }
+  .picker-list button.selected { background: var(--selected); font-weight: 600; }
+  .picker-list button span { min-width: 0; overflow-wrap: anywhere; }
+  .picker-list small { flex: none; color: var(--quiet); font-weight: 400; }
+  .picker-list .none { margin: 0; padding: var(--space-4); }
+
+  #ds-dialog { width: min(620px, calc(100% - 32px)); }
+  dialog pre { max-height: 50vh; margin: 0; overflow: auto; color: var(--muted); font: var(--text-md)/1.6 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-5); }
+  .dialog-actions > button { min-width: 88px; }
+  #page-ask p { margin: 0; }
+  #page-ask input { margin-top: var(--space-3); }
+  #page-ask .page-ask-error { min-height: 1.5em; margin-top: 6px; color: var(--bad); font-size: var(--text-sm); }
+  #page-ask .dialog-actions { margin-top: var(--space-2); }
+
+  .progress { position: fixed; top: 60px; left: 50%; z-index: 35; translate: -50% 0; display: flex; flex-direction: column; gap: var(--space-2); min-width: 280px; max-width: calc(100% - 32px); padding: var(--space-3) var(--space-4); border-radius: var(--r-ctl); background: var(--surface); box-shadow: var(--shadow); font-size: var(--text-md); }
+  /* A toast sits at the foot of the robot's side, clear of the button, the clock and the timer. */
+  .toast { position: fixed; right: var(--ds-gutter); bottom: 16px; z-index: var(--z-dialog); max-width: min(440px, calc(100vw - 32px)); padding: 10px 14px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--text-md); font-weight: 500; box-shadow: var(--shadow); overflow-wrap: anywhere; }
+  body:has(#assign-hint:not([hidden])) .toast { bottom: 52px; }
+
+  /* ---- Pages from the menu: Settings, Configure Robot, Self Inspect and a pinout. Each covers the station; Back
+     returns. A page is a title, then rows under hairlines, set at the page's left edge like the shell's own. -------- */
+  .ds-page { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); }
+  .page-head { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: var(--bar-height); padding: 0 var(--ds-edge); border-bottom: 1px solid var(--line); }
+  .page-head h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+  .page-actions { flex: none; display: flex; gap: var(--space-2); }
+  .page-actions:empty { display: none; }
+  .page-actions > button { min-width: 72px; }
+  .page-status { flex: none; margin: 0; padding: 10px var(--ds-gutter); border-bottom: 1px solid var(--line); background: var(--well); color: var(--muted); font-size: var(--text-md); overflow-wrap: anywhere; }
+  .page-status.warning { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
+  .page-status.error { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
+  .page-body { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: var(--space-5) max(var(--ds-gutter), calc(100vw - var(--ds-gutter) - var(--ds-col))) var(--space-6) var(--ds-gutter); overflow: auto; user-select: text; -webkit-user-select: text; }
+  .page-body > * { flex: none; width: 100%; }
+
+  /* Configure Robot: the active configuration, then every saved one as a row with what can be done to it. */
+  .cfg-active { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--space-4); }
+  .cfg-active span { color: var(--quiet); font-size: var(--text-sm); }
+  .cfg-active b { font: 700 var(--display-md)/1.2 var(--font-display); letter-spacing: .01em; overflow-wrap: anywhere; }
+  .cfg-list, .cfg-ports { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+  .cfg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-4); min-height: 60px; padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+  .cfg-name { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) 10px; min-width: 160px; }
+  .cfg-name b { font-size: var(--text-base); font-weight: 500; overflow-wrap: anywhere; }
+  .cfg-row.active .cfg-name b { font-weight: 600; }
+  .cfg-buttons { display: flex; flex-wrap: wrap; gap: 2px; margin-right: -12px; }
+  /* A row's actions are words until they are wanted; Delete turns red under the pointer or the finger. */
+  .cfg-buttons .cfg-btn { background: none; }
+  .cfg-buttons .cfg-btn:hover:not(:disabled) { background: var(--control); }
+  .cfg-buttons .cfg-btn:active:not(:disabled) { background: var(--hover); }
+  .cfg-btn.danger:is(:hover, :active, :focus-visible):not(:disabled) { background: var(--bad-bg); color: var(--bad); }
+  .cfg-empty { margin: 0; padding: var(--space-5) 0; color: var(--quiet); }
+  .cfg-none { margin: 0; color: var(--quiet); font-size: var(--text-sm); }
+  p.cfg-none { margin-top: var(--space-3); }
+
+  /* The editor's drill-down: where you are, then what is inside it, each a row that opens. */
+  .cfg-trail { margin: 0 0 var(--space-3); color: var(--quiet); font-size: var(--text-sm); }
+  .cfg-heading { margin: var(--space-4) 0 0; padding-bottom: var(--space-2); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
+  .cfg-trail + .cfg-heading { margin-top: 0; }
+  /* Inside a portal the page's title already says whose hubs these are. */
+  .page-body:has(> .cfg-add) > .cfg-trail + .cfg-heading { display: none; }
+  .cfg-entry, .inspect-choice { display: flex; align-items: center; gap: var(--space-3); min-height: 60px; padding: var(--space-2) var(--space-1); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; text-align: left; }
+  :is(.cfg-entry, .inspect-choice):hover:not(:disabled) { background: var(--control); }
+  :is(.cfg-entry, .inspect-choice):focus-visible { outline-offset: -2px; }
+  :is(.cfg-trail, .cfg-heading) + .cfg-entry { border-top: 1px solid var(--line); }
+  .cfg-entry-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .cfg-entry b, .inspect-choice strong { font-size: var(--text-base); font-weight: 500; }
+  .cfg-entry small { overflow: hidden; color: var(--quiet); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+  /* The mark that says a row opens: two edges of a square, turned. */
+  .cfg-chevron, .inspect-choice::after { content: ""; flex: none; width: 7px; height: 7px; margin-inline: 6px 8px; border-top: 1.5px solid var(--quiet); border-right: 1.5px solid var(--quiet); rotate: 45deg; }
+  /* A hub's ports: its number as printed on the hub, what is plugged in, and the name the code calls it. */
+  .cfg-port { display: grid; grid-template-columns: 52px minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: var(--space-2) var(--space-3); min-height: 60px; padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+  .cfg-port-no { color: var(--quiet); font: 700 15px/1 var(--font-display); letter-spacing: .02em; white-space: nowrap; }
+  .cfg-port.used .cfg-port-no { color: var(--text); }
+  .cfg-ports > .cfg-none { margin: 0; padding: var(--space-4) 0; border-bottom: 1px solid var(--line); }
+  .cfg-device-name.bad { border-color: var(--bad-fill); background: var(--bad-bg); }
+  .cfg-port > .cfg-btn { grid-area: 1 / 4; }
+  .cfg-motor-details { grid-column: 2 / 4; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-5); }
+  .cfg-detail { flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 10px; margin: 0; color: var(--muted); font-weight: 400; }
+  .cfg-detail > span { color: inherit; white-space: nowrap; }
+  .cfg-detail select { width: auto; min-width: 190px; }
+  /* Buttons that add to a list follow it in a row. */
+  .page-body:has(> .cfg-btn) { flex-flow: row wrap; align-content: flex-start; align-items: flex-start; column-gap: var(--space-2); }
+  .page-body > .cfg-btn { width: auto; margin-top: var(--space-4); }
+  .page-body > .cfg-btn.danger { color: var(--bad); }
+
+  /* The device picker: a button that shows what is on the port, opening a list with a picture of each choice. */
+  .dev-fig { position: relative; flex: none; display: block; padding: 0; overflow: hidden; border-radius: var(--r-tag); background: var(--ds-figure); }
+  .dev-fig :is(svg, img) { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+  /* A maker's photo is on white, so its ground is white too. */
+  .dev-fig.photo { background: #fff; }
+  .dev-fig.photo img { inset: 4%; width: 92%; height: 92%; }
+  .dev-fig.empty { background: var(--well); }
+  .dev-fig.small { width: 48px; height: 36px; }
+  .dev-fig.big { width: 100%; max-height: 260px; aspect-ratio: 4 / 3; border-radius: var(--r-ctl); }
+  .dev-pick { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 3px var(--space-2) 3px 3px; border-color: var(--field); background: var(--surface); font-weight: 400; text-align: left; }
+  .dev-pick:hover:not(:disabled), .dev-pick:active:not(:disabled) { border-color: var(--input-hover); background: var(--surface); }
+  .dev-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dev-caret { flex: none; width: 18px; height: 18px; background: var(--chevron) center / 18px 18px no-repeat; }
+  .dev-backdrop { position: fixed; inset: 0; z-index: var(--z-popover); background: var(--backdrop); }
+  .dev-menu { position: fixed; z-index: calc(var(--z-popover) + 1); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-float); background: var(--surface); box-shadow: var(--shadow); user-select: none; -webkit-user-select: none; }
+  .dev-head { flex: none; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-5); border-bottom: 1px solid var(--line); }
+  .dev-head b { flex: 1; min-width: 0; font: 700 var(--display-sm)/1.3 var(--font-display); letter-spacing: .01em; }
+  .dev-close { padding: 0 var(--space-2); }
+  .dev-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); min-height: 0; }
+  .dev-list { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2); overflow: auto; border-right: 1px solid var(--line); }
+  .dev-group { margin: var(--space-3) var(--space-2) var(--space-1); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
+  .dev-group:first-child { margin-top: var(--space-1); }
+  .dev-option { flex: none; display: flex; align-items: center; gap: 10px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); border: 0; background: none; font-weight: 400; text-align: left; }
+  .dev-option:is(:hover, :focus-visible):not(:disabled) { background: var(--control); }
+  .dev-option:focus-visible { outline-offset: -2px; }
+  .dev-option.chosen, .dev-option.chosen:is(:hover, :focus-visible) { background: var(--selected); }
+  .dev-option-text { display: flex; flex-direction: column; min-width: 0; }
+  .dev-option-text b { font-weight: 500; }
+  .dev-option.chosen .dev-option-text b { font-weight: 600; }
+  .dev-option-text small { color: var(--quiet); }
+  .dev-view { display: flex; flex-direction: column; gap: 6px; padding: var(--space-4) var(--space-5); overflow: auto; user-select: text; -webkit-user-select: text; }
+  .dev-view h3 { margin: var(--space-2) 0 0; font: 700 var(--display-sm)/1.2 var(--font-display); letter-spacing: .01em; }
+  .dev-maker { color: var(--quiet); font-weight: 500; }
+  .dev-view p { margin: var(--space-1) 0; }
+  .dev-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); margin: 6px 0 0; font-size: var(--text-sm); }
+  .dev-facts :is(dt, dd) { margin: 0; padding: 6px 0; border-top: 1px solid var(--line); }
+  .dev-facts dt { padding-right: var(--space-4); color: var(--quiet); }
+
+  /* The pinout: the wiring sheet in a frame that scrolls, using the window's whole width. */
+  .ds-page.wide .page-head { padding-inline: 12px; }
+  .ds-page.wide .page-body { padding-inline: var(--ds-pad); }
+  .pin-note { margin: 0 0 var(--space-2); }
+  .pin-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+  .pin-tools .cfg-btn { padding-inline: 14px; }
+  .pin-zoom-label { margin-left: var(--space-1); color: var(--quiet); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+  .page-body > .pin-view { flex: 1; min-height: 240px; padding: 10px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--well); }
+  .pin-sheet { display: block; max-width: none; height: auto; }
+
+  /* Settings: a title for each side of the link, then its rows. */
+  .set-list { display: flex; flex-direction: column; }
+  .set-group { margin: var(--space-6) 0 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); font: 700 var(--display-sm)/1.15 var(--font-display); letter-spacing: .01em; }
+  .set-group:first-child { margin-top: 0; }
+  .set-row { display: flex; align-items: center; gap: var(--space-4); min-height: 64px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .set-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .set-text b { font-size: var(--text-base); font-weight: 500; }
+  .set-text small { color: var(--quiet); line-height: 1.45; }
+  .set-row > select { flex: 0 1 260px; width: auto; min-width: 0; }
+  .set-row > button { flex: none; }
+  .set-row > .switch { margin-right: -4px; }
+
+  /* Self Inspect: the two reports to pick, then a report's rows with each result said in a word. */
+  .inspect-menu { display: flex; flex-direction: column; }
+  .inspect-head { margin: 0; padding-bottom: var(--space-2); border-bottom: 1px solid var(--line); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
+  .inspect-choice { justify-content: space-between; }
+  /* Each choice's second line only says its title again at length. */
+  .inspect-choice span { display: none; }
+  .inspect-report { display: flex; flex-direction: column; gap: var(--space-4); }
+  .inspect-verdict { flex-wrap: wrap; gap: 2px 10px; padding: 10px var(--space-3); font-size: var(--text-md); }
+  .inspect-verdict strong { font-size: var(--text-base); white-space: nowrap; }
+  .inspect-verdict.good { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok); }
+  .inspect-rows { display: grid; grid-template-columns: minmax(34%, 1fr) auto; margin: 0; border-bottom: 1px solid var(--line); }
+  .inspect-rows :is(dt, dd) { display: flex; align-items: center; min-height: 44px; margin: 0; padding: var(--space-2) 0; border-top: 1px solid var(--line); font-size: var(--text-md); }
+  .inspect-rows dt { color: var(--muted); }
+  .inspect-rows dd { display: grid; grid-template-columns: minmax(0, 1fr) 56px; justify-items: end; column-gap: 10px; padding-left: var(--space-4); font-weight: 500; text-align: right; white-space: pre-line; overflow-wrap: anywhere; }
+  .inspect-rows dd.tone-good span { color: var(--ok); }
+  .inspect-rows dd.tone-warn span { color: var(--warn); }
+  .inspect-rows .inspect-group { grid-column: 1 / -1; min-height: 0; padding: var(--space-5) 0 var(--space-2); border-top: 1px solid var(--line); color: var(--text); font: 600 var(--text-base)/1.35 var(--font); }
+  .inspect-mark { grid-column: 2; font-style: normal; }
+  .inspect-mark.good { color: var(--ok); font-size: var(--text-sm); font-weight: 500; }
+  /* What to change, under the row it is about: a strip in that mark's colour. */
+  .inspect-rows .inspect-fix { grid-column: 1 / -1; display: block; min-height: 0; margin: 0 0 10px; padding: var(--space-2) var(--space-3); border: 1px solid var(--warn-line); border-radius: var(--r-ctl); background: var(--warn-bg); color: var(--warn); font-size: var(--text-sm); font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; }
+  .inspect-rows .inspect-fix.bad { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
+  .inspect-note { margin: 0; color: var(--quiet); font-size: var(--text-sm); }
+
+  /* ---- Motion: an opening is explained once, quickly. --------------------------------------------------------------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .bar > .menu:not([hidden]), .dev-menu { animation: fade-in var(--dur) linear; }
+    .picker:not([hidden]) { animation: fade-in var(--dur-slow) linear; }
+    .picker:not([hidden]) > .picker-card { animation: rise-in var(--dur-slow) var(--ease); }
+    .ds-page:not([hidden]) { animation: fade-in var(--dur) linear; }
+    .switch i { transition: background-color var(--dur) var(--ease); }
+    .switch i::after { transition: translate var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+  }
+
+  /* ---- Narrower windows: the bar gives up its words in order of how little they are missed. ------------------------- */
+  @media (max-width: 1100px) {
+    .pad span { display: none; }
+    .net-item b { max-width: 120px; }
+  }
+  @media (max-width: 960px) {
+    .net-item:first-child { display: none; }
+  }
+  @media (max-width: 860px) {
+    #ds-name { display: none; }
+  }
+  /* A phone held upright: one column that scrolls, the bar in two rows. */
+  @media (max-width: 720px) {
+    :root { --ds-pad: 16px; }
+    body { overflow: auto; }
+    .bar { flex-wrap: wrap; gap: 0 var(--space-2); padding: 2px 4px 2px var(--ds-pad); }
+    .net { display: none; }
+    .pads { margin-left: auto; }
+    .bar-end { flex: 1 1 100%; justify-content: flex-end; }
+    .bar-btn { margin-right: auto; }
+    .grid { display: block; flex: none; }
+    .left { padding-right: 0; }
+    .right { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
+    .stage { --size: min(208px, 100cqw - var(--lane) - 4px); --top: 28px; }
+    .actions { min-height: calc(var(--size) + 56px); }
+    .status { min-height: 360px; }
+    .assign { flex-wrap: wrap; gap: 0 var(--space-3); }
+    .toast { right: 16px; }
+    .page-head { padding-inline: 4px; }
+    .cfg-buttons { margin-inline: -12px 0; }
+    .cfg-port { grid-template-columns: 52px minmax(0, 1fr); }
+    .cfg-port > :nth-child(n+3) { grid-area: auto; grid-column: 1 / -1; }
+    .cfg-port > .cfg-btn { justify-self: start; }
+    .cfg-detail select { min-width: 0; }
+    .set-row { flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+    .set-text { flex-basis: 100%; }
+    .set-row > select { flex-basis: 100%; }
+    .dev-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .dev-list { border-right: 0; }
+    .dev-view { order: -1; flex-flow: row wrap; max-height: 40vh; border-bottom: 1px solid var(--line); }
+    .dev-view .dev-fig.big { width: 140px; }
+  }
+  /* A short window: the button gives up size before anything is cut off. */
+  @media (max-height: 560px) and (min-width: 721px) {
+    .left, .right { padding-block: var(--space-2); }
+    .opbar { padding-bottom: var(--space-2); }
+    .status-top { min-height: 53px; padding-bottom: var(--space-2); }
+    .stage { --size: min(clamp(96px, 30vh, 200px), 100cqw - var(--lane) - 4px); --top: max(12px, calc((100vh - 230px - var(--size)) / 2)); }
+    .actions { min-height: calc(var(--size) + 24px); }
+    .go { font-size: var(--display-md); }
+    .go::before { inset: -7px; }
+    .side { min-height: 44px; }
+    .practice { padding-top: var(--space-1); }
+    .stats .tile { gap: 2px; padding-block: var(--space-2); }
+    .value::before, .value b { font-size: var(--display-md); }
+    #config { font-size: var(--display-sm); }
+    #practice-time { font-size: var(--display-md); }
+  }
 }

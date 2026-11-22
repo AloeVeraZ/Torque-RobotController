@@ -200,7 +200,7 @@
       chart();}
     function chart(){
       const canvas=q('[data-debug-chart]');if(!canvas||!plot.size||canvas.closest('[hidden]'))return;const w=canvas.clientWidth||600;if(canvas.width!==w)canvas.width=w;const h=canvas.height,g=canvas.getContext('2d');g.clearRect(0,0,w,h);
-      const css=getComputedStyle(host),colors=['--accent','--warning','--danger','--success','--text'].map(c=>css.getPropertyValue(c).trim()||'#4ea1ff');
+      const css=getComputedStyle(host),colors=['--series-1','--series-2','--series-3','--series-4','--series-5'].map(c=>css.getPropertyValue(c).trim()||'#3987e5');
       const end=frames.at(-1)?.t??0,keys=[...plot],legend=[];
       keys.forEach((key,k)=>{const pts=frames.filter(f=>f.t>=end-SPAN*1000).map(f=>[f.t,values(f)[key]]).filter(([,x])=>finite(x));if(!pts.length)return;
         let lo=Math.min(...pts.map(p=>p[1])),hi=Math.max(...pts.map(p=>p[1]));if(hi-lo<1e-9){hi+=.5;lo-=.5;}

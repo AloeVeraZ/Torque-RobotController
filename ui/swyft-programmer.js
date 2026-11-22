@@ -65,11 +65,11 @@ window.DeckSwyft=(()=>{
     if(!p.ready)return {tone:'wait',main:'Plug in the SWYFT programmer to continue',sub:`Everything here is a preview of SWYFT's defaults until then.${p.others?.length?` ${p.others.map(o=>o.port).join(', ')} ${p.others.length===1?'is':'are'} plugged in, but ${p.others.length===1?'it is':'they are'} not a SWYFT programmer.`:''} If it is plugged in and this stays, it needs the Silicon Labs CP210x driver from SWYFT's download.`};
     if(p.silent)return {tone:'bad',main:'The programmer is not answering',sub:'Unplug it and plug it back in.'};
     if(!s.present)return {tone:'wait',main:'Plug a SWYFT servo into the programmer',sub:'Match the servo\'s gray wire to the programmer\'s white wire. Torque finds it by itself.'};
-    if(repick&&n)return {tone:'warn',main:'Pick the servo that is plugged in',sub:'Under 1 Servo: check the label on the servo. Then press Apply again. Nothing was written.',ready:true};
+    if(repick&&n)return {tone:'warn',main:'Pick the servo that is plugged in',sub:'Under Servo: check the label on the servo. Then press Apply again. Nothing was written.',ready:true};
     if(result&&!result.ok)return {tone:'bad',main:'It did not take',sub:result.message,ready:n>0};
     if(n)return {tone:'good',main:`Ready to write ${n} ${n===1?'change':'changes'} to the servo`,sub:'Torque reads it back after writing, and shows what the servo reports.',ready:true};
     if(result)return {tone:'good',main:'Confirmed',sub:result.message};
-    const m=model();return {tone:'good',main:`${m?`SWYFT ${m.name}`:'A SWYFT servo'} is ready`,sub:m?'Change a setting or switch mode, then press Apply.':'Pick which SWYFT servo it is under 1 Servo: the programmer cannot tell them apart. Change a setting or switch mode, then press Apply.'};
+    const m=model();return {tone:'good',main:`${m?`SWYFT ${m.name}`:'A SWYFT servo'} is ready`,sub:m?'Change a setting or switch mode, then press Apply.':'Pick which SWYFT servo it is under Servo: the programmer cannot tell them apart. Change a setting or switch mode, then press Apply.'};
   }
   function renderBar(){
     const g=gate(),n=changeList().length;
@@ -88,9 +88,9 @@ window.DeckSwyft=(()=>{
   }
   function renderPicks(){
     const s=servo(),now=s.present?(s.continuous?'cr':'servo'):null,want=continuousNow()?'cr':'servo';
-    setHtml('swyft-models',models().map(m=>`<button id="swyft-model-${m.id}" type="button" class="axon-card" data-swyft="model" data-id="${m.id}" aria-pressed="${picked===m.id}"><strong>${esc(m.name)}</strong><span>${m.rpm} RPM · ${m.torque} kg·cm</span></button>`).join(''));
+    setHtml('swyft-models',models().map(m=>`<button id="swyft-model-${m.id}" type="button" class="axon-card secondary" data-swyft="model" data-id="${m.id}" aria-pressed="${picked===m.id}"><strong>${esc(m.name)}</strong><span>${m.rpm} RPM, ${m.torque} kg·cm</span></button>`).join(''));
     const locked=busy()||!live();
-    const mode=(key,title,line)=>`<button id="swyft-mode-${key}" type="button" class="axon-card" data-swyft="mode" data-mode="${key}" aria-pressed="${want===key}"${locked?' disabled':''}><strong>${title}${now===key?' <em>Now</em>':''}</strong><span>${line}</span></button>`;
+    const mode=(key,title,line)=>`<button id="swyft-mode-${key}" type="button" class="axon-card secondary" data-swyft="mode" data-mode="${key}" aria-pressed="${want===key}"${locked?' disabled':''}><strong>${title}${now===key?' <em>Now</em>':''}</strong><span>${line}</span></button>`;
     setHtml('swyft-modes',mode('servo','Servo mode','Holds a position')+mode('cr','Continuous','Spins at full speed'));
   }
 
@@ -148,7 +148,7 @@ window.DeckSwyft=(()=>{
   function syncAsk(){
     const box=$('swyft-ask');if(!ask){if(box.open)box.close();box.dataset.for='';return;}
     const key=ask.text+ask.buttons.map(b=>b[0]).join();if(box.dataset.for===key&&box.open)return;box.dataset.for=key;
-    box.innerHTML=`<h2 id="swyft-ask-title">${esc(ask.title)}</h2><p>${esc(ask.text)}</p>${ask.more?`<p>${esc(ask.more)}</p>`:''}<div class="button-row">${ask.buttons.map(([name,act,id],i)=>`<button id="swyft-ask-${i}" class="${i&&!ask.choice?'secondary':ask.choice&&act==='cancel-ask'?'secondary':'primary'}" type="button" data-swyft="${act}"${id?` data-id="${id}"`:''}>${esc(name)}</button>`).join('')}</div>`;
+    box.innerHTML=`<h2 id="swyft-ask-title">${esc(ask.title)}</h2><p>${esc(ask.text)}</p>${ask.more?`<p>${esc(ask.more)}</p>`:''}<div class="button-row">${ask.buttons.map(([name,act,id],i)=>`<button id="swyft-ask-${i}" class="${i||ask.choice?'secondary':'primary'}" type="button" data-swyft="${act}"${id?` data-id="${id}"`:''}>${esc(name)}</button>`).join('')}</div>`;
     if(!box.open)box.showModal();
   }
   function render(){
@@ -185,7 +185,7 @@ window.DeckSwyft=(()=>{
     model:b=>{picked=b.dataset.id;repick=false;try{localStorage.setItem(MODEL_KEY,picked);}catch{}},
     mode:b=>setMode(b.dataset.mode==='cr'),
     // Apply checks the servo first. The programmer cannot tell SWYFT servos apart, so the student confirms the one picked is
-    // the one plugged in, every time: Yes writes, No writes nothing and sends them back to 1 Servo.
+    // the one plugged in, every time: Yes writes, No writes nothing and sends them back to Servo.
     apply:()=>{if(!Object.keys(pending).length)return;repick=false;const m=model();
       if(!m){ask={title:'Which SWYFT servo is plugged in?',text:'Torque cannot tell SWYFT servos apart, so check the label on the servo and pick it.',buttons:[...models().map(x=>[x.name,'ask-model',x.id]),['Cancel','cancel-ask']],choice:true};return;}
       const n=Object.keys(pending).length;
@@ -219,19 +219,19 @@ window.DeckSwyft=(()=>{
 
   const PAGE=`<div class="axon-tab swyft-tab">
     <div class="axon-top"><h2>SWYFT Programmer</h2><div id="swyft-chips" class="axon-chips"></div><div class="segmented swyft-level" role="group" aria-label="How much to show" data-count="2"><button id="swyft-level-simple" type="button" data-swyft="level" data-level="simple" aria-pressed="true">Simple</button><button id="swyft-level-advanced" type="button" data-swyft="level" data-level="advanced" aria-pressed="false">Advanced</button></div></div>
-    <section class="cal-card swyft-picks" aria-label="Servo and mode"><div><h3 id="swyft-models-title" class="axon-step-title"><span>1</span>Servo</h3><div id="swyft-models" class="swyft-choices" role="group" aria-labelledby="swyft-models-title"></div></div><div><h3 id="swyft-modes-title" class="axon-step-title"><span>2</span>Mode</h3><div id="swyft-modes" class="swyft-choices" role="group" aria-labelledby="swyft-modes-title"></div></div></section>
+    <section class="swyft-picks" aria-label="Servo and mode"><div><h3 id="swyft-models-title" class="axon-step-title">Servo</h3><div id="swyft-models" class="swyft-choices" role="group" aria-labelledby="swyft-models-title"></div></div><div><h3 id="swyft-modes-title" class="axon-step-title">Mode</h3><div id="swyft-modes" class="swyft-choices" role="group" aria-labelledby="swyft-modes-title"></div></div></section>
     <div class="axon-main">
-      <section class="cal-card axon-settings" aria-labelledby="swyft-settings-head"><div class="axon-settings-head"><h3 id="swyft-settings-head" class="axon-step-title"><span>3</span>Settings<b aria-hidden="true">·</b><em id="swyft-settings-title"></em></h3><span id="swyft-tag"></span></div><div id="swyft-settings" class="axon-settings-body swyft-settings-body"></div><p id="swyft-hint" class="hint" aria-live="polite"></p></section>
+      <section class="axon-settings" aria-labelledby="swyft-settings-head"><div class="axon-settings-head"><h3 id="swyft-settings-head" class="axon-step-title">Settings <em id="swyft-settings-title"></em></h3><span id="swyft-tag"></span></div><div id="swyft-settings" class="axon-settings-body swyft-settings-body"></div><p id="swyft-hint" class="hint" aria-live="polite"></p></section>
       <div class="axon-side">
-        <section class="cal-card" aria-labelledby="swyft-report-title"><h3 id="swyft-report-title" class="axon-side-title">Servo</h3><div id="swyft-report"></div><div class="axon-actions swyft-actions"><button id="swyft-read" class="secondary" type="button" data-swyft="read">Read again</button><button id="swyft-defaults" class="secondary" type="button" data-swyft="defaults">SWYFT defaults</button></div></section>
-        <section class="cal-card axon-happened" aria-labelledby="swyft-log-title"><h3 id="swyft-log-title" class="axon-side-title">What happened</h3><div id="swyft-result"></div><div id="swyft-log"></div></section>
+        <section aria-labelledby="swyft-report-title"><h3 id="swyft-report-title" class="axon-side-title">Servo</h3><div id="swyft-report"></div><div class="axon-actions swyft-actions"><button id="swyft-read" class="secondary" type="button" data-swyft="read">Read again</button><button id="swyft-defaults" class="secondary" type="button" data-swyft="defaults">SWYFT defaults</button></div></section>
+        <section class="axon-happened" aria-labelledby="swyft-log-title"><h3 id="swyft-log-title" class="axon-side-title">What happened</h3><div id="swyft-result"></div><div id="swyft-log"></div></section>
         <div id="swyft-advanced" class="axon-advanced" hidden>
-          <section class="cal-card" aria-label="More the servo reports"><div id="swyft-more"></div></section>
-          <details id="swyft-usb" class="cal-card"><summary>Serial log</summary><p class="hint">Every frame to and from the programmer. Torque keeps it in its data folder as swyft-serial.log, which is what to send if a servo misbehaves.</p><pre id="swyft-usb-log" class="axon-bytes" tabindex="0"></pre></details>
+          <section aria-label="More the servo reports"><div id="swyft-more"></div></section>
+          <details id="swyft-usb"><summary>Serial log</summary><p class="hint">Every frame to and from the programmer. Torque keeps it in its data folder as swyft-serial.log, which is what to send if a servo misbehaves.</p><pre id="swyft-usb-log" class="axon-bytes" tabindex="0"></pre></details>
         </div>
       </div>
     </div>
-    <div class="axon-bar"><div id="swyft-banner" class="axon-banner" role="status" data-tone="wait"></div><button id="swyft-discard" class="secondary" type="button" data-swyft="discard" hidden>Discard</button><button id="swyft-apply" class="primary" type="button" data-swyft="apply" disabled>Apply</button></div>
+    <div class="axon-bar"><div id="swyft-banner" class="axon-banner notice" role="status" data-tone="wait"></div><button id="swyft-discard" class="secondary" type="button" data-swyft="discard" hidden>Discard</button><button id="swyft-apply" class="primary" type="button" data-swyft="apply" disabled>Apply</button></div>
     <dialog id="swyft-ask" aria-labelledby="swyft-ask-title"></dialog>
   </div>`;
 

@@ -1,58 +1,112 @@
-/* Torque's one design language. Every screen, shell and Driver Station alike, reads these
-   tokens; robot websites such as Program & Manage keep their own styles. */
+/* Torque's design language. Every screen, shell and Driver Station alike, reads these tokens; robot websites such as
+   Program & Manage keep their own styles.
+
+   The rules the tokens stand for:
+   1. Ink does the work. Structure is type, space and hairlines. Colour is kept for the robot's state (green live,
+      amber look here, red stop) and for the two alliances on a field. The main action is solid ink, not a hue.
+   2. One level of boxes. A surface holds rows; nothing boxed sits inside another box.
+   3. Shape follows the job: 2 marks, 4 tags and keys, 6 controls, 10 surfaces, 14 what floats. Only round things
+      are round (a dot, a knob, STOP).
+   4. Inter reads; Barlow Condensed is for readings (numbers that matter) and titles. Sentence case, no tracked capitals.
+   5. Motion explains a press or an opening, 100 to 180 ms, easing out. Nothing bounces.
+   6. Say a thing once. No subtitle that repeats its heading, no arrows on buttons. */
 @font-face{font-family:Inter;font-style:normal;font-weight:300 700;font-display:swap;src:url('fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
+
+/* Later layers win whatever their selectors: base is each element's default look, features is each screen's own layout,
+   system is the shared components and the screens drawn with them. */
+@layer base, features, system;
+
 :root {
   color-scheme: dark;
-  /* Apple's system colours, dark: black base, grouped grey surfaces, the system tint for the main action.
-     The shapes, spacing and motion below come from BuildLens (the user's LegoBuilder app); the colours do not. */
-  --bg: #000;
-  --surface: #1c1c1e;
-  --raised: #2c2c2e;
-  --well: #141416;
-  --control: #2c2c2e;
-  --hover: #3a3a3c;
-  --line: #2a2a2c;
-  --line-strong: #3a3a3c;
+  /* Neutrals lean a little green, the app icon's hue, and never reach pure black or white. Hex, not oklch(): the
+     3D view hands these to three.js, which reads hex only. */
+  --bg: #0c0f0d;
+  --surface: #131715;
+  --well: #0f1311;
+  --raised: #1d221f;
+  --control: #1d221f;
+  --hover: #282d2a;
+  --line: #242926;
+  --line-strong: #393f3b;
+  --field: #5e6561;
   --edge-top: var(--line);
-  --input-hover: #48484a;
-  --placeholder: #636366;
-  --text: #f5f5f7;
-  --muted: #a1a1a6;
-  --quiet: #77777c;
-  --accent: #0a84ff;
-  --accent-text: #f5f5f7;
-  --accent-bg: #1c1c1e;
-  --accent-hover: #339dff;
-  --accent-active: #0071e3;
-  --accent-fill: var(--accent);
-  --on-accent: #fff;
-  --thumb: #48484a;
-  --track: #76768033;
-  --ring: #0a84ff80;
-  --bar: #000000b8;
+  --input-hover: #8d9490;
+  --text: #ebf0ed;
+  --muted: #acb3af;
+  --quiet: #8d9490;
+  --placeholder: #8d9490;
+  /* Ink: the main action and what is picked. The accent names stay for the screens that still ask for them. */
+  --ink: #ebf0ed;
+  --ink-hover: #fafcfb;
+  --ink-active: #cdd3cf;
+  --on-ink: #0c0f0d;
+  --accent: var(--ink);
+  --accent-text: var(--text);
+  --accent-bg: #232825;
+  --accent-hover: var(--ink-hover);
+  --accent-active: var(--ink-active);
+  --accent-fill: var(--ink);
+  --on-accent: var(--on-ink);
+  --selected: #232825;
+  --thumb: #ebf0ed;
+  --track: #343a36;
+  --ring: #ebf0ed66;
+  --bar: var(--bg);
   --card-shadow: none;
-  --connected: #30d158;
-  --connected-bg: #10291a;
-  --success: var(--connected);
-  --warning: #ff9f0a;
-  --warning-bg: #2b1f0d;
-  --danger: #ff453a;
-  --danger-bg: #2e1614;
-  --go: #22c55e;
-  --on-go: #05160c;
-  --stop: #dc2626;
+  /* State. Each has the word's colour, a quiet ground for a strip of it, the ground's edge, and a solid fill. */
+  --ok: #5dda99;
+  --ok-bg: #0d291a;
+  --ok-line: #175437;
+  --ok-fill: #24c27d;
+  --warn: #f2af48;
+  --warn-bg: #312108;
+  --warn-line: #664610;
+  --warn-fill: #f2a635;
+  --bad: #fd7468;
+  --bad-bg: #391714;
+  --bad-line: #7e302a;
+  --bad-fill: #d72828;
+  --connected: var(--ok);
+  --connected-bg: var(--ok-bg);
+  --success: var(--ok);
+  --warning: var(--warn);
+  --warning-bg: var(--warn-bg);
+  --danger: var(--bad);
+  --danger-bg: var(--bad-bg);
+  --go: #24c27d;
+  --on-go: #06140d;
+  --stop: #d72828;
   --on-stop: #fff;
-  /* Corners: 12 for a tile or field inside a card, 24 for a card, 28 for what floats (dialogs, menus), 32 for a hero.
-     Buttons and chips are capsules. A shape nested in another takes the outer radius less the gap between them. */
-  --radius: 24px;
-  --radius-panel: 24px;
-  --radius-sheet: 28px;
-  --radius-hero: 32px;
-  --radius-control: 12px;
-  --radius-detail: 8px;
-  --radius-pill: 999px;
-  /* A 4 px grid: 8 between controls, 12 between cards and rows, 16 panel padding, 20 inside a card, 24 between sections. */
+  /* The alliances, on a field and nowhere else. */
+  --red: #f75e54;
+  --blue: #659ff4;
+  --blue-text: #7aacf6;
+  --blue-bg: #14243c;
+  /* Series in a chart, in this order and never cycled: identity only, never state. Each step is chosen for its surface
+     (checked for colour-blind separation between neighbours); a chart with more than one always carries a legend. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+
+  /* Corners, by job. */
+  --r-mark: 2px;
+  --r-tag: 4px;
+  --r-ctl: 6px;
+  --r-box: 10px;
+  --r-float: 14px;
+  --r-round: 999px;
+  --radius: var(--r-box);
+  --radius-panel: var(--r-box);
+  --radius-sheet: var(--r-float);
+  --radius-hero: var(--r-float);
+  --radius-control: var(--r-ctl);
+  --radius-detail: var(--r-tag);
+  --radius-pill: var(--r-round);
+
+  /* A 4 px grid: 8 between controls, 12 between rows, 16 inside a surface, 24 between sections, 32 between groups. */
   --space: 16px;
   --space-1: 4px;
   --space-2: 8px;
@@ -62,97 +116,96 @@
   --space-6: 32px;
   --space-7: 48px;
   --gap-card: 12px;
-  --pad-card: 20px;
-  /* Control heights: compact toolbars, regular buttons and fields, touch-size and form fields. */
+  --pad-card: 16px;
+  /* Control heights: compact toolbars, regular buttons and fields, a finger's size. */
   --h-sm: 32px;
   --h-md: 36px;
   --h-lg: 44px;
-  /* Type scale: captions, labels, body, lead, card titles, page titles. */
+
+  /* Type. Inter: captions, labels, body, lead, titles. Barlow Condensed: titles and readings. */
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
   --text-base: 14px;
-  --text-lg: 17px;
+  --text-lg: 16px;
   --text-xl: 22px;
-  --scrollbar-thumb: #ffffff33;
-  --scrollbar-thumb-hover: #ffffff59;
+  --display-sm: 20px;
+  --display-md: 26px;
+  --display-lg: 38px;
+  --display-xl: 60px;
+  --font: Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Barlow Condensed', 'DIN Condensed', 'Arial Narrow', Inter, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  --scrollbar-thumb: #ebf0ed2e;
+  --scrollbar-thumb-hover: #ebf0ed52;
   --z-bar: 5;
   --z-popover: 40;
   --z-menu: 60;
   --z-dialog: 100;
-  /* Motion: two springs. Press (response .24, damping .8) for buttons and thumbs; step (response .42, damping .86)
-     for things that open, close or swap. A pressed control shrinks to 97% and dims to 80%. */
-  --ease-press: linear(0, .114, .337, .561, .74, .866, .944, .988, 1.008, 1.015, 1.015, 1.012, 1.008, 1.005, 1);
-  --ease-step: linear(0, .099, .296, .498, .668, .795, .883, .939, .973, .992, 1.001, 1.004, 1.005, 1.004, 1);
-  --dur-press: 300ms;
-  --dur-step: 480ms;
-  --press-scale: .97;
-  --press-opacity: .8;
-  --disabled-opacity: .4;
-  --dur-fast: 160ms;
-  --dur: 240ms;
-  --dur-slow: 420ms;
+  /* Motion: one curve that eases out and never overshoots. */
+  --ease: cubic-bezier(.2, 0, 0, 1);
+  --ease-press: var(--ease);
+  --ease-step: var(--ease);
+  --dur-fast: 100ms;
+  --dur: 140ms;
+  --dur-slow: 180ms;
+  --dur-press: 100ms;
+  --dur-step: 180ms;
+  --press-scale: 1;
+  --press-opacity: 1;
+  --disabled-opacity: .45;
   --bar-height: 52px;
   --page-gutter: 24px;
-  --page-max: 1320px;
-  /* SF Rounded where the system has it (a Mac); Inter everywhere else. */
-  --font: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --font-display: var(--font);
-  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
-  --ease: var(--ease-press);
-  --shadow: 0 0 0 .5px #ffffff1f, 0 24px 64px #000000b3;
-  --backdrop: #0009;
+  --page-max: 1360px;
+  --shadow: 0 0 0 1px #393f3b, 0 14px 40px #000000a6;
+  --backdrop: #000000a6;
   --grid-major: transparent;
   --grid-minor: transparent;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23acb3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%230c0f0d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E");
 }
 /* Light theme: chosen in Settings, or followed from the system when set to System. */
 :root[data-theme=light] {
   color-scheme: light;
-  /* Light, turned down: a soft grey page and off-white panels, so a whole screen of it does not glare. */
-    --bg: #e4e4e9; --surface: #f1f1f4; --raised: #e3e3e8; --well: #e8e8ec; --control: #dadadf;
-    --line: #d6d6dc; --line-strong: #c2c2c9; --text: #1d1d1f; --muted: #5c5c61; --quiet: #77777c;
-    --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
-    --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
-    --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
-    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029; --scrollbar-thumb: #0000002e; --scrollbar-thumb-hover: #00000052;
-    --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
-    --go: #16a34a; --on-go: #fff;
+  --bg: #f2f5f3; --surface: #fbfdfc; --well: #eaeeec; --raised: #e3e7e5; --control: #e3e7e5; --hover: #d9dedb;
+  --line: #d9dedb; --line-strong: #b9c0bc; --field: #808884; --input-hover: #59605b;
+  --text: #141a16; --muted: #4a524d; --quiet: #59605b; --placeholder: #59605b;
+  --ink: #141a16; --ink-hover: #28302b; --ink-active: #060a08; --on-ink: #fbfdfc;
+  --accent-bg: #dde3df; --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #141a1659;
+  --ok: #006d42; --ok-bg: #def8e7; --ok-line: #b1dec2; --ok-fill: #007e4c;
+  --warn: #8d5400; --warn-bg: #ffeed3; --warn-line: #eecb95; --warn-fill: #d78c00;
+  --bad: #b51f1f; --bad-bg: #ffe9e6; --bad-line: #fcc0ba; --bad-fill: #d72828;
+  --go: #007e4c; --on-go: #fff;
+  --red: #d73431; --blue: #276ed2; --blue-text: #1a57ad; --blue-bg: #e6f1ff;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4;
+  --scrollbar-thumb: #141a1633; --scrollbar-thumb-hover: #141a1659;
+  --shadow: 0 0 0 1px #141a1614, 0 10px 30px #141a1626; --backdrop: #141a1666;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234a524d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E"); --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fbfdfc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme=dark]) {
     color-scheme: light;
-    /* Light, turned down: a soft grey page and off-white panels, so a whole screen of it does not glare. */
-    --bg: #e4e4e9; --surface: #f1f1f4; --raised: #e3e3e8; --well: #e8e8ec; --control: #dadadf;
-    --line: #d6d6dc; --line-strong: #c2c2c9; --text: #1d1d1f; --muted: #5c5c61; --quiet: #77777c;
-    --accent: #0071e3; --accent-text: #1d1d1f; --accent-bg: #e3e3e8; --on-accent: #fff;
-    --accent-hover: #0077ed; --accent-active: #006edb; --hover: #d5d5db; --input-hover: #9d9da3; --placeholder: #9d9da3;
-    --thumb: #f8f8fa; --track: #76768029; --ring: #0071e366; --bar: #e4e4e9c7; --card-shadow: 0 0 0 .5px #0000000f, 0 1px 3px #0000000a;
-    --backdrop: #0005; --shadow: 0 0 0 .5px #0000001a, 0 24px 64px #00000029; --scrollbar-thumb: #0000002e; --scrollbar-thumb-hover: #00000052;
-    --connected: #1f7a36; --connected-bg: #d3ecd9; --warning: #9a4500; --warning-bg: #f3e3c8; --danger: #c20013; --danger-bg: #f3d6d3;
-    --go: #16a34a; --on-go: #fff;
+    --bg: #f2f5f3; --surface: #fbfdfc; --well: #eaeeec; --raised: #e3e7e5; --control: #e3e7e5; --hover: #d9dedb;
+    --line: #d9dedb; --line-strong: #b9c0bc; --field: #808884; --input-hover: #59605b;
+    --text: #141a16; --muted: #4a524d; --quiet: #59605b; --placeholder: #59605b;
+    --ink: #141a16; --ink-hover: #28302b; --ink-active: #060a08; --on-ink: #fbfdfc;
+    --accent-bg: #dde3df; --selected: #dde3df; --thumb: #fbfdfc; --track: #c6cdc9; --ring: #141a1659;
+    --ok: #006d42; --ok-bg: #def8e7; --ok-line: #b1dec2; --ok-fill: #007e4c;
+    --warn: #8d5400; --warn-bg: #ffeed3; --warn-line: #eecb95; --warn-fill: #d78c00;
+    --bad: #b51f1f; --bad-bg: #ffe9e6; --bad-line: #fcc0ba; --bad-fill: #d72828;
+    --go: #007e4c; --on-go: #fff;
+    --red: #d73431; --blue: #276ed2; --blue-text: #1a57ad; --blue-bg: #e6f1ff;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100; --series-5: #e87ba4;
+    --scrollbar-thumb: #141a1633; --scrollbar-thumb-hover: #141a1659;
+    --shadow: 0 0 0 1px #141a1614, 0 10px 30px #141a1626; --backdrop: #141a1666;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234a524d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E"); --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fbfdfc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E");
   }
 }
-*, *::before, *::after { box-sizing: border-box; }
 
+/* What every page needs before any look is drawn. Not in a layer: nothing may undo these. */
+*, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-button, input, select { font: inherit; }
-button { cursor: pointer; }
-button:disabled { cursor: default; opacity: var(--disabled-opacity); }
-button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
-:where(button, a, input, select, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
-::selection { background: var(--accent); color: var(--on-accent); }
-/* Every control answers a press the same way: it dims, and (unless motion is reduced) gives a little. */
-:where(button, summary, [role=button]):active:not(:disabled) { opacity: var(--press-opacity); }
-@media (prefers-reduced-motion: no-preference) {
-  button, a, input, select, summary { transition: background-color var(--dur-press) var(--ease-press), border-color var(--dur-press) var(--ease-press), color var(--dur-press) var(--ease-press), box-shadow var(--dur-press) var(--ease-press), opacity var(--dur-press) var(--ease-press), transform var(--dur-press) var(--ease-press), scale var(--dur-press) var(--ease-press); }
-  :where(button, summary, [role=button]):active:not(:disabled) { scale: var(--press-scale); }
-  /* What opens grows from 94% and fades in, on the slower spring. */
-  @keyframes bl-pop { from { opacity: 0; scale: .94; } }
-  @keyframes bl-rise { from { opacity: 0; translate: 0 12px; } }
-  @keyframes bl-fade { from { opacity: 0; } }
-  dialog[open] { animation: bl-pop var(--dur-step) var(--ease-step); }
-  dialog[open]::backdrop { animation: bl-fade var(--dur) ease-out; }
-}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

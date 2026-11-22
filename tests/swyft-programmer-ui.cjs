@@ -62,7 +62,7 @@ const root=path.resolve(__dirname,'..');
     const at270=await page.evaluate(()=>{const s=document.querySelector('#swyft-f-travel');return [...Array(+s.max+1).keys()].find(i=>{s.value=i;s.dispatchEvent(new Event('input',{bubbles:true}));return document.querySelector('#swyft-v-travel').textContent==='270°';});});
     assert.ok(at270>0,'270° is one of the slider steps');await page.click('#swyft-f-reverse-on');assert.equal(await page.getAttribute('#swyft-f-reverse-on','aria-pressed'),'true');
     await until(/Ready to write 3 changes/);assert.equal(await sim(()=>global.__swyft.link.writes.length),0,'nothing is written before Apply');
-    // Apply asks first whether the servo plugged in is the one picked. No writes nothing and points back to 1 Servo.
+    // Apply asks first whether the servo plugged in is the one picked. No writes nothing and points back to Servo.
     await page.click('#swyft-apply');await page.waitForSelector('#swyft-ask[open]');assert.match(await page.locator('#swyft-ask-title').textContent(),/^Is the servo plugged in a SWYFT Speed\?$/);
     assert.match(await page.locator('#swyft-ask').textContent(),/check the label on the servo/);await page.click('#swyft-ask-1');
     await until(/Pick the servo that is plugged in/);assert.equal(await sim(()=>global.__swyft.link.writes.length),0,'No writes nothing');

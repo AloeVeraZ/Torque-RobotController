@@ -1,21 +1,20 @@
 /* Flat, standard-layout tester. No physical-model illustration or remote assets. */
-.controller-test-grid{grid-template-columns:1.1fr 1fr;gap:16px}
-.controller-visual-panel{justify-content:flex-start}
+@layer features {
 #controller-visual{display:grid;place-items:center;padding:0}
 #controller-visual svg.tester-diagram{display:block;width:100%;height:258px;overflow:visible}
 .tester-diagram{color:var(--text);fill:none;stroke-linecap:round;stroke-linejoin:round}
-.tester-shell-shadow{fill:var(--raised);stroke:var(--line);stroke-width:2}
-.tester-shell{fill:var(--well);stroke:#a9b2bb;stroke-width:2}
+.tester-shell-shadow{stroke-width:2}
+.tester-shell{stroke-width:2}
 .tester-seam{fill:none;stroke:var(--line);stroke-width:1.5}
-.tester-zone{fill:none;stroke:#616871;stroke-width:1.5}
+.tester-zone{fill:none;stroke-width:1.5}
 .tester-crosshair{stroke:var(--line);stroke-width:1;stroke-dasharray:2 3}
 .tester-cap{fill:var(--surface);stroke:var(--text);stroke-width:2}
 .tester-center{fill:var(--text);stroke:none}
 .tester-key path,.tester-meta circle,.tester-shoulder rect,.tester-trigger-bed{fill:var(--well);stroke:var(--text);stroke-width:2}
 .tester-meta>path{fill:none;stroke:var(--text);stroke-width:1.1}
-.tester-diagram text{font:600 9px var(--font);text-anchor:middle;fill:var(--muted);stroke:none;pointer-events:none}
+.tester-diagram text{font:600 var(--text-xs) var(--font);text-anchor:middle;fill:var(--muted);stroke:none;pointer-events:none}
 .tester-key text{font-size:8px}
-.tester-trigger text{font-size:9px;fill:var(--text)}
+.tester-trigger text{font-size:var(--text-xs);fill:var(--text)}
 .tester-trigger-fill{fill:var(--connected);stroke:none}
 .tester-key.pressed path,.tester-meta.pressed circle,.tester-shoulder.pressed rect,.tester-stick.pressed .tester-cap{fill:var(--connected);stroke:var(--connected)}
 .tester-key.pressed text{fill:#072015}
@@ -27,37 +26,35 @@
 .stick-plot svg .scope-unit{stroke:var(--muted)}
 .stick-plot svg .scope-ticks{stroke:var(--line)}
 .stick-plot svg .scope-point{fill:var(--connected);stroke:none}
-.stick-plot span{font-size:11px;color:var(--muted);line-height:1.4}
-.axis-readings{margin-top:8px}
-.controller-tabs{display:flex;gap:8px;margin-bottom:12px}
+.stick-plot span{font-size:var(--text-xs);color:var(--muted);line-height:1.4}
 .controller-tabs button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 .calibration-plots{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.calibration-plot{border:1px solid var(--line);border-radius:8px;background:var(--well);padding:12px;min-width:0}
+.calibration-plot{min-width:0}
 .calibration-plot svg{display:block;width:100%;height:160px;fill:none;stroke:var(--line-strong)}
-.calibration-plot h3{font-size:14px;margin:0}
+.calibration-plot h3{font-size:var(--text-base);margin:0}
 #controller-dialog[data-view=calibration] :is(#controller-mode-help,#steamdeck-controls,#controller-robot-note,#controller-driver-details){display:none}
 .calibration-plot .calibration-zone{fill:var(--accent-bg);stroke:var(--accent)}
 .calibration-plot .calibration-trail{stroke:var(--connected);opacity:.5;stroke-width:1.5}
 .calibration-plot .calibration-dot{fill:var(--connected);stroke:none}
-.calibration-plot output{display:block;font:11px var(--mono)}
-.calibration-travel{font-size:10px!important;margin:4px 0!important}
-#calibration-status{font-size:12px;margin:12px 0}
+.calibration-plot output{display:block;font:var(--text-xs) var(--mono)}
+.calibration-travel{font-size:var(--text-xs)!important;margin:4px 0!important}
+#calibration-status{font-size:var(--text-sm);margin:12px 0}
 #calibration-deadzone{width:100%;accent-color:var(--accent)}
-.deck-control-guide{padding:0 12px 12px;font-size:12px;line-height:1.6}
+.deck-control-guide{padding:0 12px 12px;font-size:var(--text-sm);line-height:1.6}
 .deck-control-guide ul{padding-left:20px}
-@media(max-width:540px){.calibration-plots{gap:8px}.calibration-plot{padding:8px}.calibration-plot svg{height:140px}.calibration-plot output{font-size:10px}}
+@media(max-width:540px){.calibration-plots{gap:8px}.calibration-plot svg{height:140px}.calibration-plot output{font-size:var(--text-xs)}}
 .axis-reading{padding:4px 2px}
-.axis-reading output{font-size:14px}
+.axis-reading output{font-size:var(--text-base)}
 .controller-identity{position:relative}
 .controller-identity strong{padding-right:100px}
-#controller-driver-details{font-size:11px;margin:0}
-#controller-driver-details summary{position:absolute;right:99px;top:16px;font-size:11px;color:var(--muted);cursor:pointer}
+#controller-driver-details{font-size:var(--text-xs);margin:0}
+#controller-driver-details summary{position:absolute;right:99px;top:16px;font-size:var(--text-xs);color:var(--muted);cursor:pointer}
 #controller-driver-details[open] summary{color:var(--accent-text)}
-#controller-driver-details code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 var(--mono);color:var(--muted);padding:12px 0 3px}
-#controller-driver-details p{font-size:11px;max-width:580px;margin:3px 0 0;color:var(--muted)}
-details.input-help{padding:0;border:1px solid var(--line);background:var(--well);border-radius:8px}
-details.input-help summary{padding:10px 12px;font-size:12px;font-weight:600;color:var(--accent-text);cursor:pointer;min-height:40px}
+#controller-driver-details code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font:var(--text-xs)/1.5 var(--mono);color:var(--muted);padding:12px 0 3px}
+#controller-driver-details p{font-size:var(--text-xs);max-width:580px;margin:3px 0 0;color:var(--muted)}
+details.input-help summary{padding:10px 12px;font-size:var(--text-sm);font-weight:600;color:var(--accent-text);cursor:pointer;min-height:40px}
 details.input-help p{padding:0 12px 12px}
 #controller-dialog .dialog-actions{position:sticky;bottom:0;z-index:2;background:var(--surface);border-top:1px solid var(--line);padding-top:10px;margin-top:8px}
-@media(max-width:800px){.controller-test-grid{grid-template-columns:1fr}#controller-visual svg.tester-diagram{height:248px}.stick-plots{margin-top:8px}}
-@media(max-width:540px){#controller-visual svg.tester-diagram{height:238px}.controller-identity strong{padding-right:0}#controller-driver-details summary{position:static;margin-top:7px}.stick-plot{gap:4px}.stick-plot svg{width:64px;height:64px}.stick-plot span{font-size:10px}}
+@media(max-width:800px){#controller-visual svg.tester-diagram{height:248px}.stick-plots{margin-top:8px}}
+@media(max-width:540px){#controller-visual svg.tester-diagram{height:238px}.controller-identity strong{padding-right:0}#controller-driver-details summary{position:static;margin-top:7px}.stick-plot{gap:4px}.stick-plot svg{width:64px;height:64px}.stick-plot span{font-size:var(--text-xs)}}
+}

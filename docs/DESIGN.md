@@ -2,21 +2,127 @@
 
 The design follows the user's supplied brief: restrained desktop controls, clear
 robot state, useful information density, and one component language across the
-launcher, input diagnostics and the built-in FTC station. Inspiration:
-[Linear](https://linear.app), [Foxglove](https://foxglove.dev),
-[Fluent 2](https://fluent2.microsoft.design), and [shadcn/ui](https://ui.shadcn.com).
-The current presentation follows the user's subsequent request to match
-[MotionModule](https://github.com/AloeVeraZ/MotionModule): warm near-black surfaces,
-steel-blue accents, floating rounded chrome, pill controls, Inter text and Barlow
-Condensed headings. Fonts are bundled locally under the SIL Open Font License;
-the app requires no font CDN or third-party page at runtime.
+launcher, input diagnostics and the built-in FTC station. Fonts are bundled locally
+under the SIL Open Font License; the app requires no font CDN or third-party page at
+runtime. The look went through three earlier directions at the user's request (a
+quiet desktop tool, MotionModule's dark rounded chrome, then BuildLens's shapes);
+the current one is the rebuild below, and the earlier sections are kept as the record.
+
+## The rebuild (2026-11-21)
+
+The user said the interface "looks vibe coded" and asked for the whole front end to
+be rebuilt, guided by [dribbble.com/tags/web-ui](https://dribbble.com/tags/web-ui)
+and by what designers call AI slop. Fifteen critiques and catalogues of those tells
+were read (among them the Fountain Institute's signs of a vibe-coded UI, Paralect's
+21 patterns, the unslop-ui and avoid-ai-design rule sets, Refero's notes and two
+Hacker News threads), and the app-shaped shots under the Dribbble tag were studied:
+dashboards that use ink in place of an accent, hairlines in place of cards, small
+corners, a display face for numbers, and a map or canvas as the one framed thing.
+
+Measured on the real app before the change (34 screens, light theme): 248 capsule
+shapes, 68 boxes inside boxes, 52 tiny tracked-capital labels, 257 runs of text
+below 4.5:1 contrast, 80 status dots, blur on every screen's bar, one type family in
+7 weights, 17 type sizes and 14 corner radii.
+
+| Across the same 34 screens, light theme | Before | After |
+| --- | --- | --- |
+| Capsule shapes | 248 | 0 |
+| Boxes (a border or fill round a group) | 223 | 47 |
+| Boxes inside boxes | 68 | 0 |
+| Tiny tracked-capital labels | 52 | 0 |
+| Text below 4.5:1 (light / dark) | 257 / 95 | 0 / 0 |
+| Shadows on things that do not float | 24 | 0 |
+| Status dots | 80 | 1 |
+| Blur, decorative gradients, side stripes | 23, 2, 3 | 0 |
+| Buttons with an arrow glued on | 9 | 0 |
+| Code type on plain words | 15 | 0 |
+| Type families and weights | 1 family, 7 weights | 2 families, 4 weights |
+| Corner radii in use | 14 | 2, 4, 6, 8, 10, 14 and round |
+
+Middle dots in unit labels ("Length · in") and in one-line summaries were left: they
+are a convention the app uses consistently, and several tests read those strings.
+
+### The rules (they head `ui/tokens.css`)
+
+1. **Ink does the work.** Structure is type, space and hairlines. The main action is
+   solid ink. Colour is kept for the robot's state (green live or done, amber look
+   here, red stop or wrong) and for the two alliances on a field. There is no accent
+   hue: blue no longer means "selected" beside a field where blue means an alliance.
+2. **One level of boxes.** A group is a title and what follows it, set apart by space
+   and a rule. Only a real object is a surface: a model or field view, a device you
+   act on, a thing that floats. Lists are rows.
+3. **Shape follows the job:** 2 px marks, 4 tags and keys, 6 controls, 10 surfaces,
+   14 what floats. Only round things are round (a dot, a knob, the Driver Station's
+   action button).
+4. **Two faces.** Inter reads; Barlow Condensed (already bundled) is for titles and
+   for readings: a clock, a voltage, a pulse width, a count, a port's number, set
+   like the print on a hub. Sentence case; no tracked capitals.
+5. **Motion explains** a press or an opening in 100 to 180 ms, easing out. Nothing
+   bounces, scales on hover or pulses.
+6. **Say a thing once.** No arrows on buttons, no numbered-circle chips, no subtitle
+   that repeats its heading. State is a word in a small square tag or in its colour.
+
+Neutrals lean slightly green (the app icon's hue) and never reach pure black or
+white. Every text colour holds 4.5:1 on every ground it sits on, in both themes.
+Charts take a five-step series palette (`--series-1` to `--series-5`), checked for
+colour-blind separation on both surfaces; state colours are never a series.
+
+### How the stylesheets are built
+
+Six generic stylesheets that overrode one another (`style`, `motion-theme`, `layout`,
+`elements`, `touch`, `design-system`: about 110 KB) are gone. In their place:
+
+| File | Layer | What it holds |
+| --- | --- | --- |
+| `ui/tokens.css` | | the tokens, both themes, and `@layer base, features, system` |
+| `ui/base.css` | `base`, `system` | each element's default look; then the shared controls (`.primary`, `.secondary`, `.text-button`, `.segmented`, `.tag`, tick boxes), which no screen can restyle |
+| `ui/shell.css` | `system` | the bar, Drive, Settings, the shell's dialogs |
+| `ui/workspace.css` | `system` | what Setup, Calibrate and Simulate share (robot bar, step rail, list and pane, sections, notices, charts) and each of their screens |
+| `ui/simulation.css`, `sim-workspace.css`, `sim-studio.css`, `axon-programmer.css`, `swyft-programmer.css`, `servo-test.css`, `controller-art.css`, `ftc/ds.css` | `features` | each screen's own layout |
+
+A later layer wins whatever the selector, so a shared control is drawn in one place
+and a screen's file only sizes and places it. The feature files were put on the new
+scales mechanically (552 type sizes, 209 radii, 41 weights; tracked capitals, glows
+and blur removed), each screen was reworked by hand, and then every declaration the
+`system` layer always overrides was deleted from the workspace stylesheets (395
+declarations and 62 rules), with every element's computed style compared before and
+after on 42 screen and theme combinations to show nothing on screen changed.
+
+`tests/design-audit.cjs` measures the rules on the real app, light and dark, and
+fails on a capsule, a box in a box, small capitals, a shadow on something that does
+not float, blur, a decorative gradient, a side stripe, an arrow on a button, code
+type on plain words, a face or weight outside the two families, or faint text.
+
+### Narrow windows
+
+- A rail longer than its window scrolls sideways and keeps the place you are at in
+  view (`railFit` in `ui/simulation.js`). Calibrate's nine places fit from 1024 px;
+  under about 960 px the last one used to be cut off.
+- Two faults that were already there under 900 px are fixed: Simulate's robot and
+  route pickers took a 320 px height in the side panel and pushed the run report
+  out of sight, and a long pick-list made Calibrate → Electronics scroll sideways
+  at phone width.
+- Left as it was: between about 700 and 1000 px Simulate keeps its three panes, so
+  the field is small. That band needs its own layout.
+
+### How the rebuild was checked
+
+Besides the audits above, the app-driving scripts CI runs on Linux were run against
+the rebuilt UI and against the untouched code, with the same outcome for each. Most
+of them bind extra loopback addresses (127.0.0.2 and up), which macOS does not have,
+so on the Mac they ran through a small preload that maps those addresses onto
+127.0.0.1. Five do not pass on a Mac on either version: `controller-session`, and
+four that stop at a check a hidden macOS window cannot meet (native fullscreen in
+`robot-fullscreen` and `touch-ui`, a slowed heartbeat timer in `ftc-app`, the
+updater's download in the full `ui`). With that one check relaxed, `ftc-app`,
+`touch-ui` and `ui` pass to the end on both versions, and `robot-fullscreen` passes
+its zoom half. Real hardware was not part of it.
 
 ## Shape, spacing and motion from BuildLens (2026-11-21)
 
 At the user's request the app takes its shapes, spacing, type and motion from their LegoBuilder project
-(`app/BuildLens/Design/Theme.swift`). Colours were deliberately left as they were. Before and after screenshots are in
-`docs/media/redesign/`. The values live in `ui/tokens.css`; the rules that apply them are the last block of
-`ui/design-system.css` and of `ui/ftc/ds.css`.
+(`app/BuildLens/Design/Theme.swift`). Colours were deliberately left as they were. This look was replaced by the rebuild above the same day; the table is
+the record of what it was. (`docs/media/redesign/` now holds the rebuild's before and after: its "before" is this look.)
 
 | What | Value | Was |
 | --- | --- | --- |

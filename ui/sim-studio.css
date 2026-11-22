@@ -1,116 +1,196 @@
-/* The Video tab: preview and settings on top, the timeline across the bottom. It only shows once a run is recorded. */
-#sim-panel-video[hidden]{display:none!important}
-#sim-panel-video{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:8px;min-height:0;flex:1;text-align:left}
-.studio-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-.studio-name{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-.studio-name input{flex:0 1 320px;min-width:120px;height:34px;min-height:34px;font:700 15px var(--font);padding:4px 9px}
-.studio-name .hint{margin:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.studio-part{display:flex;align-items:center;gap:6px;flex:none;margin:0;font-size:12px;color:var(--muted)}
-.studio-part[hidden]{display:none}
-.studio-part select{width:auto;height:34px;min-height:34px;padding:4px 9px}
-.studio-head-actions{display:flex;gap:6px;flex:none}
-#sim-panel-video button{min-height:32px;margin:0;padding:4px 11px;font-size:12px;white-space:nowrap}
-#sim-panel-video button.danger{border-color:var(--danger);color:var(--danger)}
-.studio-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;min-height:0}
-.studio-viewer{display:flex;flex-direction:column;gap:6px;min-height:0;min-width:0}
-.studio-screen{position:relative;flex:1;min-height:120px;border-radius:8px;background:#000;overflow:hidden}
-.studio-screen canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
-.studio-loading{position:absolute;inset:auto 0 45% 0;margin:0;text-align:center;color:#c9ced6;font-size:13px}
-.studio-loading[hidden]{display:none}
-.studio-transport{display:flex;align-items:center;gap:5px;flex:none;min-width:0}
-#sim-panel-video .studio-transport button{min-width:36px;padding:4px 8px}
-#sim-panel-video #studio-play{min-width:76px}
-.studio-time{font:600 13px var(--mono);font-variant-numeric:tabular-nums;margin-left:6px;white-space:nowrap}
-.studio-status{margin:0 0 0 8px;font-size:12px;line-height:1.25;min-width:0;flex:1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.studio-side{display:flex;flex-direction:column;gap:2px;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow-y:auto;overscroll-behavior:contain;padding:10px 12px 12px}
-.studio-side-tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px;padding-bottom:8px;border-bottom:1px solid var(--line)}.studio-side-tabs [hidden]{display:none}
-.driver-station .studio-side-tabs button{min-height:30px;padding:4px 10px;font-size:12px;font-weight:600;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--muted)}
-.driver-station .studio-side-tabs button[aria-selected=true]{background:var(--text);color:var(--bg);border-color:var(--text)}
-.studio-pane[hidden]{display:none}
-.studio-intro{margin:0 0 4px;font-size:12px;line-height:1.4;color:var(--muted)}
-.studio-intro strong{color:var(--text)}
-.studio-pane{font-size:12px}
-.studio-pane[hidden]{display:none}
-.studio-clip-pane{margin:4px -12px 6px;padding:8px 12px 10px;background:var(--raised);border-block:1px solid var(--line-strong)}
-.studio-clip-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.studio-clip-head .hint{font:11px var(--mono);margin-left:4px}
-.studio-remove{display:block;margin-top:8px;color:var(--danger);font-size:12px}
-.studio-fold{margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
-.studio-fold>summary,.studio-tune>summary{cursor:pointer;font-size:12px;font-weight:600;padding:4px 0}
-#sim-panel-video .studio-export-go{width:100%;min-height:34px;margin-top:10px}
-#studio-progress{width:110px;align-self:center}
-#studio-progress[hidden]{display:none}
-.studio-spacer{flex:1}
-.studio-more{display:contents}
-.studio-more[hidden]{display:none}
-.studio-pane .hint{font-size:12px;margin:2px 0 6px}
-.studio-pane label{display:block;font-size:12px;margin:6px 0 2px;color:var(--muted)}
-.studio-pane label>input:not([type=checkbox]):not([type=range]),.studio-pane label>select{display:block;width:100%;margin-top:3px;height:32px;min-height:32px;font-size:13px;padding:3px 8px;box-sizing:border-box}
-.studio-pane input[type=range]{display:block;width:100%;margin:2px 0 0}
-.studio-pane label output{float:right;color:var(--text);font-variant-numeric:tabular-nums}
-.studio-pane .studio-check{display:flex;align-items:center;gap:8px;color:var(--text);margin:9px 0}
-.studio-pane .studio-check input{width:16px;height:16px;margin:0}
-.studio-sub{margin:10px 0 2px;font-size:13px}
-.studio-cams{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:4px 0}
-#sim-panel-video .studio-cam{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:48px;padding:5px 8px;border:1px solid var(--line-strong);border-left:4px solid var(--c);border-radius:7px;background:var(--raised);color:var(--text);text-align:left;white-space:normal;line-height:1.15}
-#sim-panel-video .studio-cam:hover{background:var(--hover,#222)}
-#sim-panel-video .studio-cam[aria-pressed=true]{background:color-mix(in srgb,var(--c) 22%,var(--raised));border-color:var(--c)}
-.studio-cam kbd{font:600 10px var(--mono);color:var(--muted)}
-.studio-cams.small{grid-template-columns:repeat(3,minmax(0,1fr))}
-#sim-panel-video .studio-cams.small .studio-cam{min-height:38px}
-.studio-cam-hint{min-height:3em}
-.studio-row-buttons{display:grid;grid-template-columns:1fr auto;gap:5px;margin:4px 0 8px}
-.studio-tune{margin:4px 0}
-.studio-tune summary{font-size:12px}
-.studio-moments{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px}
-#sim-panel-video .studio-moments button{display:flex;gap:8px;width:100%;min-height:28px;padding:3px 8px;border:0;border-left:3px solid var(--c);border-radius:4px;background:none;color:var(--text);text-align:left;font-size:12px}
-#sim-panel-video .studio-moments button:hover{background:var(--raised)}
-.studio-moments span{font:12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
-.studio-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.studio-num{display:flex;align-items:center;gap:5px;margin-top:3px}
-.studio-num input{flex:1;min-width:0;height:32px;min-height:32px;font-size:13px;padding:3px 8px}
-.studio-num span{color:var(--muted)}
-.studio-keys{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:6px 0;font-size:12px}
-.studio-keys dt{font:600 11px var(--mono);color:var(--text)}
-.studio-keys dd{margin:0;color:var(--muted)}
-/* The timeline: track names stay put while the lanes scroll under them. */
-.studio-timeline{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:6px}
-.studio-tools{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-#sim-panel-video .studio-tools button{min-height:28px;padding:2px 9px}
-.studio-sep{width:1px;height:20px;background:var(--line-strong);margin:0 3px}
-.studio-scroll{overflow-x:auto;overflow-y:hidden;border-radius:6px;background:var(--well)}
-.studio-tracks{position:relative;min-width:100%;user-select:none;-webkit-user-select:none;touch-action:none}
-.studio-row{display:flex;height:36px;border-bottom:1px solid var(--line)}
-.studio-row:last-of-type{border-bottom:0}
-.studio-ruler-row{height:24px}
-.studio-headcell{position:sticky;left:0;z-index:3;flex:none;width:96px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:4px;padding:0 6px 0 8px;background:var(--surface);border-right:1px solid var(--line);font-size:11px;font-weight:600;color:var(--muted)}
-.studio-corner{font:11px var(--mono);font-variant-numeric:tabular-nums}
-.studio-lane,.studio-ruler{position:relative;flex:1}
-.studio-ruler{cursor:col-resize;background:linear-gradient(var(--surface),var(--well))}
-.studio-tick{position:absolute;bottom:0;height:5px;border-left:1px solid var(--line-strong);font-size:0}
-.studio-tick.major{height:20px;padding:1px 0 0 3px;font:10px/10px var(--mono);color:var(--muted);white-space:nowrap}
-.studio-range{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 25%,transparent);border-inline:2px solid var(--accent)}
-.studio-clip{position:absolute;top:3px;bottom:3px;box-sizing:border-box;display:flex;align-items:center;border-radius:5px;background:color-mix(in srgb,var(--c) 34%,#14171b);border:1px solid color-mix(in srgb,var(--c) 70%,#000);border-left:3px solid var(--c);overflow:hidden;cursor:grab;font-size:11px;color:#eef1f5}
-.studio-clip.text{color:#211d14;background:color-mix(in srgb,var(--c) 85%,#000)}
-.studio-clip.selected{box-shadow:0 0 0 2px var(--text);z-index:1}
-.studio-clip-name{flex:1;min-width:0;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.studio-trim{flex:none;align-self:stretch;width:7px;cursor:ew-resize}
-.studio-trim:hover,.studio-clip.selected .studio-trim{background:rgb(255 255 255 / .22)}
-.studio-fx{position:absolute;left:0;top:0;bottom:0;width:14px;background:linear-gradient(90deg,rgb(255 255 255 / .5),transparent);pointer-events:none}
-.studio-playhead{position:absolute;top:0;bottom:0;left:0;width:2px;margin-left:-1px;background:var(--danger);z-index:4;pointer-events:none;will-change:transform}
-.studio-playhead::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top:7px solid var(--danger)}
-/* Short windows (Steam Deck) keep the preview as large as they can. */
-@media(max-height:820px){#sim-panel-video{gap:6px}.studio-row{height:32px}.studio-name .hint{display:none}}
-@media(max-height:640px){.studio-row{height:28px}.studio-ruler-row{height:20px}}
-/* Narrow windows: one column that scrolls, the preview full width. */
-@media(max-width:900px){
- .studio-body{grid-template-columns:minmax(0,1fr)}
- .studio-screen{flex:none;aspect-ratio:16/9;min-height:0}
- .studio-side{max-height:none}
- .studio-head{flex-wrap:wrap}
- .studio-head-actions{flex-wrap:wrap}
- .sim-workspace #simulation-view[data-tab=video]{overflow-y:auto}
- #sim-panel-video{flex:none;grid-template-rows:auto auto auto}
- .studio-status{display:none}
+/* The Video editor: the picture with its transport on the left, the tools on the right, the timeline along the bottom.
+   It shows once a run is recorded. The picture is the screen's one framed surface; everything else is type, space and
+   hairlines. sim-studio.js works the picture's width out from the body's height, counting 12 px between the two columns
+   and 6 px above a transport of one fixed height, and starts the timeline's lanes 96 px in: those sizes stay as they are. */
+@layer features {
+  #sim-panel-video[hidden] { display: none !important; }
+  /* A clip has its camera's colour in both themes and the picture's frame is dark in both, so what is written on them
+     has an ink of its own: --studio-ink on a clip (--studio-edge is a tint of it, for a block's rim), --studio-on-frame
+     on the frame. */
+  #sim-panel-video { --studio-h: var(--h-md); --studio-row: 32px; --studio-ruler: 24px; --studio-ink: #0c0f0d; --studio-on-frame: #acb3af; --studio-edge: rgb(12 15 13 / .22); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; flex: 1; min-height: 0; text-align: left; }
+
+  /* ---- One toolbar language: quiet buttons of one height. Save video is the screen's only solid one. ---------------- */
+  #sim-panel-video :is(.studio-head-actions, .studio-transport, .studio-tools, .studio-pane) :is(.primary, .secondary) { flex: none; height: var(--studio-h); min-width: 0; padding: 0 12px; white-space: nowrap; }
+  #sim-panel-video :is(#studio-start, #studio-back, #studio-fwd, #studio-end, [data-act=zoom-out], [data-act=zoom-in]) { width: var(--studio-h); padding: 0; }
+
+  /* ---- The head: the video's name, then what is done to the whole of it. -------------------------------------------- */
+  .studio-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+  .studio-name { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .studio-name input { flex: 0 1 320px; min-width: 120px; height: var(--studio-h); min-height: var(--studio-h); font-size: var(--text-base); font-weight: 600; }
+  /* How long the video is, is read off the transport's clock. */
+  #studio-meta { display: none; }
+  .studio-part { flex: none; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0; color: var(--quiet); }
+  .studio-part select { width: auto; height: var(--studio-h); min-height: var(--studio-h); }
+  .studio-head-actions { flex: none; display: flex; align-items: center; gap: 8px; }
+  #studio-save { margin-left: 8px; }
+  #studio-progress { flex: none; width: 110px; }
+
+  /* ---- The picture and its transport. ------------------------------------------------------------------------------- */
+  .studio-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; min-height: 0; }
+  .studio-viewer { container: studio-viewer / inline-size; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+  /* The frame is the picture's own shape, so a window too narrow to fill the column's height leaves page below the
+     transport, not black bars round the picture. */
+  .studio-screen { position: relative; flex: 0 1 auto; aspect-ratio: 16 / 9; min-height: 120px; border-radius: var(--r-box); background: var(--studio-ink); overflow: hidden; }
+  .studio-screen canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+  /* The frame's edge, over the picture: it shows where a dark picture meets a dark page and nowhere else. */
+  .studio-screen::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 16%, transparent); pointer-events: none; }
+  .studio-loading { position: absolute; inset: auto 0 45%; margin: 0; color: var(--studio-on-frame); font-size: var(--text-md); text-align: center; }
+  .studio-transport { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  /* Play's label is rewritten as it plays and pauses, so its icon is drawn here: the same stroke as the icons beside it. */
+  #sim-panel-video #studio-play { --studio-play: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 5.5v13l10-6.5z'/%3E%3C/svg%3E"); --studio-pause: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6v12m6-12v12'/%3E%3C/svg%3E"); min-width: 96px; padding-inline: 12px 16px; }
+  #studio-play::before { content: ""; flex: none; width: 18px; height: 18px; background: currentColor; -webkit-mask: var(--studio-play) center / 18px 18px no-repeat; mask: var(--studio-play) center / 18px 18px no-repeat; }
+  #studio-play[aria-pressed=true]::before { -webkit-mask-image: var(--studio-pause); mask-image: var(--studio-pause); }
+  /* Where the video is and how long it is: a reading. */
+  .studio-time { flex: 0 1 auto; min-width: 0; margin-left: 8px; overflow: hidden; color: var(--text); font: 700 var(--display-sm)/1.2 var(--font-display); letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* What the last press did. It sits beside the clock while there is room for it, and never changes the transport's
+     height: the picture is sized from that. */
+  .studio-status { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; max-height: var(--studio-h); margin: 0 0 0 8px; overflow: hidden; color: var(--quiet); font-size: var(--text-sm); line-height: 1.35; }
+  @container studio-viewer (max-width: 700px) {
+    .studio-transport { gap: 4px; }
+    #sim-panel-video #studio-play { min-width: 88px; padding-inline: 8px 12px; }
+  }
+  @container studio-viewer (max-width: 560px) { .studio-status { display: none; } }
+  /* The narrowest picture: Play keeps its icon and its name is read out, not shown. */
+  @container studio-viewer (max-width: 400px) {
+    .studio-transport { gap: 2px; }
+    #sim-panel-video #studio-play { gap: 0; width: var(--studio-h); min-width: 0; padding: 0; font-size: 0; }
+    .studio-time { margin-left: 6px; }
+  }
+
+  /* ---- The tools: three tabs, and Clip while one is chosen. No box: the tabs head a column of plain rows. ---------- */
+  .studio-side { container: studio-side / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: -4px -4px 0 0; padding: 4px 4px 4px 12px; overflow-y: auto; overscroll-behavior: contain; }
+  .studio-side-tabs { flex: none; align-self: flex-start; display: flex; max-width: 100%; margin: 0 0 12px; }
+  .studio-side-tabs > button { flex: 1 1 auto; min-width: 0; min-height: var(--h-sm); padding: 0 14px; white-space: nowrap; }
+  @container studio-side (max-width: 330px) { .studio-side-tabs > button { padding: 0 10px; } }
+  .studio-pane { min-width: 0; }
+  .studio-pane:not([hidden]) ~ .studio-pane:not([hidden]) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .studio-pane .hint { margin: 0 0 8px; color: var(--quiet); font-size: var(--text-sm); line-height: 1.45; }
+  .studio-pane .text-button { min-height: var(--h-sm); }
+
+  /* Nine cameras: the key that picks each, the colour its clips have in the timeline, its name. The one showing at the
+     red line is held down. */
+  .studio-cams { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0 0 8px; }
+  .studio-cam { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: var(--h-sm); padding: 0 8px; border: 0; border-radius: var(--r-ctl); background: none; color: var(--text); font-size: var(--text-md); font-weight: 500; line-height: 1.2; text-align: left; }
+  .studio-cam::before { content: ""; order: 1; flex: none; width: 10px; height: 10px; border-radius: var(--r-mark); background: var(--c); box-shadow: inset 0 0 0 1px var(--studio-edge); }
+  .studio-cam > kbd { order: 0; flex: none; }
+  .studio-cam > span { order: 2; min-width: 0; overflow-wrap: anywhere; }
+  .studio-cam:hover:not(:disabled) { background: var(--control); }
+  .studio-cam:active:not(:disabled) { background: var(--hover); }
+  .studio-cam[aria-pressed=true], .studio-cam[aria-pressed=true]:hover:not(:disabled) { background: var(--selected); box-shadow: inset 0 0 0 1.5px var(--ink); font-weight: 600; }
+  .studio-cam-hint { min-height: calc(2 * 1.45em); }
+  .studio-pane .studio-cam-hint { margin-bottom: 12px; }
+  .studio-row-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  #studio-tune-body > .hint:only-child { margin: 0; }
+  #studio-tune-body > .text-button { margin-top: 8px; }
+
+  /* Fields: the name above, the field below. */
+  .studio-pane label { margin: 12px 0 0; color: var(--muted); }
+  .studio-pane > label:first-child, #studio-tune-body > label:first-child { margin-top: 0; }
+  .studio-pane :is(select, input:not([type=checkbox], [type=radio], [type=range])) { height: var(--h-md); min-height: var(--h-md); }
+  .studio-pane label > output { color: var(--text); }
+  /* Nothing tells a camera's bars how far they are filled, so their track is drawn plain. */
+  #studio-tune-body input[type=range]::-webkit-slider-runnable-track { background: var(--track); }
+  .studio-pane .studio-check { flex-wrap: nowrap; justify-content: flex-start; align-items: flex-start; gap: 10px; min-height: var(--h-sm); margin: 0; padding: 7px 0; color: var(--text); font-size: var(--text-md); font-weight: 400; line-height: 18px; cursor: pointer; }
+  .studio-num { flex: 1 0 100%; display: flex; align-items: flex-start; gap: 6px; }
+  .studio-num > :is(input, .num-field) { flex: 1; min-width: 0; }
+  .studio-num > span:last-child { flex: none; line-height: var(--h-md); }
+  .studio-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+  .studio-pane details { margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
+  .studio-pane details > summary { min-height: var(--h-md); padding: 0; }
+  .studio-pane details[open] > summary { margin-bottom: 0; }
+  .studio-pane details > label:first-of-type { margin-top: 0; }
+  .studio-pane .button-row { margin-top: 12px; }
+  #sim-panel-video #studio-end-card { height: auto; min-height: var(--studio-h); padding-block: 8px; white-space: normal; }
+
+  /* The chosen clip. */
+  .studio-clip-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .studio-sub { margin: 0; font: 600 var(--text-base)/1.3 var(--font); }
+  .studio-sub > .hint { margin: 0 0 0 6px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .studio-remove { display: inline-flex; align-items: center; margin-top: 8px; }
+
+  /* Export. */
+  #studio-export-note:empty { display: none; }
+  .studio-pane #studio-export-note { margin: 8px 0 0; }
+  .studio-export-go { margin-top: 16px; }
+
+  /* A wide column sets its choices side by side. */
+  @container studio-side (min-width: 348px) { .studio-cams { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @container studio-side (min-width: 524px) { .studio-cams { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @container studio-side (min-width: 470px) {
+    .studio-pane[data-side=look]:not([hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; align-items: start; }
+    .studio-pane[data-side=look] > :is(.hint, .button-row) { grid-column: 1 / -1; }
+  }
+  @container studio-side (min-width: 520px) {
+    .studio-pane[data-side=export]:not([hidden]), #studio-tune-body:has(> label) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; align-items: start; }
+    .studio-pane[data-side=export] > :is(.hint, button), #studio-tune-body > :is(label:first-child, button) { grid-column: 1 / -1; }
+    .studio-pane[data-side=export] > button, #studio-tune-body > button { justify-self: start; }
+    .studio-pane[data-side=export] > label:nth-of-type(-n+2) { margin-top: 4px; }
+  }
+
+  /* ---- The timeline: a ruler, a row a track, hairlines between. Track names stay put while the lanes scroll. ------- */
+  .studio-timeline { display: flex; flex-direction: column; gap: 8px; min-height: 0; margin-top: -4px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .studio-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .studio-more { display: contents; }
+  .studio-sep { flex: none; width: 1px; height: 20px; margin: 0 4px; background: var(--line-strong); }
+  .studio-spacer { flex: 1; }
+  .studio-zoom { flex: none; display: flex; gap: 4px; margin-left: auto; }
+  @media (max-width: 1150px) {
+    .studio-tools { gap: 6px; }
+    #sim-panel-video .studio-tools .secondary { padding: 0 8px; }
+  }
+  .studio-scroll { overflow-x: auto; overflow-y: hidden; }
+  .studio-tracks { position: relative; min-width: 100%; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .studio-row { display: flex; height: var(--studio-row); border-bottom: 1px solid var(--line); }
+  .studio-ruler-row { height: var(--studio-ruler); }
+  .studio-headcell { position: sticky; left: 0; z-index: 3; flex: none; display: flex; align-items: center; width: 96px; padding-right: 8px; border-right: 1px solid var(--line); background: var(--bg); color: var(--muted); font-size: var(--text-sm); font-weight: 500; }
+  /* The clock above says how long the video is; the ruler's corner does not say it again. */
+  .studio-corner { font-size: 0; }
+  .studio-lane, .studio-ruler { position: relative; flex: 1; }
+  .studio-ruler { cursor: col-resize; }
+  .studio-tick { position: absolute; bottom: 0; height: 5px; border-left: 1px solid var(--line-strong); font-size: 0; }
+  .studio-tick.major { height: 100%; padding: 3px 0 0 5px; color: var(--muted); font: 500 var(--text-xs)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* The part that is saved: marked off on the ruler between an in and an out. */
+  .studio-range { position: absolute; top: 0; bottom: 0; border-inline: 2px solid var(--ink); background: var(--control); }
+  /* A moment of the run: a short thick tick on the ruler's edge, so it is not taken for the red line. */
+  .studio-mark { position: absolute; bottom: 0; width: 3px; height: 10px; margin-left: -1px; background: var(--c); }
+  /* A clip is a flat block of its camera's colour, a hair short of the next one so two of a colour still read as two. */
+  .studio-clip { container: studio-clip / inline-size; position: absolute; top: 3px; bottom: 3px; display: flex; align-items: center; border: solid transparent; border-width: 0 1px 0 0; border-radius: var(--r-tag); background: var(--c) padding-box; box-shadow: inset 0 0 0 1px var(--studio-edge); color: var(--studio-ink); font-size: var(--text-xs); font-weight: 600; overflow: hidden; cursor: grab; }
+  .studio-clip.selected { z-index: 1; box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--on-ink); }
+  .studio-clip-name { flex: 1; min-width: 0; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+  /* A clip too short for a letter and its dots shows its colour alone; its name is in its tooltip. */
+  @container studio-clip (max-width: 36px) { .studio-clip-name { visibility: hidden; } }
+  /* Its two ends drag: a grip shows on the chosen clip and under the pointer. */
+  .studio-trim { flex: none; align-self: stretch; display: grid; align-items: center; width: 8px; cursor: ew-resize; }
+  .studio-trim.l { justify-items: end; }
+  .studio-trim.r { justify-items: start; }
+  .studio-trim::after { content: ""; width: 2px; height: 10px; border-radius: var(--r-mark); background: var(--studio-ink); opacity: 0; }
+  .studio-clip.selected .studio-trim::after, .studio-trim:hover::after { opacity: .6; }
+  /* A clip that fades or dips in starts with a ramp. */
+  .studio-fx { position: absolute; inset: 0 auto 0 0; width: 14px; background: color-mix(in srgb, var(--studio-ink) 40%, transparent); clip-path: polygon(0 0, 100% 0, 0 100%); pointer-events: none; }
+  /* Now: the one red line, with a hair of the page either side so it shows over a clip of any colour. */
+  .studio-playhead { position: absolute; top: 0; bottom: 0; left: 0; z-index: 4; width: 1px; background: var(--bad); box-shadow: 0 0 0 1px var(--bg); pointer-events: none; will-change: transform; }
+  .studio-playhead::before { content: ""; position: absolute; top: 0; left: -4px; width: 9px; height: 9px; background: var(--bad); clip-path: polygon(0 0, 100% 0, 100% 50%, 50% 100%, 0 50%); }
+
+  /* Short windows keep the picture as large as they can. */
+  @media (max-height: 640px) {
+    #sim-panel-video { --studio-h: var(--h-sm); --studio-row: 28px; --studio-ruler: 20px; gap: 8px; }
+    .studio-timeline { gap: 6px; margin-top: 0; padding-top: 6px; }
+    .studio-tick.major { padding-top: 2px; }
+    .studio-side-tabs { margin-bottom: 8px; }
+    .studio-pane .studio-cam-hint { margin-bottom: 8px; }
+    .studio-pane:not([hidden]) ~ .studio-pane:not([hidden]) { margin-top: 8px; padding-top: 8px; }
+    @container studio-side (min-width: 450px) { .studio-cams { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  }
+  /* Narrow windows: one column that scrolls, the picture full width. */
+  @media (max-width: 900px) {
+    #sim-panel-video { flex: none; grid-template-rows: auto auto auto; }
+    .sim-workspace #simulation-view[data-tab=video] { overflow-y: auto; }
+    .studio-head, .studio-head-actions { flex-wrap: wrap; }
+    .studio-name { flex: 1 1 280px; }
+    .studio-name input { flex: 1 1 auto; }
+    .studio-head-actions { flex: 0 1 auto; }
+    .studio-body { grid-template-columns: minmax(0, 1fr); }
+    .studio-screen { flex: none; aspect-ratio: 16 / 9; min-height: 0; }
+    .studio-side { margin: 0 -4px; padding: 4px; }
+  }
 }
-.studio-mark{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:var(--c)}

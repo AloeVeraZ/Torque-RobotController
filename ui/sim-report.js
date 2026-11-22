@@ -87,14 +87,14 @@
   const el=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v] of Object.entries(attrs))k==='text'?e.textContent=v:k==='grow'?e.style.flexGrow=String(v):k.startsWith('on')?e[k]=v:e.setAttribute(k,v);e.append(...children);return e;};
   // Settings a tip can open: onSetting(key) shows it in Path planning → Route options.
   const SETTINGS={clearance:'Space around obstacles',optimize:'Optimize'};
-  const editButton=(pin,label,onEdit)=>el('button',{type:'button',class:'text-button sim-report-edit',onclick:()=>onEdit(pin),text:`Edit ${label} →`});
+  const editButton=(pin,label,onEdit)=>el('button',{type:'button',class:'text-button sim-report-edit',onclick:()=>onEdit(pin),text:`Edit ${label}`});
   // What to do after this run, most likely first: fix the path where something went wrong, or take a clean
   // run to the robot. Each action is {id, label, run}; the page supplies what they do.
   function nextSteps(report,{onEdit,onExport,onOutput}={}){
     const fix=report.issues.find(i=>i.pin!==null)||(report.timedOut&&report.tips.find(t=>t.pin!==null));
     const steps=[];
-    if(report.level!=='ok'&&fix&&onEdit)steps.push({id:'fix',label:`Fix path ${fix.pin+1} →`,primary:true,run:()=>onEdit(fix.pin)});
-    if(onExport&&!report.driven)steps.push({id:'export',label:'Export to your robot →',primary:report.level==='ok',run:onExport});
+    if(report.level!=='ok'&&fix&&onEdit)steps.push({id:'fix',label:`Fix path ${fix.pin+1}`,primary:true,run:()=>onEdit(fix.pin)});
+    if(onExport&&!report.driven)steps.push({id:'export',label:'Export to your robot',primary:report.level==='ok',run:onExport});
     if(onOutput)steps.push({id:'output',label:'See each step',primary:false,run:onOutput});
     return steps;
   }
@@ -135,7 +135,7 @@
       parts.push(el('h4',{text:`Where the time went${span===report.auto?` · ${report.auto} s autonomous`:''}`}),bar,scale,key,detail);
       choose(report.legs.find(l=>l.index===selected)||report.legs.reduce((a,b)=>b.total>a.total?b:a),false);
     }
-    if(report.tips.length)parts.push(el('h4',{text:'What to try next'}),el('ol',{class:'sim-report-tips'},report.tips.map(t=>el('li',{},[el('span',{text:t.text}),...(t.pin!==null&&onEdit?[editButton(t.pin,`path ${t.pin+1}`,onEdit)]:[]),...(t.setting&&onSetting?[el('button',{type:'button',class:'text-button sim-report-edit','data-setting':t.setting,onclick:()=>onSetting(t.setting),text:`Open ${SETTINGS[t.setting]} →`})]:[])]))));
+    if(report.tips.length)parts.push(el('h4',{text:'What to try next'}),el('ol',{class:'sim-report-tips'},report.tips.map(t=>el('li',{},[el('span',{text:t.text}),...(t.pin!==null&&onEdit?[editButton(t.pin,`path ${t.pin+1}`,onEdit)]:[]),...(t.setting&&onSetting?[el('button',{type:'button',class:'text-button sim-report-edit','data-setting':t.setting,onclick:()=>onSetting(t.setting),text:`Open ${SETTINGS[t.setting]}`})]:[])]))));
     parts.push(el('p',{class:'hint sim-report-note',text:'Simulated estimate. Battery charge, wheel traction, tuning and field differences change real results, so test on your robot before a match.'}));
     host.replaceChildren(...parts);
   }
