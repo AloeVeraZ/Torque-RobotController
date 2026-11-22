@@ -41,17 +41,34 @@
   // The suggested file name, without its extension: "Red auto - Autonomous - 3D".
   const title=(name,section,view)=>`${safeName(name)||'Deck run'} - ${SECTIONS[section]||'Run'}${VIEWS[view]?` - ${view.toUpperCase()}`:''}`;
 
-  const FONT='system-ui, "Segoe UI", sans-serif';
-  function pill(ctx,x,y,w,h,fill){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,h*.22);else ctx.rect(x,y,w,h);ctx.fillStyle=fill;ctx.fill();}
+  // The app's two faces: Inter reads, Barlow Condensed sets the clock and the points (ui/tokens.css).
+  const FONT='Inter, system-ui, "Segoe UI", sans-serif',DISPLAY='"Barlow Condensed", Inter, system-ui, sans-serif';
+  const PLATE='rgb(12 15 13 / .8)',TEXT='#ebf0ed',MUTED='#b5bcb8';
+  // The app's mark: τ, the symbol for torque, its foot turning as torque turns a shaft, on a 64-unit square, light
+  // on the app's ink. The icons are drawn from it (tools/icons.cjs), and so is a video's end card.
+  const MARK='M12 14H50V22H34V36A7 7 0 0 0 45.95 40.95L51.607 46.607A15 15 0 0 1 26 36V22H12Z',INK='#141a16',PAPER='#ebf0ed';
+  // A superellipse filling w × h at x, y: the rounded square an app icon sits in.
+  function squircle(x,y,w,h,n=5,steps=240){const p=[],r=v=>+v.toFixed(3);for(let i=0;i<steps;i++){const t=i/steps*2*Math.PI,c=Math.cos(t),s=Math.sin(t);
+    p.push(`${r(x+w/2+w/2*Math.sign(c)*Math.abs(c)**(2/n))} ${r(y+h/2+h/2*Math.sign(s)*Math.abs(s)**(2/n))}`);}return `M${p.join('L')}Z`;}
+  // A dark plate with small corners (4 at 720 lines) that the writing sits on.
+  function plate(ctx,x,y,w,h,u,fill=PLATE){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,4*u);else ctx.rect(x,y,w,h);ctx.fillStyle=fill;ctx.fill();}
+  // Runs of [text, font, colour] side by side on one plate, `gap` apart; `align` says which end x is. Returns its height.
+  function runs(ctx,parts,x,y,h,u,{align='left',gap=10,pad=14}={}){
+    const widths=parts.map(([t,font])=>{ctx.font=font;return ctx.measureText(t).width;}),w=widths.reduce((a,b)=>a+b,0)+gap*u*(parts.length-1)+2*pad*u,left=align==='right'?x-w:align==='center'?x-w/2:x;
+    plate(ctx,left,y,w,h,u);let at=left+pad*u;ctx.textAlign='left';ctx.textBaseline='middle';
+    parts.forEach(([t,font,colour],i)=>{ctx.font=font;ctx.fillStyle=colour;ctx.fillText(t,at,y+h/2+(font.includes('Barlow')?u:0));at+=widths[i]+gap*u;});return h;
+  }
+  // Fonts are drawn only once the page has them; ask for them before the first picture.
+  function loadFonts(){try{return Promise.all(['500 16px Inter','700 28px "Barlow Condensed"'].map(f=>globalThis.document?.fonts?.load?.(f))).catch(()=>{});}catch{return Promise.resolve();}}
   // The writing over the picture, sized to its height (720 lines is 1).
   function overlay(ctx,width,height,top,bottom,inset){
-    const u=height/720,pad=18*u,h=42*u;ctx.save();ctx.textBaseline='middle';
-    ctx.font=`600 ${14*u}px ${FONT}`;const phase=top.phase.toUpperCase(),pw=ctx.measureText(phase).width;ctx.font=`700 ${22*u}px ${FONT}`;const tw=ctx.measureText(top.time).width;
-    pill(ctx,pad,pad,pw+tw+44*u,h,top.color);ctx.fillStyle='#fff';ctx.textAlign='left';ctx.font=`600 ${14*u}px ${FONT}`;ctx.fillText(phase,pad+16*u,pad+h/2);ctx.font=`700 ${22*u}px ${FONT}`;ctx.fillText(top.time,pad+28*u+pw,pad+h/2);
-    const right=[top.name,top.score].filter(Boolean).join('  ·  ');
-    if(right){ctx.font=`600 ${17*u}px ${FONT}`;const w=ctx.measureText(right).width+32*u;pill(ctx,width-pad-w,pad,w,h,'rgb(13 15 18 / .72)');ctx.fillStyle='#e8ecf1';ctx.textAlign='right';ctx.fillText(right,width-pad-16*u,pad+h/2);}
-    if(bottom){ctx.font=`500 ${16*u}px ${FONT}`;const w=ctx.measureText(bottom).width+28*u,y=height-pad-h*.85;pill(ctx,pad,y,w,h*.85,'rgb(13 15 18 / .72)');ctx.fillStyle='#e8ecf1';ctx.textAlign='left';ctx.fillText(bottom,pad+14*u,y+h*.425);}
-    if(inset){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(inset.x,inset.y,inset.size,inset.size,6*u);else ctx.rect(inset.x,inset.y,inset.size,inset.size);ctx.lineWidth=3*u;ctx.strokeStyle='rgb(232 236 241 / .85)';ctx.stroke();}
+    const u=height/720,pad=18*u,h=44*u;ctx.save();
+    // The period in words and its clock; the run's name and, once it scores, its points.
+    runs(ctx,[[top.phase,`500 ${15*u}px ${FONT}`,MUTED],[top.time,`700 ${28*u}px ${DISPLAY}`,TEXT]],pad,pad,h,u);
+    const right=[top.name&&[top.name,`500 ${16*u}px ${FONT}`,top.score?MUTED:TEXT],top.score&&[top.score,`700 ${26*u}px ${DISPLAY}`,TEXT]].filter(Boolean);
+    if(right.length)runs(ctx,right,width-pad,pad,h,u,{align:'right'});
+    if(bottom){const bh=36*u;runs(ctx,[[bottom,`500 ${15*u}px ${FONT}`,TEXT]],pad,height-pad-bh,bh,u,{pad:12});}
+    if(inset){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(inset.x,inset.y,inset.size,inset.size,4*u);else ctx.rect(inset.x,inset.y,inset.size,inset.size);ctx.lineWidth=2*u;ctx.strokeStyle='rgb(235 240 237 / .85)';ctx.stroke();}
     ctx.restore();
   }
 
@@ -66,7 +83,7 @@
     }
     function tick(){if(!recorder)return;const at=performance.now();try{draw();}catch(e){console.error(e);}timer=setTimeout(tick,Math.max(0,1000/30-(performance.now()-at)));}
     function begin(){
-      if(recorder)return;kind=pickType();if(!kind)throw Error('This app cannot record video on this system.');
+      if(recorder)return;kind=pickType();if(!kind)throw Error('This app cannot record video on this system.');void loadFonts();
       canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;ctx=canvas.getContext('2d');last=0;draw();
       chunks=[];recorder=new MediaRecorder(new MediaStream([track=canvas.captureStream(0).getVideoTracks()[0]]),{mimeType:kind.type,videoBitsPerSecond:8e6});
       recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};
@@ -78,5 +95,5 @@
     function close(){clearTimeout(timer);if(recorder&&recorder.state!=='inactive'){recorder.onstop=null;recorder.stop();}recorder=null;track?.stop();track=null;}
     return {begin,stop,close,recording:()=>!!recorder,ext:()=>kind?.ext||'webm'};
   }
-  return {SECTIONS,VIEWS,pickType,sections,editable,caption,detail,title,create};
+  return {SECTIONS,VIEWS,pickType,sections,editable,caption,detail,title,create,runs,loadFonts,FONT,DISPLAY,TEXT,MUTED,MARK,INK,PAPER,squircle};
 });

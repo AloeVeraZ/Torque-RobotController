@@ -62,7 +62,7 @@ are a convention the app uses consistently, and several tests read those strings
 6. **Say a thing once.** No arrows on buttons, no numbered-circle chips, no subtitle
    that repeats its heading. State is a word in a small square tag or in its colour.
 
-Neutrals lean slightly green (the app icon's hue) and never reach pure black or
+Neutrals lean slightly green (as the app icon's ink does) and never reach pure black or
 white. Every text colour holds 4.5:1 on every ground it sits on, in both themes.
 Charts take a five-step series palette (`--series-1` to `--series-5`), checked for
 colour-blind separation on both surfaces; state colours are never a series.
@@ -117,6 +117,27 @@ four that stop at a check a hidden macOS window cannot meet (native fullscreen i
 updater's download in the full `ui`). With that one check relaxed, `ftc-app`,
 `touch-ui` and `ui` pass to the end on both versions, and `robot-fullscreen` passes
 its zoom half. Real hardware was not part of it.
+
+## The mark (2026-11-22)
+
+The icon was a smiling robot head on a mint square: the stock chatbot mascot, the
+motif that fills icon marketplaces and reads as generated. It is now **τ**, the symbol
+physics uses for torque, with its foot turning the way torque turns a shaft: one
+idea, tied to the name, and a T besides. It is drawn on a 64-unit grid with its stems
+on whole pixels at 32 px, in the app's ink with its paper colour, and nothing else:
+no gradient, no glow, no second colour. On dark grounds (a video's end card) it
+turns over: an ink τ on a paper square.
+
+| File | What it is |
+| --- | --- |
+| `ui/sim-video.js` | `MARK`, the τ's outline, and `squircle`, the rounded square: the one source |
+| `tools/icons.cjs` | draws every icon from them in Electron: `npx electron tools/icons.cjs` |
+| `ui/icon.svg`, `icon.png`, `icon.ico` | the square filling its canvas (Linux, the window, Windows) |
+| `ui/icon.icns` | the square on Apple's grid, 824 of 1024 with a soft shadow; 16 and 32 px as macOS's own `iconutil` writes them |
+| `packaging/installer.ico`, `installer-sidebar.bmp` | Setup's icon, the τ on a circle so it is not taken for the app, and its sidebar with the name |
+
+The name stays type: "Torque" in Barlow Condensed, in the bar and beside the icon on
+a video's end card.
 
 ## Shape, spacing and motion from BuildLens (2026-11-21)
 

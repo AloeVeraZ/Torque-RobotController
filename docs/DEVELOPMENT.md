@@ -98,7 +98,7 @@ The browser preview runs at `http://127.0.0.1:8787`; native Wi-Fi controls and t
 native HTTP authentication dialog require the installed app.
 
 ```bash
-python3 tools/icons.py                 # Pillow; rasterize the existing robot SVG design
+npx electron tools/icons.cjs           # every icon, from the τ mark in ui/sim-video.js
 python3 tools/package.py --target all  # Linux, Windows, Apple Silicon
 ```
 

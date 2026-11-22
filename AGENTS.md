@@ -12,5 +12,6 @@
 - `ui/base.css` draws every shared control (`.primary`, `.secondary`, `.text-button`, `.segmented`, `.tag`, `.notice`, fields, tick boxes, sliders). A screen's stylesheet sizes and places them; it never gives them a look of its own.
 - Stylesheets are layered (`base`, `features`, `system`, declared in `ui/tokens.css`): a screen's own file goes in `features`; `ui/shell.css` and `ui/workspace.css` are `system` and win over it.
 - A new part is a title and rows before it is a box: one level of boxes, no capsules, no tracked capitals, no arrows on buttons, no badge that is not a state, no helper line that repeats its label. Numbers that matter are set in the display face (`.reading`).
+- The mark is τ (`MARK` in `ui/sim-video.js`); every icon and the installer's pictures are drawn from it by `npx electron tools/icons.cjs`. Never hand-edit `ui/icon.*` or `packaging/installer*`.
 - After changing the UI, run `tests/design-audit.cjs` (it measures these rules on the real app in both themes) with `tests/layout-audit.cjs` and `tests/window-fit-ui.cjs`.
 

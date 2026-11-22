@@ -19,7 +19,7 @@
 
 :root {
   color-scheme: dark;
-  /* Neutrals lean a little green, the app icon's hue, and never reach pure black or white. Hex, not oklch(): the
+  /* Neutrals lean a little green, as the app icon's ink does, and never reach pure black or white. Hex, not oklch(): the
      3D view hands these to three.js, which reads hex only. */
   --bg: #0c0f0d;
   --surface: #131715;

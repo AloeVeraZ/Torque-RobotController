@@ -11,7 +11,7 @@
   const CAMS=[...K.CAMERAS,{id:'top',name:'Top-down',label:'Top-down · whole field',key:'6',color:'#8a94a3',hint:'Straight down at the whole field, the way 2D recordings film it.'},{id:'side',name:'Field side',label:'Field side · one steady shot',key:'7',color:'#7fd18b',hint:'A camera on a tripod beside the field, the way teams film a real autonomous: it stays put and only turns slowly to keep the robot in the picture.'},{id:'auto',name:'Follow the action',label:'Follow the action · one moving shot',key:'8',color:'#f08fb5',hint:'One camera that walks round the robot without cutting: behind it looking at the goal while it scores, at its front while it takes pieces in, further back while it drives.'},{id:'orbit',name:'Orbit',label:'Orbit · round the field',key:'9',color:'#f0884d',hint:'One slow sweep half way round the outside of the field, looking at the robot, for the whole run.'}],CAM=Object.fromEntries(CAMS.map(c=>[c.id,c]));
   const OVERLAYS={match:'Period, clock & points',velocity:'Speed & what the robot is doing',path:'Field map in the corner',camera:'Camera name',position:'Position & heading',timestamp:'Run time',guides:'Planned path, pins, aim lines and outlines'};
   const SPEEDS={0.25:'¼× (slow motion)',0.5:'½×',1:'1× (real speed)',1.5:'1.5×',2:'2×',4:'4×'};
-  const SIZES={'1280x720':'1280 × 720 (720p)','1920x1080':'1920 × 1080 (1080p)'},HEAD=96,FONT='system-ui, "Segoe UI", sans-serif';
+  const SIZES={'1280x720':'1280 × 720 (720p)','1920x1080':'1920 × 1080 (1080p)'},HEAD=96,FONT='Inter, system-ui, "Segoe UI", sans-serif';
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const options=(list,value)=>Object.entries(list).map(([k,v])=>`<option value="${k}"${String(k)===String(value)?' selected':''}>${esc(v)}</option>`).join('');
   const editing=el=>el?.closest?.('input,textarea,select,[contenteditable=true]');
@@ -86,24 +86,22 @@
     function warmPaths(){const idle=f=>window.requestIdleCallback?requestIdleCallback(f,{timeout:400}):setTimeout(f,60),next=()=>{if(!editor)return;const id=K.IDS.find(x=>pathKeys[x]!==JSON.stringify(K.settings(editor.doc.cameras)[x]));if(id){track(id);idle(next);}};idle(next);}
 
     // ------------------------------------------------------------ drawing a picture
-    function pill(ctx,x,y,w,h,fill){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,h*.22);else ctx.rect(x,y,w,h);ctx.fillStyle=fill;ctx.fill();}
-    function chip(ctx,text,x,y,u,{align='left',size=16,weight=600,fill='rgb(13 15 18 / .72)'}={}){
-      ctx.font=`${weight} ${size*u}px ${FONT}`;const h=(size+18)*u,w=ctx.measureText(text).width+28*u,left=align==='right'?x-w:align==='center'?x-w/2:x;
-      pill(ctx,left,y,w,h,fill);ctx.fillStyle='#e8ecf1';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,left+14*u,y+h/2);return h;}
+    // One line of writing on a dark plate (ui/sim-video.js draws the recorder's the same way).
+    function chip(ctx,text,x,y,u,{align='left',size=15}={}){return V.runs(ctx,[[text,`500 ${size*u}px ${V.FONT}`,V.TEXT]],x,y,(size+20)*u,u,{align,pad:12});}
     // The writing over the main picture: the period, clock and points as the original recordings have them, and
     // whatever else the Overlays tab turns on.
     function drawOverlays(ctx,W,H,lead,o){
-      const u=H/720,pad=18*u,h=42*u,f=lead.f;ctx.save();ctx.textBaseline='middle';let top=pad;
-      if(o.match){const c=V.caption(f,{name:editor.doc.name,start:take.t0}),phase=c.phase.toUpperCase();
-        ctx.font=`600 ${14*u}px ${FONT}`;const pw=ctx.measureText(phase).width;ctx.font=`700 ${22*u}px ${FONT}`;const tw=ctx.measureText(c.time).width;
-        pill(ctx,pad,pad,pw+tw+44*u,h,c.color);ctx.fillStyle='#fff';ctx.textAlign='left';ctx.font=`600 ${14*u}px ${FONT}`;ctx.fillText(phase,pad+16*u,pad+h/2);ctx.font=`700 ${22*u}px ${FONT}`;ctx.fillText(c.time,pad+28*u+pw,pad+h/2);
-        const right=[c.name,c.score].filter(Boolean).join('  ·  ');if(right)chip(ctx,right,W-pad,pad,u,{align:'right',size:17});top+=h+8*u;}
+      const u=H/720,pad=18*u,h=44*u,f=lead.f;ctx.save();let top=pad;
+      if(o.match){const c=V.caption(f,{name:editor.doc.name,start:take.t0});
+        V.runs(ctx,[[c.phase,`500 ${15*u}px ${V.FONT}`,V.MUTED],[c.time,`700 ${28*u}px ${V.DISPLAY}`,V.TEXT]],pad,pad,h,u);
+        const right=[c.name&&[c.name,`500 ${16*u}px ${V.FONT}`,c.score?V.MUTED:V.TEXT],c.score&&[c.score,`700 ${26*u}px ${V.DISPLAY}`,V.TEXT]].filter(Boolean);
+        if(right.length)V.runs(ctx,right,W-pad,pad,h,u,{align:'right'});top+=h+8*u;}
       if(o.camera)top+=chip(ctx,CAM[lead.camera].label,pad,top,u,{size:14})+8*u;
-      if(o.timestamp)chip(ctx,`Run ${(f.time-take.t0).toFixed(1)} s`,W/2,pad,u,{align:'center',size:16,weight:700});
+      if(o.timestamp)V.runs(ctx,[['Run',`500 ${15*u}px ${V.FONT}`,V.MUTED],[`${(f.time-take.t0).toFixed(1)} s`,`700 ${24*u}px ${V.DISPLAY}`,V.TEXT]],W/2,pad,h,u,{align:'center'});
       let bottom=H-pad;
-      if(o.velocity){const d=V.detail(f);if(d){const ch=(16+18)*u;bottom-=ch;chip(ctx,d,pad,bottom,u);bottom-=8*u;}}
-      if(o.position&&f.truth){const p=f.truth,ch=(14+18)*u;bottom-=ch;chip(ctx,`x ${p.x.toFixed(1)} in · y ${p.y.toFixed(1)} in · ${Math.round(((p.heading%360)+360)%360)}°`,pad,bottom,u,{size:14});}
-      if(lead.inset){const r=lead.inset;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(r.x,r.y,r.size,r.size,6*u);else ctx.rect(r.x,r.y,r.size,r.size);ctx.lineWidth=3*u;ctx.strokeStyle='rgb(232 236 241 / .85)';ctx.stroke();}
+      if(o.velocity){const d=V.detail(f);if(d){const ch=36*u;bottom-=ch;chip(ctx,d,pad,bottom,u);bottom-=8*u;}}
+      if(o.position&&f.truth){const p=f.truth,ch=34*u;bottom-=ch;chip(ctx,`x ${p.x.toFixed(1)} in · y ${p.y.toFixed(1)} in · ${Math.round(((p.heading%360)+360)%360)}°`,pad,bottom,u,{size:14});}
+      if(lead.inset){const r=lead.inset;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(r.x,r.y,r.size,r.size,4*u);else ctx.rect(r.x,r.y,r.size,r.size);ctx.lineWidth=2*u;ctx.strokeStyle='rgb(235 240 237 / .85)';ctx.stroke();}
       ctx.restore();
     }
     // ------------------------------------------------------------ contact replays
@@ -135,20 +133,21 @@
         ctx.lineWidth=4*u;ctx.beginPath();ctx.arc(c.at.x,c.at.y,r,0,Math.PI*2);ctx.stroke();
         ctx.globalAlpha=show*(1-pulse)*.9;ctx.lineWidth=3*u;ctx.beginPath();ctx.arc(c.at.x,c.at.y,r*(1+pulse*1.2),0,Math.PI*2);ctx.stroke();
         ctx.globalAlpha=show;ctx.beginPath();ctx.arc(c.at.x,c.at.y,Math.max(4*u,r*.18),0,Math.PI*2);ctx.fill();}
-      const line=`Contact with ${c.focus.label} at ${c.focus.at.toFixed(1)} s`;ctx.font=`700 ${20*u}px ${FONT}`;const w=ctx.measureText(line).width+40*u,h=46*u,y=H-140*u;
-      pill(ctx,W/2-w/2,y,w,h,'rgb(178 34 40 / .92)');ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(line,W/2,y+h/2);
+      const line=`Contact with ${c.focus.label} at ${c.focus.at.toFixed(1)} s`;ctx.font=`600 ${19*u}px ${FONT}`;const w=ctx.measureText(line).width+36*u,h=46*u,y=H-140*u;
+      plate(ctx,W/2-w/2,y,w,h,u,'rgb(215 40 40 / .92)');ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(line,W/2,y+h/2);
       ctx.restore();
     }
     // Text sized down until it fits the width it has.
-    function fit(ctx,text,weight,size,max){let s=size;do{ctx.font=`${weight} ${s}px ${FONT}`;s*=.92;}while(ctx.measureText(text).width>max&&s>8);}
+    function fit(ctx,text,weight,size,max,face=FONT){let s=size;do{ctx.font=`${weight} ${s}px ${face}`;s*=.92;}while(ctx.measureText(text).width>max&&s>8);}
+    function plate(ctx,x,y,w,h,u,fill){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,4*u);else ctx.rect(x,y,w,h);ctx.fillStyle=fill;ctx.fill();}
     function drawTitle(ctx,W,H,c,alpha){
       const u=H/720;ctx.save();ctx.globalAlpha=clamp(alpha,0,1);ctx.textBaseline='middle';ctx.textAlign='center';
-      if(c.style==='title'){ctx.fillStyle='rgb(0 0 0 / .5)';ctx.fillRect(0,H*.34,W,H*.32);ctx.fillStyle='#fff';fit(ctx,c.text,800,64*u,W*.88);ctx.fillText(c.text,W/2,H*(c.sub?.465:.5));
-        if(c.sub){ctx.fillStyle='#d6dbe2';fit(ctx,c.sub,500,28*u,W*.85);ctx.fillText(c.sub,W/2,H*.575);}}
-      else if(c.style==='lower'){const x=48*u,y=H*.7,w=Math.min(W*.6,W-2*x),h=(c.sub?96:64)*u;ctx.fillStyle='rgb(13 15 18 / .82)';ctx.fillRect(x,y,w,h);ctx.fillStyle='#4ea1ff';ctx.fillRect(x,y,6*u,h);
-        ctx.textAlign='left';ctx.fillStyle='#fff';fit(ctx,c.text,700,30*u,w-44*u);ctx.fillText(c.text,x+24*u,y+(c.sub?34:32)*u);if(c.sub){ctx.fillStyle='#c5ccd6';fit(ctx,c.sub,500,20*u,w-44*u);ctx.fillText(c.sub,x+24*u,y+70*u);}}
-      else if(c.style==='caption'){const line=[c.text,c.sub].filter(Boolean).join(' — ');fit(ctx,line,600,26*u,W*.8);const w=ctx.measureText(line).width+40*u,h=48*u,y=H-110*u;pill(ctx,W/2-w/2,y,w,h,'rgb(0 0 0 / .72)');ctx.fillStyle='#fff';ctx.fillText(line,W/2,y+h/2);}
-      else{const line=[c.text,c.sub].filter(Boolean).join(' · ');chip(ctx,line,W-18*u,H*.12,u,{align:'right',size:18,weight:700,fill:'rgb(78 161 255 / .85)'});}
+      if(c.style==='title'){ctx.fillStyle='rgb(12 15 13 / .6)';ctx.fillRect(0,H*.34,W,H*.32);ctx.fillStyle='#fff';fit(ctx,c.text,700,72*u,W*.88,V.DISPLAY);ctx.fillText(c.text,W/2,H*(c.sub?.47:.505));
+        if(c.sub){ctx.fillStyle='#c9d0cc';fit(ctx,c.sub,500,26*u,W*.85);ctx.fillText(c.sub,W/2,H*.58);}}
+      else if(c.style==='lower'){const x=48*u,y=H*.7,w=Math.min(W*.6,W-2*x),h=(c.sub?96:64)*u;plate(ctx,x,y,w,h,u,'rgb(12 15 13 / .84)');
+        ctx.textAlign='left';ctx.fillStyle='#fff';fit(ctx,c.text,700,34*u,w-40*u,V.DISPLAY);ctx.fillText(c.text,x+20*u,y+(c.sub?35:33)*u);if(c.sub){ctx.fillStyle='#c9d0cc';fit(ctx,c.sub,500,19*u,w-40*u);ctx.fillText(c.sub,x+20*u,y+70*u);}}
+      else if(c.style==='caption'){const line=[c.text,c.sub].filter(Boolean).join(' — ');fit(ctx,line,600,26*u,W*.8);const w=ctx.measureText(line).width+40*u,h=48*u,y=H-110*u;plate(ctx,W/2-w/2,y,w,h,u,'rgb(12 15 13 / .8)');ctx.fillStyle='#fff';ctx.fillText(line,W/2,y+h/2);}
+      else{const parts=[[c.text,`700 ${26*u}px ${V.DISPLAY}`,V.TEXT],c.sub&&[c.sub,`500 ${16*u}px ${FONT}`,V.MUTED]].filter(Boolean);V.runs(ctx,parts,W-18*u,H*.12,44*u,u,{align:'right'});}
       ctx.restore();
     }
     // The edit's picture at edit time `time`, drawn into ctx (W×H): the video tracks bottom to top, the overlays,
@@ -171,10 +170,16 @@
       const left=E.exportRange(doc).out-time,pr=lead?.f?.practice,hold=pr?.mode==='autonomous'&&(pr.phase==='transition'||pr.phase==='finished')?(pr.phase==='finished'?1:clamp(pr.elapsed/.6,0,1)):0,card=Math.max(hold,left<END_CARD?clamp((END_CARD-left)/.6,0,1):0);if(doc.endCard!==false&&card>0)drawEndCard(ctx,W,H,card);
       ctx.restore();
     }
-    function drawEndCard(ctx,W,H,alpha){const s=H/720,font=(w,px)=>`${w} ${Math.round(px*s)}px Inter, "Segoe UI", system-ui, sans-serif`;ctx.save();ctx.globalAlpha=alpha;
-      ctx.fillStyle='rgb(8 10 14 / .8)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.textBaseline='alphabetic';
-      ctx.fillStyle='#9aa3ad';ctx.font=font(600,26);ctx.fillText('Edited with',W/2,H/2-24*s);ctx.fillStyle='#f2f4f7';ctx.font=font(800,72);ctx.fillText(BRAND,W/2,H/2+46*s);
-      ctx.fillStyle='#9aa3ad';ctx.font=font(500,22);if(editor.doc.name)ctx.fillText(editor.doc.name,W/2,H/2+96*s);ctx.restore();}
+    // The end card: "Edited with", the app's icon beside its name (the icon in its light form, on the dark card), and
+    // the run's name.
+    function drawEndCard(ctx,W,H,alpha){const s=H/720,size=80*s,gap=22*s;ctx.save();ctx.globalAlpha=alpha;
+      ctx.fillStyle='rgb(12 15 13 / .86)';ctx.fillRect(0,0,W,H);
+      ctx.font=`700 ${Math.round(92*s)}px ${V.DISPLAY}`;const x=W/2-(size+gap+ctx.measureText(BRAND).width)/2,y=H/2-size/2;
+      ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle=V.MUTED;ctx.font=`500 ${Math.round(22*s)}px ${V.FONT}`;ctx.fillText('Edited with',W/2,y-30*s);
+      ctx.save();ctx.translate(x,y);ctx.scale(size/64,size/64);ctx.fillStyle=V.PAPER;ctx.fill(new Path2D(V.squircle(0,0,64,64)));ctx.fillStyle=V.INK;ctx.fill(new Path2D(V.MARK));ctx.restore();
+      ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle=V.TEXT;ctx.font=`700 ${Math.round(92*s)}px ${V.DISPLAY}`;ctx.fillText(BRAND,x+size+gap,y+size/2+5*s);
+      if(editor.doc.name){ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.fillStyle=V.MUTED;ctx.font=`500 ${Math.round(20*s)}px ${V.FONT}`;ctx.fillText(editor.doc.name,W/2,y+size+54*s);}
+      ctx.restore();}
     function drawNow(){if(!take||!shown||exporting)return;lastPaint=performance.now();try{paint(pctx,canvas.width,canvas.height,t);}catch(e){console.error(e);say(e.message);}}
     function requestDraw(){if(drawQueued)return;drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;drawNow();});}
     // The preview is drawn at the size it shows (up to 1280 wide), so a small window stays quick.
@@ -391,7 +396,7 @@
       exportSettings.format=Math.min(exportSettings.format,f.video.length-1);sel.innerHTML=f.video.map((v,i)=>`<option value="${i}"${i===exportSettings.format?' selected':''}>${formatName(v)}</option>`).join('');
     }
     async function exportVideo(){
-      if(exporting||!editor)return;const f=await probe(),format=f?.video?.[exportSettings.format];if(!format)return;
+      if(exporting||!editor)return;const f=await probe(),format=f?.video?.[exportSettings.format];if(!format)return;await V.loadFonts();
       const [W,H]=exportSettings.size.split('x').map(Number),fps=exportSettings.fps,r=exportSettings.part==='range'?E.exportRange(editor.doc):{in:0,out:duration()},count=Math.max(1,Math.round((r.out-r.in)*fps));
       pause();exporting=new AbortController();buttons();const p=pane('export'),go=$('#studio-save'),bar=$('#studio-progress'),note={set textContent(v){say(v);}};
       for(const s of p.querySelectorAll('select,button'))s.disabled=true;go.textContent='Cancel';go.classList.replace('primary','secondary');go.disabled=false;bar.hidden=false;bar.value=0;
