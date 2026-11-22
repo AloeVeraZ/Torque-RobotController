@@ -184,10 +184,11 @@
   // robot's left towards -y. A pod's carriage hangs on its four bars, so it sits on the floor under any wheel set.
   const KIT_DIR={forward:[-1,0,0],backward:[1,0,0],left:[0,-1,0],right:[0,1,0],up:[0,0,1],down:[0,0,-1]};
   function kitLook(scene,kit){
-    const {THREE:T}=three(),sets=new Set(),all=[];scene.traverse(o=>{all.push(o);if(o.userData.deckWheel?.set)sets.add(o.userData.deckWheel.set);});if(!sets.size)return;
-    const want=Number.isFinite(kit.wheel)?kit.wheel:104,set=[...sets].sort((a,b)=>Math.abs(a-want)-Math.abs(b-want)||a-b)[0];let floor=Infinity;
+    const {THREE:T}=three(),sets=new Set(),all=[];scene.traverse(o=>{all.push(o);if(o.userData.deckWheel?.set)sets.add(o.userData.deckWheel.set);});let floor=Infinity;
     const low=o=>{o.geometry.computeBoundingBox();return o.geometry.boundingBox.min.z+o.position.z;};
-    for(const o of all){const w=o.userData.deckWheel;if(!w?.set)continue;if(w.set!==set)o.removeFromParent();else if(o.isMesh)floor=Math.min(floor,low(o));}
+    // An older Strafer build has one wheel set and no parts of its own: only the stand-ins drawn for its odometry move.
+    if(sets.size){const want=Number.isFinite(kit.wheel)?kit.wheel:104,set=[...sets].sort((a,b)=>Math.abs(a-want)-Math.abs(b-want)||a-b)[0];
+      for(const o of all){const w=o.userData.deckWheel;if(!w?.set)continue;if(w.set!==set)o.removeFromParent();else if(o.isMesh)floor=Math.min(floor,low(o));}}
     for(const o of all){const p=o.userData.deckPart;if(!p)continue;const d=kit[p.key];if(d===null){o.removeFromParent();continue;}
       if(p.carriage&&o.isMesh&&Number.isFinite(floor))o.position.z+=floor-low(o);
       if(p.key==='hub'&&o.isMesh&&kit.hubFaces&&KIT_DIR[kit.hubFaces[0]]&&KIT_DIR[kit.hubFaces[1]]&&kit.hubFaces.join()!=='up,forward'){
@@ -224,18 +225,20 @@
     {let own=false;scene.traverse(o=>{if(o.userData.deckPart)own=true;});if(meta?.id==='strafer'&&!own)straferOdometry(scene,T);}
     scene.userData.builtin=meta?.id;return scene;
   }
-  // goBILDA's Strafer CAD comes without odometry. Its two 4-Bar pods (32 mm wheel) and Pinpoint are drawn where goBILDA's Pinpoint user guide puts them on this chassis: both pods on the rear
-  // axle line, 168 mm behind the centre, the X (forward) pod 84 mm to the right and the Y (strafe) pod 84 mm to the left, the Pinpoint between them, sticker up. The same places
-  // DeckMechanisms.PRESETS.startermecanum gives the simulation as offsets. The CAD's frame: inches, the wheel axles at z = 0 (the floor 52 mm below), its front toward -x, so the rear is +x and the robot's right +y.
-  function straferOdometry(scene,T){const mm=1/25.4,floor=-52*mm,r=16*mm,x=168*mm,side=84*mm,mat=c=>new T.MeshStandardMaterial({color:c,roughness:.55,metalness:.2}),black=mat(0x1b1c1e),yellow=mat(0xf2c200),g=new T.Group();g.name='Odometry: goBILDA 4-Bar pods and Pinpoint';
-    const mesh=(geo,m,pos,name)=>{const o=new T.Mesh(geo,m);o.position.set(pos[0],pos[1],pos[2]);o.name=name;o.castShadow=true;o.receiveShadow=true;g.add(o);return o;};
-    for(const [name,y,forward] of [['Odometry pod X (forward)',side,true],['Odometry pod Y (strafe)',-side,false]]){
+  // An older Strafer build (goBILDA's Strafer CAD, before the kit's own assembly) comes without odometry. Its two 4-Bar pods
+  // (32 mm wheel) and Pinpoint are drawn where the kit's CAD has its own (DeckMechanisms.KIT: x forward, y left, inches), and
+  // carry the same part keys, so a typed position moves them and a robot without them does not show them. The CAD's frame:
+  // inches, the wheel axles at z = 0 (the floor 52 mm below), its front toward -x and the robot's right toward +y.
+  function straferOdometry(scene,T){const mm=1/25.4,floor=-52*mm,r=16*mm,mat=c=>new T.MeshStandardMaterial({color:c,roughness:.55,metalness:.2}),black=mat(0x1b1c1e),yellow=mat(0xf2c200),g=new T.Group();g.name='Odometry: goBILDA 4-Bar pods and Pinpoint';
+    const K=globalThis.DeckMechanisms?.KIT||{pinpoint:{x:6.614,y:-.157},podX:{x:1.949,y:-3.622},podY:{x:1.791,y:3.465}},cad=q=>[-q.x,-q.y];
+    const mesh=(geo,m,pos,name,part)=>{const o=new T.Mesh(geo,m);o.position.set(pos[0],pos[1],pos[2]);o.name=name;o.castShadow=true;o.receiveShadow=true;o.userData.deckPart=part;g.add(o);return o;};
+    for(const [name,key,forward] of [['Odometry pod X (forward)','podX',true],['Odometry pod Y (strafe)','podY',false]]){const [x,y]=cad(K[key]),part={key,carriage:true};
       // A cylinder's axis is y: across the robot, as the forward pod's axle lies; the strafe pod's lies along it.
-      for(const o of [mesh(new T.CylinderGeometry(r,r,.28,24),black,[x,y,floor+r],name+' wheel'),mesh(new T.CylinderGeometry(r*.55,r*.55,.32,16),yellow,[x,y,floor+r],name+' hub')])if(!forward)o.rotation.z=Math.PI/2;
-      mesh(new T.BoxGeometry(43*mm,.84,1.1),black,[x,y,floor+2*r+.65],name+' body');}
-    // The Pinpoint sits on whatever the CAD has there (the rear cross channel's top).
-    let top=24*mm;try{scene.updateMatrixWorld(true);const hit=new T.Raycaster(new T.Vector3(x,0,20),new T.Vector3(0,0,-1)).intersectObject(scene,true)[0];if(hit&&hit.point.z>floor+1)top=hit.point.z;}catch{}
-    mesh(new T.BoxGeometry(43*mm,43*mm,.42),black,[x,0,top+.21],'goBILDA Pinpoint');mesh(new T.BoxGeometry(43*mm-.4,43*mm-.7,.02),yellow,[x,.15,top+.43],'Pinpoint label');
+      for(const o of [mesh(new T.CylinderGeometry(r,r,.28,24),black,[x,y,floor+r],name+' wheel',part),mesh(new T.CylinderGeometry(r*.55,r*.55,.32,16),yellow,[x,y,floor+r],name+' hub',part)])if(!forward)o.rotation.z=Math.PI/2;
+      mesh(new T.BoxGeometry(43*mm,.84,1.1),black,[x,y,floor+2*r+.65],name+' body',part);}
+    // The Pinpoint sits on whatever the CAD has there.
+    const [px,py]=cad(K.pinpoint),part={key:'pinpoint'};let top=24*mm;try{scene.updateMatrixWorld(true);const hit=new T.Raycaster(new T.Vector3(px,py,20),new T.Vector3(0,0,-1)).intersectObject(scene,true)[0];if(hit&&hit.point.z>floor+1)top=hit.point.z;}catch{}
+    mesh(new T.BoxGeometry(43*mm,43*mm,.42),black,[px,py,top+.21],'goBILDA Pinpoint',part);mesh(new T.BoxGeometry(43*mm-.4,43*mm-.7,.02),yellow,[px,py+.15,top+.43],'Pinpoint label',part);
     scene.add(g);}
   // ---- mechanisms that move -----------------------------------------------------------------
   // A placed body is split into links by the robot's joints (DeckKinematics): each joint's parts become their own mesh
