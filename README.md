@@ -2,9 +2,9 @@
 
 **Drive, set up, simulate and tune your robot, all in one app.** Made for FTC teams, and it works with any robot that has its own website.
 
-![A robot driving an autonomous route, picking up game pieces and shooting them in Torque's simulator](docs/media/robot-run.gif)
+![The Starter Mecanum, the robot Torque opens on, driving its demo autonomous in the simulator, at twice the speed](docs/media/robot-run.gif)
 
-[▶ Watch the full 30-second run](docs/media/robot-run-full.mp4)
+[Watch the whole run](docs/media/robot-run-full.mp4), saved from Torque's own video editor.
 
 ## Install
 
@@ -55,7 +55,7 @@ Build your robot, draw a route and watch it run in full physics. No robot, no ex
 
 1. **Set up your robot.** Choose its size, drivetrain, motors, sensors and mechanisms such as intakes, shooters and turrets. You can also import your own CAD.
 
-   ![Setting up a robot's intake next to its 3D model](docs/media/robot-setup.jpg)
+   ![The Starter Mecanum's chassis next to its 3D model: the wheels picked here are the wheels drawn](docs/media/robot-setup.jpg)
 
 2. **Plan a route.** Click to add stops or draw the path. Torque keeps the whole robot clear of obstacles.
 
@@ -63,7 +63,7 @@ Build your robot, draw a route and watch it run in full physics. No robot, no ex
 
 3. **Run it.** Replay the run on a timeline, graph its speed and heading, and see how many pieces it picked up, shot and scored.
 
-   ![A run in 3D with live graphs of speed, heading and drive power](docs/media/run-review.jpg)
+   ![A run in 3D beside its report: the route finished in 21.7 s, and where each second went](docs/media/run-review.jpg)
 
 4. **Make a video.** Film the run with follow, scoring and top-down cameras. Then cut it, add text and save an MP4.
 
@@ -83,7 +83,7 @@ Build your robot, draw a route and watch it run in full physics. No robot, no ex
 
 Tune your robot step by step using real readings from your Control Hub.
 
-![Each mechanism with its tuning steps, unlocked one at a time](docs/media/calibrate-mechanisms.jpg)
+![Calibrate's checks for the Starter Mecanum, in order, starting from its Control Hub](docs/media/calibrate-mechanisms.jpg)
 
 - **Live debug:** see every motor, servo and sensor your Control Hub reports, and what's plugged into each port.
 - **Set up from the hub:** one button maps your devices into your robot setup.
