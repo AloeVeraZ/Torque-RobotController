@@ -81,8 +81,9 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await soon('three planned lines on the board, with nothing pressed',async()=>await page.locator('#cal-links svg .cal-board-line.planned').count()===3);assert.equal(await page.locator('[data-elec-chassis-use]').isDisabled(),true,'already used');assert.match(await page.textContent('[data-elec-device="@setup"]'),/Torque guessed these from the names/);
     await soon('Simulate has the names',async()=>(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.devices.backRight?.name))==='rightBack');
     // Simulate's Encoder tick against Configure: where Simulate says a drive motor reads its encoder and Configure says its cable is out, Electronics says so.
-    {const sim=await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),want=sim==='encoders'?['rightBack']:['leftFront','rightFront','leftBack'];
-      await soon('Simulate and Configure differ on '+want,async()=>JSON.stringify(await page.$$eval('[data-elec-sim-encoder]',l=>l.map(x=>x.dataset.elecSimEncoder).sort()))===JSON.stringify([...want].sort()));}
+    // The kit ticks Encoder on every wheel, and Configure has rightBack's cable out.
+    {const ticked=await page.evaluate(()=>(JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.wiring?.sensors||[]).filter(s=>s.model==='motor-encoder').map(s=>s.for).sort());assert.deepEqual(ticked,['robot.backLeft','robot.backRight','robot.frontLeft','robot.frontRight'],'Encoder is ticked on every wheel in Setup');
+      await soon('Simulate and Configure differ on rightBack',async()=>JSON.stringify(await page.$$eval('[data-elec-sim-encoder]',l=>l.map(x=>x.dataset.elecSimEncoder)))==='["rightBack"]');assert.match(await page.getAttribute('[data-elec-sim-encoder="rightBack"]','title'),/^Setup → Mechanisms says this wheel has an encoder, but Configure says it has none\./);}
     await page.click('[data-elec-zero]');await soon('every encoder zeroed',async()=>resets.length===4);
     const pick=name=>page.click(`[data-elec-pick="${name}"]`),moveIt=async()=>{await page.click('[data-elec-go]');await page.waitForSelector('.cal-seen[data-seen]');};
     const seenRow=key=>page.locator(`[data-seen-key="${key}"]`);
@@ -119,7 +120,7 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await pick('imu');await page.click('[data-elec-hand]');await page.waitForSelector('[data-elec-ready="1"]');pitch=20;
     await page.waitForSelector('[data-hand-row="pitch"]',{timeout:15000});pitch=0;
     assert.match(await page.locator('[data-hand-row="pitch"]').innerText(),/Pitch.0.0°.20.0°.20.0°.Moved/);assert.match(await page.locator('[data-hand-row="yaw"]').innerText(),/Still/);
-    assert.match(await page.textContent('[data-elec-pick="imu"]'),/Last time you moved it/);await pick('rightFront');
+    assert.match(await page.textContent('[data-elec-pick="imu"]'),/✓ imu.*moved by hand/s);assert.match(await page.textContent('[data-elec-device="imu"]'),/Last time you moved it.*Its readings changed when you moved it/s);await pick('rightFront');
     // The board is in Setup: a line for each link; tap a cause, then what it moves, to add one; tap again to take it away.
     await pick('@setup');
     const lines=()=>page.locator('#cal-links svg .cal-board-line').count();assert.equal(await lines(),5);assert.equal(await page.locator('#cal-links svg .cal-board-line.pass').count(),4);
@@ -139,15 +140,23 @@ const MAN={deck:'debug',version:1,motors:MOTORS,servos:['claw'],crservos:[],digi
     await pick('leftBack');await linkOf('leftBack · encoder').locator('[data-link-check]').click();await soon('leftBack checked',async()=>/Works/.test(await linkOf('leftBack · encoder').locator('.cal-link-head').innerText()));
     await page.screenshot({path:path.join(root,'test-results/links-ui.png'),fullPage:true}).catch(()=>{});
 
-    // Mechanisms starts with the chassis Simulate describes. Simulate's default senses position with a Pinpoint, which
-    // this robot's configuration lacks, and one of its drive motors has no encoder (Electronics saw it turn with nothing
-    // counting). What Calibrate knows decides how a kit follows its route, not Debug: it steps down to motors only by
-    // itself, so the chassis has its wheels to check straight away, and nothing else.
+    // Mechanisms starts with the chassis Setup describes. Setup's kit senses position with a Pinpoint, which this robot's
+    // configuration lacks, and one of its drive motors has no encoder (Electronics saw it turn with nothing counting).
+    // Calibrate says so and changes nothing: Setup comes first. There the kit's cards say what Calibrate found, every one
+    // can still be picked, and the student picks motors only, so the chassis has its wheels to check straight away, and nothing else.
     await page.click('#cal-tab-mechanisms');await page.waitForSelector('#cal-chassis .cal-chassis',{state:'attached'});
     // The list is Electronics' list: the Control Hub, the chassis' steps, then the mechanisms; one shows at a time.
     await page.click('[data-mech-pick=hub]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),true,'the hub card is here');assert.equal(await page.locator('#cal-chassis').isVisible(),false,'one part at a time');
     await page.click('[data-mech-pick="chassis-1"]');assert.equal(await page.locator('#cal-hub-setup').isVisible(),false);
-    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/the hub has nothing by that name/);
+    const sensing=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization);
+    assert.equal(await sensing(),'fused','Calibrate leaves Setup’s Pinpoint as it is');assert.match(await page.textContent('#cal-chassis'),/Pinpoint: Setup calls it pinpoint, but the hub has nothing by that name/);
+    await page.click('#cal-chassis [data-chassis=to-sim]');await page.waitForFunction(()=>state.page==='setup');await page.click('[data-garage-add="chassis"]');await page.click('#mech-add-chassis [data-add-kind="odometry"]');await page.waitForSelector('#mech-add-chassis #sim-kit-sensing [data-kit-sense="gyro"]',{state:'visible'});
+    {const cards=await page.$$eval('#sim-kit-sensing [data-kit-sense]',l=>Object.fromEntries(l.map(b=>[b.dataset.kitSense,{off:b.disabled,said:b.querySelector('[data-kit-seen]').textContent}])));
+      assert.deepEqual(Object.values(cards).map(c=>c.off),[false,false,false,false],'every choice stays open');
+      assert.match(cards.fused.said,/^The Pinpoint is not in the robot’s configuration yet\. In Configure, add it as an I2C device on bus 1 /,'the Pinpoint card says the configuration has none');assert.match(cards.encoders.said,/^A drive motor moved in Calibrate → Electronics but its encoder did not count\./,'the encoders card says one did not count');}
+    await page.click('#sim-kit-sensing [data-kit-sense="gyro"]');await page.click('#mech-add-chassis [data-dialog-done]');
+    await page.evaluate(()=>window.deck.page('calibrate'));await page.waitForFunction(()=>state.page==='calibrate');await page.click('#cal-tab-mechanisms');await page.click('[data-mech-pick="chassis-1"]');
+    assert.equal(await sensing(),'gyro','no Pinpoint in the configuration and a drive motor with no encoder: motors only');assert.doesNotMatch(await page.textContent('#cal-chassis'),/the hub has nothing by that name/);
     // A mecanum on motors only: nothing Electronics already checked is asked again, and plain motors have nothing to
     // calibrate. Its wheels are checked to roll forward, and it is good to use.
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('[data-mech-pick^=chassis]')].map(b=>b.querySelector('b').textContent.replace('✓','').trim())),['All wheels together','IMU tuning','Use it in your code','Drive it']);

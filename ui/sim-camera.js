@@ -257,8 +257,9 @@
     let autoTried=null;
     function drive(){if(!debug?.run)return;const spare=offered().find(o=>o.state==='spare'&&!o.absent);if(spare&&autoNow&&conn()?.host==='usb'&&shown()&&autoTried!==spare.value&&!busy()&&!moving){if(autoNow())autoTried=spare.value;}const s=debug.state(),want=wantNow()||debugWants(),keep=!!debug.shown?.(),at=Date.now();if(want||keep)leftAt=at;
       const step=linkStep({want,keep,running:s.running,moving:moving||s.starting||s.installing||freshBusy,blocked:!!busy(),own:s.auto,hard:!!failure?.hard,at,tryAt,leftAt});if(step==='start')void startLink();else if(step==='stop')void stopLink();}
-    // The camera picked, if another is open. Torque Debug opens its first by itself.
-    function syncCamera(){const now=current();if(!real()||!cam||cam.open===undefined)return;if(cam.open===now.value){camSent=null;return;}const line=`W\t${now.value}`;if(camSent!==line&&!now.absent){camSent=line;pictureUp=false;send(line);}}
+    // The camera picked, if another is open. Torque Debug opens its first by itself. Opening another, it puts back the last
+    // exposure and tag reading it was sent, so this camera's own settings follow the switch.
+    function syncCamera(){const now=current();if(!real()||!cam||cam.open===undefined)return;if(cam.open===now.value){camSent=null;return;}const line=`W\t${now.value}`;if(camSent!==line&&!now.absent){camSent=line;pictureUp=false;send(line);sendSettings();}}
     // ---- a Limelight in place of the picture
     function paintLime(){const now=current(),box=q('[data-cam-lime]');if(now.state!=='limelight'){limeHtmlNow=null;return;}const s=lime.status,row=now.row,fact=(k,v)=>v===undefined||v===null||v===''?'':`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`,num=(v,u)=>Number.isFinite(+v)&&v!==null&&v!==''?`${+(+v).toFixed(1)}${u}`:null,cal=limeCalText(lime.cal),usb2=row?.warnings?.find(w=>w.code==='PORT'),lost=drops&&row?U().dropCounts(drops).byPath[row.device?.path]?.unplugged||0:0;
       const html=`<h3 class="cal-group-title">Limelight smart camera</h3><p class="cal-cam-chip"><span class="rs-pill ok">Allowed if it is a Limelight 3A: ${esc(row?.legal?.rule||'')}</span></p>${usb2?`<p class="cal-debug-warn">${esc(usb2.text)}</p>`:''}${lost?`<p class="cal-debug-warn">Came unplugged ${lost===1?'1 time':`${lost} times`} since the hub started. If you did not unplug it, check its plug.</p>`:''}

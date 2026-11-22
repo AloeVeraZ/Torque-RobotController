@@ -104,7 +104,9 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechani
     {const kids=await page.locator('#mech-rail [data-garage^="chassis:"]').evaluateAll(l=>l.map(b=>b.dataset.garage));assert.equal(kids[0],'chassis:controller','the robot controller on top');}
     await page.click('[data-garage="chassis"]',{button:'right'});assert.equal(await page.locator('#mech-tile-menu [data-tile-act=delete]').isDisabled(),true,'the chassis stays');await page.keyboard.press('Escape');
     await page.click('[data-garage="chassis:pinpoint"]',{button:'right'});await page.click('#mech-tile-menu [data-tile-act=delete]');await page.waitForTimeout(300);
-    assert.equal((await project()).sensors.localization,'encoders','the Pinpoint is off');assert.equal(await page.locator('[data-garage="chassis:pinpoint"]').count(),0);
+    // Without odometry the wheels' Encoder ticks decide: the Test setup ticks none, so the robot drives its route by time.
+    {const p=await project();assert.ok(!p.robot.wiring.sensors.some(s=>s.model==='motor-encoder'&&s.for.startsWith('robot.')),'no drive motor has its Encoder ticked');assert.equal(p.sensors.localization,'gyro','the Pinpoint is off');}
+    assert.match(await page.locator('[data-wheels-said]').first().textContent(),/^Odometry removed\. A drive motor has no encoder, so the robot drives its route by time/,'and it says the robot now drives by time');assert.equal(await page.locator('[data-garage="chassis:pinpoint"]').count(),0);
     // + Add to a mechanism: a claw added to a lift rides on it, and sits under it in the rail.
     // + Add mechanism is a pop-up library: a category, optionally one company, then a card with its store photo.
     await page.click('#mech-add');await page.waitForSelector('#mech-add-dialog[open] .sim-mech-cat');assert.equal(await page.locator('#mech-picker [data-m="add"][data-v="cat:gb-viper-2s-336"]').isVisible(),false,'one category at a time');

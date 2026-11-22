@@ -1,11 +1,11 @@
 'use strict';
 // A camera on the Control Hub's USB in the real app, against a stubbed hub:
-//  A. Calibrate's row: Electronics, Mechanisms, Camera and TeleOp, then Debug and the programmers; Debug's link opens Camera on the simulated webcam;
+//  A. Calibrate's row: Electronics, Mechanisms, Camera, TeleOp and Autonomous, then Debug and the programmers; Debug's link opens Camera on the simulated webcam;
 //  B. a scan's camera reaches Configure and Camera, a new scan redraws both with nothing lost, and neither writes to the robot until Save;
 //  C. Add, rename and remove, and the XML Save sends;
 //  D. the Robot Controller restarting after a scan does not hide the camera from Configure while Setup still shows it;
 //  E. Camera's picture: nothing builds by itself, one press builds it once, a current copy starts with nothing pressed, its settings beside it, released after the tab is left, and failures in one line;
-//  F. several cameras: a row of names, one open at a time;
+//  F. several cameras: a row each, CAM 1 and CAM 2, one open at a time, and each keeps its own settings, on its page and on the robot;
 //  G. leaving while it asks about the robot's copy builds nothing, a copy that never matches is built only when pressed, and a Robot Controller app that never starts says so and offers Try again;
 //  H. the Debug panel draws nothing while hidden and shows the latest when it shows again, and the camera line ends on the last reading of a burst.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/usb-camera-ui.cjs
@@ -50,9 +50,9 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     // Calibrate itself opens on Electronics, whose helper starts Torque Debug by itself (save-flow-app and usb-devices-ui cover that). This is the
     // Camera tab by itself, so the first visit goes straight to Debug's step, where the hold above keeps it off.
     await page.evaluate(()=>document.querySelector('#calibrate-view [data-flow=debug]').click());await page.waitForFunction(()=>state.page==='calibrate');await page.waitForSelector('#cal-gate',{state:'hidden'});
-    // Calibrate's row: four numbered steps with Camera third, then Debug and the programmers, unnumbered.
-    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.map(b=>b.dataset.flow)),['electronics','tune','camera','teleop','debug','axon','swyft','servotest']);
-    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.filter(b=>b.querySelector('.flow-num')).map(b=>[b.id,b.textContent])),[['cal-tab-electronics','1Electronics'],['cal-tab-mechanisms','2Mechanisms'],['cal-tab-camera','3Camera'],['cal-tab-realrun','4TeleOp']]);
+    // Calibrate's row: five numbered steps with Camera third, then Debug and the programmers, unnumbered.
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.map(b=>b.dataset.flow)),['electronics','tune','camera','teleop','autonomous','debug','axon','swyft','servotest']);
+    assert.deepEqual(await page.$$eval('#calibrate-view nav.cal-flow [data-flow]',l=>l.filter(b=>b.querySelector('.flow-num')).map(b=>[b.id,b.textContent])),[['cal-tab-electronics','1Electronics'],['cal-tab-mechanisms','2Mechanisms'],['cal-tab-camera','3Camera'],['cal-tab-teleop','4TeleOp'],['cal-tab-auto','5Autonomous']]);
     const opened=()=>page.$$eval('#calibrate-view [data-cal-top-panel]',l=>l.filter(p=>!p.hidden).map(p=>p.id)),shown=()=>page.$$eval('#calibrate-view [data-cal-top]',l=>l.filter(b=>!b.hidden).map(b=>b.dataset.calTop));
     assert.equal(await page.getAttribute('#cal-tab-debug','aria-selected'),'true','on Debug');assert.deepEqual(await opened(),['cal-panel-debug']);
     // No camera on the hub: Debug's link tries the camera tools on the simulated webcam, in Calibrate's Camera step.
@@ -83,7 +83,9 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     await page.click('[data-ce-cancel]');assert.equal(await page.locator('.ce-main input[id^=ce-name-]').first().inputValue()!=='elbowTwox',true,'the edit went');assert.equal(await page.locator('[data-ce-save]').isDisabled(),false,'the cameras plugged in are still there to save');await page.click('[data-ce-back]');
     // Camera follows the same scan: two cameras, a row of their names.
     const names=()=>page.$$eval('[data-cam-choice]',l=>l.map(b=>b.textContent));
-    await toCalibrate();await page.waitForFunction(()=>document.querySelectorAll('[data-cam-choice]').length===2);assert.deepEqual(await names(),['Ucamera001','SECOND']);assert.equal(await page.locator('[data-cam-name]').isVisible(),true,'the heading names the camera showing');assert.equal(await page.locator('[data-cam-pick]').isVisible(),false,'the list on the left picks the camera');assert.equal(await page.locator('[data-cam-rail]').count(),2);await page.click('[data-cam-rail="usb:SECOND"]');assert.equal(await page.getAttribute('[data-cam-choice="usb:SECOND"]','aria-pressed'),'true');assert.match(await text('[data-cam-status]'),/^SECOND is plugged in/);
+    // Calibrate's list of cameras: [key, badge, name, what kind it is and whether its lens is measured, picked].
+    const rails=()=>page.$$eval('#cal-cam-rail [data-cam-rail]',l=>l.map(b=>[b.dataset.camRail,b.querySelector('.cal-elec-badge').textContent,b.querySelector('b').textContent.trim(),b.querySelector('small').textContent,b.getAttribute('aria-pressed')]));
+    await toCalibrate();await page.waitForFunction(()=>document.querySelectorAll('[data-cam-choice]').length===2);assert.deepEqual(await names(),['Ucamera001','SECOND']);assert.equal(await page.locator('[data-cam-name]').isVisible(),true,'the heading names the camera showing');assert.equal(await page.locator('[data-cam-pick]').isVisible(),false,'the list on the left picks the camera');assert.equal(await page.locator('[data-cam-rail]').count(),2);assert.deepEqual(await rails(),[['usb:Ucamera001','CAM 1','Ucamera001','USB webcam · not in the configuration · lens to do','true'],['usb:SECOND','CAM 2','SECOND','USB webcam · not in the configuration · lens to do','false']]);await page.click('[data-cam-rail="usb:SECOND"]');assert.equal(await page.getAttribute('[data-cam-choice="usb:SECOND"]','aria-pressed'),'true');assert.match(await text('[data-cam-status]'),/^SECOND is plugged in/);
     await app.evaluate(({},cam)=>{global.__u.others=[cam];},CAM);await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');await page.evaluate(()=>document.querySelector('#rs-scan').click());await page.waitForFunction(()=>!document.querySelector('[data-ce-usb-add="SECOND"]'),null,{timeout:15000});
 
     // C. Add, rename and remove: the draft only, until Save.
@@ -140,7 +142,22 @@ const CAM={serial:'Ucamera001',type:'WEBCAM'};
     // F. Two cameras in the configuration: a row of names, and the row opens the one picked. Only one is ever open.
     await app.evaluate(({},cam)=>{const r=global.__u;r.others=[cam,{serial:'SECOND',type:'WEBCAM'}];r.xml=r.xml.replace('<Webcam name="Webcam" serialNumber="Ucamera001" />','<Webcam name="Webcam" serialNumber="Ucamera001" />\n    <Webcam name="Back" serialNumber="SECOND" />');r.sent=[];},CAM);
     await debugEvent({manifest:{...manifest,cameras:['Webcam','Back']}});await debugEvent(live());await page.waitForFunction(()=>document.querySelectorAll('[data-cam-choice]').length>=2);assert.ok((await names()).includes('Back'));await page.click('[data-cam-rail="Back"]');await until('the other camera asked for',async()=>(await u()).sent.includes('W\tBack'));assert.match(await text('[data-cam-status]'),/^Opening “Back”\. One camera opens at a time\.$/);
-    await debugEvent(live({open:'Back',state:'OPENING'}));await debugEvent(live({open:'Back'}));await debugEvent({camera:Uint8Array.from(picture)});await page.waitForFunction(()=>document.querySelector('[data-cam-status]').textContent==='11 frames a second');assert.equal((await u()).sent.filter(l=>l==='W\tBack').length,1,'asked once');await page.screenshot({path:path.join(out,'camera-two.png')});
+    // Torque Debug says which camera it has open before that camera's first picture comes: a picture sooner is the last camera's.
+    const opens=async name=>{await debugEvent(live({open:name,state:'OPENING'}));await debugEvent(live({open:name}));await page.waitForFunction(()=>/^Getting the camera ready/.test(document.querySelector('[data-cam-status]').textContent));await debugEvent({camera:Uint8Array.from(picture)});await page.waitForFunction(()=>document.querySelector('[data-cam-status]').textContent==='11 frames a second');};
+    await opens('Back');assert.equal((await u()).sent.filter(l=>l==='W\tBack').length,1,'asked once');await page.screenshot({path:path.join(out,'camera-two.png')});
+    // Each camera is a row of its own, CAM 1 and CAM 2, saying what kind of camera it is and whether its lens is measured.
+    assert.deepEqual(await rails(),[['Webcam','CAM 1','Webcam','USB webcam · lens to do','false'],['Back','CAM 2','Back','USB webcam · lens to do','true']]);assert.match(await text('#cal-cam-rail .cal-elec-listhead'),/^Cameras\s+0 of 2 done$/);
+    // Each camera keeps its own settings: what is set on one does not show on the other's page.
+    const settingsShown=()=>page.evaluate(()=>[...['#cam-rotate','#cam-exposure','#cam-decimation'].map(s=>document.querySelector(s).value),document.querySelector('[data-cam-image]').style.transform.match(/rotate\(\d+deg\)/)?.[0]]);
+    const onRobot=async()=>{const l=(await u()).sent;return [l.filter(x=>x.startsWith('V\t')).at(-1),l.filter(x=>x.startsWith('D\t')).at(-1)].join(' ');};
+    const pick=async name=>{await app.evaluate(()=>{global.__u.sent=[];});await page.click(`[data-cam-rail="${name}"]`);await until(`${name} asked for`,async()=>(await u()).sent.includes(`W\t${name}`));await page.waitForSelector(`[data-cam-rail="${name}"][aria-pressed="true"]`);};
+    await page.selectOption('#cam-rotate','180');await page.selectOption('#cam-exposure','10');await page.selectOption('#cam-decimation','2');await until('Back’s settings on the robot',async()=>await onRobot()==='V\t10\t0 D\t2');assert.deepEqual(await settingsShown(),['180','10','2','rotate(180deg)']);
+    await pick('Webcam');assert.equal(await page.getAttribute('[data-cam-rail="Back"]','aria-pressed'),'false');assert.deepEqual(await settingsShown(),['0','5','3','rotate(0deg)'],'Webcam shows its own settings, not Back’s');await opens('Webcam');
+    await page.selectOption('#cam-rotate','90');assert.deepEqual(await settingsShown(),['90','5','3','rotate(90deg)']);
+    await pick('Back');assert.deepEqual(await settingsShown(),['180','10','2','rotate(180deg)'],'Back has its own again, not Webcam’s turn');await opens('Back');
+    // Nor on the robot: Torque Debug keeps the last exposure and tag reading it was sent when it opens another camera, so the camera that opens is sent its own.
+    await pick('Webcam');await opens('Webcam');await until('Webcam’s own exposure and tag reading on the robot, not Back’s',async()=>await onRobot()==='V\t5\t0 D\t3');await page.selectOption('#cam-rotate','0');
+    await pick('Back');await opens('Back');await until('Back’s own again on the robot',async()=>await onRobot()==='V\t10\t0 D\t2');
     await debugEvent({ended:'stopped'});await leave();await page.waitForTimeout(300);await app.evaluate(({},xml)=>{const r=global.__u;r.xml=r.xml.replace(/\n\s*<Webcam name="Back"[^>]*>/,'');},XML);
 
     // A camera in the configuration and not plugged in says so, in both places.
