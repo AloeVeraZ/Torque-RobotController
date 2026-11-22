@@ -207,7 +207,8 @@ public final class VirtualHub {
         imu.heading = heading;
         map.put(hub.has("imu") ? hub.get("imu").getAsString() : "imu", imu);
         // The Pinpoint and OTOS mounted as the setup says (pinpointMount, otosMount); older exports carry only their names.
-        if (hub.has("pinpoint")) { pinpoint = new SimSensors.Pinpoint(hub.has("pinpointMount") ? hub.getAsJsonObject("pinpointMount") : null); map.put(hub.get("pinpoint").getAsString(), pinpoint); }
+        // A Pinpoint alone (pinpointImu) has no pods plugged in: it is the IMU.
+        if (hub.has("pinpoint")) { boolean alone = hub.has("pinpointImu") && hub.get("pinpointImu").getAsBoolean(); pinpoint = new SimSensors.Pinpoint(hub.has("pinpointMount") ? hub.getAsJsonObject("pinpointMount") : null, !alone); map.put(hub.get("pinpoint").getAsString(), pinpoint); }
         if (hub.has("otos")) { otos = new SimSensors.Otos(hub.has("otosMount") ? hub.getAsJsonObject("otosMount") : null); map.put(hub.get("otos").getAsString(), otos); }
         // The hubs under their configuration names (LynxModule for bulk caching, and each one's battery voltage):
         // hub.modules [{name, address, parent}], else the Control Hub alone.

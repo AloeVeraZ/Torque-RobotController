@@ -98,7 +98,12 @@ public final class Constants {
     public static void motorPower(double p) { config.maxPathSpeed=p; hardware.limit=p; }
 }
 `;}
+  // A Pinpoint's status when it answers. With no pods plugged in it never says READY: goBILDA's driver reports the pods it
+  // cannot find first (FAULT_NO_PODS_DETECTED, its LED purple), so a Pinpoint alone is answering when it says that.
+  const PINPOINT_ANSWERS=['READY','FAULT_NO_PODS_DETECTED','FAULT_X_POD_NOT_DETECTED','FAULT_Y_POD_NOT_DETECTED'];
   function robotDrive(h,options){const motors=Object.entries(h.drive.motors),pods=h.pods,kind=h.drive.kind,pp=h.pinpointMount,ot=h.otosMount,sw=kind==='swerve'?h.drive.steered:null;
+    // Calibrate's IMU tuning found the Pinpoint alone counts a turn to the left as a turn to the right (options.turn: DeckChassisCal's turn()).
+    const back=!!h.pinpointImu&&options?.turn?.backwards===true;
     // IMU only ("motors only"): nothing measures how far it went, so that is taken from what it was told to do and for how long, at the speeds Setup gives the robot. Only the heading is measured.
     const timed=h.localization==='gyro'&&!sw,tSpeed=options?.tuning||{};
     const extra=[...(sw?sw.imports:[]),...(h.imuMount?.imports||[])].filter(i=>!/^com\.qualcomm\.robotcore\.hardware\.\w+$/.test(i)&&!['com.qualcomm.hardware.rev.RevHubOrientationOnRobot','org.firstinspires.ftc.robotcore.external.navigation.AngleUnit'].includes(i));
@@ -137,7 +142,9 @@ ${pods.length?`    /** Each odometry pod's count direction: -1 for a pod that co
 `:''}    private final IMU imu;
     private final GoBildaPinpointDriver pinpoint;
     /** A Pinpoint with its two pods gives the whole position. Alone it gives the heading, and the drive motors (or time) the distance. */
-    private static final boolean PINPOINT_HAS_PODS = ${h.pinpointImu?'false':'true'};
+    private static final boolean PINPOINT_HAS_PODS = ${h.pinpointImu?'false':'true'};${h.pinpointImu?`
+    /** Whether the Pinpoint answers. With no pods plugged in it never says READY: it says it finds no pods. */
+    private static boolean answers(GoBildaPinpointDriver.DeviceStatus s){return ${PINPOINT_ANSWERS.map(x=>`s==GoBildaPinpointDriver.DeviceStatus.${x}`).join('||')};}`:''}
     private final SparkFunOTOS otos;
     private final ElapsedTime clock = new ElapsedTime();
     private final int[] before = new int[${motors.length}], podBefore = new int[${pods.length}];
@@ -193,9 +200,10 @@ ${sw?`    /** Where each pod points now: its absolute encoder, from the reading 
         ${sw?'readPods();':''}double now=clock.seconds(),dt=now-lastTime;if(dt<=0)return;lastTime=now;Pose p=state.pose(),next;
         double yaw=imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS),dh=${h.imuScale&&h.imuScale!==1?`${n(h.imuScale)}*`:''}DeckFollower.angle(yaw-oldImu);oldImu=yaw;
         // The Pinpoint turns with its own IMU; while it does not answer (a loose cable), the Control Hub's IMU carries the heading.
-${h.pinpointImu?`        // The Pinpoint alone: its IMU says how far the robot turned. While it does not answer (a loose cable), the Control Hub's IMU does.
+${h.pinpointImu?`        // The Pinpoint alone: its IMU says how far the robot turned. While it does not answer (a loose cable), the Control Hub's IMU does.${back?`
+        // Calibrate (IMU tuning) found the Pinpoint counts a turn to the left as a turn to the right, so its turn is taken the other way round.`:''}
         pinpoint.update();
-        if(pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY){double turned=pinpoint.getHeading(AngleUnit.RADIANS);if(!Double.isNaN(oldPinpoint))dh=DeckFollower.angle(turned-oldPinpoint);oldPinpoint=turned;}else oldPinpoint=Double.NaN;
+        if(answers(pinpoint.getDeviceStatus())){double turned=pinpoint.getHeading(AngleUnit.RADIANS);if(!Double.isNaN(oldPinpoint))dh=${back?'-':''}DeckFollower.angle(turned-oldPinpoint);oldPinpoint=turned;}else oldPinpoint=Double.NaN;
 `:''}        if(pinpoint!=null&&PINPOINT_HAS_PODS){pinpoint.update();next=pinpoint.getDeviceStatus()==GoBildaPinpointDriver.DeviceStatus.READY?new Pose(pinpoint.getPosX(DistanceUnit.INCH),pinpoint.getPosY(DistanceUnit.INCH),pinpoint.getHeading(AngleUnit.RADIANS)):new Pose(p.x(),p.y(),p.heading()+dh);}
         else if(otos!=null){SparkFunOTOS.Pose2D q=otos.getPosition();next=new Pose(q.x,q.y,q.h);}
         else {
@@ -1340,6 +1348,18 @@ ${[...motorTurrets,...crTurrets.map(({x})=>x)].map(x=>`        ${x.field}.setPow
                 result("imu.turn", turned > 45 ? "ok" : turned < -45 ? "?backward" : "?none");
             }
         }`);
+      // A Pinpoint alone (no pods) is the IMU the code turns by: it is checked as one, by the same quarter turn. It has no pods to push.
+      if(h.pinpointImu){gets.push(`        GoBildaPinpointDriver pinpoint = hardwareMap.tryGet(GoBildaPinpointDriver.class, ${say(h.pinpoint)});`,'        // Resetting the Pinpoint calibrates its IMU, so the robot must be still at INIT.','        if (pinpoint != null) pinpoint.resetPosAndIMU();');
+        step(`Pinpoint ("${h.pinpoint}")`,`        if (pinpoint == null) result("pinpoint", "?missing");
+        else {
+            pinpoint.update();
+            double before = pinpoint.getHeading(AngleUnit.DEGREES);
+            if (ask("The Pinpoint has no pods, so it is the IMU the robot turns by. Turn the robot a quarter turn LEFT (counterclockwise, seen from above), then press A.", "A: turned it | B: skip") == YES) {
+                pinpoint.update();
+                double turned = AngleUnit.normalizeDegrees(pinpoint.getHeading(AngleUnit.DEGREES) - before);
+                result("pinpoint.turn", turned > 45 ? "ok" : turned < -45 ? "?backward" : "?none");
+            }
+        }`);}
       gets.push(`        DcMotorEx[] drive = new DcMotorEx[DRIVE.length];`,`        for (int i = 0; i < DRIVE.length; i++) {`,`            drive[i] = hardwareMap.tryGet(DcMotorEx.class, DRIVE[i]);`,
         `            if (drive[i] != null) { drive[i].setDirection(direction(DRIVE_REVERSED[i])); drive[i].setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); }`,`        }`);
       motors.forEach(([k,x],i)=>step(`${DRIVE_LABELS[k]} ("${x.name}")`,`        if (drive[${i}] == null) result("robot.${k}.reversed", "?missing");
@@ -1646,7 +1666,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;${h?`
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
-import com.qualcomm.robotcore.hardware.IMU;`:''}${odo==='fused'?`
+import com.qualcomm.robotcore.hardware.IMU;`:''}${odo==='fused'||h?.pinpointImu?`
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;`:odo==='optical'?`
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS;`:''}
 import com.qualcomm.robotcore.hardware.Servo;
@@ -1901,9 +1921,11 @@ ${flywheels.length&&velocity?`
     const labelOf=key=>{let k;
       if((k=/^robot\.(\w+)\./.exec(key)))return cap(DRIVE_LABELS[k[1]]||k[1]);
       if((k=/^(intakes|shooters)\.(\d+)\.(\w+)$/.exec(key))){const x=deviceFor(k[1],+k[2],POSITIONS[k[3]]?.[0]||k[3]);return x?x.label:`${k[1]==='intakes'?'Intake':'Shooter'} ${+k[2]+1}`;}
-      return {imu:'IMU','imu.level':'IMU','imu.turn':'IMU','shooter.topSpeed':'Flywheel','shooter.rpm':'Flywheel'}[key]||key;};
+      return {imu:'IMU','imu.level':'IMU','imu.turn':'IMU','pinpoint.turn':'The Pinpoint','shooter.topSpeed':'Flywheel','shooter.rpm':'Flywheel'}[key]||key;};
     const PROBLEMS={'imu.level':'reads the robot tilted: the Control Hub mounting in Deck (Setup → Robot controller) does not match the robot.',
       'imu.turn':{'?backward':'read the quarter turn left as a turn right: the Control Hub mounting in Deck (Setup → Robot controller) is wrong.','?none':'did not see the quarter turn. Check the IMU name and the Control Hub mounting.'},
+      // A Pinpoint alone, the IMU the robot turns by.
+      'pinpoint.turn':{'?backward':'read the quarter turn left as a turn right. goBILDA says to mount the Pinpoint sticker side up, so turn it over. Or run IMU tuning in Calibrate → Mechanisms, and Torque takes its heading the other way round.','?none':'did not see the quarter turn. Check its cable, and that the robot’s configuration has it on that I2C port.'},
       'shooter.topSpeed':'encoder read no speed at full power: check the flywheel motor\'s encoder cable.','shooter.rpm':'top speed is below the shooting speed: lower the shooter RPM in Mechanisms.'};
     // Odometry: the Pinpoint's pods, the OTOS's mounting and scalars, each pod's position and direction.
     const Cfg=globalThis.DeckSimConfig||require('./sim-config.js'),odo=Cfg.odometryOf(r),before=JSON.stringify(odo);

@@ -93,8 +93,9 @@
   // the robot up and turns or tilts it (an IMU), rolls each odometry pod or pushes the robot (a Pinpoint). Torque reads it
   // at rest, watches, and says what each reading was before and after. need: 'any' reading moving passes, or these keys all must.
   // Each reading: [key, label, unit, least change that counts, an angle (wraps at 180°)].
+  // pinpointImu: a Pinpoint alone (no pods, sim-config's pinpointAlone) is the robot's IMU, so only its heading is checked.
   const BY_HAND={imu:{need:'any',list:[['yaw','Heading (yaw)','°',1.5,1],['pitch','Pitch','°',1.5,1],['roll','Roll','°',1.5,1]]},
-    pinpoint:{need:['ex','ey'],list:[['ex','X pod','counts',5],['ey','Y pod','counts',5],['x','X','mm',2],['y','Y','mm',2],['h','Heading','°',1.5,1]]},
+    pinpoint:{need:['ex','ey'],list:[['ex','X pod','counts',5],['ey','Y pod','counts',5],['x','X','mm',2],['y','Y','mm',2],['h','Heading','°',1.5,1]]},pinpointImu:{need:['h'],list:[['h','Heading','°',1.5,1]]},
     otos:{need:'any',list:[['x','X','in',.2],['y','Y','in',.2],['h','Heading','°',1.5,1]]}};
   const byHand=kind=>Object.hasOwn(BY_HAND,kind);
   // What moving it did, from readings at rest (before) and while it was moved (during): {rows:[{k, key, label, unit, before,
@@ -109,6 +110,8 @@
   // A Pinpoint's own status (getDeviceStatus), in words, when it says something is wrong.
   const PINPOINT_STATUS={NOT_READY:'It is still starting up.',CALIBRATING:'It is calibrating its IMU. Keep the robot still for a moment.',FAULT_NO_PODS_DETECTED:'It can’t find its odometry pods. Plug them into its X and Y ports.',FAULT_X_POD_NOT_DETECTED:'It can’t find its X pod. Plug the forward pod into its X port.',FAULT_Y_POD_NOT_DETECTED:'It can’t find its Y pod. Plug the sideways pod into its Y port.',FAULT_IMU_RUNAWAY:'Its IMU is drifting. Turn the robot off and on again, and keep it still while it starts.',FAULT_BAD_READ:'The Control Hub got a bad reading from it. Check its I2C cable.'};
   const statusWords=s=>PINPOINT_STATUS[String(s||'').toUpperCase()]||'';
+  // The same for a Pinpoint alone: it has no pods, so a status that only says so is nothing to fix.
+  const aloneWords=s=>/POD/.test(String(s||'').toUpperCase())?'':statusWords(s);
   // ---- the chassis ----
   // Each wheel (or swerve module) of a drivetrain, as Simulate keys it (DeckHardware.DRIVE_SLOTS): its drive motor's key,
   // the key of its steering (a swerve module), what it is called, and the words of its key a configuration name may use.
@@ -187,7 +190,7 @@
     return {encoders:enc.some(v=>v===false)?false:names.length>0&&enc.every(v=>v===true)?true:undefined,
       fused:moved.some(v=>v===true)?true:(!!read&&!pins.length)||(moved.length>0&&moved.every(v=>v===false))?false:undefined,
       wheels:(drive||[]).length>0&&drive.every(d=>!!pods[d.key]?.drive),noPinpoint:!!read&&!pins.length};}
-  const api={sensingOf,staleChassis,hereLinks,devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,BY_HAND,PIECE};
+  const api={sensingOf,staleChassis,hereLinks,devices,sentence,judge,changes,configured,resultText,missing,wordsOf,newId,progress,slotsOf,guessChassis,chassisLinks,plan,fromDebug,wordsIn,simDevices,byHand,handCheck,statusWords,aloneWords,BY_HAND,PIECE};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   // ---- the panel ----
@@ -288,15 +291,18 @@
       return `<section class="cal-elec-device" data-elec-device="${esc(picked)}">${head}${lock?`<p class="hint">${esc(lock)}</p>`:''}${controls}${watching}${a?.kind==='motor'&&!lock?dirHtml(a):''}${seen&&(seen.cause.name===picked||seen.cause.kind==='piece')?seenHtml(d):''}${mine.length?`<h4 class="cal-group-title">Its links</h4><ol class="cal-link-list">${mine.map(l=>linkHtml(l,d)).join('')}</ol>`:''}
         ${rows(d,pr).some(x=>!x.done)?'<div class="button-row"><button type="button" class="secondary" data-elec-next>Next to do</button></div>':''}</section>`;}
     // An IMU, Pinpoint or OTOS: move it by hand while Torque watches, then every reading before and after.
+    // What a device is moved by hand as: its kind, but a Pinpoint alone (by the robot's sensing in Setup) as the IMU it is (BY_HAND.pinpointImu).
+    const handKind=dev=>dev.kind==='pinpoint'&&globalThis.DeckSimConfig?.pinpointAlone?.(p().robot,p().sensors?.localization,p().controller)?'pinpointImu':dev.kind;
     const HAND_SAY={imu:'No motor turns the IMU, so you move it. Press Watch while I move it and keep the robot still for a moment, then pick the robot up, turn it, and tilt it forward and to the side.',
+      pinpointImu:'This Pinpoint has no pods, so it is checked as the robot’s IMU. Press Watch while I move it and keep the robot still for a moment, then turn the robot on the floor.',
       pinpoint:'The odometry pods only count when they roll. Press Watch while I move it and keep the robot still for a moment, then roll the X (forward) pod and the Y (sideways) pod by hand, or push the robot forward and then sideways.',
       otos:'The OTOS tracks the floor under it. Press Watch while I move it and keep the robot still for a moment, then slide the robot a little forward and then sideways.'};
     const num=(v,u)=>Number.isFinite(v)?`${Math.abs(v)>=100?Math.round(v):(+v).toFixed(1)}${u==='°'?'°':` ${u}`}`:'—';
     function handTable(rows){return `<table class="cal-elec-slots cal-hand-table"><thead><tr><th scope="col">Reading</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Change</th><th scope="col"></th></tr></thead><tbody>${rows.map(r=>r.unread?`<tr><th scope="row">${esc(r.label)}</th><td colspan="4" class="hint">No reading</td></tr>`:`<tr data-hand-row="${esc(r.k||r.label)}"><th scope="row">${esc(r.label)}</th><td>${num(r.before,r.unit)}</td><td>${num(r.after,r.unit)}</td><td>${num(r.after-r.before,r.unit)}</td><td>${r.moved?'<span class="rs-pill ok">Moved</span>':'<span class="rs-pill">Still</span>'}</td></tr>`).join('')}</tbody></table>`;}
     function handHtml(dev,lock){const m=el().moved?.[dev.name],watching=busy==='hand';
-      const now=watching?`<div class="cal-elec-controls"><p class="hint" role="status" data-elec-ready="${ready?1:0}">${ready?(dev.kind==='pinpoint'?'Now roll the X pod and the Y pod. You have 30 s.':'Now turn the robot and tilt it. You have 30 s.'):'Keep the robot still while Torque takes a first reading…'}</p><button type="button" class="secondary" data-elec-stop>Stop watching</button></div>`:'';
+      const now=watching?`<div class="cal-elec-controls"><p class="hint" role="status" data-elec-ready="${ready?1:0}">${ready?(handKind(dev)==='pinpoint'?'Now roll the X pod and the Y pod. You have 30 s.':handKind(dev)==='pinpointImu'?'Now turn the robot. You have 30 s.':'Now turn the robot and tilt it. You have 30 s.'):'Keep the robot still while Torque takes a first reading…'}</p><button type="button" class="secondary" data-elec-stop>Stop watching</button></div>`:'';
       const result=m&&!watching?`<h4 class="cal-group-title">Last time you moved it</h4>${handTable(m.rows||[])}<p class="${m.ok?'hint':'cal-sense-note bad'}">${m.ok?`Its readings changed when you moved it${m.at?` (${esc(new Date(m.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))})`:''}.`:esc(m.text||'Its readings did not change.')}</p>`:'';
-      return `<p class="hint">${esc(HAND_SAY[dev.kind])}</p>${watching?'':`<div class="cal-elec-controls"><button type="button" class="primary" data-elec-hand${lock||busy||checking?' disabled':''}>${m?'Watch again':'Watch while I move it'}</button></div>`}${now}${result}`;}
+      return `<p class="hint">${esc(HAND_SAY[handKind(dev)])}</p>${watching?'':`<div class="cal-elec-controls"><button type="button" class="primary" data-elec-hand${lock||busy||checking?' disabled':''}>${m?'Watch again':'Watch while I move it'}</button></div>`}${now}${result}`;}
     // Simulate's Encoder tick on a drive motor, against Configure's encoder cable: where they differ, one of them is wrong.
     const simSays=name=>{const s=opts.simEncoder?.(name);if(s===undefined)return '';const c=encoderOf(name)!==false;return s===c?'':` <span class="rs-pill warn" data-elec-sim-encoder="${esc(name)}" title="Setup → Mechanisms says this wheel ${s?'has an encoder':'has no encoder'}, but Configure says ${c?'its encoder cable is plugged in':'it has none'}. Fix whichever one is wrong.">Setup: ${s?'encoder':'no encoder'}</span>`;};
     // Simulate's mechanisms as planned links (opts.simLinks): only those whose motor or servo and sensor this configuration
@@ -399,10 +405,10 @@
     // Moved by hand: reads it at rest, then watches until what it needs moved has (and a second more, to see where it ends
     // up), or 30 s pass, or Stop. Kept in electronics.moved, before and after for each reading.
     async function handMove(){const d=devs(),dev=read().find(x=>x.name===picked)||{name:picked,kind:d.sensors.find(s=>s.name===picked)?.kind};if(!live()||busy||!byHand(dev.kind))return;
-      busy='hand';seen=null;paint();let okAt=0;
-      try{const r=await watch((b,du)=>{const c=handCheck(dev.kind,dev.name,b,du);if(c.ok&&!okAt)okAt=performance.now();return okAt&&performance.now()-okAt>1000;});
-        const c=handCheck(dev.kind,dev.name,r.before,r.during),last=[...r.during].reverse().find(v=>v[`i:${dev.name}:status`]!==undefined)?.[`i:${dev.name}:status`],said=dev.kind==='pinpoint'?statusWords(last):'';
-        const text=c.unread?`Torque Debug gets no reading from ${dev.name}. Check that it is in the active configuration and plugged into an I2C port.`:c.ok?'':dev.kind==='pinpoint'&&c.missing.length?`${c.missing.join(' and ')} did not count.${said?' '+said:' Check that the pod is plugged into the Pinpoint and that it rolled.'}`:`Nothing changed while Torque watched.${r.stopped?' Check its cable.':' If you moved it, check its cable.'}`;
+      busy='hand';seen=null;paint();let okAt=0;const kind=handKind(dev);
+      try{const r=await watch((b,du)=>{const c=handCheck(kind,dev.name,b,du);if(c.ok&&!okAt)okAt=performance.now();return okAt&&performance.now()-okAt>1000;});
+        const c=handCheck(kind,dev.name,r.before,r.during),last=[...r.during].reverse().find(v=>v[`i:${dev.name}:status`]!==undefined)?.[`i:${dev.name}:status`],said=kind==='pinpoint'?statusWords(last):kind==='pinpointImu'?aloneWords(last):'';
+        const text=c.unread?`Torque Debug gets no reading from ${dev.name}. Check that it is in the active configuration and plugged into an I2C port.`:c.ok?'':kind==='pinpointImu'?`Its heading did not change while Torque watched.${said?' '+said:' If you turned the robot, check its cable.'}`:dev.kind==='pinpoint'&&c.missing.length?`${c.missing.join(' and ')} did not count.${said?' '+said:' Check that the pod is plugged into the Pinpoint and that it rolled.'}`:`Nothing changed while Torque watched.${r.stopped?' Check its cable.':' If you moved it, check its cable.'}`;
         edit(()=>{el().moved={...el().moved,[dev.name]:{ok:c.ok,at:new Date().toISOString(),rows:c.rows.map(x=>x.unread?{k:x.k,label:x.label,unread:true}:{k:x.k,label:x.label,unit:x.unit,before:+x.before.toFixed(3),after:+x.after.toFixed(3),moved:x.moved}),...(text?{text}:{}),...(last!==undefined?{status:String(last)}:{})}};});}
       catch(e){edit(()=>{el().moved={...el().moved,[dev.name]:{ok:false,at:new Date().toISOString(),rows:[],text:`The watch stopped: ${e.message}`}};});}
       finally{busy=null;}paint();}

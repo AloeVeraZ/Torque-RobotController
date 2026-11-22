@@ -79,9 +79,11 @@ const PIECE_COLOR={red:{r:.55,g:.12,b:.1,a:.6},blue:{r:.1,g:.2,b:.6,a:.6},green:
 // Seeded normal noise so a run is reproducible.
 function rng(seed){let s=(seed>>>0)||1;const u=()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return (s+.5)/4294967296;};return ()=>Math.sqrt(-2*Math.log(u()))*Math.cos(2*Math.PI*u());}
 
-function sensorConfig(raw={}){
+// robot, controller: with a Pinpoint alone (sim-config's pinpointAlone) the heading is the Pinpoint's IMU, so it drifts as the
+// Pinpoint's does (the goBILDA Pinpoint's error profile). The distance keeps its own sensing's error (drive encoders, or none).
+function sensorConfig(raw={},robot=null,controller='ftc'){
   const mode=Object.hasOwn(LOCALIZATION,raw.localization)?raw.localization:'encoders';
-  const defaults=config.sensors[mode].error;
+  const own=config.sensors[mode].error,defaults=config.pinpointAlone(robot,mode,controller)?[own[0],own[1],config.sensors.fused.error[2]]:own;
   const num=(v,d,max)=>finite(v)?clamp(v,0,max):d;
   return {localization:mode,scaleError:num(raw.scaleError,defaults[0],.1),noise:num(raw.noise,defaults[1],Infinity),gyroDrift:num(raw.gyroDrift,defaults[2],Infinity),seed:finite(raw.seed)?raw.seed>>>0:1};
 }
@@ -127,7 +129,7 @@ class SimEngine{
     const mechanisms=Mech.sanitize(raw.mechanisms);mechanisms.enabled=mechanisms.enabled&&field==='biobuzz';
     // How the robot's parts move (joints, actuators, actions): drawn from the joint values each frame carries.
     const kinematics=Kin.forEngine(raw.kinematics);
-    this.config={field,physics,start,mechanisms,kinematics,alliance:raw.alliance==='blue'?'blue':'red',controller:raw.controller==='motionmodule'?'motionmodule':'ftc',timing:Timed.settings(raw.timing),elements:field!=='empty'&&raw.elements!==false,robot:config.robot(raw.robot,raw.controller==='motionmodule'?'motionmodule':'ftc'),bounds:config.bounds({...raw,field}),sensors:sensorConfig(raw.controller==='motionmodule'?{...raw.sensors,localization:config.localization('motionmodule',raw.sensors?.localization)}:raw.sensors),tuning:raw.tuning&&typeof raw.tuning==='object'?raw.tuning:{}};this._empty=null;
+    this.config={field,physics,start,mechanisms,kinematics,alliance:raw.alliance==='blue'?'blue':'red',controller:raw.controller==='motionmodule'?'motionmodule':'ftc',timing:Timed.settings(raw.timing),elements:field!=='empty'&&raw.elements!==false,robot:config.robot(raw.robot,raw.controller==='motionmodule'?'motionmodule':'ftc'),bounds:config.bounds({...raw,field}),sensors:sensorConfig(raw.controller==='motionmodule'?{...raw.sensors,localization:config.localization('motionmodule',raw.sensors?.localization)}:raw.sensors,raw.robot,raw.controller==='motionmodule'?'motionmodule':'ftc'),tuning:raw.tuning&&typeof raw.tuning==='object'?raw.tuning:{}};this._empty=null;
     this.origin=field==='empty'?{x:this.config.bounds.x1/2,y:this.config.bounds.y1/2}:{x:OFFSET,y:OFFSET};
     this.zones=Array.isArray(raw.zones)?raw.zones.slice(0,24).map(z=>{try{return planner.validateZone(z);}catch{return null;}}).filter(Boolean):[];
     this.build();

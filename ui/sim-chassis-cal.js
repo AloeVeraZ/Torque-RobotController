@@ -29,12 +29,15 @@
     // side reversed (ui/sim-ftc.js), anything else forward.
     const sided=type==='mecanum'||type==='tank'||type==='tank2',motors=driveKeys(type).map(k=>({key:k,name:dev(k),reversed:typeof r.devices?.[k]?.reversed==='boolean'?r.devices[k].reversed:sided&&/left/i.test(k)}));
     const pods=({odometry:['par','perp'],odometry3:['par_left','par_right','perp']}[loc]||[]).map(k=>({key:k,name:dev(k),...odo.pods[k]}));
-    const wheelIn=(r.wheelDiameterMm||104)/MM;
+    const wheelIn=(r.wheelDiameterMm||104)/MM,alone=!!C?.pinpointAlone?.(r,loc,project.controller);
     return {type,name:drive.name,holonomic:!!drive.holonomic,swerve:drive.engine==='swerve',loc,locName:C?.sensors?.[loc]?.name||loc,motors,pods,imu:dev('imu'),pinpoint:dev('pinpoint'),otos:dev('otos'),odo,
+      // A Pinpoint alone (no pods) is the IMU: the heading is its own, the way round IMU tuning found it (pinpointSign), and the
+      // distance comes from the drive encoders, or from time.
+      ...(alone?{pinpointImu:true,pinpointSign:turnProfiles(project.calibration?.chassis).backwards?-1:1}:{}),
       nominalTicksPerIn:cpr/(Math.PI*wheelIn),driveTicksPerIn:project.calibration?.chassis?.roll?.ticksPerIn||cpr/(Math.PI*wheelIn),podTicksPerIn:2000/(Math.PI*32/MM)};}
   // The robot's devices the chassis names that Electronics does not see on the robot.
   function missing(ch,devs){const has=n=>devs.actuators.some(a=>a.name===n)||devs.sensors.some(s=>s.name===n);const out=ch.motors.filter(m=>!has(m.name)).map(m=>m.name);
-    if(ch.loc==='fused'&&!has(ch.pinpoint))out.push(ch.pinpoint);if(ch.loc==='optical'&&!has(ch.otos))out.push(ch.otos);for(const p of ch.pods)if(!has(p.name))out.push(p.name);
+    if((ch.loc==='fused'||ch.pinpointImu)&&!has(ch.pinpoint))out.push(ch.pinpoint);if(ch.loc==='optical'&&!has(ch.otos))out.push(ch.otos);for(const p of ch.pods)if(!has(p.name))out.push(p.name);
     if(['odometry','odometry3','encoders','gyro'].includes(ch.loc)&&!has(ch.imu))out.push(ch.imu);return [...new Set(out)];}
   // The chassis as one unit: every wheel driven at once, four ways, with what each wheel should be seen to do. Each motor
   // by itself (which way it turns) is Electronics' check; this is whether they work together. A chassis that cannot slide
@@ -48,10 +51,12 @@
         return {id,label,...(ch.swerve?{deg}:{}),wheels:ch.motors.map((m,i)=>({key:m.key,name:m.name,power:+p[i].toFixed(3),does:ch.swerve?says:does(p[i])}))};});}
   // The heading the code uses, from the Control Hub's IMU: its yaw, the way round Calibrate found it and by its measured scale.
   const imuFactor=ch=>(ch.odo?.imu?.scale||1)*(ch.odo?.imu?.reversed?-1:1);
-  // Whether this chassis takes its heading from the Control Hub's IMU (a Pinpoint or an OTOS turns with its own).
-  const hubHeading=ch=>['encoders','gyro','odometry','odometry3'].includes(ch.loc)&&!!ch.imu;
+  // Whether this chassis takes its heading from the Control Hub's IMU (a Pinpoint, with its pods or alone, or an OTOS turns with its own).
+  const hubHeading=ch=>['encoders','gyro','odometry','odometry3'].includes(ch.loc)&&!!ch.imu&&!ch.pinpointImu;
+  // Whether its heading comes from a goBILDA Pinpoint's IMU: one with its two pods, or a Pinpoint alone.
+  const pinHeading=ch=>ch.loc==='fused'||!!ch.pinpointImu;
   // Whether its turning is tuned on the robot: the heading comes from the Control Hub's IMU or from a Pinpoint.
-  const imuTuned=ch=>hubHeading(ch)||ch.loc==='fused';
+  const imuTuned=ch=>hubHeading(ch)||pinHeading(ch);
   // A quarter turn to the left by hand, squared against a wall before and after: what the IMU's own yaw read (degrees, as
   // the hub gives it, left positive when it is mounted as Setup says). Near +90 it counts the right way; near -90 it counts
   // backwards and the code takes it the other way round; anything else was not a quarter turn.
@@ -87,7 +92,8 @@
   // tracker(ch).zero(v) sets here as (0, 0) facing 0°; update(v) returns {x, y, h} from there.
   function tracker(ch){
     let z=null,pose={x:0,y:0,h:0},last=null;
-    const imuH=v=>{const y=v[`i:${ch.imu}:yaw`];return Number.isFinite(y)?y*imuFactor(ch):NaN;};
+    // The heading: a Pinpoint alone's, the way round IMU tuning found it, else the Control Hub IMU's yaw as the code takes it.
+    const imuH=v=>{if(ch.pinpointImu){const h=v[`i:${ch.pinpoint}:h`];return Number.isFinite(h)?h*(ch.pinpointSign||1):NaN;}const y=v[`i:${ch.imu}:yaw`];return Number.isFinite(y)?y*imuFactor(ch):NaN;};
     // An absolute sensor (Pinpoint, OTOS): its own x, y, h, made relative to the zero.
     const absolute=v=>{if(ch.loc==='fused'){const n=ch.pinpoint,x=v[`i:${n}:x`],y=v[`i:${n}:y`];return {x:x/MM,y:y/MM,h:v[`i:${n}:h`]};}const n=ch.otos;return {x:v[`i:${n}:x`],y:v[`i:${n}:y`],h:v[`i:${n}:h`]};};
     // A counting one (pods or drive encoders, with the IMU's heading): how far it went forward and sideways since last time.
@@ -321,6 +327,8 @@
     const line=(type,name,value,note)=>`    public static final ${type} ${name} = ${value};${note?' // '+note:''}`,scale=imuFactor(ch),pods=rec.pods||{},out=[];
     out.push(`// Measured on the real robot by Torque (Calibrate)${date?', '+date:''}.${config?` Configuration: "${config}".`:''}`,'// Everything Calibrate measured, as one class: put it in OnBot Java (or TeamCode) and read these numbers from your own code,','// as TorqueCalibration.NAME. It has no package, so it builds in OnBot Java as it is.','public final class TorqueCalibration {','    private TorqueCalibration() {}','',
       '    // Heading. Multiply the IMU\'s yaw by this before you use it.',line('double','IMU_HEADING_SCALE',(+scale.toFixed(6)).toString()+(Number.isInteger(scale)?'.0':''),scale===1?'not corrected: Heading, Spin it off a wall measures it':'measured by turning it'));
+    // A Pinpoint alone is the IMU the robot turns by (the Control Hub's is used while it does not answer).
+    if(ch.pinpointImu)out.push('    // The goBILDA Pinpoint has no pods: it is the IMU the robot turns by. Multiply its heading by this before you use it.',line('double','PINPOINT_HEADING_SCALE',ch.pinpointSign<0?'-1.0':'1.0',ch.pinpointSign<0?'IMU tuning found it counts a turn to the left as a turn to the right':''));
     if(ch.motors.length){out.push('','    // Drive motors. REVERSED: set that motor\'s direction to REVERSE so positive power rolls its wheel forward.','    // ENCODER_SIGN: +1 when its encoder counts up as the wheel rolls forward, -1 when it counts down.');
       for(const m of ch.motors){const x=pods[m.key]||{},g=x.drive?(x.enc||1):link(m.name,`m:${m.name}:pos`);out.push(line('boolean',constant(m.name)+'_REVERSED',String(!!m.reversed),x.drive?'':'not checked yet'),line('int',constant(m.name)+'_ENCODER_SIGN',g??1,g===null?'not checked yet':''));}
       if(measures(ch)==='position'&&ch.loc==='encoders')out.push('    // Inches travelled = ticks / DRIVE_TICKS_PER_INCH.',line('double','DRIVE_TICKS_PER_INCH',(rec.roll?.ticksPerIn||+ch.nominalTicksPerIn.toFixed(3)).toString(),rec.roll?.ticksPerIn?`measured by pushing ${rec.roll.inches||PUSH_IN} in`:'from the motor and wheel size: not measured yet'));}
@@ -338,7 +346,7 @@
     if(more?.mechs)out.push('','    // ---- Mechanisms: units are each mechanism\'s own (degrees or mm); gains are power per unit. ----',more.mechs);
     if(more?.lens)out.push('','    // ---- Cameras ----',more.lens);
     out.push('}');return out.join('\n');}
-  const api={chassisOf,togetherMoves,turnOf,imuDone,turnProfiles,turnGains,TURN_DEFAULT,quarterTurn,hubHeading,imuFactor,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,steerStep,steerState,steerGains,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
+  const api={chassisOf,togetherMoves,turnOf,imuDone,turnProfiles,turnGains,TURN_DEFAULT,quarterTurn,hubHeading,pinHeading,imuTuned,imuFactor,missing,measures,tracker,spotError,driveKeys,wheelSlots,rolls,rollOf,codeOf,podsOf,steerTarget,steerAngle,steerLoop,steerStep,steerState,steerGains,plantOf,gainsOf,stepStats,steady,oscillates,nextTry,bestTry,costOf,searchStart,searchStep,tolOf,TOLS,TOL_DEG,PASS_IN,PUSH_IN,DRIVE_KEYS};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -416,7 +424,7 @@
         <div class="button-row"><button type="button" class="${r.steer?'secondary':'primary'}" data-chassis="steer"${live()&&steer.every(m=>Number.isFinite(volts(m)))?'':' disabled'}>${r.steer?'Set straight again':'They all point straight'}</button></div>`;
       // The IMU, tuned on the robot by Torque Debug (the live readings Electronics runs: TorqueDebugTurn), so nothing is sent to the robot:
       // live heading, a short drive each way to see it follow, the tunings, then four quarter turns by what was found, which the team says land.
-      const tt=turnOf(r),want=TURN_WANTS.includes(r.turnWant)?r.turnWant:2,prof=turnProfiles(r),srcWord=c.loc==='fused'?'the Pinpoint':'the Control Hub’s IMU',canRun=live()&&!tuneRun&&!runs.size;
+      const tt=turnOf(r),want=TURN_WANTS.includes(r.turnWant)?r.turnWant:2,prof=turnProfiles(r),srcWord=pinHeading(c)?'the Pinpoint':'the Control Hub’s IMU',canRun=live()&&!tuneRun&&!runs.size;
       const table=x=>x?.rounds?.length?`<table class="cal-elec-slots cal-hand-table"><thead><tr><th scope="col">Turn power</th><th scope="col"></th><th scope="col">Off at worst</th><th scope="col">Past at worst</th><th scope="col">Time to get there</th></tr></thead><tbody>${x.rounds.map(y=>`<tr${x.at&&Number.isFinite(x.top)&&Math.abs(y.power-x.top)<.001?' data-imu-best':''}><th scope="row">${Math.round(y.power*100)}%</th><td>${y.ok?'<span class="rs-pill ok">Good</span>':'<span class="rs-pill">No</span>'}</td><td>${f(y.worst,1)}°</td><td>${f(y.over,1)}°</td><td>${f(y.seconds,2)} s</td></tr>`).join('')}</tbody></table>`:'';
       const said=x=>!x?'':x.none?`<p class="cal-sense-note bad">No power stopped within ±${f(x.done,1)}° every time.${x.problem?' '+esc(x.problem):' Allow a few more degrees and run it again.'}</p>`:`<p class="cal-sense-result"><span class="rs-pill ok">Best: ${Math.round(x.top*100)}%</span> ${f(x.worst,1)}° off at worst over ${x.repeats||3} rounds, ${f(x.seconds,2)} s to get there.</p>`;
       const doing=job=>job==='tune'&&tuneRun?.job==='watch'?handBody():tuneRun?.job===job?`<div class="button-row"><span class="hint" role="status" data-chassis-tune-state>${esc(tuneRun.state||'Starting…')}</span><button type="button" class="secondary" data-chassis="tune-stop">Stop</button></div>${tuneRun.rows?.length?`<ul class="cal-sense-rows" data-chassis-tune-rows>${tuneRun.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul>`:''}`:'';
@@ -433,7 +441,7 @@
         <h4 class="cal-group-title">Tuning · 50% to 100% turn power</h4><p class="hint">First you turn it left by hand. Then it turns itself at 50%, 60% and 70% power, then every 5% up to full power, doing three rounds of four quarter turns at each. A power that misses doesn’t stop the tuning. At the end it keeps the fastest power whose turns all stopped on target.</p>${runRow('tune','Run the tuning',6,true)}${said(prof.standard)}${table(prof.standard)}
         ${prof.standard&&!prof.standard.none?`        <h4 class="cal-group-title">Check it</h4><p class="hint">Torque makes four quarter turns (left, back, right, back) using the numbers your code will use. Watch, then say whether each turn stopped on target.</p>${checkBody}${checkRes?.rows?.length&&!checkAsk&&!tuneRun?`<ul class="cal-sense-rows">${checkRes.rows.map(y=>`<li>${esc(y)}</li>`).join('')}</ul>`:''}`:''}
         ${imuSaid?`<p class="hint" role="status" data-chassis-imu-said>${esc(imuSaid)}</p>`:''}
-        <p class="hint">${tt.measured?`Now: up to ${Math.round(tt.top*100)}% turn power, slowing down from ${f(tt.slowFrom,0)}° away and stopping within ±${f(tt.done,1)}°. ${prof.backwards?'The heading counted a left turn as a right turn, so the code flips it.':'The heading counts the right way.'}${Number.isFinite(tt.readMs)?` Reading the heading takes ${f(tt.readMs,1)} ms on the robot, and the turning allows for that.${tt.readMs>=6&&c.loc!=='fused'?' The Control Hub’s IMU is slow to read over I2C, which is common in FTC. A goBILDA Pinpoint gives the heading much faster, which is why many teams use one.':''}`:''} After tuning, send your autonomous and TeleOp to the robot again.`:'Not tuned yet.'}</p>`;
+        <p class="hint">${tt.measured?`Now: up to ${Math.round(tt.top*100)}% turn power, slowing down from ${f(tt.slowFrom,0)}° away and stopping within ±${f(tt.done,1)}°. ${prof.backwards?'The heading counted a left turn as a right turn, so the code flips it.':'The heading counts the right way.'}${Number.isFinite(tt.readMs)?` Reading the heading takes ${f(tt.readMs,1)} ms on the robot, and the turning allows for that.${tt.readMs>=6&&!pinHeading(c)?' The Control Hub’s IMU is slow to read over I2C, which is common in FTC. A goBILDA Pinpoint gives the heading much faster, which is why many teams use one.':''}`:''} After tuning, send your autonomous and TeleOp to the robot again.`:'Not tuned yet.'}</p>`;
       const rr=r.roll,rollRows=rr?.rows?`<ul class="cal-sense-rows">${rr.rows.map(x=>`<li>${x.weak||x.backwards?'<span class="rs-pill warn">Fix it</span>':'<span class="rs-pill ok">Good</span>'} <b>${esc(x.name)}</b>: ${x.ticks} ticks${x.weak?'. It hardly counted: check its encoder cable.':x.backwards?'. It counts backwards: reverse this motor in Setup → Mechanisms, or in your code.':''}</li>`).join('')}</ul>
         <p class="cal-sense-result"><b>${f(rr.ticksPerIn,2)}</b> ticks an inch. The motor and wheel size say ${f(rr.expected,2)}: ${f(Math.abs(rr.errorPct),1)}% ${rr.errorPct>=0?'more':'fewer'}${Math.abs(rr.errorPct)>15?'. That far apart, check the drive motor and wheel size in Setup → Mechanisms':''}.</p>`:rr?.problem?`<p class="cal-sense-note bad">${esc(rr.problem)}</p>`:'';
       const bRoll=`<p class="hint">Optional: without it Torque uses the motor’s and the wheel’s own numbers. Put the robot on the floor${c.swerve?' with its wheels pointing straight ahead':''}, its back on a tile seam. Press Start, push it straight forward ${PUSH_IN} in (two tiles), then press Done. Torque counts the encoder ticks in an inch of floor, which is what makes a distance in autonomous come out right.</p>${start}
@@ -473,7 +481,7 @@
     // The chassis as the TeleOp needs it: each pod with what was checked on it, or each drive motor.
     // What the chassis TeleOp is written from (DeckChassisTeleop.teleopOf's input): the TeleOp tab adds the mechanisms to it.
     function teleopIn(c,steer){const r=rec(),robot=p().robot||{},L=robot.length||17,W=robot.width||17,at=k=>({x:/front/i.test(k)?L/2:/back/i.test(k)?-L/2:0,y:/left/i.test(k)?W/2:/right/i.test(k)?-W/2:0});
-      const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{}),found=measured&&(!setup||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null,common={robot,imu:{name:c.imu,scale:imuFactor(c),...(found&&globalThis.DeckHubMount?{mount:globalThis.DeckHubMount.javaOf(found)}:{})},map:mapNow(),turn:turnOf(r),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA')};
+      const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{}),found=measured&&(!setup||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null,common={robot,imu:{name:c.imu,scale:imuFactor(c),...(found&&globalThis.DeckHubMount?{mount:globalThis.DeckHubMount.javaOf(found)}:{})},...(c.pinpointImu&&!steer.length?{pinpoint:{name:c.pinpoint,scale:c.pinpointSign||1}}:{}),map:mapNow(),turn:turnOf(r),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA')};
       if(steer.length)return ({...common,kind:'swerve',tolerance:+(bandOf(r)*.6).toFixed(2),pods:podsOf(c,steer).map(q=>{const st=q.steer,x=(r.pods||{})[q.key]||{},per=(st?.volts||3.3)/360,k0=STEER_DEFAULT,pid=tuned(x)&&x.pid.leadP>0&&x.pid.rP>0?x.pid:{...k0,g:x.pid?.g,vP:k0.vP/3.3*(st?.volts||3.3),vN:k0.vN/3.3*(st?.volts||3.3),slope:k0.slope/3.3*(st?.volts||3.3),vmax:k0.vmax/3.3*(st?.volts||3.3),rP:80*per,rN:80*per,zone:8*per,ease:1*per,still:12*per},sense=x.sense||1;
         return {label:q.label,drive:q.motor.name,reversed:q.motor.reversed,servo:st?.servo,encoder:st?.name,...at(q.key),zero:r.steer?.zero?.[st?.name],encoderSign:sense,servoSign:(pid.g??(st?gOf(st):1))*sense,gain:pid.kP,leadP:pid.leadP,leadN:pid.leadN,creepP:pid.cP,creepN:pid.cN,creepSpeedP:+(pid.vP/per).toFixed(1),creepSpeedN:+(pid.vN/per).toFixed(1),
           slope:+(pid.slope/per).toFixed(1),top:+(pid.vmax/per).toFixed(1),pushP:+(pid.rP/per).toFixed(1),pushN:+(pid.rN/per).toFixed(1),zone:+(pid.zone/per).toFixed(2),ease:+((pid.ease||0)/per).toFixed(2),still:+(pid.still/per).toFixed(1),lag:pid.lag||.14,volts:st?.volts||3.3};})});
@@ -645,7 +653,7 @@
       const kind=c.type==='mecanum'?'mecanum':['tank','tank2'].includes(c.type)?'tank':c.type,turn=T.wheelPowers(c.motors,{forward:0,left:0,turn:1},kind);
       const measured=r.mount?.[c.imu],setup=opts.C?.hubMounting?.(p().robot||{})||{},found=measured&&(!setup.hubLogo||measured.logo===setup.hubLogo&&measured.usb===setup.hubUsb)?measured:null;
       const mount=found?.quaternion&&found.off>2?{quaternion:found.quaternion}:{logo:found?.logo||setup.hubLogo||'up',usb:found?.usb||setup.hubUsb||'forward'};
-      const pin=c.loc==='fused';
+      const pin=pinHeading(c);
       return T.turnLineOf({job,id:++tuneN,tolerance:job==='check'?tn.done:want,turn:job==='check'?tn:undefined,heading:pin?{kind:'pinpoint',name:c.pinpoint}:{kind:'hub',name:c.imu},mount,scale:pin?(prof.backwards?-1:1):imuFactor(c),
         motors:c.motors.map((m,i)=>({name:m.name,power:turn[i]*(m.reversed?-1:1)}))});}
     function runTurn(job,{hand=false}={}){if(job==='tune'&&!hand)job='watch';if(tuneRun||runs.size||!live())return;told='';imuSaid='';checkAsk=null;const t=turnLine(job);if(t.error){imuSaid=t.error;return paint();}
@@ -658,7 +666,7 @@
     function handDone(){const run=tuneRun;if(!run||run.job!=='watch')return;const h=run.h;
       if(!(Math.abs(h)>=20)){imuSaid=Number.isFinite(h)?`It has turned ${f(h,1)}° so far. Keep turning it to its left, about a quarter turn in all, then press Enter.`:'No heading from the robot yet. Wait a moment, then turn it.';const el=box.querySelector('[data-chassis-imu-said]');if(el)el.textContent=imuSaid;else paint();return;}
       const c=ch(),r=rec(),prof={...turnProfiles(r)};clearInterval(run.timer);tuneRun=null;
-      if(h<0){if(c.loc==='fused'){prof.backwards=!prof.backwards;r.turnTune=prof;}else opts.setImuReversed?.(!c.odo?.imu?.reversed);imuSaid='The IMU counted that left turn as a right turn, so Torque has flipped it. Tuning…';}else imuSaid='The IMU counts the right way. Tuning…';
+      if(h<0){if(pinHeading(c)){prof.backwards=!prof.backwards;r.turnTune=prof;}else opts.setImuReversed?.(!c.odo?.imu?.reversed);imuSaid='The IMU counted that left turn as a right turn, so Torque has flipped it. Tuning…';}else imuSaid='The IMU counts the right way. Tuning…';
       opts.save();runTurn('tune',{hand:true});}
     function endTurn(why){if(!tuneRun)return;clearInterval(tuneRun.timer);tuneRun=null;if(why)imuSaid=why;save();}
     // A frame's "tt": the run this page started (by its id) going on, or done.
@@ -673,7 +681,7 @@
     // likely cause is the left and right drive motors swapped in Setup (forward still works that way, turning is mirrored), and the tuning
     // then took the heading to count backwards. So the motors are put on their own sides and the heading is turned back round; then check it again.
     function mirrored(){const r=rec(),c=ch(),prof={...turnProfiles(r)};checkAsk=null;delete prof.checked;
-      const swapped=opts.swapSides?.();if(c.loc==='fused')prof.backwards=!prof.backwards;else if(hubHeading(c))opts.setImuReversed?.(!c.odo?.imu?.reversed);r.turnTune=prof;
+      const swapped=opts.swapSides?.();if(pinHeading(c))prof.backwards=!prof.backwards;else if(hubHeading(c))opts.setImuReversed?.(!c.odo?.imu?.reversed);r.turnTune=prof;
       imuSaid=swapped?`Its left and right drive motors were swapped in Setup (${swapped}). Torque has put them on their own sides and flipped the heading back. Press Check it again: it should turn left first. Afterwards, send your autonomous and TeleOp to the robot again.`:'Torque has flipped the heading. Press Check it again: it should turn left first.';save();}
     function answerCheck(yes){const r=rec(),prof={...turnProfiles(r)};checkAsk=null;
       if(yes)prof.checked={at:new Date().toISOString(),which:turnOf(r).which||'standard'};else{delete prof.checked;told='';imuSaid='Run the tuning again, then check it again. If it never stops on target, allow a degree or two more first.';}
@@ -685,7 +693,7 @@
       mine.timer=setInterval(()=>{if(runs.get(key)!==mine){clearInterval(mine.timer);return;}if(++n<=8)return all(.25);clearInterval(mine.timer);all(0);runs.delete(key);paint();},120);paint();}
     // The heading now: a turning's own (it reads the sensor itself), else the live reading, the way round the code takes it.
     function headingText(v=debug?.values?.()||{}){if(tuneRun&&Number.isFinite(tuneRun.h))return f(tuneRun.h,1);const c=ch();
-      if(c.loc==='fused'){const h=v[`i:${c.pinpoint}:h`];return f(Number.isFinite(h)?h*(turnProfiles(rec()).backwards?-1:1):NaN,1);}
+      if(pinHeading(c)){const h=v[`i:${c.pinpoint}:h`];return f(Number.isFinite(h)?h*(turnProfiles(rec()).backwards?-1:1):NaN,1);}
       const y=v[`i:${c.imu}:yaw`];return f(Number.isFinite(y)?y*imuFactor(c):NaN,1);}
     function answer(yes,key){const run=runs.get(key),c=ch(),q=podsOf(c,steerOf(c)).find(x=>x.key===key);if(!q||!run)return;const x=podRec(q.key),kind=run.kind;
       if(kind==='drive'){if(yes){x.drive=true;x.enc=Number.isFinite(run.ticks)&&run.ticks<0?-1:1;opts.setReversed?.(q.motor.key,!!q.motor.reversed);}else{delete x.drive;opts.setReversed?.(q.motor.key,!q.motor.reversed);told=`${q.label}: ${q.motor.name} is reversed now. Spin it again to check.`;}}
@@ -725,6 +733,7 @@
     const checked=()=>{const r=rec();return !!(r.steer||r.roll?.ok||Object.values(r.pods||{}).some(x=>x.drive||x.pid));};
     return {refresh:paint,code:()=>{const more=opts.moreCode?.()||null;if(!checked()&&!more?.mechs&&!more?.lens)return null;const c=ch();return codeOf({ch:c,rec:rec(),links:links(),steer:steerOf(c),config:opts.config?.()||'',date:new Date().toLocaleDateString('en-CA'),more});},
       // For the TeleOp tab: what the chassis part is written from, its controller mapping, and whether it steers its wheels.
-      teleopInput:()=>{const c=ch();return c?teleopIn(c,steerOf(c)):null;},turn:()=>turnOf(rec()),map:()=>globalThis.DeckChassisTeleop.mapOf(mapNow()),setMap,swerve:()=>!!ch()?.swerve,values:()=>JSON.parse(JSON.stringify(rec())),busy:()=>runs.size>0||!!tuneRun,needsImu:()=>{const c=ch();return !!c&&imuTuned(c)&&!c.swerve&&!imuDone(rec());}};}
+      // turn: how the code turns on the spot, and for a Pinpoint alone that counts backwards, backwards (the autonomous takes its heading the other way round).
+      teleopInput:()=>{const c=ch();return c?teleopIn(c,steerOf(c)):null;},turn:()=>{const c=ch(),t=turnOf(rec());return c?.pinpointImu&&c.pinpointSign<0?{...t,backwards:true}:t;},map:()=>globalThis.DeckChassisTeleop.mapOf(mapNow()),setMap,swerve:()=>!!ch()?.swerve,values:()=>JSON.parse(JSON.stringify(rec())),busy:()=>runs.size>0||!!tuneRun,needsImu:()=>{const c=ch();return !!c&&imuTuned(c)&&!c.swerve&&!imuDone(rec());}};}
   root.DeckChassisCal={...api,create};
 })(typeof globalThis==='object'?globalThis:this);

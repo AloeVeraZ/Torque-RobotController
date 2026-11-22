@@ -39,19 +39,25 @@ final class SimSensors {
      * chip turns their counts into a pose with what the code configured (setOffsets, setEncoderDirections,
      * setEncoderResolution), as the real one does: configured as mounted, it tracks the robot's centre; configured otherwise,
      * it is off the way the real one would be. A chip the code never configures has offsets 0, both pods forward and 4-bar pods.
+     * A Pinpoint alone (pods false: no pods plugged in) is only an IMU: its heading turns with the robot, its pod counts and
+     * position stay at what they were, and it reports that it finds no pods (FAULT_NO_PODS_DETECTED, its LED purple), never
+     * READY, as goBILDA's driver does.
      */
     static final class Pinpoint extends GoBildaPinpointDriver {
         private static final double FOUR_BAR = 19.894367218017578 * 25.4, SWINGARM = 13.262911796569824 * 25.4;
         private final double podLeft, podForward, ticksPerInch;
         private final int signX, signY;
+        private final boolean pods;
         private double xOffset, yOffset, resolution = FOUR_BAR, rawX, rawY, x, y, heading, vx, vy, omega;
         private int dirX = 1, dirY = 1;
-        Pinpoint(com.google.gson.JsonObject mount) {
+        Pinpoint(com.google.gson.JsonObject mount) { this(mount, true); }
+        Pinpoint(com.google.gson.JsonObject mount, boolean pods) {
             podLeft = num(mount, "xOffset", 0); podForward = num(mount, "yOffset", 0); ticksPerInch = num(mount, "ticksPerMm", 19.894367218017578) * 25.4;
-            signX = flag(mount, "xReversed") ? -1 : 1; signY = flag(mount, "yReversed") ? -1 : 1;
+            signX = flag(mount, "xReversed") ? -1 : 1; signY = flag(mount, "yReversed") ? -1 : 1; this.pods = pods;
         }
         /** One tick: the robot moved dx forward and dy left (inches, its own frame) and turned by turn radians. */
         void advance(double dx, double dy, double turn, double dt) {
+            if (!pods) { heading = AngleUnit.normalizeRadians(heading + turn); omega = dt > 0 ? turn / dt : 0; return; }
             double countX = signX * (dx - podLeft * turn) * ticksPerInch, countY = signY * (dy + podForward * turn) * ticksPerInch;
             rawX += countX; rawY += countY;
             // The chip: each pod's travel as configured, less what turning moves a pod at the configured offset.
@@ -77,6 +83,7 @@ final class SimSensors {
         @Override public double getVelX(DistanceUnit unit) { return unit.fromInches(vx); }
         @Override public double getVelY(DistanceUnit unit) { return unit.fromInches(vy); }
         @Override public double getHeadingVelocity(UnnormalizedAngleUnit unit) { return unit.fromRadians(omega); }
+        @Override public DeviceStatus getDeviceStatus() { return pods ? DeviceStatus.READY : DeviceStatus.FAULT_NO_PODS_DETECTED; }
     }
 
     /**

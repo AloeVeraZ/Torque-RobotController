@@ -35,3 +35,14 @@ test('the setup keeps a pod scale and the hub IMU heading scale, within sane lim
   const o=C.odometryOf({odometry:{pods:{par:{scale:1.012}},imu:{scale:.9985}}});assert.equal(o.pods.par.scale,1.012);assert.equal(o.imu.scale,.9985);
   const wild=C.odometryOf({odometry:{pods:{par:{scale:3}},imu:{scale:1.2}}});assert.equal(wild.pods.par.scale,undefined);assert.equal(wild.imu.scale,1);
 });
+
+// The heading Calibrate checks (drift, the hub's mounting) is the one the robot's code steers by. A Pinpoint alone (no pods)
+// is the IMU, so it is the Pinpoint's, as with its pods; everything else that reads the Control Hub's IMU stays on it.
+test('the heading the checks read: a Pinpoint alone’s own, as with its pods, else the Control Hub’s or the OTOS’s',()=>{
+  const of=(robot,localization,controller)=>S.headingOf({robot,sensors:{localization},controller},C);
+  const pin={key:'i:pinpoint:h',what:'the Pinpoint’s IMU',kind:'pinpoint'},hub={key:'i:imu:yaw',what:'the Control Hub’s IMU',kind:'hub'};
+  for(const loc of ['encoders','gyro'])assert.deepEqual(of({pinpointImu:true},loc),pin,loc);
+  assert.deepEqual(of({pinpointImu:true,devices:{pinpoint:{name:'GBPP'}}},'encoders').key,'i:GBPP:h','by the robot’s own name for it');
+  assert.deepEqual(of({},'fused'),pin);assert.deepEqual(of({},'encoders'),hub);assert.deepEqual(of({},'gyro'),hub);assert.equal(of({},'optical').kind,'otos');assert.equal(of({},'none'),null);
+  assert.deepEqual(of({pinpointImu:true},'gyro','motionmodule'),hub,'a flag left on a MotionModule robot');assert.deepEqual(of({pinpointImu:true,drivetrain:'swerve'},'encoders'),hub,'nor a swerve');
+  assert.deepEqual(of({pinpointImu:true},'odometry'),hub,'pods on the motor ports turn with the hub’s IMU');});

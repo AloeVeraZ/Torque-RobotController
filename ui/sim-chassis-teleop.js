@@ -34,13 +34,27 @@
   const dbl=v=>{const t=n(v);return /[.e]/.test(t)?t:t+'.0';};
   const FACE={up:'UP',down:'DOWN',forward:'FORWARD',backward:'BACKWARD',left:'LEFT',right:'RIGHT'};
   // The lines every drivetrain shares: the sticks as forward, left and turn, the slow button, the heading and its reset.
-  function sticks(m){const s=m.drive,pair={triggers:'gamepad1.left_trigger - gamepad1.right_trigger',bumpers:'(gamepad1.left_bumper ? 1 : 0) - (gamepad1.right_bumper ? 1 : 0)',dpad:'(gamepad1.dpad_left ? 1 : 0) - (gamepad1.dpad_right ? 1 : 0)'},t=pair[m.turn]||`-gamepad1.${m.turn}_stick_x`,spin=pair[m.spin];
+  // o.pinpoint: the heading is a Pinpoint alone's (pin below), and its reset sets the heading to 0.
+  function sticks(m,o={}){const s=m.drive,pair={triggers:'gamepad1.left_trigger - gamepad1.right_trigger',bumpers:'(gamepad1.left_bumper ? 1 : 0) - (gamepad1.right_bumper ? 1 : 0)',dpad:'(gamepad1.dpad_left ? 1 : 0) - (gamepad1.dpad_right ? 1 : 0)'},t=pair[m.turn]||`-gamepad1.${m.turn}_stick_x`,spin=pair[m.spin];
     return [`            double forward = -gamepad1.${s}_stick_y, left = -gamepad1.${s}_stick_x, turn = ${t};`,
       ...(spin?['            // Spin on the spot: a spin button turns the robot at full rate, whatever the turn stick says (the drive stick still moves it).',`            double spin = ${spin};`,'            if (Math.abs(spin) > 0.05) turn = spin;']:[]),
       ...(m.slow==='none'?[]:[`            if (gamepad1.${m.slow}) { forward *= 0.4; left *= 0.4; turn *= 0.4; }`]),
-      ...(m.reset==='none'?[]:[`            if (gamepad1.${m.reset}) imu.resetYaw();`]),
-      '            double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS) * IMU_SCALE;',
+      ...(o.pinpoint?[...pin.turned('RADIANS','AngleUnit.normalizeRadians'),'            heading = AngleUnit.normalizeRadians(heading + turned);',...(m.reset==='none'?[]:[`            if (gamepad1.${m.reset}) heading = 0;`])]
+        :[...(m.reset==='none'?[]:[`            if (gamepad1.${m.reset}) imu.resetYaw();`]),'            double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS) * IMU_SCALE;']),
       ...(m.field==='yes'?['            // Field centric: the stick is turned back by the robot\'s heading, so forward stays away from the driver.','            double f = forward * Math.cos(heading) + left * Math.sin(heading);','            left = -forward * Math.sin(heading) + left * Math.cos(heading);','            forward = f;']:[])];}
+  // A goBILDA Pinpoint alone (no pods), given as o.pinpoint: {name, scale: -1 when Calibrate found its heading counts a turn to
+  // the left as a turn to the right}, is the robot's IMU. As the autonomous's RobotDrive does (ui/sim-ftc.js), the heading is each
+  // turn the Pinpoint measures, added up, and while it does not answer (a loose cable), each turn the Control Hub's IMU measures.
+  // With no pods plugged in it never says READY: goBILDA's driver reports the pods it cannot find first, so that counts as answering.
+  const pin={IMPORT:'com.qualcomm.hardware.gobilda.GoBildaPinpointDriver',ANSWERS:['READY','FAULT_NO_PODS_DETECTED','FAULT_X_POD_NOT_DETECTED','FAULT_Y_POD_NOT_DETECTED'],
+    constants:o=>o.pinpoint?['    // The goBILDA Pinpoint with no pods: the robot\'s IMU (Setup → Mechanisms → + Add to Chassis → Odometry & IMU → Pinpoint alone).','    // Its heading is multiplied by PINPOINT_SCALE: -1 when Calibrate found it counts a turn to the left as a turn to the right.',
+      `    static final String PINPOINT = ${str(o.pinpoint.name||'pinpoint')};`,`    static final double PINPOINT_SCALE = ${o.pinpoint.scale<0?'-1.0':'1.0'};`,'',
+      '    /** Whether the Pinpoint answers. With no pods plugged in it never says READY: it says it finds no pods. */','    static boolean answers(GoBildaPinpointDriver.DeviceStatus status) {',
+      `        return ${pin.ANSWERS.map(s=>`status == GoBildaPinpointDriver.DeviceStatus.${s}`).join('\n            || ')};`,'    }','']:[],
+    init:(o,field=false)=>o.pinpoint?[`        ${field?'':'GoBildaPinpointDriver '}pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, PINPOINT);`,'        // Resetting it calibrates its IMU, so keep the robot still while it initializes.','        pinpoint.resetPosAndIMU();']:[],
+    // Each loop: how far the robot turned since the last, in the unit given (yaw and lastYaw are the Control Hub IMU's in it).
+    turned:(unit,wrap)=>[`            double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.${unit}), turned = ${wrap}(yaw - lastYaw) * IMU_SCALE;`,'            lastYaw = yaw;','            pinpoint.update();',
+      '            if (answers(pinpoint.getDeviceStatus())) {',`                double pinpointHeading = pinpoint.getHeading(AngleUnit.${unit});`,`                if (!Double.isNaN(lastPinpoint)) turned = ${wrap}(pinpointHeading - lastPinpoint) * PINPOINT_SCALE;`,'                lastPinpoint = pinpointHeading;','            } else lastPinpoint = Double.NaN;']};
   const head=(o,imports)=>[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${cm(o.config)}" configuration`:''}.`,'// Everything in capitals was checked or measured on the real robot. Send it again after calibrating again.',`@TeleOp(name = ${str(o.opMode||OP_MODE)}, group = "Torque")`,`public class ${o.className||NAME} extends LinearOpMode {`];
   // ---- mechanisms -------------------------------------------------------------------------------------------------------
   // What a mechanism does in the TeleOp, by what drives it, on any part of the controller.
@@ -107,7 +121,7 @@
   const pressed=(pad,b)=>/_trigger$/.test(b)?`${pad}.${b} > 0.5`:`${pad}.${b}`;
   // A stick or the triggers as a number: up and right are positive, the right trigger one way and the left the other.
   const axisOf=(pad,c)=>c==='triggers'?`${pad}.right_trigger - ${pad}.left_trigger`:/_stick_y$/.test(c)?`-${pad}.${c}`:`${pad}.${c}`;
-  const RESERVED=new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null n drive steer encoder radius imu target steered steerPower speed loop hubs hub last now dt forward left turn spin heading f moving top lock power p i vx vy angle error wheel flip end telemetry gamepad1 gamepad2 hardwareMap'.split(' '));
+  const RESERVED=new Set('abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null n drive steer encoder radius imu target steered steerPower speed loop hubs hub last now dt forward left turn spin heading f moving top lock power p i vx vy angle error wheel flip end telemetry gamepad1 gamepad2 hardwareMap pinpoint pinpointHeading yaw lastYaw lastPinpoint turned'.split(' '));
   // The Java for the mechanisms: {imports, init (before waitForStart), loop (every loop)}.
   // list: [{label, device (its name in the robot configuration), kind: 'motor'|'crservo'|'servo', reversed, states, mode, a, b, c, power, posA, posB, posC}].
   function mechCode(list,pad='gamepad1'){const imports=[],init=[],loop=[],names=new Set(),say=b=>BUTTONS[b]||AXES[b]||b,low=t=>String(t||'').toLowerCase();
@@ -293,9 +307,10 @@
   const WHEELED={mecanum:'A mecanum drive: forward and back, sideways on its rollers, any diagonal between, and turning, all at once.',xdrive:'An X-drive: four omni wheels at 45°, so it goes any way like a mecanum (the same mix).',butterfly:'A butterfly drive on its mecanum wheels: any way at once. Its shift to the traction wheels is a mechanism of its own.',
     kiwi:'A kiwi drive: three omni wheels, each across its corner. Positive power on a wheel turns the robot to the left (counterclockwise from above).',tank:'A tank drive: both sides together drive it, one against the other turns it. It cannot go sideways.'};
   function wheels(o,m){const ms=o.motors,kind=o.kind,tank=kind==='tank';
-    return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[])]),`    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,'',
-      '    @Override public void runOpMode() {','        int n = DRIVE.length;','        DcMotor[] drive = new DcMotor[n];','        for (int i = 0; i < n; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',...imu(o),
-      '        waitForStart();','        imu.resetYaw();','        while (opModeIsActive()) {',...sticks(tank?{...m,field:'no'}:m),
+    return [...head(o,[...COMMON,...(o.imu?.mount?.imports||[]),...(o.pinpoint?[pin.IMPORT]:[])]),`    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,'',...pin.constants(o),
+      '    @Override public void runOpMode() {','        int n = DRIVE.length;','        DcMotor[] drive = new DcMotor[n];','        for (int i = 0; i < n; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',...imu(o),...pin.init(o),
+      '        waitForStart();','        imu.resetYaw();',...(o.pinpoint?['        // The heading: each turn the Pinpoint measures, added up. While it does not answer (a loose cable), the Control Hub\'s IMU measures it.','        double heading = 0, lastYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS), lastPinpoint = Double.NaN;']:[]),
+      '        while (opModeIsActive()) {',...sticks(tank?{...m,field:'no'}:m,o),
       `            // ${WHEELED[kind]||WHEELED.mecanum} Every motor is scaled together, so none is asked for more than full power.`,
       `            double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'            double top = 1;','            for (double p : power) top = Math.max(top, Math.abs(p));','            for (int i = 0; i < n; i++) drive[i].setPower(power[i] / top);',
       '            telemetry.addData("Heading", "%.1f", Math.toDegrees(heading));','            telemetry.update();','        }','    }','}',''].join('\n');}
@@ -308,19 +323,21 @@
   const TURN_TEST={className:'TorqueTurnTest',opMode:'Torque IMU turn test',angles:[90,0,-90,0,180,0]};
   function turnTestOf(o){if(!o||o.kind==='swerve'||!Array.isArray(o.motors)||!o.motors.length)return {error:'The IMU turn test is written for a chassis whose wheels do not steer (mecanum, X-drive, tank, kiwi).'};
     const tn={top:.25,least:.07,slowFrom:60,brake:.002,done:1.5,lag:.02,...(o.turn||{})},ms=o.motors,kind=o.kind,angles=(Array.isArray(o.angles)&&o.angles.length?o.angles:TURN_TEST.angles).map(Number).filter(Number.isFinite).slice(0,12),name=o.className||TURN_TEST.className,opMode=o.opMode||TURN_TEST.opMode;
-    const imports=[...COMMON.filter(i=>!/\.TeleOp$/.test(i)),'com.qualcomm.robotcore.eventloop.opmode.Autonomous','com.qualcomm.robotcore.util.ElapsedTime',...(o.imu?.mount?.imports||[])];
+    const imports=[...COMMON.filter(i=>!/\.TeleOp$/.test(i)),'com.qualcomm.robotcore.eventloop.opmode.Autonomous','com.qualcomm.robotcore.util.ElapsedTime',...(o.imu?.mount?.imports||[]),...(o.pinpoint?[pin.IMPORT]:[])];
     const source=[...[...new Set(imports)].sort().map(i=>`import ${i};`),'',`// Written by Torque (Calibrate)${o.date?', '+o.date:''}${o.config?`, from the "${cm(o.config)}" configuration`:''}.`,
-      '// A test of the heading alone: it uses only the IMU. Put the robot down facing the way that is 0° and press START:','// it rolls forward a little, then turns to each angle below, slowing as it nears each one. Left is positive.',
+      ...(o.pinpoint?['// A test of the heading alone: it uses only the Pinpoint\'s IMU, and the Control Hub\'s while the Pinpoint does not answer.','// Put the robot down facing the way that is 0° and press START: it rolls forward a little, then turns to each angle below,','// slowing as it nears each one. Left is positive.']
+        :['// A test of the heading alone: it uses only the IMU. Put the robot down facing the way that is 0° and press START:','// it rolls forward a little, then turns to each angle below, slowing as it nears each one. Left is positive.']),
       `@Autonomous(name = ${str(opMode)}, group = "Torque")`,`public class ${name} extends LinearOpMode {`,
       `    static final String[] DRIVE = ${list(ms.map(x=>str(x.name)))};`,`    static final boolean[] DRIVE_REVERSED = ${list(ms.map(x=>String(!!x.reversed)))};`,
-      '    // The IMU\'s yaw is multiplied by this: its scale, and -1 when Calibrate found it counts a turn to the left as a turn to the right.',`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,
+      '    // The IMU\'s yaw is multiplied by this: its scale, and -1 when Calibrate found it counts a turn to the left as a turn to the right.',`    static final double IMU_SCALE = ${dbl(o.imu?.scale||1)};`,...pin.constants(o),
       '    // The angles it turns to, in order: degrees from where it stood at START, left positive.',`    static final double[] ANGLES = ${list(angles.map(dbl))};`,
       '    // Turning: the most power, the least that still moves it, how far out it starts to slow, how close counts as there,','    // and how hard it brakes against its own speed (power for each degree a second).',
       `    // ${tn.measured?'Measured on this robot by Calibrate (Tune the turning).':'The gentle defaults: Calibrate → Mechanisms → Tune the turning measures this robot.'}`,`    static final double TOP_TURN = ${dbl(tn.top)}, LEAST_TURN = ${dbl(tn.least)}, SLOW_FROM_DEGREES = ${dbl(tn.slowFrom)}, DONE_DEGREES = ${dbl(tn.done)}, BRAKE = ${dbl(tn.brake)};`,'    // How old the heading is by the time the power reaches the wheels: the IMU read (over I2C on a Control Hub) and half a loop.',`    static final double LAG_SECONDS = ${dbl(+(tn.lag).toFixed(4))};`,'    static final double FORWARD_POWER = 0.25, FORWARD_SECONDS = 0.6;','',
-      '    DcMotor[] drive;','    IMU imu;','    double lastYaw, heading;','    // Set when a turn was told to go and the heading did not change: the test ends there.','    boolean blind;','',
+      '    DcMotor[] drive;','    IMU imu;',...(o.pinpoint?['    GoBildaPinpointDriver pinpoint;','    double lastYaw, heading, lastPinpoint = Double.NaN;']:['    double lastYaw, heading;']),'    // Set when a turn was told to go and the heading did not change: the test ends there.','    boolean blind;','',
       '    static double wrap(double degrees) { return degrees - 360.0 * Math.round(degrees / 360.0); }','',
-      '    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
-      '    double read() {','        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading += wrap(yaw - lastYaw) * IMU_SCALE;','        lastYaw = yaw;','        return heading;','    }','',
+      ...(o.pinpoint?['    /** The heading in degrees since START, left positive: each turn the Pinpoint measures (the Control Hub\'s IMU while the Pinpoint does','     * not answer), the right way round, added up. */','    double read() {',...pin.turned('DEGREES','wrap').map(l=>l.slice(4)),'        heading += turned;']
+        :['    /** The heading in degrees since START, left positive: each change in the IMU\'s yaw, the right way round, added up. */',
+      '    double read() {','        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading += wrap(yaw - lastYaw) * IMU_SCALE;','        lastYaw = yaw;']),'        return heading;','    }','',
       '    void set(double forward, double left, double turn) {',`        double[] power = ${list(ms.map(x=>wheelMix(x.key,kind)))};`,'        double top = 1;','        for (double p : power) top = Math.max(top, Math.abs(p));','        for (int i = 0; i < drive.length; i++) drive[i].setPower(power[i] / top);','    }','',
       ...TURN_JAVA,'',
       '    /** Turns to an angle and stops there (the Turn law above), and waits a moment to see it stay. */',
@@ -332,12 +349,12 @@
       '            telemetry.addData("Turning to", "%.0f", target);','            telemetry.addData("Heading", "%.1f", now);','            telemetry.addData("Left to turn", "%.1f", target - now);','            telemetry.addData("Turn power", "%.2f", power);','            telemetry.update();','            sleep(10);','        }',
       '        set(0, 0, 0);','        sleep(400);','    }','',
       '    @Override public void runOpMode() {','        drive = new DcMotor[DRIVE.length];','        for (int i = 0; i < drive.length; i++) {','            drive[i] = hardwareMap.get(DcMotor.class, DRIVE[i]);','            drive[i].setDirection(DRIVE_REVERSED[i] ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);','            drive[i].setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);','        }',
-      ...imu(o).map(l=>l.replace('        IMU imu = ','        imu = ')),
+      ...imu(o).map(l=>l.replace('        IMU imu = ','        imu = ')),...pin.init(o,true),
       '        waitForStart();','        // Where it stands now is 0°, whatever the IMU says.','        lastYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);','        heading = 0;',
       '        ElapsedTime time = new ElapsedTime();','        while (opModeIsActive() && time.seconds() < FORWARD_SECONDS) { read(); set(FORWARD_POWER, 0, 0); sleep(10); }','        set(0, 0, 0);','        sleep(300);',
       '        for (double angle : ANGLES) { if (!opModeIsActive() || blind) break; turnTo(angle); }',
       '        while (opModeIsActive()) {','            if (blind) telemetry.addLine("Stopped: the heading did not change while turning. Check the IMU (Calibrate, Electronics) and that the wheels can turn the robot.");','            telemetry.addData(blind ? "Heading" : "Done. Heading", "%.1f", read());','            telemetry.update();','            sleep(50);','        }','    }','}',''].join('\n');
-    return {file:`org/firstinspires/ftc/teamcode/${name}.java`,opMode,source};}
+    return {file:`org/firstinspires/ftc/teamcode/${name}.java`,opMode,source,...(o.pinpoint?{pinpoint:true}:{})};}
   // ---- turning to an angle: the one law every turn on the spot uses ------------------------------------------------------
   // TorqueDebug.java's TorqueDebugTurn.step and the IMU turn test's Turn class are this, step for step (tests/turn-law.test.cjs).
   // The heading a Control Hub IMU gives is a few ms old and often the same twice running (the IMU had nothing new), so a speed
@@ -441,7 +458,8 @@
   // kind as wheels takes it (true, for a tank, still works).
   function wheelPowers(motors,cmd,kind='mecanum'){if(kind===true)kind='tank';if(kind===false)kind='mecanum';const side=k=>/right/i.test(k)?'right':'left',front=k=>/front/i.test(k),f=cmd.forward,l=kind==='tank'?0:cmd.left,t=cmd.turn;
     const power=motors.map(x=>kind==='tank'?(side(x.key)==='left'?f-t:f+t):kind==='kiwi'?(front(x.key)&&!/left|right/i.test(x.key)?l+t:side(x.key)==='left'?-KIWI*f-.5*l+t:KIWI*f-.5*l+t):({'left front':f-l-t,'right front':f+l+t,'left back':f+l-t,'right back':f-l+t})[`${side(x.key)} ${front(x.key)?'front':'back'}`]),top=Math.max(1,...power.map(Math.abs));return power.map(v=>v/top);}
-  // o: {kind:'swerve'|'mecanum'|'xdrive'|'butterfly'|'kiwi'|'tank', pods|motors, robot:{hubLogo, hubUsb}, imu:{name, scale}, tolerance, map, config, date}.
+  // o: {kind:'swerve'|'mecanum'|'xdrive'|'butterfly'|'kiwi'|'tank', pods|motors, robot:{hubLogo, hubUsb}, imu:{name, scale}, tolerance, map, config, date,
+  //   pinpoint: {name, scale} for a Pinpoint alone, whose heading the wheels' TeleOp and the IMU turn test read (pin above)}.
   // Returns {file, opMode, source}, or {error} saying what is not calibrated yet or not written for.
   //   className, opMode: for the whole robot's TeleOp ("TorqueTeleOp", "Torque TeleOp"); the chassis alone keeps its own.
   //   mechanisms: [{label, device, kind, reversed, mode, a, b, power, posA, posB}] (mechCode), pad: 'gamepad1' | 'gamepad2'.

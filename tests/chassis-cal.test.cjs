@@ -44,6 +44,29 @@ test('tank: no strafe; a robot with only an IMU gives its heading',()=>{
   t.zero({'m:l:pos':0,'m:r:pos':0,'i:imu:yaw':0});near(t.update({'m:l:pos':6*k,'m:r:pos':6*k,'i:imu:yaw':0}).x,6,.01);
   const g=K.tracker(K.chassisOf({robot:{drivetrain:'tank2'},sensors:{localization:'gyro'}},C));g.zero({'i:imu:yaw':5});const p=g.update({'i:imu:yaw':35});near(p.h,30,.01);assert.ok(Number.isNaN(p.x));});
 
+// A Pinpoint alone (no pods) is the IMU the code turns by. Calibrate's heading checks read it, it must be on the robot (with
+// the Control Hub's IMU, which the code reads while it does not answer), and the distance stays on the drive encoders: there
+// are no pods, so there is no pod to check.
+test('a Pinpoint alone: the heading is its own, it must be on the robot, and the distance stays on the drive encoders',()=>{
+  const alone=robot({robot:{pinpointImu:true}}),ch=K.chassisOf(alone,C);
+  assert.equal(ch.pinpointImu,true);assert.equal(ch.pinpointSign,1);assert.deepEqual(ch.pods,[],'no pods');
+  assert.equal(K.hubHeading(ch),false,'not the Control Hub’s IMU');assert.equal(K.pinHeading(ch),true);assert.equal(K.imuTuned(ch),true,'IMU tuning turns by the Pinpoint');
+  assert.equal(K.measures(ch),'position');assert.equal(K.rolls(ch),true,'How far it rolls is the drive encoders’');assert.equal(K.measures(K.chassisOf(robot({robot:{pinpointImu:true},sensors:{localization:'gyro'}}),C)),'heading','by time it measures only its heading');
+  const devs=(...more)=>L.devices([...['leftFront','leftBack','rightFront','rightBack'].map(name=>({name,kind:'motor'})),...more],null);
+  assert.deepEqual(K.missing(ch,devs({name:'imu',kind:'imu'})),['pinpoint'],'the Pinpoint is required');assert.deepEqual(K.missing(ch,devs({name:'imu',kind:'imu'},{name:'pinpoint',kind:'pinpoint'})),[]);
+  assert.deepEqual(K.missing(ch,devs({name:'pinpoint',kind:'pinpoint'})),['imu'],'and the hub’s IMU, which the code reads while the Pinpoint does not answer');
+  // Where it is on the field: the drive encoders for the distance, the Pinpoint for the turn (the hub's yaw says otherwise and is not read).
+  const t=K.tracker(ch),k=ch.driveTicksPerIn,v=(f,h,yaw)=>({'m:leftFront:pos':f*k,'m:rightFront:pos':-f*k,'m:leftBack:pos':f*k,'m:rightBack:pos':-f*k,'i:pinpoint:h':h,'i:imu:yaw':yaw});
+  t.zero(v(0,10,0));let p=t.update(v(0,100,-45));near(p.h,90,.01,'turned by the Pinpoint');p=t.update(v(12,100,-45));near(p.x,0,.05,'x');near(p.y,12,.05,'facing left, forward is +y');
+  // IMU tuning found the Pinpoint counts a turn to the left as a turn to the right: the chassis takes it the other way round,
+  // and so do the TeleOp, the autonomous (turn()) and the calibration class.
+  const back=K.chassisOf({...alone,calibration:{chassis:{turnTune:{standard:{top:.5,at:'2026-11-22'},backwards:true}}}},C);assert.equal(back.pinpointSign,-1);
+  const tb=K.tracker(back);tb.zero(v(0,10,0));near(tb.update(v(0,-80,0)).h,90,.01,'a left turn read as a right one');
+  assert.match(K.codeOf({ch:back}),/public static final double PINPOINT_HEADING_SCALE = -1\.0; \/\/ IMU tuning found it counts a turn to the left as a turn to the right/);assert.doesNotMatch(K.codeOf({ch:K.chassisOf(robot(),C)}),/PINPOINT/);
+  // Not a Pinpoint alone: one with its pods, a robot without the flag, a MotionModule robot or a swerve the flag was left on.
+  for(const [what,p] of [['its pods',robot({robot:{pinpointImu:true},sensors:{localization:'fused'}})],['no flag',robot()],['MotionModule',{...robot({robot:{pinpointImu:true},sensors:{localization:'gyro'}}),controller:'motionmodule'}],['swerve',robot({robot:{pinpointImu:true,drivetrain:'swerve'}})]])assert.equal(K.chassisOf(p,C).pinpointImu,undefined,what);
+  assert.equal(K.pinHeading(K.chassisOf(robot({sensors:{localization:'fused'}}),C)),true);assert.equal(K.hubHeading(K.chassisOf(robot(),C)),true);});
+
 test('a measured spot within an inch passes',()=>{assert.ok(K.spotError({x:24,y:0},{x:24.5,y:.5})<=K.PASS_IN);assert.ok(K.spotError({x:24,y:0},{x:26,y:0})>K.PASS_IN);});
 
 test('the CAD’s drive wheels go to the wheel or module they point at, odometry pods left out',()=>{

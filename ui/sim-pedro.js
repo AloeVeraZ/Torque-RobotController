@@ -405,13 +405,14 @@ public class ${o.opMode} extends LinearOpMode {
 `;
   }
   // What an export can and cannot promise. "verified" items are checked by Deck's own pipeline.
-  function checklist({mechanisms,actions,drivetrain='mecanum'}){
+  // noStarter: why no DeckStarterConstants.java was written for the robot's sensing (starterNeeds), said under Pedro setup.
+  function checklist({mechanisms,actions,drivetrain='mecanum',noStarter=''}){
     return [
       {status:'verified',label:'Compiles',detail:`Deck's export check compiles this generator's output against FTC SDK ${SDK_VERSION} and Pedro Pathing ${PEDRO_VERSION} (tools/simulation/check-ftc-sdk.cjs).`},
       drivetrain==='mecanum'?{status:'verified',label:'Runs with Pedro’s Follower',detail:`Deck’s development tests run this generator’s output with Pedro Pathing ${PEDRO_VERSION}’s own Follower, Mecanum drivetrain and Pinpoint, OTOS and odometry-pod localizers on the virtual Control Hub (tests/sim-pedro-runtime.test.cjs).`}
         :{status:'physical',label:'Runs with Pedro’s Follower',detail:`Deck’s tests run this output with Pedro’s Follower on mecanum robots only, not with ${drivetrain}. Check the first runs on your robot at low speed.`},
       {status:'verified',label:'Path geometry',detail:'Coordinates, curves and headings are the ones the planner checked for clearance; unit tests compare them.'},
-      {status:'team',label:'Pedro setup',detail:'pedro/Constants.java must build your Follower: drive motor names and directions, localizer and its offsets. DeckStarterConstants.java (written beside it for mecanum robots with odometry pods, a Pinpoint or an OTOS) holds estimated starting values: return DeckStarterConstants.create(h) from Constants.create while you tune.'},
+      {status:'team',label:'Pedro setup',detail:`pedro/Constants.java must build your Follower: drive motor names and directions, localizer and its offsets. ${noStarter?`Torque wrote no DeckStarterConstants.java for this robot. ${noStarter}`:'DeckStarterConstants.java (written beside it for mecanum robots with odometry pods, a Pinpoint with its two pods, or an OTOS) holds estimated starting values: return DeckStarterConstants.create(h) from Constants.create while you tune.'}`},
       {status:'calibration',label:'Tuning',detail:'Run the Quickstart tuners (localizer, drivetrain, Foresight) on your robot. Deck cannot tune a real robot.'},
       {status:'team',label:'Starting pose',detail:'Place the robot exactly at START before INIT; the localizer is set to it at START.'},
       {status:'team',label:'Actions',detail:actions.length?(mechanisms?'Mechanisms.java drives the intake/shooter set up in Deck; check device names and directions. Other actions need code in RobotActions.java.':'Write the code for each action in RobotActions.java; until then they finish at once.'):'No actions in this route.'},
@@ -423,7 +424,9 @@ public class ${o.opMode} extends LinearOpMode {
     if(route.nonholonomic)throw Error('Pedro Pathing 3 drives mecanum and swerve robots. Use the OnBot Java or TeamCode export for this drivetrain.');
     if(!layout?.start)throw Error('Set a starting pose first.');
     const nm=names(className,packageName),mech=mechanisms?.enabled?mechanisms:null,legs=legsOf(route,exporter),list=exporter.actions(route),dir=packageName.replace(/\./g,'/');
-    const startH=finite(layout.start.heading)?layout.start.heading:route.heading||0,through=throughs(legs,startH),check=checklist({mechanisms:mech,actions:list,drivetrain:robot?.drivetrain||'mecanum'});
+    // A mecanum robot whose sensing Pedro's localizers cannot use gets no starter constants, and the checklist says why.
+    const noStarter=hardware&&constants===QUICKSTART_CONSTANTS&&hardware.drive?.kind==='mecanum'?starterNeeds(hardware):'';
+    const startH=finite(layout.start.heading)?layout.start.heading:route.heading||0,through=throughs(legs,startH),check=checklist({mechanisms:mech,actions:list,drivetrain:robot?.drivetrain||'mecanum',noStarter});
     const o={route,layout,legs,through,exporter,packageName,className,paths:nm.paths,opMode:nm.opMode,mechanisms:mech,constants,checklist:check,defaultPower};
     const {parts,sensorSpecs}=ftc.exportParts?ftc.exportParts({robot,localization,mechanisms,kinematics}):{parts:{list:[]},sensorSpecs:[]};
     const shared={packageName,className,layoutName:layout.name,setupName,exporter,mechanisms:mech,kinematics,parts,sensorSpecs,sequences:exporter.sequences?.(route)||[],poseImport:'com.pedropathing.math.Pose'};
@@ -443,8 +446,14 @@ public class ${o.opMode} extends LinearOpMode {
   // tuner measures on a real robot). The simulator runs Pedro exports with it; teams can start from it,
   // but every number is an estimate until the Quickstart tuners have been run on the real robot.
   const STARTER_LOCALIZERS={fused:'goBILDA Pinpoint',optical:'SparkFun OTOS',odometry:'two odometry pods + IMU',odometry3:'three odometry pods + IMU'};
+  // What the robot needs before Pedro can find where it is, in words: '' when its sensing has a Pedro localizer. Pedro's
+  // PinpointLocalizer reads the Pinpoint's pods, so a Pinpoint alone (no pods) is no more use to it than the drive encoders.
+  const ADD_ODOMETRY='Setup → Mechanisms → + Add to Chassis → Odometry & IMU';
+  function starterNeeds(hardware){if(STARTER_LOCALIZERS[hardware?.localization])return '';
+    return hardware?.pinpointImu?`This robot’s Pinpoint has no pods, and Pedro Pathing’s Pinpoint localizer needs its two odometry pods. To use Pedro, pick Pinpoint + 2 odometry pods (or an OTOS, or odometry pods) in ${ADD_ODOMETRY}.`
+      :`Pedro Pathing needs odometry to know where the robot is: a goBILDA Pinpoint with its two pods, a SparkFun OTOS, or two or three odometry pods. Add one in ${ADD_ODOMETRY}.`;}
   function starterConstants({hardware,tuning,packageName='org.firstinspires.ftc.teamcode.pedro',className='DeckStarterConstants'}){
-    if(!STARTER_LOCALIZERS[hardware?.localization])throw Error(`Pedro starter constants support ${Object.values(STARTER_LOCALIZERS).join(', ')} localization.`);
+    const needs=starterNeeds(hardware);if(needs)throw Error(needs);
     if(hardware.drive?.kind!=='mecanum')throw Error('Pedro starter constants support mecanum drivetrains.');
     for(const k of ['maxForward','maxStrafe','forwardDeceleration','strafeDeceleration','linearBrakeForward','linearBrakeStrafe','quadraticBrakeForward','quadraticBrakeStrafe','headingBrakeLinear','headingBrakeQuadratic','headingP','translationalP','translationalSmall'])if(!(finite(tuning?.[k])&&tuning[k]>=0))throw Error(`The simulated robot has no ${k}; load the simulation first.`);
     const m=hardware.drive.motors,dir=x=>`DcMotorSimple.Direction.${x.mount<0?'REVERSE':'FORWARD'}`,loc=hardware.localization,pinpoint=loc==='fused',t=tuning;
@@ -589,5 +598,5 @@ public class Constants {
     }
 }
 `;
-  return {files,checklist,starterConstants,STARTER_LOCALIZERS,PEDRO_VERSION,SDK_VERSION,QUICKSTART_CONSTANTS,QUICKSTART_USING_STARTER};
+  return {files,checklist,starterConstants,starterNeeds,STARTER_LOCALIZERS,PEDRO_VERSION,SDK_VERSION,QUICKSTART_CONSTANTS,QUICKSTART_USING_STARTER};
 });

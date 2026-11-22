@@ -96,6 +96,31 @@ test('the check TeleOp: every step, its question, and the results it reports',()
   assert.equal(F.checkResults('Step : Done'),null);assert.deepEqual(F.checkResults('v1'),{});
 });
 
+// A Pinpoint alone (no pods) is the IMU the code turns by: the check turns the robot a quarter turn for it as well as for the
+// Control Hub's IMU (which the code reads while the Pinpoint does not answer), and it has no pods to push.
+test('the check TeleOp with a Pinpoint alone: its IMU gets a quarter turn of its own, and there are no pods to push',t=>{
+  const robot=C.robot({...base,pinpointImu:true}),route=P.plan({start,zones:[],pins:[{x:40,y:30}],clearance:2},{front:8.5,rear:8.5,half:8.5});
+  const java=F.files({route,layout,tuning:{},robot,localization:'encoders',target,setupName:'Guided',routeJava:'class R {}'}).files['org/firstinspires/ftc/teamcode/PlannedRouteCheck.java'];
+  assert.match(java,/^import com\.qualcomm\.hardware\.gobilda\.GoBildaPinpointDriver;$/m);assert.match(java,/private static final int STEPS = 6;/,'the IMU, the Pinpoint and four wheels');
+  assert.match(java,/GoBildaPinpointDriver pinpoint = hardwareMap\.tryGet\(GoBildaPinpointDriver\.class, "pinpoint"\);/);assert.match(java,/if \(pinpoint != null\) pinpoint\.resetPosAndIMU\(\);/,'its IMU calibrated at INIT');
+  assert.match(java,/next\("Pinpoint \(\\"pinpoint\\"\)"\);\n\s+if \(pinpoint == null\) result\("pinpoint", "\?missing"\);/);assert.match(java,/The Pinpoint has no pods, so it is the IMU the robot turns by\. Turn the robot a quarter turn LEFT/);
+  assert.match(java,/double turned = AngleUnit\.normalizeDegrees\(pinpoint\.getHeading\(AngleUnit\.DEGREES\) - before\);\n\s+result\("pinpoint\.turn", turned > 45 \? "ok" : turned < -45 \? "\?backward" : "\?none"\);/);
+  assert.ok(java.indexOf('next("IMU')<java.indexOf('next("Pinpoint')&&java.indexOf('next("Pinpoint')<java.indexOf('next("front left'),'after the hub’s IMU, before the wheels');
+  assert.doesNotMatch(java,/getEncoderX|pinpoint\.xReversed|exactly 48 inches/,'no pods to push');
+  const fusedJava=F.files({route,layout,tuning:{},robot:C.robot(base),localization:'fused',target,setupName:'Guided',routeJava:'class R {}'}).files['org/firstinspires/ftc/teamcode/PlannedRouteCheck.java'];assert.doesNotMatch(fusedJava,/pinpoint\.turn/,'a Pinpoint with pods is checked by its pods');
+  // Read back: each problem in words, with what to do.
+  const values=F.checkResults('Deck results : v1 imu.turn=ok pinpoint.turn=?backward');assert.deepEqual(values,{'imu.turn':'ok','pinpoint.turn':'?backward'});
+  const a=F.applyCheck(values,{robot,mechanisms:{},localization:'encoders'});assert.deepEqual(a.changes,[]);
+  assert.deepEqual(a.problems,['The Pinpoint read the quarter turn left as a turn right. goBILDA says to mount the Pinpoint sticker side up, so turn it over. Or run IMU tuning in Calibrate → Mechanisms, and Torque takes its heading the other way round.']);
+  assert.deepEqual(F.applyCheck({'pinpoint.turn':'?none'},{robot,mechanisms:{},localization:'encoders'}).problems,['The Pinpoint did not see the quarter turn. Check its cable, and that the robot’s configuration has it on that I2C port.']);
+  assert.match(F.applyCheck({pinpoint:'?missing'},{robot,mechanisms:{},localization:'encoders'}).problems[0],/^The Pinpoint is not on the robot: its name is not in the robot configuration/);
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
+  if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-check-')),file=path.join(dir,'PlannedRouteCheck.java');fs.writeFileSync(file,java);
+  try{require('node:child_process').execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`the check does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('guided check on the virtual Control Hub: motors, rollers, flywheels, a feeder and a turret turning the wrong way, and the turret encoder',{skip},async()=>{
   const truth={robot:{...base,devices:{frontRight:{reversed:true},backLeft:{reversed:false}}},
     mechanisms:{intakes:[{kind:'siderollers',sides:['front'],device:'crservo',motor:'roller',motor2:'roller2',reversed2:true}],shooters:[{type:'turret',motor:'shooter',motor2:'shooter_b',reversed:true,indexerReversed:true}],turret:{ticksPerDegree:5}}};

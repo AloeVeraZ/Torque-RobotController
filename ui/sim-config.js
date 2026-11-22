@@ -103,5 +103,9 @@
     return {x0:0,y0:0,x1:positive(layout.width,144),y1:positive(layout.height,144)};}
   const sensorChoices=controller=>controller==='motionmodule'?['gyro','odometry','odometry3','optical']:['encoders','odometry','odometry3','fused','optical','gyro'];
   const localization=(controller,mode)=>sensorChoices(controller).includes(mode)?mode:controller==='motionmodule'?'gyro':'encoders';
-  return {HUB,hubMounting,sensorPlace,DEVICE_KEYS,devices,deviceName,wiring,ODOMETRY,POD_TYPES,OTOS_SCALARS,odometry,odometryOf,drives,sensors,sensorChoices,localization,electrical,current,robot,intake,chassisHitbox,footprint,bounds,finite};
+  // Pinpoint alone (Setup → Mechanisms → + Add to Chassis → Odometry & IMU): a goBILDA Pinpoint with no pods is the IMU and
+  // gives the heading, and the drive encoders ('encoders') or time ('gyro') give the distance. Only on a Control Hub robot
+  // whose wheels do not steer: a flag left over on a MotionModule robot or a swerve means nothing.
+  const pinpointAlone=(r,mode,controller)=>r?.pinpointImu===true&&(mode==='encoders'||mode==='gyro')&&controller!=='motionmodule'&&drives[r.drivetrain]?.engine!=='swerve';
+  return {HUB,hubMounting,sensorPlace,DEVICE_KEYS,devices,deviceName,wiring,ODOMETRY,POD_TYPES,OTOS_SCALARS,odometry,odometryOf,drives,sensors,sensorChoices,localization,pinpointAlone,electrical,current,robot,intake,chassisHitbox,footprint,bounds,finite};
 });

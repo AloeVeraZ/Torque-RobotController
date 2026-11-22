@@ -64,6 +64,35 @@ test('the IMU turn test: an autonomous on the heading alone, the IMU the way rou
     try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
     finally{fs.rmSync(dir,{recursive:true,force:true});}}});
 
+// A Pinpoint alone (no pods) is the robot's IMU. The TeleOp's field centric heading and its reset are the Pinpoint's, and while
+// it does not answer (a loose cable) the Control Hub's IMU carries the heading, as the autonomous's RobotDrive does. A Pinpoint
+// with no pods plugged in never says READY (goBILDA's driver reports the missing pods first), so that counts as answering.
+test('a Pinpoint alone: the TeleOp and the IMU turn test turn by its heading, and by the Control Hub’s while it does not answer',t=>{
+  const alone={...mecanum,imu:{name:'imu',scale:1.02},pinpoint:{name:'GBPP',scale:-1}},s=T.teleopOf(alone).source;
+  assert.match(s,/^import com\.qualcomm\.hardware\.gobilda\.GoBildaPinpointDriver;$/m);assert.match(s,/static final String PINPOINT = "GBPP";/);assert.match(s,/static final double PINPOINT_SCALE = -1\.0;/,'the way round Calibrate found');
+  assert.match(s,/GoBildaPinpointDriver pinpoint = hardwareMap\.get\(GoBildaPinpointDriver\.class, PINPOINT\);\n.*\n\s+pinpoint\.resetPosAndIMU\(\);\n\s+waitForStart\(\);/,'its IMU is calibrated at INIT');
+  for(const st of ['READY','FAULT_NO_PODS_DETECTED','FAULT_X_POD_NOT_DETECTED','FAULT_Y_POD_NOT_DETECTED'])assert.match(s,new RegExp(`status == GoBildaPinpointDriver\\.DeviceStatus\\.${st}\\b`),st);
+  assert.doesNotMatch(s,/DeviceStatus\.(CALIBRATING|NOT_READY|FAULT_BAD_READ|FAULT_IMU_RUNAWAY)/,'calibrating or reading badly is not answering');
+  // Each loop: the hub's turn by its scale, the Pinpoint's instead while it answers, added up; the reset button zeroes it.
+  assert.match(s,/double heading = 0, lastYaw = imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.RADIANS\), lastPinpoint = Double\.NaN;\n\s+while \(opModeIsActive\(\)\) \{/);
+  assert.match(s,/double yaw = imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.RADIANS\), turned = AngleUnit\.normalizeRadians\(yaw - lastYaw\) \* IMU_SCALE;\n\s+lastYaw = yaw;\n\s+pinpoint\.update\(\);\n\s+if \(answers\(pinpoint\.getDeviceStatus\(\)\)\) \{\n\s+double pinpointHeading = pinpoint\.getHeading\(AngleUnit\.RADIANS\);\n\s+if \(!Double\.isNaN\(lastPinpoint\)\) turned = AngleUnit\.normalizeRadians\(pinpointHeading - lastPinpoint\) \* PINPOINT_SCALE;\n\s+lastPinpoint = pinpointHeading;\n\s+\} else lastPinpoint = Double\.NaN;\n\s+heading = AngleUnit\.normalizeRadians\(heading \+ turned\);\n\s+if \(gamepad1\.start\) heading = 0;\n\s+\/\/ Field centric/);
+  assert.doesNotMatch(s,/resetYaw\(\);\n\s+double heading = imu|if \(gamepad1\.\w+\) imu\.resetYaw/,'the hub’s yaw is not the heading');assert.match(s,/telemetry\.addData\("Heading", "%\.1f", Math\.toDegrees\(heading\)\);/);
+  assert.match(T.teleopOf({...alone,map:{reset:'y'}}).source,/if \(gamepad1\.y\) heading = 0;/);assert.doesNotMatch(T.teleopOf({...alone,map:{reset:'none'}}).source,/if \(gamepad1\.\w+\) heading = 0;/);
+  assert.match(T.teleopOf({...alone,pinpoint:{name:'pinpoint'}}).source,/PINPOINT_SCALE = 1\.0;/);assert.doesNotMatch(T.teleopOf(mecanum).source,/[Pp]inpoint/,'no Pinpoint, nothing about one');
+  // The IMU turn test checks the heading the code turns by: the Pinpoint's, the hub's while it does not answer.
+  const tt=T.turnTestOf(alone);assert.equal(tt.pinpoint,true);assert.equal(T.turnTestOf(mecanum).pinpoint,undefined);
+  assert.match(tt.source,/uses only the Pinpoint's IMU, and the Control Hub's while the Pinpoint does not answer\./);assert.match(tt.source,/^\s+pinpoint = hardwareMap\.get\(GoBildaPinpointDriver\.class, PINPOINT\);$/m);
+  assert.match(tt.source,/double read\(\) \{\n\s+double yaw = imu\.getRobotYawPitchRollAngles\(\)\.getYaw\(AngleUnit\.DEGREES\), turned = wrap\(yaw - lastYaw\) \* IMU_SCALE;[\s\S]*?turned = wrap\(pinpointHeading - lastPinpoint\) \* PINPOINT_SCALE;[\s\S]*?heading \+= turned;\n\s+return heading;/);
+  // A mechanism cannot take a name the heading uses.
+  const named=T.teleopOf({...alone,mechanisms:[{label:'Pinpoint',kind:'motor',device:'pp',mode:'hold',a:'a'},{label:'Turned',kind:'motor',device:'tt',mode:'hold',a:'b'}]}).source;
+  assert.match(named,/DcMotor mech1 = hardwareMap\.get\(DcMotor\.class, "pp"\);/);assert.match(named,/DcMotor mech2 = hardwareMap\.get\(DcMotor\.class, "tt"\);/);
+  const root=path.join(__dirname,'..'),javac=path.join(root,'sim-runtime/java/bin',process.platform==='win32'?'javac.exe':'javac'),stubs=path.join(root,'tools/simulation/java');
+  if(!fs.existsSync(javac)||!fs.existsSync(stubs))return t.skip('the simulator’s JDK is not built here');
+  for(const [name,x] of [['TeleOp',T.teleopOf(alone)],['TeleOp, robot centric with a mechanism',T.teleopOf({...alone,map:{field:'no',reset:'y'},mechanisms:[{label:'Pinpoint',kind:'motor',device:'pp',mode:'hold',a:'a'}]})],['tank TeleOp',T.teleopOf({...alone,kind:'tank',motors:tank.motors})],['turn test',T.turnTestOf(alone)]]){
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'torque-pinpoint-')),file=path.join(dir,path.basename(x.file));fs.writeFileSync(file,x.source);
+    try{execFileSync(javac,['-nowarn','-proc:none','-sourcepath',stubs,'-d',path.join(dir,'out'),file],{stdio:'pipe'});}catch(e){assert.fail(`${name} does not compile:\n${String(e.stderr||e.message).slice(0,1500)}`);}
+    finally{fs.rmSync(dir,{recursive:true,force:true});}}});
+
 test('IMU tuning: one line to Torque Debug, which runs it on the robot, and the result it sends back',()=>{
   const motors=[{name:'fl',power:-1},{name:'fr',power:1},{name:'bl',power:-1},{name:'br',power:1}];
   const std=T.turnLineOf({job:'tune',id:7,tolerance:2,heading:{kind:'hub',name:'imu'},mount:{logo:'up',usb:'forward'},scale:-1,motors});

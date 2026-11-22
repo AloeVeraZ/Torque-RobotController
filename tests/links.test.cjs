@@ -103,6 +103,15 @@ test('an IMU, Pinpoint or OTOS is moved by hand: each reading before and after, 
   assert.equal(L.handCheck('pinpoint','pp',[p(0,0)],[p(400,0),p(400,-250)]).ok,true);
   assert.equal(L.handCheck('imu','gone',rest,rest).unread,true);assert.equal(L.handCheck('motor','m',[],[]),null);
   assert.match(L.statusWords('FAULT_NO_PODS_DETECTED'),/X and Y ports/);assert.equal(L.statusWords('READY'),'');});
+// A Pinpoint alone (no pods) is the robot's IMU: Electronics checks it by turning the robot, never by rolling pods it does not
+// have, and its "no pods" status is nothing to fix.
+test('a Pinpoint alone is moved by hand as an IMU: its heading has to turn, and finding no pods is not a fault',()=>{
+  const p=(h,ex=0,ey=0)=>({'i:pp:ex':ex,'i:pp:ey':ey,'i:pp:x':0,'i:pp:y':0,'i:pp:h':h,'i:pp:status':'FAULT_NO_PODS_DETECTED'});
+  assert.ok(L.byHand('pinpointImu'));assert.deepEqual(L.BY_HAND.pinpointImu.need,['h']);
+  const turned=L.handCheck('pinpointImu','pp',[p(10),p(10.1)],[p(40),p(100)]);assert.equal(turned.ok,true);assert.deepEqual(turned.rows.map(r=>r.k),['h'],'only its heading is shown');
+  assert.equal(L.handCheck('pinpointImu','pp',[p(10)],[p(10.2),p(9.9)]).ok,false,'held still it did not turn');assert.deepEqual(L.handCheck('pinpointImu','pp',[p(10)],[p(10)]).missing,['Heading']);
+  assert.equal(L.handCheck('pinpoint','pp',[p(10)],[p(100)]).ok,false,'with pods, the pods have to roll');
+  assert.equal(L.aloneWords('FAULT_NO_PODS_DETECTED'),'');assert.equal(L.aloneWords('FAULT_X_POD_NOT_DETECTED'),'');assert.equal(L.aloneWords('CALIBRATING'),L.statusWords('CALIBRATING'));assert.match(L.aloneWords('FAULT_BAD_READ'),/I2C cable/);});
 
 test('a skipped device, and one moved by hand, are checked off',()=>{
   const devs=L.devices([{name:'imu',kind:'imu'},{name:'lift',kind:'motor'},{name:'pp',kind:'pinpoint'}]);

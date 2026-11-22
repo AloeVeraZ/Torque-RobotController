@@ -6,10 +6,10 @@ const P=require('../ui/sim-planner.js'),X=require('../ui/sim-export.js'),F=requi
 const built=fs.existsSync(path.join(__dirname,'../sim-runtime/driver/classes/deck/sim/hub/VirtualHub.class')),skip=built?false:'run node tools/simulation/build.cjs first';
 const ROBOT={drivetrain:'mecanum',length:17,width:17,heightIn:5,driveRpm:500,intakeIn:0};
 const start={x:20,y:30,heading:0},zones=[{id:'a',type:'rect',x:70,y:60,width:16,height:40}],pins=[{x:110,y:40,wait:.5,action:'Score'},{x:120,y:120}];
-async function setup(localization,robot=ROBOT){
+async function setup(localization,robot=ROBOT,{pins:stops=pins,zones:walls=zones}={}){
   let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
-  const info=await e.load({field:'empty',start,robot,zones,sensors:{localization}});
-  const route=P.plan({start,zones,pins,clearance:2,style:'spline'},info.footprint,[],info.bounds),layout={name:'Hub check',field:'empty',width:144,height:144,start,zones};
+  const info=await e.load({field:'empty',start,robot,zones:walls,sensors:{localization}});
+  const route=P.plan({start,zones:walls,pins:stops,clearance:2,style:'spline'},info.footprint,[],info.bounds),layout={name:'Hub check',field:'empty',width:144,height:144,start,zones:walls};
   const routeJava=X.java(route,layout,{polygon:P.polygon,className:'PlannedRoute',packageName:'org.firstinspires.ftc.teamcode'});
   const out=F.files({route,layout,tuning:info.tuning,robot:info.robot,localization,setupName:'Control Hub mecanum',routeJava});
   return {e,route,out,error:()=>error};
@@ -41,6 +41,57 @@ for(const [localization,tolerance] of [['encoders',2.5],['gyro',25]])
   });
 // With its pods it is as before, and a robot without the flag has no Pinpoint.
 test('a Pinpoint is in the code only where the robot has one',()=>{assert.equal(F.hardware(ROBOT,'encoders').pinpoint,undefined);assert.equal(F.hardware({...ROBOT,pinpointImu:true},'fused').pinpointImu,undefined);assert.equal(F.hardware({...ROBOT,pinpointImu:true},'gyro').pinpointImu,true);});
+// A real Pinpoint with no pods plugged in never says READY: goBILDA's driver reports the pods it cannot find first
+// (FAULT_NO_PODS_DETECTED), and the virtual one does the same. Its heading is still what the code turns by. Here Calibrate's
+// correction for the Control Hub's IMU is the wrong way round, so a robot that turned by the hub's IMU (as code that waits
+// for READY does) would turn the wrong way at the corner and lose its route.
+test('a Pinpoint alone that finds no pods still gives the heading: a route with a turn ends where it should, with the hub’s IMU taken the wrong way round',{skip},async()=>{
+  const {e,out,error}=await setup('encoders',{...ROBOT,pinpointImu:true,odometry:{imu:{reversed:true}}},{pins:[{x:60,y:30,path:{rotate:'turn',heading:90}},{x:60,y:80}],zones:[]});try{
+    const drive=Object.entries(out.files).find(([k])=>k.endsWith('drive/RobotDrive.java'))[1];
+    assert.match(drive,/private static boolean answers\(GoBildaPinpointDriver\.DeviceStatus s\)\{return s==GoBildaPinpointDriver\.DeviceStatus\.READY\|\|s==GoBildaPinpointDriver\.DeviceStatus\.FAULT_NO_PODS_DETECTED\|\|s==GoBildaPinpointDriver\.DeviceStatus\.FAULT_X_POD_NOT_DETECTED\|\|s==GoBildaPinpointDriver\.DeviceStatus\.FAULT_Y_POD_NOT_DETECTED;\}/);
+    assert.match(drive,/if\(answers\(pinpoint\.getDeviceStatus\(\)\)\)\{double turned=pinpoint\.getHeading\(AngleUnit\.RADIANS\);if\(!Double\.isNaN\(oldPinpoint\)\)dh=DeckFollower\.angle\(turned-oldPinpoint\);/);assert.match(drive,/dh=-1\.0\*DeckFollower\.angle\(yaw-oldImu\)/,'the hub’s turn, the wrong way round');
+    const started=await e.run({kind:'opmode',files:out.files,opMode:out.opMode});assert.equal(started.ok,true,error());
+    const phases=await finish(e,2400);assert.ok(phases.has('Done'),[...phases].join());const t=e.truth();assert.ok(Math.hypot(t.x-60,t.y-80)<2.5,JSON.stringify(t));assert.ok(Math.abs(t.heading-Math.PI/2)<.1,'it turned left to face +y');
+  }finally{e.dispose();}
+});
+// Calibrate's IMU tuning found the Pinpoint alone counts a turn to the left as a turn to the right (DeckChassisCal's turn()
+// says backwards): the autonomous takes its turn the other way round. A Pinpoint with its pods gives the whole pose itself.
+test('the autonomous takes a Pinpoint alone’s heading the way round Calibrate found it',()=>{
+  const route=P.plan({start,zones:[],pins:[{x:60,y:30}],clearance:2},{front:8.5,rear:8.5,half:8.5}),layout={name:'Turn',field:'empty',width:144,height:144,start,zones:[]},drive=(robot,localization,turn)=>F.files({route,layout,tuning:{},robot,localization,turn,routeJava:'class R {}'}).files['org/firstinspires/ftc/teamcode/drive/RobotDrive.java'];
+  const back=drive({...ROBOT,pinpointImu:true},'encoders',{top:.5,backwards:true});assert.match(back,/dh=-DeckFollower\.angle\(turned-oldPinpoint\)/);assert.match(back,/Calibrate \(IMU tuning\) found the Pinpoint counts a turn to the left as a turn to the right/);
+  assert.match(drive({...ROBOT,pinpointImu:true},'gyro',{top:.5}),/dh=DeckFollower\.angle\(turned-oldPinpoint\)/);assert.doesNotMatch(drive({...ROBOT,pinpointImu:true},'fused',{backwards:true}),/-DeckFollower\.angle\(turned|answers\(/);
+});
+// The simulator's own run: with a Pinpoint alone the heading is the Pinpoint's IMU, so it drifts as the Pinpoint's does, and
+// the distance keeps the drive encoders' error (or none, by time).
+test('a Pinpoint alone’s simulated heading drifts as a Pinpoint’s, not as the Control Hub’s IMU',()=>{
+  const C=require('../ui/sim-config.js'),{sensorConfig}=require('../src/sim-engine.cjs'),alone={...ROBOT,pinpointImu:true};
+  assert.equal(sensorConfig({localization:'encoders'},alone).gyroDrift,C.sensors.fused.error[2]);assert.equal(sensorConfig({localization:'gyro'},alone).gyroDrift,C.sensors.fused.error[2]);
+  assert.equal(sensorConfig({localization:'encoders'},alone).scaleError,C.sensors.encoders.error[0]);assert.equal(sensorConfig({localization:'encoders'},alone).noise,C.sensors.encoders.error[1]);
+  assert.equal(sensorConfig({localization:'encoders'},ROBOT).gyroDrift,C.sensors.encoders.error[2]);assert.equal(sensorConfig({localization:'gyro'},alone,'motionmodule').gyroDrift,C.sensors.gyro.error[2],'a flag left on a MotionModule robot');
+  assert.equal(sensorConfig({localization:'encoders',gyroDrift:0},alone).gyroDrift,0,'a setting given is kept');assert.ok(C.sensors.fused.error[2]<C.sensors.encoders.error[2]);
+});
+// The chassis TeleOp with a Pinpoint alone, on the virtual Control Hub: field centric by the Pinpoint's heading. The hub IMU's
+// correction is the wrong way round (IMU_SCALE -1), so only the Pinpoint's heading drives it the right way.
+test('the TeleOp with a Pinpoint alone drives field centric by its heading on the virtual Control Hub, and Start makes forward the robot’s front',{skip},async()=>{
+  const T=require('../ui/sim-chassis-teleop.js');let error='';const e=new SimEngine({workDir:fs.mkdtempSync(path.join(os.tmpdir(),'deck-hub-test-')),now:()=>0,emit:m=>{if(m?.state==='error')error=m.error;}});
+  try{
+    const info=await e.load({field:'empty',start:{x:72,y:72,heading:0},robot:{...ROBOT,pinpointImu:true},zones:[],sensors:{localization:'encoders'}});
+    const h=F.hardware(info.robot,'encoders'),motors=Object.entries(h.drive.motors).map(([key,m])=>({key,name:m.name,reversed:m.mount<0}));
+    const tele=T.teleopOf({kind:'mecanum',robot:info.robot,imu:{name:h.imu,scale:-1},pinpoint:{name:h.pinpoint,scale:1},motors});
+    assert.equal((await e.run({kind:'opmode',files:{[tele.file]:tele.source},opMode:'TorqueChassis'})).ok,true,error);
+    const tick=async(n,pad)=>{e.setGamepad(1,pad);for(let i=0;i<n&&e.mode==='program';i++)await e.programTick();assert.equal(e.mode,'program',error);};
+    await tick(30,{});
+    // About a quarter turn to the left on the turn stick: it faces the field's +y.
+    for(let i=0;i<600&&e.truth().heading<Math.PI/2-.15;i++)await tick(1,{right_stick_x:-.4});
+    await tick(40,{});const faces=e.truth().heading;assert.ok(faces>1.2&&faces<2,`it faces ${faces} rad`);
+    // The drive stick pushed forward takes it away from the driver, along the field's +x, though its front faces +y.
+    let a=e.truth();await tick(60,{left_stick_y:-.6});await tick(40,{});let b=e.truth();
+    assert.ok(b.x-a.x>8,`it went ${(b.x-a.x).toFixed(1)} in along +x`);assert.ok(Math.abs(b.y-a.y)<.3*(b.x-a.x),`and ${(b.y-a.y).toFixed(1)} in along y`);
+    // Set heading to 0 (Start): forward is the way its front faces now.
+    await tick(5,{start:true});await tick(5,{});a=e.truth();await tick(60,{left_stick_y:-.6});await tick(40,{});b=e.truth();
+    assert.ok(b.y-a.y>8,`after Start it went ${(b.y-a.y).toFixed(1)} in along +y`);assert.ok(Math.abs(b.x-a.x)<.3*(b.y-a.y),`and ${(b.x-a.x).toFixed(1)} in along x`);
+  }finally{e.dispose();}
+});
 
 test('the exported OpMode reproduces the simulated follower: same route, end point and timing',{skip},async()=>{
   const sim=await setup('odometry'),hub=await setup('odometry');try{

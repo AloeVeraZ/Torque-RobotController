@@ -88,11 +88,28 @@ test('Pedro starter constants: Pedro\'s Mecanum and Pinpoint/OTOS with Foresight
   assert.match(pinpoint,/c\.frontLeftName\.set\("front_left"\);/);assert.match(pinpoint,/c\.frontLeftDirection\.set\(DcMotorSimple\.Direction\.REVERSE\);/);assert.match(pinpoint,/c\.frontRightDirection\.set\(DcMotorSimple\.Direction\.FORWARD\);/);
   assert.match(pinpoint,/c\.maxAchievableForwardVelocity\.set\(86\.6\);/);assert.match(pinpoint,/c\.quadraticBrakeCoefficients\.set\(Matrix\.diag\(0\.001760, 0\.002370\)\);/);assert.match(pinpoint,/STARTING VALUES/);
   const otos=Pedro.starterConstants({hardware:F.hardware(robot,'optical'),tuning});assert.match(otos,/new OTOSLocalizer\(h, localizer\(\)\)/);assert.match(otos,/c\.name\.set\("sensor_otos"\);/);
-  assert.throws(()=>Pedro.starterConstants({hardware:F.hardware(robot,'encoders'),tuning}),/Pinpoint, SparkFun OTOS/);
+  assert.throws(()=>Pedro.starterConstants({hardware:F.hardware(robot,'encoders'),tuning}),/^Error: Pedro Pathing needs odometry to know where the robot is: a goBILDA Pinpoint with its two pods, a SparkFun OTOS, or two or three odometry pods\. Add one in Setup → Mechanisms → \+ Add to Chassis → Odometry & IMU\.$/);
   assert.throws(()=>Pedro.starterConstants({hardware:F.hardware(robot,'fused'),tuning:{}}),/load the simulation/);
   // The export writes it beside the Quickstart's Constants.java when it can describe the robot.
   const start={x:20,y:24,heading:0},route=P.plan({start,zones:[],pins:[{x:60,y:24}],style:'sharp',clearance:2},fp),o=out(route,layoutOf(start),{hardware:F.hardware(robot,'fused'),tuning});
   assert.ok(o.starter);assert.ok(o.files['org/firstinspires/ftc/teamcode/pedro/DeckStarterConstants.java']);assert.equal(out(route,layoutOf(start)).starter,false);
+  assert.match(o.checklist.find(c=>c.label==='Pedro setup').detail,/DeckStarterConstants\.java \(written beside it for mecanum robots with odometry pods, a Pinpoint with its two pods, or an OTOS\)/);
+});
+
+// A Pinpoint alone (no pods) is the robot's IMU. Pedro's PinpointLocalizer reads the Pinpoint's pods, so it gets no starter
+// constants, as with the drive encoders, and the refusal says what to add and where instead of listing the Pinpoint it has.
+test('Pedro and a Pinpoint alone: no starter constants, and the export says plainly that Pedro needs its two pods',()=>{
+  const F=require('../ui/sim-ftc.js'),robot={drivetrain:'mecanum',length:17,width:17,driveRpm:500,pinpointImu:true};
+  const tuning={maxForward:86.6,maxStrafe:69.3,forwardDeceleration:83.8,strafeDeceleration:68.9,linearBrakeForward:.0941,linearBrakeStrafe:.0403,quadraticBrakeForward:.00176,quadraticBrakeStrafe:.00237,headingBrakeLinear:.0601,headingBrakeQuadratic:.00486,headingP:3.95,translationalP:.304,translationalSmall:.101};
+  const said='This robot’s Pinpoint has no pods, and Pedro Pathing’s Pinpoint localizer needs its two odometry pods. To use Pedro, pick Pinpoint + 2 odometry pods (or an OTOS, or odometry pods) in Setup → Mechanisms → + Add to Chassis → Odometry & IMU.';
+  for(const localization of ['encoders','gyro']){const hardware=F.hardware(robot,localization);assert.equal(hardware.pinpointImu,true);
+    assert.throws(()=>Pedro.starterConstants({hardware,tuning}),e=>e.message===said,localization);assert.equal(Pedro.starterNeeds(hardware),said);}
+  assert.equal(Pedro.starterNeeds(F.hardware({...robot,pinpointImu:false},'fused')),'','with its pods it has Pedro’s Pinpoint localizer');
+  // The export goes ahead without DeckStarterConstants.java, and what it lists for the team says why, where they read it.
+  const start={x:20,y:24,heading:0},route=P.plan({start,zones:[],pins:[{x:60,y:24}],style:'sharp',clearance:2},fp),o=out(route,layoutOf(start),{robot,localization:'encoders',hardware:F.hardware(robot,'encoders'),tuning});
+  assert.equal(o.starter,false);assert.equal(o.files['org/firstinspires/ftc/teamcode/pedro/DeckStarterConstants.java'],undefined);
+  const setup=o.checklist.find(c=>c.label==='Pedro setup').detail;assert.ok(setup.endsWith(`Torque wrote no DeckStarterConstants.java for this robot. ${said}`),setup);assert.doesNotMatch(setup,/written beside it/);
+  assert.ok(Object.values(o.files).some(s=>s.includes('Torque wrote no DeckStarterConstants.java for this robot.')),'the OpMode’s own checklist says it too');
 });
 
 test('Pedro starter constants for two and three odometry pods with the hub IMU',()=>{

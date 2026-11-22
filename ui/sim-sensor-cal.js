@@ -28,7 +28,13 @@
   // Spun in place by `radians` (counterclockwise positive): where a pod sits, from how far it rolled (inches, sign as it counts now).
   const forwardPodY=(rolled,radians)=>-rolled/radians,strafePodX=(rolled,radians)=>rolled/radians;
   const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-  const api={TURNS,PUSH_IN,PASS,wrap,unwrapper,drift,headingScale,atRest,push,forwardPodY,strafePodX};
+  // The heading the robot's own code steers by: a Pinpoint's IMU (with its two pods, or a Pinpoint alone, which has no pods
+  // and is the IMU), the OTOS's, or the Control Hub's. project: the setup; C: DeckSimConfig. null where nothing measures it.
+  function headingOf(project,C){const loc=project?.sensors?.localization,dev=k=>project?.robot?.devices?.[k]?.name;
+    if(loc==='fused'||C?.pinpointAlone?.(project?.robot,loc,project?.controller))return {key:`i:${dev('pinpoint')||'pinpoint'}:h`,what:'the Pinpoint’s IMU',kind:'pinpoint'};
+    if(loc==='optical')return {key:`i:${dev('otos')||'sensor_otos'}:h`,what:'the OTOS’s IMU',kind:'otos'};
+    return C?.sensors?.[loc]?.imu===false?null:{key:`i:${dev('imu')||'imu'}:yaw`,what:'the Control Hub’s IMU',kind:'hub'};}
+  const api={TURNS,PUSH_IN,PASS,wrap,unwrapper,drift,headingScale,atRest,push,forwardPodY,strafePodX,headingOf};
   if(typeof module==='object'&&module.exports){module.exports=api;return;}
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -38,8 +44,9 @@
     const {box,debug}=opts;let test=null,results={},mounting=null,mountOff=null,mountSaid='',mountTried=false,driftOff=null,driftAt=0,driftTurn=null,driftFor=null;const C=()=>globalThis.DeckSimConfig;
     const saved=()=>{const c=p().calibration||(p().calibration={}),ch=c.chassis||(c.chassis={});return ch;};
     const p=()=>opts.project(),loc=()=>p().sensors?.localization,dev=k=>p().robot?.devices?.[k]?.name;
-    // The heading the robot's own code steers by: the Pinpoint's or the OTOS's own IMU, or the Control Hub's.
-    const headingSource=()=>loc()==='fused'?{key:`i:${dev('pinpoint')||'pinpoint'}:h`,what:'the Pinpoint’s IMU',kind:'pinpoint'}:loc()==='optical'?{key:`i:${dev('otos')||'sensor_otos'}:h`,what:'the OTOS’s IMU',kind:'otos'}:C()?.sensors?.[loc()]?.imu===false?null:{key:`i:${dev('imu')||'imu'}:yaw`,what:'the Control Hub’s IMU',kind:'hub'};
+    // The heading the robot's own code steers by (headingOf above). A Pinpoint alone's code still reads the Control Hub's IMU
+    // while the Pinpoint does not answer, so the hub's mounting is read from gravity for it too (hubToo).
+    const headingSource=()=>headingOf(p(),C()),hubToo=()=>!!C()?.pinpointAlone?.(p().robot,loc(),p().controller);
     const PODS={odometry:[['par','forward'],['perp','strafe']],odometry3:[['par_left','forward'],['par_right','forward'],['perp','strafe']]};
     const pods=()=>(PODS[loc()]||[]).map(([key,axis])=>({key,axis,name:dev(key)||key}));
     const v=()=>debug?.values?.()||{};
@@ -146,7 +153,7 @@
     function paint(){if(!box)return;const h=headingSource(),odo=!!PODS[loc()]||loc()==='fused'||loc()==='optical';
       const need=!live()?`<section class="cal-card cal-sense-live"><div><h2>Live readings</h2><p class="hint">Each step below reads the robot through Torque Debug while you move it.</p></div><button type="button" class="primary" data-sense-start>Start live readings</button></section>`:'';
       const heading=h?`<section class="cal-card"><h2>Heading · ${esc(h.what)}</h2><p class="hint">Every turn and position the robot works out goes through its heading. ${h.kind==='hub'?'Torque checks how the hub is mounted and how much the heading drifts, with the robot sitting still.':h.kind==='pinpoint'?'goBILDA tunes the Pinpoint’s at the factory; this checks it.':'Its angular scalar corrects it.'}</p><ol class="cal-sense-steps">${h.kind==='hub'?mountHtml():''}${stepHtml('still')}</ol><p class="hint">Its turn scale is taken as 1.0: the IMU is calibrated at the factory, and the FTC SDK takes it the same way. Nothing to spin.</p></section>`:'';
-      if(h?.kind==='hub'&&HM()&&live()&&!mounting&&!test&&!mounts()[dev('imu')||'imu']&&!mountTried){mountTried=true;mountStart();return paint();}
+      if((h?.kind==='hub'||hubToo())&&HM()&&live()&&!mounting&&!test&&!mounts()[dev('imu')||'imu']&&!mountTried){mountTried=true;mountStart();return paint();}
       if(live())driftWatch();else if(driftOff){driftOff();driftOff=null;}
       const position=odo?`<section class="cal-card"><h2>Position · ${esc(loc()==='fused'?'Pinpoint pods':loc()==='optical'?'OTOS':`${pods().length} odometry pods`)}</h2><p class="hint">Push the robot straight forward, then straight left, to check which way ${loc()==='optical'?'the OTOS':'each pod'} counts and how far. ${loc()==='optical'?'Where the OTOS sits on the robot comes from Setup.':'Then spin it in place to find where each pod sits. Do IMU tuning first, because the spin uses the heading.'}</p><ol class="cal-sense-steps">${stepHtml('forward')}${stepHtml('left')}${loc()==='optical'?'':stepHtml('spin')}</ol></section>`:
         `<section class="cal-card"><h2>Position</h2><p class="hint">${loc()==='encoders'?'This robot works out its position from its drive motors’ encoders, which need no calibration beyond the heading.':'Nothing on this robot measures its position, so there is nothing to calibrate here.'}</p></section>`;
