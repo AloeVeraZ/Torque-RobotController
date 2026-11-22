@@ -27,7 +27,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/setup-o
     for(const t of ['chassis','chassis:controller','chassis:frontLeft','chassis:frontRight','chassis:backLeft','chassis:backRight','chassis:pinpoint','+chassis'])assert.ok(tiles.includes(t),`${t} in ${tiles}`);
     assert.equal(await loc(),'fused','the Pinpoint is on');
     await page.click('[data-garage="chassis:frontLeft"]');await page.waitForTimeout(300);
-    assert.equal(await page.locator('#mech-drive-ports [data-wire-encoder="robot.frontLeft"]').isChecked(),true,'its encoder is ticked');
+    assert.equal(await page.locator('#mech-drive-ports [data-wire-encoder="robot.frontLeft"]').isChecked(),true,'its encoder is ticked');assert.equal(await page.locator('#mech-drive-ports [data-wire-encoder="robot.frontLeft"]').isEnabled(),true,'and the tick is the team’s to take off');
     // B. No banner in Setup.
     assert.equal(await page.locator('#setup-view [data-sample-banner]').count(),0,'Setup says nothing about a missing robot');
     await page.screenshot({path:path.join(out,'demo-mechanisms.png')});

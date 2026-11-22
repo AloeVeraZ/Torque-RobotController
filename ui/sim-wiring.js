@@ -161,9 +161,11 @@
   function chassisRows(rows,st,read){return rows.map(row=>{const fromRead=(read||[]).some(d=>d.hub&&readFamily(d)===row.family),own=row.wired?`${row.hub}:${row.port}`:'',sensor=moduleEncoder(row,st)?encoderOf(row,st):null;
     const port=chassisSelect(`wire-chassis-${row.key}`,fromRead?'data-wire-assign':'data-wire-port',row.key,row.label,chassisChoices(row.family,st,read,row.key),own);
     const encoder=moduleEncoder(row,st)?chassisSelect(`wire-chassis-encoder-${row.key}`,'data-wire-chassis-encoder',row.key,`${row.label.replace(/, motor 1$/,' module')} absolute encoder`,chassisChoices('analog',st,read,sensor?`sensor.${sensor.id}`:row.key),sensor?.hub?`${sensor.hub}:${sensor.port}`:''):'';
-    // A drive motor's own encoder: ticked when its encoder cable is plugged in. With position from the drive encoders every one has it.
-    const implied=row.role==='drive'&&st.project?.sensors?.localization==='encoders',hasEnc=implied||st.wiring.sensors.some(s=>s.for===row.key&&s.model==='motor-encoder');
-    const enc=row.role==='drive'?`<label class="check sim-chassis-enc" title="${implied?'Position comes from the drive encoders, so every drive motor has one':'Its encoder cable is plugged into the hub'}"><input type="checkbox" data-wire-encoder="${esc(row.key)}"${hasEnc?' checked':''}${implied?' disabled':''}> Encoder</label>`:'';
+    // A drive motor's own encoder: ticked when its encoder cable is plugged in. A robot that follows its route with the drive
+    // encoders and has none written down has one on every motor. The tick is always the team's: taking one off is what
+    // makes the robot drive by time, never the other way round.
+    const none=!st.wiring.sensors.some(s=>s.model==='motor-encoder'),implied=row.role==='drive'&&st.project?.sensors?.localization==='encoders'&&none,hasEnc=implied||st.wiring.sensors.some(s=>s.for===row.key&&s.model==='motor-encoder');
+    const enc=row.role==='drive'?`<label class="check sim-chassis-enc" title="Its encoder cable is plugged into the hub. With one on every drive motor the robot follows its route with them; without, it drives by time."><input type="checkbox" data-wire-encoder="${esc(row.key)}"${hasEnc?' checked':''}> Encoder</label>`:'';
     return `<div data-wire-row="${esc(row.key)}" title="Its name in the robot configuration: ${esc(row.name)}">${port}${enc}${encoder}${problemLines(problemsOf(st,row.key).filter(x=>x.port&&row.wired&&x.keys.length>1))}</div>`;}).join('');}
   // The hub's IMU on Chassis → Control Hub: the I2C bus it is on in the robot's configuration. The built-in one is on bus 0
   // unless the team moved it; with the robot's configuration read, the choices are the IMUs it has.

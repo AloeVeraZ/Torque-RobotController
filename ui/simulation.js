@@ -1855,7 +1855,12 @@ public class MyAuto implements DeckAutonomous {
     for(const b of box.querySelectorAll('[data-kit-sense]')){const k=b.dataset.kitSense,v=ev[k];b.setAttribute('aria-pressed',String(now===k));b.disabled=false;b.dataset.kitChecked=v===true?'yes':v===false?'todo':'';
       b.querySelector('[data-kit-seen]').textContent=k==='gyro'?words.gyro[1]:words[k][String(v)];}
     const note=$('#sim-kit-sensing-note');if(note){note.textContent=kitSensingPanel.said||'';note.hidden=!kitSensingPanel.said;}}
-  $('#sim-kit-sensing').onclick=e=>{const b=e.target.closest('[data-kit-sense]');if(!b||b.disabled)return;kitSensingPanel.said='';setLocalization(b.dataset.kitSense);kitSensingPanel();};
+  $('#sim-kit-sensing').onclick=e=>{const b=e.target.closest('[data-kit-sense]');if(!b||b.disabled)return;kitSensingPanel.said='';
+    // Motors + encoders means an encoder on every drive motor: any Encoder tick that was off goes back on.
+    if(b.dataset.kitSense==='encoders'){const W=window.DeckWiring,H=window.DeckHardware,st=W.state(project);let w=H.wiringOf({wiring:project.robot.wiring}),added=false;
+      for(const r of st.rows.filter(x=>x.role==='drive'))if(w.sensors.some(x=>x.model==='motor-encoder')&&!w.sensors.some(x=>x.for===r.key&&x.model==='motor-encoder')){w=H.wiringOf({wiring:W.addSensor(w,r,'motor-encoder')});added=true;}
+      if(added)project.robot=C.robot({...project.robot,wiring:H.sanitizeWiring(w)},project.controller);}
+    setLocalization(b.dataset.kitSense);kitSensingPanel();};
   // What a demo robot is, part by part: its chassis and drivetrain, how it senses, each mechanism and what drives it,
   // and what its route does.
   function aboutPreset(show){const box=$('#sim-preset-about');box.hidden=!show;if(!show)return box.replaceChildren();
@@ -2634,6 +2639,10 @@ $('#sim-drive-style').onchange=e=>{project.robot.driveStyle=e.target.value;settl
     if(el.type==='number'){v=el.valueAsNumber;el.setCustomValidity('');if(!finite(v)||v<+el.min||v>+el.max){el.setCustomValidity(`Enter a number from ${el.min} to ${el.max}.`);el.reportValidity();return;}if(key[0]==='-')v=-v;}
     const odo=C.odometryOf(project.robot),path=odoPath(key),last=path.pop();path.reduce((o,k)=>o[k],odo)[last]=v;
     project.robot=C.robot({...project.robot,odometry:odo},project.controller);save();reload();odometryPanel();});
+  // What a robot follows its route with once its odometry is off: its drive motors' encoders, the default, unless a drive
+  // motor has had its Encoder tick taken off (then by time).
+  function withoutOdometry(){const st=window.DeckWiring.state(project),enc=st.wiring.sensors.filter(x=>x.model==='motor-encoder'),drive=st.rows.filter(r=>r.role==='drive');
+    return !enc.length||drive.every(r=>enc.some(x=>x.for===r.key))?'encoders':'gyro';}
   function setLocalization(v){const sel=$('#sim-localization');if(![...sel.options].some(o=>o.value===v))return;sel.value=v;sel.dispatchEvent(new Event('change'));}
   // Timed driving: the engine works the numbers out from the robot settings unless the team measured them.
   function timedPanel(committed=false){
@@ -3338,10 +3347,10 @@ $('#sim-drive-style').onchange=e=>{project.robot.driveStyle=e.target.value;settl
     d.querySelector('[data-add-said]').textContent='';d.returnValue='';openChassisAdd.step(null);robotPanel();d.showModal();}
   // The pods to click one after the other once a sensor is added (and after one is placed).
   const SENSE_PLACING={fused:['pinpoint:x','pinpoint:y'],odometry:['pod:par','pod:perp'],odometry3:['pod:par_left','pod:par_right','pod:perp']};
-  $('#mech-drive-ports').addEventListener('click',e=>{const b=e.target.closest('[data-chassis-sense]');if(!b)return;const v=b.dataset.chassisSense;chassisAdding=false;setLocalization(v);
+  $('#mech-drive-ports').addEventListener('click',e=>{const b=e.target.closest('[data-chassis-sense]');if(!b)return;const v=b.dataset.chassisSense==='encoders'?withoutOdometry():b.dataset.chassisSense;chassisAdding=false;setLocalization(v);
     const first=SENSE_PLACING[v]?.[0],card=v==='fused'?'pinpoint':v==='optical'?'otos':first?.replace('pod:','pod:');
     if(card)garagePick=`chassis:${v==='fused'?'pinpoint':v==='optical'?'otos':first}`;wheelPlacing=model?.holder&&first?first:null;if(wheelPlacing)joints.warmWheels();
-    wheelsSaid=v==='encoders'?'Taken off: the robot counts its drive wheels and reads the IMU.':`${CHASSIS_SENSE.find(([k])=>k===v)?.[1]} added to the chassis.${wheelPlacing?` Click the ${wheelLabel(wheelPlacing).toLowerCase()} on the model.`:''}`;
+    wheelsSaid=v==='encoders'?'Taken off: the robot counts its drive wheels and reads the IMU.':v==='gyro'?'Taken off: a drive motor has no encoder, so the robot drives its route by time and turns with the IMU.':`${CHASSIS_SENSE.find(([k])=>k===v)?.[1]} added to the chassis.${wheelPlacing?` Click the ${wheelLabel(wheelPlacing).toLowerCase()} on the model.`:''}`;
     status('#mech-model-help',wheelPlacing?`Click the ${wheelLabel(wheelPlacing).toLowerCase()} on the model.`:'');mechanismsPanel();});
   // With every wheel placed: how far the wheels' middle is from the robot's centre. On a kiwi or a swerve it turns about
   // that middle, so more than half an inch off is worth a look (the CAD placed off centre, or a wheel clicked wrong).
@@ -3364,7 +3373,15 @@ $('#sim-drive-style').onchange=e=>{project.robot.driveStyle=e.target.value;settl
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&wheelPlacing){wheelPlacing=null;status('#mech-model-help','');mechanismsPanel();}});
   // A drive motor's Encoder tick: its own encoder (a motor-encoder sensor on it), which Calibrate → Electronics checks against Configure.
   $('#mech-drive-ports').addEventListener('change',e=>{const t=e.target.closest('[data-wire-encoder]');if(!t)return;e.stopPropagation();const W=window.DeckWiring,H=window.DeckHardware,st=W.state(project),row=st.rows.find(r=>r.key===t.dataset.wireEncoder);if(!row)return;
-    const w=H.wiringOf({wiring:project.robot.wiring}),own=w.sensors.find(s=>s.for===row.key&&s.model==='motor-encoder');applyWiring(t.checked?(own?H.sanitizeWiring(w):W.addSensor(w,row,'motor-encoder')):own?W.removeSensor(w,own.id):H.sanitizeWiring(w));},true);
+    let w=H.wiringOf({wiring:project.robot.wiring});const drive=st.rows.filter(r=>r.role==='drive'),has=(x,k)=>x.sensors.some(s=>s.for===k&&s.model==='motor-encoder');
+    // A robot on its drive encoders with none written down has one on every motor: they are written down first, so one can come off.
+    if(project.sensors.localization==='encoders'&&!w.sensors.some(s=>s.model==='motor-encoder'))for(const r of drive)w=H.wiringOf({wiring:W.addSensor(w,r,'motor-encoder')});
+    const own=w.sensors.find(s=>s.for===row.key&&s.model==='motor-encoder'),next=H.wiringOf({wiring:t.checked?(own?H.sanitizeWiring(w):W.addSensor(w,row,'motor-encoder')):own?W.removeSensor(w,own.id):H.sanitizeWiring(w)});
+    // What is set up decides how the robot follows its route, and so what is sent to it: an encoder on every drive motor,
+    // it follows with them; one missing, it drives by time and turns with the IMU. Odometry, when it has any, stays in charge.
+    const all=drive.length>0&&drive.every(r=>has(next,r.key)),loc=project.sensors.localization,to=loc==='encoders'&&!all?'gyro':loc==='gyro'&&all&&C.sensorChoices(project.controller).includes('encoders')?'encoders':null;
+    if(to){project.sensors.localization=to;project.sensors.driveEncoders=to==='encoders';wheelsSaid=to==='gyro'?`${row.label} has no encoder now, so the robot drives its route by time and turns with the IMU. Tick Encoder on every drive motor and it follows the route with them.`:'Every drive motor has its encoder: the robot follows its route with them and the IMU.';}
+    applyWiring(H.sanitizeWiring(next));if(to){$('#sim-localization').value=to;kitSensingPanel();}},true);
   $('#mech-drive-ports').addEventListener('change',e=>{const t=e.target.closest('[data-wheel-pos],[data-pod-pos],[data-pinpoint-pos]');if(!t)return;const axis=t.dataset.wheelAxis,v=parseFloat(t.value);
     if(t.dataset.podPos)return setOdometry(o=>{if(Number.isFinite(v))o.pods[t.dataset.podPos][axis]=v;});
     if(t.dataset.pinpointPos)return setOdometry(o=>{if(Number.isFinite(v))o.pinpoint[t.dataset.pinpointPos]=v;});
@@ -3879,7 +3896,7 @@ $('#sim-drive-style').onchange=e=>{project.robot.driveStyle=e.target.value;settl
   const headRemove=el=>el?.querySelector?.(':scope>.sim-mech-head [data-mech-remove],:scope>.sim-mech-head .icon-button:not([data-fold])');
   function tileDelete(key){const items=garageItems(),item=items.find(i=>i.key===key);if(!item)return null;
     if(key==='chassis'||key==='chassis:controller'||key==='preloads'||key==='moving')return {why:key==='chassis:controller'?'The robot controller is always there':key==='chassis'?'Every robot has a chassis':'Comes with the field'};
-    if(/^chassis:(pinpoint|otos|pod:)/.test(key))return {label:'Delete odometry',run:()=>{setLocalization('encoders');wheelsSaid='Odometry taken off: the robot counts its drive wheels and reads the IMU. + Add to Chassis puts it back, or Ctrl+Z (⌘Z).';garagePick='chassis';mechanismsPanel();}};
+    if(/^chassis:(pinpoint|otos|pod:)/.test(key))return {label:'Delete odometry',run:()=>{setLocalization(withoutOdometry());wheelsSaid='Odometry taken off: the robot counts its drive wheels and reads the IMU. + Add to Chassis puts it back, or Ctrl+Z (⌘Z).';garagePick='chassis';mechanismsPanel();}};
     if(key.startsWith('chassis:'))return {why:'Part of the drivetrain: change the drivetrain to change it'};
     if(key==='feeder')return {why:'The shooters need it: delete the shooters to take it off'};
     // A shooter's turret comes off that shooter (and a shooter riding on it); the other shooter keeps its own.
