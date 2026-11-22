@@ -73,6 +73,8 @@ new ResizeObserver(()=>void bounds()).observe($('#robot-mount'));window.addEvent
 void task(async()=>{const data=await api.bootstrap();hardware=data.hardware;$('.version').textContent=data.app?data.app.version+' · '+data.app.channel:'';$('#menu-version').textContent=menuVersion(data.app);$('#device').textContent=hardware.model;render(data.state);$('#about-version').textContent=data.app?`Torque ${data.app.version}, ${data.app.channel==='testing'?'Testing (pre-release)':'Main (stable)'}`:'';void controllers();setInterval(controllers,1000);void loadThemes();});
 
 function syncOverlay(){void api.overlay(!$('#menu').hidden||!$('#wifi-popover').hidden||[...document.querySelectorAll('dialog')].some(d=>d.open)).catch(()=>{});}
+// However a dialog closes (its button, Escape, or a script), the robot view comes back once nothing covers it.
+document.addEventListener('close',()=>syncOverlay(),true);
 let updateBusy=false;
 function updateButtons(busy){updateBusy=busy;for(const id of ['update-check','update-download','update-close','update-main','update-testing','testing-confirm','testing-cancel'])$('#'+id).disabled=busy;}
 function resetUpdateResult(){$('#update-download').hidden=true;$('#update-dismiss').hidden=true;$('#update-changelog').hidden=true;$('#update-progress').hidden=true;}
