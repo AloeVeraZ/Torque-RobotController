@@ -761,7 +761,17 @@ function recoverSandboxedLibrary(dir){
     for(const file of ['robots.json','update-settings.json'])if(fs.existsSync(path.join(best.folder,file))&&!fs.existsSync(path.join(dir,file)))fs.copyFileSync(path.join(best.folder,file),path.join(dir,file));
   }catch{}
 }
+// The Mac download is Torque.app alone (tools/package.py). Opened from Downloads (macOS runs it from a hidden
+// read-only copy there), it moves itself to Applications and opens again from there, so app updates can replace it.
+// An older Torque already in Applications is replaced; one that is running is brought forward instead.
+function moveToApplications(){
+  if(process.platform!=='darwin'||process.defaultApp||app.isInApplicationsFolder())return false;
+  const exe=app.getPath('exe'),downloads=path.join(app.getPath('home'),'Downloads')+path.sep;
+  if(!exe.includes('/AppTranslocation/')&&!exe.startsWith(downloads))return false;
+  try{return app.moveToApplicationsFolder({conflictHandler:kind=>kind==='exists'});}catch(e){console.error('Could not move Torque to Applications:',e.message);return false;}
+}
 app.whenReady().then(async()=>{
+  if(moveToApplications())return;
   powerMonitor.on('suspend',()=>{suspended=true;endRobotWork('lost');blockHeldControllers();sendControllers(true);void interruptRobot('Device sleeping. Your robot address is saved. After waking and reconnecting Wi-Fi, choose Try again.');});
   powerMonitor.on('resume',()=>{suspended=false;lastControllerInput=0;if(controllerHub)ingestPads([]);sendControllers(true);void (async()=>{if(interruption)await interruption;await refreshNetwork();if(state.recovering)update({error:'Device resumed. Your robot address is saved. Check Wi-Fi, then choose Try again. Robot controls stay neutral until released.'});})().catch(e=>emit('notice',e.message));});
   device=await detectHardware();

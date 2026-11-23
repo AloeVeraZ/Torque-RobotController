@@ -36,7 +36,7 @@ def main():
                 prefix='Torque.app/Contents/Resources/app/' if is_mac else f'DeckDriverStation-{VERSION}-Windows/app/'
                 for src,relative in sources():assert archive.read(prefix+relative)==src.read_bytes(),name+': '+relative
                 if is_mac:
-                    assert archive.getinfo('Install-Mac.command').external_attr>>16&0o111
+                    assert {n.split('/',1)[0] for n in archive.namelist()}=={'Torque.app'},name+': the Mac download holds only Torque.app'
                     assert archive.getinfo('Torque.app/Contents/MacOS/Electron').external_attr>>16&0o111
                     assert archive.getinfo('Torque.app/Contents/Resources/runtime-java/bin/java').external_attr>>16&0o111
                     info=plistlib.loads(archive.read('Torque.app/Contents/Info.plist'))

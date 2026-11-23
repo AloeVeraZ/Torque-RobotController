@@ -26,7 +26,7 @@
   helper (12 KB fixture: swap, versioned shortcut icon, restart, saved data kept) and
   `tests/update-install.cjs` still passes for full packages.
 - CI `install-update` runs on Ubuntu, Windows and macOS runners with real packages built as
-  9.0.0 and 9.0.1: shipped installer (Setup.exe /S, SteamDeck.run, Install-Mac.command), first
+  9.0.0 and 9.0.1: shipped installer (Setup.exe /S, SteamDeck.run, Torque.app unzipped into Applications), first
   launch, App update, full update, automatic restart (Windows/Linux), relaunch, icon checks,
   codesign verify (macOS) and silent uninstall (Windows).
 - Escape leaves robot fullscreen or app fullscreen unless a station menu or dialog is open.

@@ -60,7 +60,8 @@ jobs:
   desktop:
     needs: validate
     if: needs.validate.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    # The Mac app is built on a Mac so tools/package.py can sign it: a downloaded copy then opens instead of saying it is damaged.
+    runs-on: ${{ matrix.target == 'macos-arm64' && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       matrix:
         target: ${{ fromJSON(needs.validate.outputs.targets) }}

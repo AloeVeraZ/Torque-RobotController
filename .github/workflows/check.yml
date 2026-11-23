@@ -34,7 +34,7 @@ jobs:
           node tools/simulation/build.cjs --public
       - run: node --test --test-timeout=300000 tests/*.test.cjs
         timeout-minutes: 15
-      - run: bash -n packaging/install.sh packaging/launch.sh packaging/Install-Mac.command
+      - run: bash -n packaging/install.sh packaging/launch.sh
       - run: mkdir -p test-results && bash tests/update-linux.sh
       - run: bash tests/install-bootstrap.sh
       - run: pwsh -NoProfile -File tests/install-bootstrap.ps1

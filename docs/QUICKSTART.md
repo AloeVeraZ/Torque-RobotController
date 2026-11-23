@@ -51,13 +51,13 @@ subject to your Windows application policies.
 
 ## Mac
 
-Use the **arm64** build for Apple Silicon. Extract the ZIP and run
-**Install-Mac.command**. It copies the app into `~/Applications`, ad-hoc signs it
-using macOS's `codesign`, and creates a desktop link when one is not present.
+Use the **arm64** build for Apple Silicon. Open the downloaded ZIP to get
+**Torque.app**, then open Torque. The first time it runs from Downloads it moves
+itself to Applications and opens again from there.
 
-This is a personal build, not Apple-notarized. If macOS requires explicit approval,
-use **System Settings → Privacy & Security → Open Anyway** for this app. The
-installer does not disable Gatekeeper or change global security settings.
+This is a personal build, not Apple-notarized. The first time, macOS says it could
+not check Torque: choose **Done**, then **System Settings → Privacy & Security →
+Open Anyway**. Torque does not turn off Gatekeeper or change any security settings.
 Local-network access may require macOS's normal permission prompt.
 
 ## Daily workflow

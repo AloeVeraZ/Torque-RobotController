@@ -1,6 +1,6 @@
 """Portable Linux, Windows, and macOS bundles, using verified Electron runtimes."""
 from __future__ import annotations
-import argparse,re,hashlib,io,json,os,plistlib,shutil,stat,tarfile,urllib.request,zipfile,subprocess
+import argparse,re,hashlib,io,json,os,plistlib,shutil,stat,sys,tarfile,urllib.request,zipfile,subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 META=json.loads((ROOT/'package.json').read_text());VERSION=META['version'];CHANNEL=None;ELECTRON=META['devDependencies']['electron']
@@ -155,12 +155,15 @@ def windows():
     compile_nsis('Setup.nsi',OUTPUT=setup,ICON=ROOT/'ui/icon.ico',SETUP_ICON=ROOT/'packaging/installer.ico',SIDEBAR=ROOT/'packaging/installer-sidebar.bmp',VERSION=VERSION,PAYLOAD=payload)
     finish(setup);latest(setup)
 def mac(arch):
+    # The Mac download is one thing: Torque.app, ready to open. The runtime's licences ride inside the app, and on a Mac
+    # the bundle is ad-hoc signed here (no Apple account), so a downloaded copy asks for Open Anyway once instead of
+    # calling itself damaged. On its first start from Downloads the app moves itself to Applications (src/main.cjs).
     archive=runtime_archive('darwin-'+arch);bundle='Torque.app';file=OUT/f'DeckDriverStation-{VERSION}-macOS-{arch}.zip'
     with zipfile.ZipFile(file,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         with zipfile.ZipFile(archive) as original:
             for e in original.infolist():
                 if '/_CodeSignature/' in e.filename or e.filename.endswith('/_CodeSignature/'):continue
-                name=e.filename.replace('Electron.app',bundle,1) if e.filename.startswith('Electron.app') else 'Runtime licenses/'+e.filename;data=original.read(e.filename)
+                name=e.filename.replace('Electron.app',bundle,1) if e.filename.startswith('Electron.app') else bundle+'/Contents/Resources/Runtime licenses/'+e.filename;data=original.read(e.filename)
                 if e.filename=='Electron.app/Contents/Info.plist':
                     p=plistlib.loads(data);p.update(CFBundleName='Torque',CFBundleDisplayName='Torque',CFBundleIdentifier='dev.deckdriverstation.app',CFBundleShortVersionString=VERSION,CFBundleVersion=VERSION,CFBundleIconFile='deck.icns',NSLocalNetworkUsageDescription='Connect to the robot websites you select on your local Wi-Fi network.');data=plistlib.dumps(p)
                 info=zipfile.ZipInfo(name,e.date_time);info.external_attr=e.external_attr;info.create_system=3;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data)
@@ -168,10 +171,18 @@ def mac(arch):
             info=zipfile.ZipInfo(bundle+'/Contents/Resources/app/'+relative);info.create_system=3;info.external_attr=0o100644<<16;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,src.read_bytes())
         for src,relative,executable in java_files('darwin-arm64'):
             info=zipfile.ZipInfo(bundle+'/Contents/Resources/runtime-java/'+relative);info.create_system=3;info.external_attr=(0o100755 if executable else 0o100644)<<16;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,src.read_bytes())
-        z.write(ROOT/'ui'/'icon.icns',bundle+'/Contents/Resources/deck.icns');z.write(ROOT/'docs'/'QUICKSTART.md','QUICKSTART.md')
-        z.write(ROOT/'docs'/'UPDATES.md','UPDATES.md')
-        info=zipfile.ZipInfo('Install-Mac.command');info.create_system=3;info.external_attr=0o100755<<16;info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,(ROOT/'packaging'/'Install-Mac.command').read_text().replace('\r\n','\n'))
+        z.write(ROOT/'ui'/'icon.icns',bundle+'/Contents/Resources/deck.icns')
+    if sys.platform=='darwin':
+        import tempfile
+        with tempfile.TemporaryDirectory() as stage:
+            subprocess.run(['/usr/bin/ditto','-x','-k',str(file),stage],check=True)
+            app=os.path.join(stage,bundle)
+            subprocess.run(['/usr/bin/codesign','--force','--deep','--sign','-',app],check=True)
+            subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',app],check=True)
+            file.unlink();subprocess.run(['/usr/bin/ditto','-c','-k','--norsrc','--noextattr','--keepParent',app,str(file)],check=True)
+    else:print('Warning: '+file.name+' is not signed (sign it on a Mac); a downloaded copy will say it is damaged.',flush=True)
     with zipfile.ZipFile(file) as z:
+        assert {n.split('/',1)[0] for n in z.namelist()}=={bundle},'the Mac download holds only Torque.app'
         assert z.getinfo(bundle+'/Contents/MacOS/Electron').external_attr>>16&0o111
         assert z.getinfo(bundle+'/Contents/Resources/runtime-java/bin/java').external_attr>>16&0o111
         assert plistlib.loads(z.read(bundle+'/Contents/Info.plist'))['CFBundleIdentifier']=='dev.deckdriverstation.app'

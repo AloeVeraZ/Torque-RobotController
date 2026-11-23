@@ -18,7 +18,8 @@ const file=name=>{const f=path.join(dist,name);assert.ok(fs.existsSync(f),'missi
 function installFirst(){
   if(platform==='win32')execFileSync(file(`DeckDriverStation-${versionA}-Windows-Setup.exe`),['/S'],{env,timeout:300000});
   else if(platform==='linux')execFileSync('bash',[file(`DeckDriverStation-${versionA}-SteamDeck.run`)],{env,timeout:300000,stdio:'inherit'});
-  else{const unpacked=path.join(home,'unpacked');execFileSync('/usr/bin/ditto',['-x','-k',file(`DeckDriverStation-${versionA}-macOS-arm64.zip`),unpacked]);execFileSync('/bin/bash',[path.join(unpacked,'Install-Mac.command')],{env,timeout:300000,stdio:'inherit'});}
+  // The Mac download is Torque.app alone, signed: unzipped into Applications it opens as it is.
+  else{const apps=path.join(home,'Applications');execFileSync('/usr/bin/ditto',['-x','-k',file(`DeckDriverStation-${versionA}-macOS-arm64.zip`),apps]);assert.deepEqual(fs.readdirSync(apps),['Torque.app'],'the Mac download holds only Torque.app');execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',install.root]);}
   assert.equal(installedVersion(),versionA,'installer did not install '+versionA);
 }
 async function launch(label){

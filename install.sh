@@ -53,5 +53,12 @@ if [[ "$file" == *.run ]]; then
   echo 'Opening Deck Driver Station. Its robot icon is on your desktop and application menu.'
 else
   /usr/bin/ditto -x -k "$stage/$file" "$stage/app"
-  bash "$stage/app/Install-Mac.command"
+  if [[ -f "$stage/app/Install-Mac.command" ]]; then bash "$stage/app/Install-Mac.command"
+  else
+    # Newer Mac downloads are Torque.app alone, already signed: it goes into ~/Applications as it is.
+    mkdir -p "$HOME/Applications"; rm -rf -- "$HOME/Applications/Torque.app"
+    /usr/bin/ditto "$stage/app/Torque.app" "$HOME/Applications/Torque.app"
+    echo 'Installed Torque in ~/Applications.'
+    if [[ "${DECK_NO_LAUNCH:-}" != 1 ]]; then /usr/bin/open "$HOME/Applications/Torque.app"; fi
+  fi
 fi
