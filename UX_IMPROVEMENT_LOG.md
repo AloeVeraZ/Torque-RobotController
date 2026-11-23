@@ -148,3 +148,39 @@ No element id was removed. No engine, planner, follower, exporter or saved-file 
 - The live readout in the Run column and the Results graphs overlap in content.
 - Route-check messages are translated from "pin" for display; the planner's own messages could say path/end point directly, but Run parses the pin number from them.
 - Tooltips (Position tracking, stage reasons) are not reachable by touch.
+
+# Pass 3 (22 November): Impeccable and Emil Kowalski's design skills
+
+Both skills are installed in `.claude/skills` (`impeccable`, `emil-design-eng`). Torque's own rules (`ui/tokens.css`, AGENTS.md → Design) win wherever a skill disagrees.
+
+## What the skills found
+
+- **Impeccable's detector** (`.claude/skills/impeccable/scripts/impeccable detect`) reported 13 findings on `ui/`. Each one was checked in the running app, and none needed a change:
+  - It calls Inter "overused", but the user chose Inter.
+  - "Cramped padding" fires on segmented troughs and on column dividers.
+  - The path-row "side stripe" is already overridden in `workspace.css`.
+  - The `<img>` it calls broken gets its source from the Driver Station's camera.
+- **Emil's checklist:** Torque already does most of it. Presses scale to .97, the ease-out curve is custom, and popovers open from their trigger. Nothing uses `transition: all` or `ease-in`. One real gap was found: hover looks stay on a tapped button on a touchscreen.
+- **Considered and declined:**
+  - Dialog exit transitions. The UI tests run hidden windows, where a transition never finishes, so a closing dialog would stay on top.
+  - Fades under reduced motion. Torque turns all motion off there, by choice.
+
+## Changes
+
+| Before | After | Why |
+| --- | --- | --- |
+| A tapped button kept its hover look until the next tap somewhere else, in Torque and the Driver Station. | `ui/pointer.js` marks the page `data-touch` after a finger. All 105 `:hover` selectors carry `:not(:where([data-touch] *))`, which adds no weight to a selector. A mouse or trackpad move takes the mark off. | Touchscreens, the Steam Deck among them. `@media (hover: hover)` can't tell, because the Deck's trackpads make the main pointer a mouse. |
+| The text caret was the text colour. | The caret takes the theme's accent. | The accent marks where you are. Checked in Torque, light and orange themes. |
+
+## Verification
+
+- **New `tests/touch-hover-ui.cjs`:** it sends real touch and mouse input through the DevTools protocol, on Torque's ⋮ button and the Driver Station's. It proves three things:
+  - The tapped button still holds `:hover`, and without the mark its hover look would stick.
+  - With the mark, the button looks as it did before it was tapped.
+  - A mouse move brings the hover look back.
+- **Existing checks:**
+  - Unit suite: 1103 passed, 25 skipped, 0 failed.
+  - `design-audit`: 64 screen and theme combinations pass.
+  - `layout-audit` passes, in Inter and in OpenDyslexic.
+  - `window-fit-ui` passes.
+- **Screenshots:** 50 pairs, before and after. They cover Drive, the menu, the Wi-Fi list, the shortcuts dialog, Settings, Setup → Robot, Calibrate → Electronics and Simulate → Path planning, plus typing in a field. Each was taken at 1280×800 in dark, light, orange and blue themes, and at 1920×1080 in dark and light. The pictures match apart from clocks, live dots and the field animation.
