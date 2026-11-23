@@ -62,13 +62,51 @@
   .bar-icon, .page-back { flex: none; display: inline-grid; place-items: center; padding: 0; border: 0; background: none; color: var(--muted); }
   :is(.bar-icon, .page-back):hover:not(:where([data-touch] *)):not(:disabled), .bar-icon[aria-expanded=true] { background: var(--control); color: var(--text); }
   .more svg { width: 18px; height: 18px; fill: currentColor; }
-  /* Robot fullscreen: the app's exit button sits over this corner. */
-  body.fullscreen :is(.bar, .page-head) { padding-right: 72px; }
-  body.fullscreen #ds-fullscreen { display: none; }
+  /* Fullscreen keeps the bar, and its fullscreen button shows the way back out. */
+  #ds-fullscreen .fs-leave, body.fullscreen #ds-fullscreen .fs-enter { display: none; }
+  body.fullscreen #ds-fullscreen .fs-leave { display: block; }
   /* The three-dot menu, as the shell's. */
-  .bar > .menu { top: calc(100% - 4px); right: calc(var(--ds-edge) - 4px); width: 240px; max-height: calc(100dvh - 56px); overflow-y: auto; }
-  body.fullscreen .bar > .menu { right: 68px; }
-  .bar > .menu > button:last-child { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-ctl) var(--r-ctl); }
+  #ds-menu { top: calc(100% - 4px); right: calc(var(--ds-edge) - 4px); width: 240px; max-height: calc(100dvh - 56px); overflow-y: auto; }
+  #ds-menu > button:last-child { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 var(--r-ctl) var(--r-ctl); }
+  /* Theme and colour, beside Network: the button stands first on the right, and its menu opens below the bar (the
+     script sets its left edge under the button, inside the window, and its height to the room there). */
+  .looks { flex: none; margin-left: auto; }
+  .looks:not([hidden]) + .net { margin-left: 0; }
+  .looks-button { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; white-space: nowrap; }
+  /* Where the bar has no room for its words (ds.js), the palette alone. */
+  .looks-button.short { padding: 0; }
+  .looks-button.short span { display: none; }
+  /* Each column is as wide as its longest name, up to a limit; a longer name takes a second line. */
+  .looks-menu { top: calc(100% + 5px); left: 0; display: flex; width: max-content; max-width: min(640px, calc(100vw - 8px)); max-height: calc(100dvh - 64px); }
+  .looks-group { flex: 0 1 auto; display: flex; flex-direction: column; min-width: 160px; max-width: 320px; min-height: 0; }
+  .looks-group + .looks-group { margin-left: 4px; padding-left: 4px; border-left: 1px solid var(--line); }
+  .looks-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* Where two columns do not fit: Theme above Colour, and the whole menu scrolls. */
+  .looks-menu.stacked { flex-direction: column; width: min(320px, calc(100vw - 8px)); overflow-y: auto; overscroll-behavior: contain; }
+  .looks-menu.stacked .looks-group { flex: none; min-width: 0; max-width: none; }
+  .looks-menu.stacked .looks-list { overflow: visible; }
+  .looks-menu.stacked .looks-group + .looks-group { margin: 4px 0 0; padding: 4px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  /* A list longer than its room shows there is more: the script ends it halfway through a row, the edge with more beyond
+     it fades towards the menu's ground (--looks-above and --looks-below, from 0 at the end to 1; never all the way, so
+     the cut row still reads), and its thumb stays in sight where the system would hide it until a scroll. A row reached
+     from the keyboard stops clear of the fade. */
+  .looks-menu:not(.stacked) .looks-list, .looks-menu.stacked { --looks-fade: 28px; --looks-veil: color-mix(in srgb, var(--surface) 65%, transparent); scroll-padding-block: var(--looks-fade); scrollbar-width: auto; scrollbar-color: auto; }
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::-webkit-scrollbar { width: 8px; }
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::-webkit-scrollbar-thumb { border-width: 2px; background-color: var(--scrollbar-thumb-hover); }
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::before,
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::after { content: ""; position: sticky; z-index: 1; display: block; flex: none; height: var(--looks-fade); pointer-events: none; }
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::before { top: 0; margin-bottom: calc(-1 * var(--looks-fade)); background: linear-gradient(var(--looks-veil), transparent); opacity: var(--looks-above, 0); }
+  :is(.looks-menu:not(.stacked) .looks-list, .looks-menu.stacked)::after { bottom: 0; margin-top: calc(-1 * var(--looks-fade)); background: linear-gradient(transparent, var(--looks-veil)); opacity: var(--looks-below, 0); }
+  .looks-title { margin: 0; padding: 8px 10px 4px; color: var(--muted); font-size: var(--text-sm); font-weight: 600; }
+  .looks-menu .looks-item { padding-block: 6px; }
+  /* Inside, so a list that scrolls does not cut it off. */
+  .looks-menu .looks-item:focus-visible { outline-offset: -2px; }
+  .looks-name { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; overflow: hidden; overflow-wrap: anywhere; }
+  .looks-mark { visibility: hidden; }
+  .looks-menu .looks-item[aria-checked=true] { font-weight: 600; }
+  .looks-menu .looks-item[aria-checked=true] .looks-mark { visibility: visible; color: var(--accent-text); }
+  /* A colour's dot (the shared .colour-dot, its primary), a size up to sit beside a row's words. */
+  .looks-item .colour-dot { flex: none; width: 16px; height: 16px; margin: 0; }
 
   /* ---- Two halves, as a Driver Hub's: what the driver does on the left, what the robot says on the right, a rule
      between them. Nothing here is boxed; each half is rows set apart by hairlines that line up across the rule. ------ */
@@ -295,11 +333,19 @@
   /* ---- Pages from the menu: Settings, Configure Robot, Self Inspect and a pinout. Each covers the station; Back
      returns. A page is a title, then rows under hairlines, set at the page's left edge like the shell's own. -------- */
   .ds-page { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--bg); }
+  /* What a page covers is put away while it is open, so nothing under it can be reached, or seen through it. */
+  body:has(> .ds-page:not([hidden])) > :is(.bar, .grid, .assign) { visibility: hidden; }
+  /* A moving theme (DEV, FIRST, NYC FIRST): its ground fills the screen behind a page too. The page's head keeps the
+     ground, as the bar does, and what the page holds keeps its own surfaces. */
+  :root[data-motion=ascii] .ds-page { background: transparent; }
+  :root[data-motion=ascii] .page-head { background: var(--bg); }
   .page-head { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: var(--bar-height); padding: 0 var(--ds-edge); border-bottom: 1px solid var(--line); }
   .page-head h2 { flex: 1; min-width: 0; margin: 0; overflow: hidden; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
   .page-actions { flex: none; display: flex; gap: var(--space-2); }
   .page-actions:empty { display: none; }
   .page-actions > button { min-width: 72px; }
+  /* In fullscreen the page covers the bar, so its head has the bar's way out, at the same end. */
+  .page-fullscreen { margin-right: -4px; }
   .page-status { flex: none; margin: 0; padding: 10px var(--ds-gutter); border-bottom: 1px solid var(--line); background: var(--well); color: var(--muted); font-size: var(--text-md); overflow-wrap: anywhere; }
   .page-status.warning { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn); }
   .page-status.error { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); }
@@ -452,7 +498,8 @@
 
   /* ---- Narrower windows: the bar gives up its words in order of how little they are missed. ------------------------- */
   @media (max-width: 1100px) {
-    .pad span { display: none; }
+    .pad span, .looks-button span { display: none; }
+    .looks-button { padding: 0; }
     .net-item b { max-width: 120px; }
   }
   @media (max-width: 960px) {
@@ -468,6 +515,7 @@
     .bar { flex-wrap: wrap; gap: 0 var(--space-2); padding: 2px 4px 2px var(--ds-pad); }
     .net { display: none; }
     .pads { margin-left: auto; }
+    .looks:not([hidden]) ~ .pads { margin-left: 0; }
     .bar-end { flex: 1 1 100%; justify-content: flex-end; }
     .bar-btn { margin-right: auto; }
     .grid { display: block; flex: none; }

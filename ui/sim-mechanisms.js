@@ -118,7 +118,9 @@
       // a servo feeder's positions; the turret's direction.
       ...flag('reversed',v.reversed),...(second?{motor2:second,...flag('reversed2',v.reversed2)}:{}),
       ...(servoFeeder(indexerKind)?{feedPos:num(v.feedPos,1,0,1),restPos:num(v.restPos,0,0,1)}:flag('indexerReversed',v.indexerReversed)),...flag('turretReversed',v.turretReversed),
-      ...(point(v.at)?{at:point(v.at)}:{}),...cadParts(v),...(n&&v.sharesTurret===true?{sharesTurret:true}:{})};});
+      ...(point(v.at)?{at:point(v.at)}:{}),...cadParts(v),...(n&&v.sharesTurret===true?{sharesTurret:true}:{}),
+      // A turret whose shooter was deleted keeps turning with no flywheel on it; a shooter whose feeder was deleted is fed by the intake.
+      ...(v.type!=='fixed'&&v.flywheel===false?{flywheel:false}:{}),...(v.feeder===false?{feeder:false}:{})};});
     const [one,two]=shooters;
     if(two?.sharesTurret&&one.type==='turret'&&two.type==='turret'){
       // Both flywheels on one turntable: the second rides the first one's turret, at its spot, turned by its motor.
@@ -162,6 +164,8 @@
       target:point(r.target)};
   }
   const hasTurret=m=>m.shooters.some(s=>s.type==='turret');
+  // Whether a shooter has its flywheel (a turret can be left with none), and whether it has a feeder of its own.
+  const shoots=s=>!!s&&s.flywheel!==false,feeds=s=>shoots(s)&&s.feeder!==false;
   // The physics engine's robot description (BIOBUZZ mechanism vocabulary) for these settings. Every
   // shooter is a launcher that fires one piece at a time; the simulator points it (a turret where the
   // model aims it, a fixed shooter along its facing). Two shooters are the game's double launcher:
@@ -216,7 +220,7 @@
       if(shoots(q)&&!finite(q.turn)){if(offset===0){q.turn=0;q.turnMode='track';q.target={...target};}else{q.turn=+(((Math.atan2(target.y-q.y,target.x-q.x)*DEG-offset)%360+540)%360-180).toFixed(2);q.turnMode='absolute';}}
       if(offset===0&&q.path?.kind==='action'&&shoots(q.path)&&(!q.path.rotate||q.path.rotate==='keep'))q.path={...q.path,rotate:'track',target:{...aim(q.path.cell)}};return q;});
   }
-  const actions=m=>m.enabled?[...(m.intakes.length?['Intake']:[]),...(hasRamp(m)?['Ramp down','Ramp up']:[]),...(m.shooters.length?['Spin up',...(hasTurret(m)?['Aim']:[]),'Shoot']:[])]:[];
+  const actions=m=>m.enabled?[...(m.intakes.length?['Intake']:[]),...(hasRamp(m)?['Ramp down','Ramp up']:[]),...(m.shooters.some(shoots)?['Spin up',...(hasTurret(m)?['Aim']:[]),'Shoot']:hasTurret(m)?['Aim']:[])]:[];
   const wrap=d=>((d%360)+540)%360-180,DEG=180/Math.PI;
   // A plain-language summary, e.g. "Front + back sweeper · turret (pollen) · holds 3 pollen + 1 nectar".
   function summary(m){
@@ -288,7 +292,7 @@
       // The front piece moves up into the shooter while the indexer runs (behind a pusher, while it is back at rest).
       const front=this.queue[0];if(front&&(cmd.feed||this.settles)&&front.arrives<=this.time)front.index=Math.max(0,front.index-dt);
       let fire=false;
-      if(cmd.feed&&m.shooters.length&&this.ready&&aligned&&front&&front.arrives<=this.time&&front.index<=1e-9&&!this.pending){fire=true;this.pending=true;this.sinceShot=0;}
+      if(cmd.feed&&m.shooters.some(shoots)&&this.ready&&aligned&&front&&front.arrives<=this.time&&front.index<=1e-9&&!this.pending){fire=true;this.pending=true;this.sinceShot=0;}
       // A launch the physics refused is asked for again.
       else if(this.pending&&this.sinceShot>FIRE_RECOVERY&&held>0&&cmd.feed){fire=true;this.sinceShot=0;}
       return {intake:!!cmd.intake,fire,edgesOff:m.intakes.flatMap((i,k)=>i.kind==='kicker'&&this.kick[k]<1?i.sides:[]),ramp:this.rampState(sentDown)};
@@ -610,6 +614,6 @@
   // A preset's mechanisms, ready to use (on, 4 pollen preloaded, its own timing); a push bot's are off.
   const presetMechanisms=(id,base={})=>{if(!PRESETS[id])return null;const p=PRESETS[id].mechanisms;if(!p)return sanitize({...base,enabled:false});
     return sanitize({...base,...p,enabled:true,capacity:p.capacity||{pollen:4,nectar:0},preload:{pollen:4},transfer:p.transfer||base.transfer,indexer:{...base.indexer,...p.indexer},shooter:{...base.shooter,...p.shooter},target:null});};
-  return {MORE_MAX,columnReach,partKindOf,chained,onOneMotor,liftSeconds,PRESETS,KIT,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
+  return {MORE_MAX,shoots,feeds,columnReach,partKindOf,chained,onOneMotor,liftSeconds,PRESETS,KIT,presetMechanisms,mountOffset,bearingFrom,partRole,copies,copyBase,fromCad,adoptCad,reoriented,drivetrainFromNames,DEFAULTS,INTAKES,INTAKE_NOTES,SIDES,SIDE_EDGES,SHOOTERS,SHOOTER_NOTES,PIECES,MOUNTS,MOUNT_AT,FACING,EDGES,INDEXERS,INDEXER_NOTES,ROLLERS,FLYWHEELS,TURRETS,STORAGE_MAX,MAX_SHOOTERS,FIRE_RECOVERY,
     sanitize,hoodAt,readyAt,engineSpec,flowerKind,deploys,servoFeeder,pusherOnly,feedCycle,engineIntakeMount,target,action,actions,turretAction,hasRamp,prepare,summary,hasTurret,locate,mountOf,adjacent,PARTNER,travel,shootSeconds,FIRE_MARGIN,Model,Runner};
 });

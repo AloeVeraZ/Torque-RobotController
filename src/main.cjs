@@ -55,7 +55,7 @@ async function deliverTerminalSetup(){
 function shellContents(){return win&&!win.isDestroyed()?win.webContents:null;}
 function emit(channel,value){try{if(win&&!win.isDestroyed())win.webContents.send(channel,value);}catch{}}
 function snapshot(){return {...state,zoom:currentZoom(),robots:library?.list(currentNetwork?.ssid),network:currentNetwork};}
-function update(patch={}){Object.assign(state,patch);if(state.page!=='drive'||state.error||!state.url)robotKeyboard?.hide({focus:false});if(state.robotFullscreen&&(state.page!=='drive'||state.error||!state.url))void setRobotFullscreen(false);syncAwake();emit('state',snapshot());}
+function update(patch={}){Object.assign(state,patch);if(state.page!=='drive'||state.error||!state.url)robotKeyboard?.hide({focus:false});if(state.robotFullscreen&&(state.page!=='drive'||state.error||!state.url))void setRobotFullscreen(false);syncAwake();emit('state',snapshot());windowState();}
 // Keep the display on while a robot is open (Settings preference, on by default).
 let keepAwake=true,awakeBlocker=null,touchKeyboard=false;
 // Robot pages learn the on-screen keyboard preference on load and whenever it changes.
@@ -133,7 +133,7 @@ async function closeRobot({retain=false}={}){
   await closeManager();
   // An FTC station sends STOP for an active op mode before its socket closes; the robot also stops on its own after 2 s.
   if(robotView&&bridge instanceof FtcSocket){try{await Promise.race([robotView.webContents.executeJavaScript('window.deckShutdown?.()'),delay(300)]);await delay(80);}catch{}}
-  const view=robotView,proxy=bridge;robotView=null;bridge=null;active=null;
+  const view=robotView,proxy=bridge;robotView=null;bridge=null;active=null;stationMenu=null;stationShown.view=null;
   controllerHub?.cancel();sendControllers(true);
   if(view){try{win.contentView.removeChildView(view);view.webContents.close();}catch{}}
   if(proxy)await proxy.close();update({loading:false,robot:null,url:'',title:'',error:'',kind:'',recovering:false,...selection,...(retain?{recovering:true}:{})});
@@ -152,11 +152,29 @@ function place(view,visible){const [width,fullHeight]=win.getContentSize(),heigh
 function fitView(){
   if(!robotView||!win)return;const shown=state.page==='drive'&&!auth&&!state.error&&!overlay;
   if(managerView)place(managerView,shown);place(robotView,shown&&!managerView);
-  if(robotExitView){const [width]=win.getContentSize();robotExitView.setBounds({x:Math.max(0,width-60),y:12,width:48,height:48});robotExitView.setVisible(state.robotFullscreen&&shown);}
+  // The round exit is for a robot page with no bar of its own: a website, or Program & Manage. The Driver Station keeps
+  // its bar in fullscreen, and the fullscreen button there takes it out again.
+  if(robotExitView){const [width]=win.getContentSize(),ownBar=bridge instanceof FtcSocket&&!managerView;robotExitView.setBounds({x:Math.max(0,width-60),y:12,width:48,height:48});robotExitView.setVisible(state.robotFullscreen&&shown&&!ownBar);}
   robotKeyboard?.layout();
   // Hidden Driver Station: gamepads are released to rest, the connection (and a running op mode) continues.
   if(bridge instanceof FtcSocket)try{robotView.webContents.send('ftc-active',shown&&!managerView);robotView.webContents.send('ftc-fullscreen',!!state.robotFullscreen);}catch{}
-  sendControllers();
+  sendControllers();windowState();
+}
+// DEV's moving ground (ui/theme-ascii.js) rests where nobody can see it. The windows run with background throttling off, so a
+// page never learns by itself that it is out of sight: the app's page is told while the window is minimised or hidden and
+// while a robot's view covers it in fullscreen; the Driver Station is told while the window is minimised or hidden and while
+// its own view is put away (another page of the app, Program & Manage over it). Each is told only when that changes. A
+// test run's window is never put on screen, and counts as shown, so its pictures still move.
+let shellHidden=false;const stationShown={view:null,hidden:false};
+const windowAway=()=>!win||win.isDestroyed()||win.isMinimized()||!win.isVisible()&&process.env.DECK_HEADLESS!=='1';
+const viewShown=()=>state.page==='drive'&&!auth&&!state.error&&!overlay;
+const stationAway=()=>windowAway()||!viewShown()||!!managerView;
+function windowState(){
+  if(!win||win.isDestroyed())return;
+  const shell=windowAway()||!!state.robotFullscreen&&viewShown()&&!!robotView;
+  if(shell!==shellHidden){shellHidden=shell;emit('window-state',{hidden:shell});}
+  // The station is told once it has asked for its details (ftc-info), when it listens.
+  if(robotView&&stationShown.view===robotView){const hidden=stationAway();if(hidden!==stationShown.hidden){stationShown.hidden=hidden;try{robotView.webContents.send('ftc-window-state',{hidden});}catch{}}}
 }
 async function ensureRobotExit(){
   if(robotExitView){await robotExitReady;win.contentView.removeChildView(robotExitView);win.contentView.addChildView(robotExitView);return;}
@@ -167,15 +185,42 @@ async function ensureRobotExit(){
   robotExitReady=view.webContents.loadFile(file);
   try{await robotExitReady;}catch(error){if(robotExitView===view){win?.contentView.removeChildView(view);robotExitView=null;}view.webContents.close();throw error;}finally{robotExitReady=null;}
 }
+// The window's own fullscreen. macOS animates going in and out and says so only at the end (enter-full-screen,
+// leave-full-screen), and Electron holds a change asked for mid-animation until then. So the app asks for one change at a
+// time (windowMoving, what it asked) and, when that one ends, goes on to the last state asked for (windowGoal): pressing
+// fullscreen off and on again mid-animation ends in fullscreen, and the end of the app's own change is never taken for the
+// user leaving with the green button or a swipe. Windows ends each change at once and Linux's window manager soon after; a
+// change that never ends (a window not on screen) is let go, and asked again only if what is wanted changed meanwhile.
+let windowGoal=null,windowMoving=null,windowTimer=null;
+const windowTarget=()=>windowGoal??(!!win&&!win.isDestroyed()&&win.isFullScreen());
+function setWindowFullscreen(on){windowGoal=!!on;steerWindow();}
+function steerWindow(){
+  if(windowMoving!==null||windowGoal===null)return;
+  if(!win||win.isDestroyed()||win.isFullScreen()===windowGoal){windowGoal=null;return;}
+  const asked=windowMoving=windowGoal;clearTimeout(windowTimer);
+  windowTimer=setTimeout(()=>{if(windowMoving!==asked)return;windowMoving=null;if(windowGoal===asked)windowGoal=null;steerWindow();if(win&&!win.isDestroyed())fitView();},process.platform==='darwin'?3000:1000);windowTimer.unref();
+  win.setFullScreen(asked);
+}
+function windowChanged(on){
+  if(windowMoving===on){windowMoving=null;clearTimeout(windowTimer);if(windowGoal!==null&&windowGoal!==on)setTimeout(steerWindow);else windowGoal=null;fitView();return;}
+  // The user's own change: the green button, Control-Command-F, the window manager.
+  if(!on&&state.robotFullscreen)void setRobotFullscreen(false);else fitView();
+}
+// robotWanted is the last fullscreen asked of the robot's view, ahead of state.robotFullscreen while the exit control loads,
+// so a toggle turns that and the last press wins.
+let robotWanted=false;
 async function setRobotFullscreen(enabled){
-  enabled=!!enabled;if(enabled===state.robotFullscreen)return snapshot();
+  enabled=!!enabled;robotWanted=enabled;if(enabled===state.robotFullscreen)return snapshot();
   if(enabled){
-    if(!robotView||state.page!=='drive'||state.loading||state.error||auth||overlay)throw Error('Open a robot before expanding its view.');
-    await ensureRobotExit();if(state.robotFullscreen)return snapshot();
-    if(!robotView||state.page!=='drive'||state.loading||state.error||auth||overlay||!win||win.isDestroyed())throw Error('Open a robot before expanding its view.');
-    robotFullscreenPrevious=win.isFullScreen();update({robotFullscreen:true});win.setFullScreen(true);fitView();(managerView||robotView).webContents.focus();
+    try{
+      if(!robotView||state.page!=='drive'||state.loading||state.error||auth||overlay)throw Error('Open a robot before expanding its view.');
+      await ensureRobotExit();if(!robotWanted||state.robotFullscreen)return snapshot();
+      if(!robotView||state.page!=='drive'||state.loading||state.error||auth||overlay||!win||win.isDestroyed())throw Error('Open a robot before expanding its view.');
+    }catch(error){robotWanted=state.robotFullscreen;throw error;}
+    // Mid-change the window is read as where the app is taking it, not where its animation is.
+    robotFullscreenPrevious=windowTarget();update({robotFullscreen:true});setWindowFullscreen(true);fitView();(managerView||robotView).webContents.focus();
   }else{
-    update({robotFullscreen:false});robotExitView?.setVisible(false);if(win&&!win.isDestroyed()){if(!robotFullscreenPrevious&&win.isFullScreen())win.setFullScreen(false);fitView();if(state.page==='drive') (managerView||robotView)?.webContents.focus();}
+    update({robotFullscreen:false});robotExitView?.setVisible(false);if(win&&!win.isDestroyed()){if(!robotFullscreenPrevious)setWindowFullscreen(false);fitView();if(state.page==='drive') (managerView||robotView)?.webContents.focus();}
   }
   return snapshot();
 }
@@ -183,12 +228,14 @@ async function runShortcut(action){
   if(action==='reload')return (managerView||robotView)?.webContents.reload();if(action==='back')return goBack();
   if(action==='zoom-in'||action==='zoom-out'||action==='zoom-reset')return setZoom(action==='zoom-in'?1:action==='zoom-out'?-1:0);
   if(action==='drive'||action==='settings')return setPage(action);
-  if(action==='fullscreen'){if(robotView&&state.page==='drive'&&!state.error&&!state.loading)return setRobotFullscreen(!state.robotFullscreen);if(!state.robotFullscreen)win?.setFullScreen(!win.isFullScreen());}
+  if(action==='fullscreen'){if(robotView&&state.page==='drive'&&!state.error&&!state.loading)return setRobotFullscreen(!robotWanted);if(!robotWanted)setWindowFullscreen(!windowTarget());}
 }
 // Escape always leaves fullscreen (robot view first, then the app window) unless a station
-// menu or dialog is open, where it only closes that. The key still reaches the page.
-function leaveFullscreen(){if(state.robotFullscreen)void setRobotFullscreen(false);else if(win&&!win.isDestroyed()&&win.isFullScreen())win.setFullScreen(false);}
-function keys(contents,{shell=false}={}){contents.on('before-input-event',(event,input)=>{if(keyboardSource&&DeckKeyboard.used.has(DeckKeyboard.code(input)))keyboardKey(input);if(input.type==='keyDown'&&input.key==='Escape'&&!(shell&&(overlay||auth)))leaveFullscreen();const action=shortcut(input);if(!action||shell&&(overlay||auth)&&action!=='reload')return;event.preventDefault();void runShortcut(action).catch(e=>emit('notice',e.message));});}
+// menu, dialog or page is open, where it only closes that. The key still reaches the page. stationMenu is the page that
+// said so, so a menu left open when its robot closed holds nothing back for the next robot.
+let stationMenu=null;
+function leaveFullscreen(){if(robotWanted||state.robotFullscreen)void setRobotFullscreen(false);else if(windowTarget())setWindowFullscreen(false);}
+function keys(contents,{shell=false}={}){contents.on('before-input-event',(event,input)=>{if(keyboardSource&&DeckKeyboard.used.has(DeckKeyboard.code(input)))keyboardKey(input);if(input.type==='keyDown'&&input.key==='Escape'&&!(shell&&(overlay||auth))&&stationMenu!==contents)leaveFullscreen();const action=shortcut(input);if(!action||shell&&(overlay||auth)&&action!=='reload')return;event.preventDefault();void runShortcut(action).catch(e=>emit('notice',e.message));});}
 function robotEscape(contents){keys(contents);contents.on('dom-ready',()=>sendTouchKeyboard(contents));contents.on('zoom-changed',(_event,direction)=>setZoom(direction==='in'?1:-1));contents.on('did-finish-load',()=>applyZoom(contents));contents.on('before-input-event',(_event,input)=>{if(input.type==='keyDown'&&input.key==='Escape')robotKeyboard?.hide();});contents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace)robotKeyboard?.hide({focus:false});});}
 handle('robot-fullscreen',setRobotFullscreen);
 ipcMain.handle('robot-fullscreen-exit',async e=>{if(e.sender!==robotExitView?.webContents||e.senderFrame!==e.sender.mainFrame)throw Error('Only the fullscreen exit button can restore this view.');await setRobotFullscreen(false);});
@@ -244,7 +291,7 @@ async function openRobot(input){
     });
     const allowed=url=>{try{return new URL(url).origin===proxy.origin;}catch{return false;}};
     contents.on('will-navigate',(e,url)=>{if(!allowed(url))e.preventDefault();});
-    contents.on('will-redirect',(e,url)=>{if(!allowed(url)){e.preventDefault();update({error:'The robot redirected outside its address. Enter that address in Settings if intended.'});}});
+    contents.on('will-redirect',(e,url)=>{if(!allowed(url)){e.preventDefault();let where='another address';try{const origin=new URL(url).origin;if(origin!=='null')where=origin;}catch{}update({error:`The robot’s page tried to go to ${where}, which is not the robot’s address. To open it anyway, choose Connection settings and enter it under Add a robot.`});}});
     contents.setWindowOpenHandler(({url})=>{if(allowed(url))void contents.loadURL(url);return {action:'deny'};});
     contents.on('did-start-loading',()=>{if(robotView===view)update({loading:true,error:''});});
     contents.on('did-finish-load',()=>{
@@ -312,17 +359,23 @@ async function openManager(){
 }
 ipcMain.on('ftc-send',(e,bytes)=>{if(robotView&&e.sender===robotView.webContents&&bridge instanceof FtcSocket&&bytes instanceof Uint8Array)bridge.send(bytes);});
 ipcMain.handle('ftc-info',e=>{if(!robotView||e.sender!==robotView.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC robot is open.');
+  // A station that has just loaded has no menu open, and from now on it is told whether it can be seen.
+  stationMenu=null;stationShown.view=robotView;stationShown.hidden=stationAway();
   const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;const open=dsOpenPage;dsOpenPage=null;
-  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:2,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,look:stationLook,fullscreen:!!state.robotFullscreen};});
+  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:2,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,look:stationLook,fullscreen:!!state.robotFullscreen,hidden:stationShown.hidden};});
 // The Driver Station's own bar closes the robot and goes fullscreen, and it follows the app's colour theme.
 ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;if(bridge instanceof UsbFtcSocket)auto.usbDismissed='pending';await closeRobot();return true;});
-ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(true);return true;});
+// The station's fullscreen button goes in and, pressed again in fullscreen, comes back out. While one of the station's
+// menus, dialogs or pages is open, Escape closes that and leaves fullscreen alone.
+ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(!robotWanted);return state.robotFullscreen;});
+ipcMain.on('ftc-menu',(e,open)=>{if(robotView&&e.sender===robotView.webContents)stationMenu=open===true?e.sender:null;});
 ipcMain.on('app-theme',(e,theme)=>{if(e.sender!==win?.webContents||!['system','light','dark'].includes(theme))return;appTheme=theme;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-theme',theme);}catch{}});
 // The Driver Station's theme (docs/THEMES.md): the app works out which one this robot has and sends it here; the Driver
 // Station's own Settings can pick another for this robot, which goes back to the app to keep.
 let stationLook=null;
 ipcMain.on('station-look',(e,look)=>{if(e.sender!==win?.webContents||!look||typeof look!=='object')return;const bytes=look.font?.data;if(bytes!==undefined&&!(bytes instanceof Uint8Array&&bytes.length<=10e6))return;if(JSON.stringify({...look,font:{...look.font,data:null}}).length>40e6)return;stationLook=look;if(bridge instanceof FtcSocket)try{robotView?.webContents.send('ftc-look',look);}catch{}});
-ipcMain.handle('ftc-station-theme',(e,id)=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');if(typeof id!=='string'||id.length>80)throw Error('Unknown theme.');emit('station-theme',{robot:active?.id||null,id});return true;});
+// The Driver Station bar's looks menu: a theme or a colour for the Driver Station, the same setting as in Settings (no robot has its own).
+ipcMain.handle('ftc-station-theme',(e,pick)=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');const kind=pick?.kind,id=pick?.id;if(!['theme','colour'].includes(kind)||typeof id!=='string'||!id||id.length>80)throw Error('Unknown theme or colour.');emit('station-theme',{kind,id});return true;});
 // A configuration saved or picked in the Driver Station's Configure Robot goes to Setup, Simulate and Calibrate.
 ipcMain.on('ftc-use-configuration',(e,c)=>{if(robotView&&e.sender===robotView.webContents&&typeof c?.xml==='string'&&c.xml.length<200000&&typeof c.name==='string')emit('robot-config',{name:c.name,xml:c.xml});});
 ipcMain.handle('ftc-controller-capture',(e,slot)=>{if(e.sender!==robotView?.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC driver station is open.');return captureController(slot);});
@@ -404,6 +457,11 @@ async function setPage(page){
   return snapshot();
 }
 handle('page',setPage);
+// An exported colour's file is named after the colour, without what a file name cannot hold (on any system), dots or spaces
+// at either end, or a Windows device name (CON, NUL, COM1 and the like, with or without an extension): "CON" saves as
+// "CON colour". A name with nothing left is "colour".
+const colourFileName=name=>{const safe=String(name||'').replace(/[\\/:*?"<>|\x00-\x1f\x7f]+/g,' ').slice(0,60).replace(/^[\s.]+|[\s.]+$/g,'');
+  return safe?safe.replace(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\s*(\.|$))/i,'$1 colour'):'colour';};
 // Imported themes (docs/THEMES.md), kept on this computer in the app's data folder, one JSON file each.
 const themeDir=()=>path.join(app.getPath('userData'),'themes'),themeFile=id=>{if(typeof id!=='string'||!/^custom-[a-z0-9-]{1,40}$/.test(id))throw Error('Unknown theme.');return path.join(themeDir(),id+'.json');};
 handle('themes',async(action,data)=>{
@@ -411,6 +469,9 @@ handle('themes',async(action,data)=>{
     return names.map(n=>{try{return JSON.parse(fs.readFileSync(path.join(themeDir(),n),'utf8'));}catch{return null;}}).filter(Boolean);}
   if(action==='save'){const file=themeFile(data?.id),text=JSON.stringify(data);if(text.length>30e6)throw Error('This theme is larger than 30 MB.');fs.mkdirSync(themeDir(),{recursive:true});fs.writeFileSync(file+'.tmp',text);fs.renameSync(file+'.tmp',file);return true;}
   if(action==='remove'){const file=themeFile(data);fs.rmSync(file,{force:true});return true;}
+  // A colour made in Settings, saved as a small file to share: {name, text}. Returns where, or null when the save was cancelled.
+  if(action==='export-colour'){const text=String(data?.text||'');if(!text||text.length>4000)throw Error('That colour could not be saved.');const safe=colourFileName(data?.name);
+    const r=await dialog.showSaveDialog(win,{title:'Export colour',defaultPath:path.join(app.getPath('documents'),`${safe}.torque-colour.json`),filters:[{name:'Torque colour',extensions:['json']}]});if(r.canceled||!r.filePath)return null;fs.writeFileSync(r.filePath,text);return r.filePath;}
   throw Error('Unknown theme action.');});
 // Fonts added in Settings → Text, kept the same way: the font file, and beside it a line naming it.
 const fontDir=()=>path.join(app.getPath('userData'),'fonts'),FONT_KINDS=['ttf','otf','woff','woff2'];
@@ -427,15 +488,15 @@ handle('fonts',async(action,data)=>{
     fs.writeFileSync(path.join(fontDir(),id+'.json'),JSON.stringify(entry));return entry;}
   if(action==='remove'){const id=fontId(data);for(const k of FONT_KINDS)fs.rmSync(path.join(fontDir(),id+'.'+k),{force:true});fs.rmSync(path.join(fontDir(),id+'.json'),{force:true});return true;}
   throw Error('Unknown font action.');});
-// "Make your own": the theme guide on GitHub, for the branch this install follows.
-handle('theme-guide',which=>shell.openExternal(`https://github.com/AloeVeraZ/Torque-RobotController/blob/${meta.updateChannel==='testing'?'testing':'main'}/docs/THEMES.md#${which==='station'?'driver-station-themes':'app-themes'}`).then(()=>true));
+// "How to make a theme": its section of the guide on GitHub, for the branch this install follows.
+handle('theme-guide',which=>shell.openExternal(`https://github.com/AloeVeraZ/Torque-RobotController/blob/${meta.updateChannel==='testing'?'testing':'main'}/docs/THEMES.md#making-a-theme`).then(()=>true));
 // Setup's Configure Robot button: the Driver Station's own page (its three-dot menu's Configure Robot), on the robot that is
 // open or the Control Hub on the cable. Without a robot it says how to get one.
 let dsOpenPage=null;
 handle('configure-robot',async()=>{
   if(robotView&&bridge instanceof FtcSocket){await setPage('drive');robotView.webContents.send('ftc-open','configure');return {opened:true};}
   const usb=await robotLink.usbStatus().catch(e=>({found:false,message:e.message}));
-  if(!usb.found)throw Error(`Configure Robot needs a robot. Plug the Control Hub in by USB-C, or open your robot in Settings. (${usb.message})`);
+  if(!usb.found)throw Error(`Configure Robot needs a robot. Plug the Control Hub in by USB-C, or open your robot on Drive. (${usb.message})`);
   dsOpenPage='configure';const opened=await openRobot({url:USB_HOST,name:'Control Hub (USB)',kind:'ftc',controllerCount:active?.controllerCount||1});if(!opened?.opened)dsOpenPage=null;return opened;});
 handle('sim-open-ready',()=>{terminalReady=true;void deliverTerminalSetup();});
 // A simulator robot drag locks the pointer; on release the system cursor is put back on the robot.
@@ -674,7 +735,8 @@ handle('controller-source',source=>{if(!['controller','keyboard'].includes(sourc
 handle('controller-automatic',()=>{controllerHub.automatic();sendControllers(true);return controllerState();});
 handle('controller-calibration',({slot,zone})=>{if(![1,2].includes(slot))throw Error('Choose controller 1 or controller 2.');const pad=controllerHub.state().slots[slot-1];if(!pad||pad.mapping!=='standard')throw Error('Connect a mapped controller first.');const next=Object.assign(Object.create(null),calibrations,{[pad.id]:deadzone(zone)});fs.writeFileSync(calibrationFile+'.tmp',JSON.stringify(next),{mode:0o600});fs.renameSync(calibrationFile+'.tmp',calibrationFile);calibrations=next;controllerHub.blocked.add(`${pad.index}:${pad.id}`);sendControllers(true);return controllerState();});
 handle('auth',({id,username,password,cancel})=>{if(!auth||auth.id!==id)throw Error('This sign-in prompt expired.');const pending=auth;auth=null;if(cancel)pending.callback();else pending.callback(String(username||'').slice(0,256),String(password||'').slice(0,1024));fitView();});
-handle('fullscreen',()=>win.setFullScreen(!win.isFullScreen()));// Quitting stops the programmer's helper at once: part way through a firmware write that leaves a servo needing Recover. The
+// The three-dot menu's Fullscreen turns the window; coming out also takes the robot's view out, as leaving the window does.
+handle('fullscreen',async()=>{const on=!windowTarget();if(!on&&robotWanted)await setRobotFullscreen(false);setWindowFullscreen(on);});// Quitting stops the programmer's helper at once: part way through a firmware write that leaves a servo needing Recover. The
 // window's own close asks first; anything that quits by itself waits for the write.
 const flashingServo=()=>Object.values(axons).some(a=>a.flashing);
 handle('quit',()=>{if(flashingServo())throw Error('An Axon servo is being updated. Wait for it to finish, then quit.');app.quit();});
@@ -728,7 +790,7 @@ app.whenReady().then(async()=>{
   // Install and update checks launch the packaged app with DECK_SMOKE_FILE and read back what started.
   if(process.env.DECK_SMOKE_FILE)win.webContents.once('did-finish-load',()=>{fs.writeFileSync(process.env.DECK_SMOKE_FILE,JSON.stringify({version:meta.version,electron:process.versions.electron,base:build.base||'',appPath:app.getAppPath(),pid:process.pid}));setTimeout(()=>app.exit(0),200);});
   keys(win.webContents,{shell:true});Menu.setApplicationMenu(null);win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());win.on('resize',fitView);win.webContents.on('did-start-loading',()=>{terminalReady=false;});win.loadFile(path.join(__dirname,'../ui/index.html'));terminalSetup(process.argv);
-  win.on('blur',releaseKeys);win.on('enter-full-screen',fitView);win.on('leave-full-screen',()=>{if(state.robotFullscreen)void setRobotFullscreen(false);else fitView();});
+  win.on('blur',releaseKeys);for(const e of ['minimize','restore','hide','show'])win.on(e,windowState);win.webContents.on('did-finish-load',()=>{shellHidden=false;windowState();});win.on('enter-full-screen',()=>windowChanged(true));win.on('leave-full-screen',()=>windowChanged(false));
   // Closing while a Simulate setup is still being set up (Setup open, Path planning never opened) asks first; the setup
   // itself is already saved. Test runs (no window shown) close straight away.
   let closeAsked=false;
@@ -742,7 +804,7 @@ app.whenReady().then(async()=>{
           if(r.response!==1){closeAsked=false;return;}}
         win.close();});
       return;}
-    robotKeyboard?.close();});win.on('closed',()=>{robotExitView?.webContents.close();robotExitView=null;});
+    robotKeyboard?.close();});win.on('closed',()=>{clearTimeout(windowTimer);robotExitView?.webContents.close();robotExitView=null;});
   pollTimer=setInterval(()=>{if(!network.busy)void refreshNetwork().then(()=>autoOpenFtc());},5000);pollTimer.unref();
   // A hub plugged in is looked for every second and a half while Drive shows empty: one quick ADB question.
   setInterval(()=>void autoOpenUsb(),1500).unref();

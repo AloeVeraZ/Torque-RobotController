@@ -38,11 +38,11 @@ test('what lights up on the model: a device row its joints (and what rides on th
   assert.deepEqual(W.focusRefs(p,'kin:wheelFL'),[T.KEY.chassis+'/Mecanum wheel FL']);assert.deepEqual(W.focusRefs(p,null),[]);
 });
 
-test('odometry pods with no motor port left go on a drive motor\'s encoder input: amber (name it as that motor), never red',()=>{
+test('odometry pods with no motor port left go on a drive motor\'s encoder input: amber (the robot knows it as that motor), never red',()=>{
   for(const localization of ['odometry','odometry3']){const p=testSetup();p.sensors={localization};const st=W.state(p);
     assert.deepEqual(W.red(st,()=>true),[],localization);
     const pods=st.rows.filter(r=>r.role==='pod');assert.ok(pods.length>=2&&pods.every(r=>r.hub),localization+': every pod has a port');
-    for(const pod of pods.filter(r=>r.via))assert.ok(st.problems.some(x=>x.level==='amber'&&x.keys.includes(pod.key)&&x.text.includes(`name it "${pod.via}"`)));}
+    for(const pod of pods.filter(r=>r.via))assert.ok(st.problems.some(x=>x.level==='amber'&&x.keys.includes(pod.key)&&x.text.includes(`the robot knows it as "${pod.via}"`)));}
 });
 
 test('an Expansion Hub port picked for a device or a sensor gives a robot without one an Expansion Hub, and keeps the port',()=>{

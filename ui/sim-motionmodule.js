@@ -542,13 +542,13 @@ def stop(module):
     const ramps=m.intakes.filter(i=>i.kind==='ramp');if(ramps.length)out.ramps=ramps.map(i=>({servo:servo++,down:i.downPos*180,up:i.upPos*180}));
     // MotionModule turrets are servos; with a servo turret set in Deck its center and range come from there.
     const center=m.turret.kind==='servo'?m.turret.servoCenter*180:90,perDegree=m.turret.kind==='servo'?180/m.turret.servoDegrees:1;
-    if(m.shooters.length)out.shooters=m.shooters.map(s=>{
-      const kind=s.indexerKind,indexer=kind==='crservo'?{channel:crservo++,servo:true,mount:mount(s.indexerReversed)}:Mechs().servoFeeder(kind)?{channel:servo++,positional:true,kind,feed:+(s.feedPos*180).toFixed(3),rest:+(s.restPos*180).toFixed(3)}:{channel:next(),servo:false,mount:mount(s.indexerReversed)};
-      return {indexer,flywheels:[{channel:next(),mount:mount(s.reversed)},...(s.motor2?[{channel:next(),mount:mount(s.reversed2)}]:[])],...(s.type==='turret'&&!s.sharesTurret?{turret:{servo:servo++,center,perDegree,mount:mount(s.turretReversed)}}:{})};});
+    if(m.shooters.length)out.shooters=m.shooters.map(s=>{const fly=Mechs().shoots(s);
+      const kind=s.indexerKind,indexer=!Mechs().feeds(s)?null:kind==='crservo'?{channel:crservo++,servo:true,mount:mount(s.indexerReversed)}:Mechs().servoFeeder(kind)?{channel:servo++,positional:true,kind,feed:+(s.feedPos*180).toFixed(3),rest:+(s.restPos*180).toFixed(3)}:{channel:next(),servo:false,mount:mount(s.indexerReversed)};
+      return {...(indexer?{indexer}:{}),flywheels:fly?[{channel:next(),mount:mount(s.reversed)},...(s.motor2?[{channel:next(),mount:mount(s.reversed2)}]:[])]:[],...(s.type==='turret'&&!s.sharesTurret?{turret:{servo:servo++,center,perDegree,mount:mount(s.turretReversed)}}:{})};});
     return out;
   }
   // How many mechanism motors do not fit MotionModule's free channels (5-8).
-  const motorsOver=m=>Math.max(0,m.intakes.reduce((n,i)=>n+(i.kind==='kicker'||i.device==='crservo'?0:i.motor2?2:1),0)+m.shooters.reduce((n,s)=>n+(s.motor2?2:1)+(s.indexerKind==='motor'?1:0),0)-MM_MOTORS.length);
+  const motorsOver=m=>Math.max(0,m.intakes.reduce((n,i)=>n+(i.kind==='kicker'||i.device==='crservo'?0:i.motor2?2:1),0)+m.shooters.reduce((n,s)=>n+(!Mechs().shoots(s)?0:s.motor2?2:1)+(Mechs().feeds(s)&&s.indexerKind==='motor'?1:0),0)-MM_MOTORS.length);
   // Turret angle (degrees from the robot's front, counterclockwise) for each action step, from the
   // planned pose there: MotionModule has no X/Y sensing to aim from during the run.
   // Two turrets on their own motors each aim from their own spot: the angle is then a list, one per turret.
@@ -599,7 +599,7 @@ class Mechanisms:
     # angle feeding, angle at rest) and its turret servo (name, channel, direction), or None when fixed (or on the first
     # shooter's turret). Feeder kinds: motor, crservo (continuous servo), pusher (pushes each piece in) and gate (opens).
     SHOOTERS = ${list(m.shooters.map((s,k)=>{const h=hw.shooters[k],x=h.indexer,names=[s.motor,s.motor2].filter(Boolean);
-      return `([${h.flywheels.map((f,i)=>`(${pyString(names[i])}, ${py(f.channel)}, ${f.mount})`).join(', ')}], (${pyString(s.indexer)}, ${py(x.channel)}, "${s.indexerKind}", ${x.mount??1}, ${x.positional?`${num(x.feed)}, ${num(x.rest)}`:'None, None'}), ${h.turret?`(${pyString(s.turretMotor)}, ${h.turret.servo}, ${h.turret.mount})`:'None'})`;}))}
+      return `([${h.flywheels.map((f,i)=>`(${pyString(names[i])}, ${py(f.channel)}, ${f.mount})`).join(', ')}], ${x?`(${pyString(s.indexer)}, ${py(x.channel)}, "${s.indexerKind}", ${x.mount??1}, ${x.positional?`${num(x.feed)}, ${num(x.rest)}`:'None, None'})`:'None'}, ${h.turret?`(${pyString(s.turretMotor)}, ${h.turret.servo}, ${h.turret.mount})`:'None'})`;}))}
     INDEXER_POWER, SHOOTER_POWER = ${num(m.indexer.power)}, ${num(m.shooter.control==='power'?m.shooter.power:1)}
     TRANSFER_SECONDS, INDEX_SECONDS, FIRE_MARGIN_SECONDS = ${num(m.transfer.seconds)}, ${num(m.indexer.seconds)}, ${num(Mechs().FIRE_MARGIN)}
     FEED_CYCLE_SECONDS, LAST_SHOT_SECONDS, PUSH_SECONDS = ${num(pusher?Math.max(m.indexer.seconds,2*m.indexer.pushSeconds):m.indexer.seconds)}, ${num(Mechs().shootSeconds(m,1))}, ${num(m.indexer.pushSeconds)}
@@ -621,12 +621,14 @@ class Mechanisms:
         for servo, down, up in self.ramps:
             servo.set_angle(up)
         self.flywheels, self.feeders, self.turrets = [], [], []
-        for flywheels, (name, channel, kind, sign, feed, rest), turret in self.SHOOTERS:
+        for flywheels, fed, turret in self.SHOOTERS:
             self.flywheels += [(output("motor", n, c), s) for n, c, s in flywheels]
-            feeder = output("motor" if kind == "motor" else "servo", name, channel)
-            if kind in ("pusher", "gate"):
-                feeder.set_angle(rest)
-            self.feeders.append((feeder, kind, sign, feed, rest))
+            if fed is not None:  # None: no feeder of its own (the intake pushes pieces in), or a turret with no flywheel
+                name, channel, kind, sign, feed, rest = fed
+                feeder = output("motor" if kind == "motor" else "servo", name, channel)
+                if kind in ("pusher", "gate"):
+                    feeder.set_angle(rest)
+                self.feeders.append((feeder, kind, sign, feed, rest))
             if turret is not None:
                 self.turrets.append((output("servo", turret[0], turret[1]), turret[2]))
         self.spin_started = None

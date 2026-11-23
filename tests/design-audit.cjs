@@ -1,7 +1,8 @@
 'use strict';
 // The look, measured. Every screen of the real app, light and dark, is checked for the marks that make an interface read
 // as machine-made: capsules, boxes inside boxes, tiny capitals, glows, blur, a coloured stripe down a card's side, arrows
-// on buttons, code type on plain words, a type face or weight outside the two families, and text too faint to read.
+// on buttons, code type on plain words, a type face or weight outside the two families (a font's own sample in Settings → Text
+// aside), and text too faint to read.
 // The rules these stand for are at the top of ui/tokens.css.
 // The Driver Station is driven by a robot kept in memory, so this needs no loopback address and runs on any system.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/design-audit.cjs [screen-name-pattern]
@@ -41,7 +42,7 @@ function probe(){
     if(bw[3]>=3&&bw[0]<2&&bw[2]<2&&r.height>20)add('stripe down one side',name(e));
     const own=[...e.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim().length>1).map(n=>n.textContent.trim()).join(' ');if(!own)continue;
     const size=parseFloat(cs.fontSize),family=cs.fontFamily.split(',')[0].replace(/["']/g,'').trim(),letters=own.replace(/[^A-Za-z]/g,''),code=/mono|menlo|consolas|courier/i.test(family);
-    if(!/^(Inter|Barlow Condensed)$/.test(family)&&!code)add('type face',name(e)+' '+family);
+    if(!/^(Inter|Barlow Condensed)$/.test(family)&&!code&&!e.matches('.font-sample'))add('type face',name(e)+' '+family);
     if(!code&&!(family==='Barlow Condensed'?['700']:['400','500','600']).includes(cs.fontWeight))add('type weight',name(e)+' '+family+' '+cs.fontWeight);
     if(letters.length>=3&&size<=12.5&&(cs.textTransform==='uppercase'||(letters===letters.toUpperCase()&&parseFloat(cs.letterSpacing)>.3)))add('small capitals',name(e)+' “'+own.slice(0,24)+'”');
     if(code&&!e.closest('pre,code,kbd,samp,textarea,.lines,.sim-log,.cal-java,.sim-program-preview')&&!/^[\d\s.,:+\-−%°/xX#]+$/.test(own))add('code type on plain words',name(e)+' “'+own.slice(0,24)+'”');

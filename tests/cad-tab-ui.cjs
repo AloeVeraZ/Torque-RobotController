@@ -15,7 +15,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/cad-tab
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);await page.setViewportSize({width:1280,height:800});
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');
-    await page.waitForFunction(()=>/Deck test robot.*fitted/.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
+    await page.waitForFunction(()=>/Deck test robot: [0-9.]+ × /.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
     const project=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')));
     // A. One screen. The robot's pages are Setup's steps now: Robot (its CAD) first, then Mechanisms, Hubs and Configure.
     await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');

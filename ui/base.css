@@ -3,6 +3,9 @@
 @layer base {
   html { background: var(--bg); }
   body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--text-md)/1.45 var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  /* A moving theme's ground (DEV, FIRST, NYC FIRST; ui/theme-ascii.js) is drawn under the page, on every page that can show
+     it: the page leaves the ground to html, which paints the same colour, or it would cover it. */
+  :root[data-motion=ascii] body { background: transparent; }
   ::selection { background: var(--accent); color: var(--on-accent); }
 
   /* Type. Titles are the condensed face; everything read at length is Inter. */
@@ -72,6 +75,10 @@
   input[type=checkbox]:checked { border-color: var(--accent); background-color: var(--accent); background-image: var(--tick); }
   input[type=radio]:checked { border-color: var(--accent); box-shadow: inset 0 0 0 3.5px var(--surface); background-color: var(--accent); }
   :is(input[type=checkbox], input[type=radio]):disabled { cursor: default; }
+  /* A colour well: a field's edge round the colour it holds. Enter or Space opens the system's colour picker. */
+  input[type=color] { width: var(--h-lg); height: var(--h-lg); min-height: var(--h-lg); margin: 0; padding: 4px; border: 1px solid var(--field); border-radius: var(--r-ctl); background: var(--surface); cursor: pointer; }
+  input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type=color]::-webkit-color-swatch { border: 0; border-radius: var(--r-tag); }
   input[type=search] { padding-right: 8px; }
   input[type=number] { font-variant-numeric: tabular-nums; }
   progress { width: 100%; height: 4px; border: 0; border-radius: var(--r-mark); background: var(--track); accent-color: var(--accent); overflow: hidden; }
@@ -165,6 +172,19 @@
   .secondary:is([aria-pressed=true], [aria-selected=true], [aria-checked=true]) { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 600; }
   .text-button { border: 0; border-radius: var(--r-tag); background: none; color: var(--text); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); box-shadow: none; }
   .text-button:hover:not(:where([data-touch] *)):not(:disabled), .text-button:active:not(:disabled) { background: none; text-decoration-color: currentColor; }
+  /* A quiet one: what can be done with a row or a card (Edit, Export, Remove), in muted words that come up on hover. One
+     that removes something (.removes) turns red under the pointer. */
+  .text-button.quiet { color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
+  .text-button.quiet:hover:not(:where([data-touch] *)):not(:disabled) { color: var(--text); }
+  .text-button.quiet.removes:hover:not(:where([data-touch] *)):not(:disabled) { color: var(--bad); }
+
+  /* A field for a code, such as a colour's hex code: typed in the code face. */
+  input.code-field { font-family: var(--mono); }
+
+  /* A colour's dot, before its name: --dot (the colour as it was picked; the accent without one), ringed in a field's
+     edge, which reads at 3:1 on a surface in either mode, so a near-white dot shows on a light card and a near-black one
+     on a dark card. */
+  .colour-dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--dot, var(--accent)); box-shadow: inset 0 0 0 1px var(--field); }
 
   /* Pick one of a few: the picked one lifts off the trough. */
   .segmented { border: 0; border-radius: 8px; background: var(--control); box-shadow: none; }

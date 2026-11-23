@@ -38,6 +38,20 @@ test('the IMU keeps its place and turns it through the hub mounting; the OTOS th
   assert.deepEqual(C.robot({sensorPlace:{imu:{kind:'toaster',x:99,y:'2'},nope:{x:1}}},'ftc').sensorPlace,undefined,'nonsense is dropped');
 });
 
+test('turned by its logo or its USB ports alone, the hub stays over the same spot and rests on what it sat on',()=>{
+  // Setup has two pairs of pickers for this (Chassis → Control Hub's mounting and the IMU card's), and both go through place.
+  const flat=C.robot(P.place(base(),'imu',{kind:'controlHub',x:.472,y:-.236,z:3.337,from:'cad',part:'REV Control Hub',a:'up',b:'forward'}),'ftc');
+  const box=r=>{const m=P.marker(P.of(r,C).imu);return {mid:m.origin,bottom:m.origin[2]-m.size[2]/2};},start=box(flat),near=(p,q)=>Math.abs(p-q)<.003;
+  for(const patch of [{a:'right'},{a:'left'},{a:'forward'},{a:'down'},{b:'left'},{b:'backward'}]){const r=C.robot(P.place(flat,'imu',patch),'ftc'),now=box(r),say=JSON.stringify([patch,start,now]);
+    assert.ok(near(now.mid[0],start.mid[0])&&near(now.mid[1],start.mid[1]),`over the same spot: ${say}`);assert.ok(near(now.bottom,start.bottom),`its bottom stays on the plate: ${say}`);
+    const back=C.robot(P.place(r,'imu',{a:'up',b:'forward'}),'ftc').sensorPlace.imu;assert.ok(['x','y','z'].every(k=>near(back[k],flat.sensorPlace.imu[k])),`turned back, it is where it was: ${JSON.stringify(back)}`);}
+  // Stood on its right side, USB forward: 143 mm tall, so its middle rises 2.23 in, and the chip (towards the I2C end, now
+  // down) goes round with it.
+  const side=C.robot(P.place(flat,'imu',{a:'right'}),'ftc');assert.deepEqual([side.hubLogo,side.hubUsb],['right','forward']);
+  assert.ok(near(side.sensorPlace.imu.x,.472)&&near(side.sensorPlace.imu.y,.709)&&near(side.sensorPlace.imu.z,5.098),JSON.stringify(side.sensorPlace.imu));
+  assert.equal(side.sensorPlace.imu.from,'cad','turning it keeps where it came from');
+});
+
 test('a CAD box gives the position; the marker shows the face and arrow picked',()=>{
   const box={lo:[1,-2,3],hi:[5.06,3.63,4.16]};
   // The hub's chip is under PROUD, near the label's lower right: 18 mm along the hub towards the I2C end (the SDK's +X)

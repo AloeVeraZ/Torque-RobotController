@@ -39,3 +39,10 @@ test('macOS that keeps the Wi-Fi name to itself: a robot’s network is known by
   const n=mk('192.168.43.52',hidden),joined=await n.join('FTC-NjK6','password');assert.equal(joined.ssid,'FTC-NjK6','joined here, it keeps its name');assert.equal((await n.status()).ssid,'FTC-NjK6');assert.equal(joined.robotHost,'192.168.43.1');
   await assert.rejects(mk('192.168.1.20',hidden,'Could not find network FTC-x.').join('FTC-x','password'),/Could not join Wi-Fi/);
   await assert.rejects(mk('',hidden).join('FTC-NjK6','password'),/Could not join Wi-Fi/,'no address, not joined');});
+
+test('signal comes back as 1–4 bars, and macOS without location access names the network from its last scan',async()=>{
+  const win=new Network({platform:'win32',runner:async()=>({stdout:'    Name : Wi-Fi\n    SSID : Home\n    Signal : 62%'})});assert.equal((await win.status()).bars,3);
+  const mac=(here,ip='192.168.1.20')=>new Network({platform:'darwin',interfaces:()=>({en0:[{family:'IPv4',internal:false,address:ip}]}),runner:async(f,a)=>({stdout:a[0]==='-listallhardwareports'?'Hardware Port: Wi-Fi\nDevice: en0\n':f==='/usr/bin/osascript'?JSON.stringify(here):'You are not associated with an AirPort network.'})});
+  assert.deepEqual(await mac({rssi:-52,channel:40,name:'Home'}).status(),{available:true,connected:true,ssid:'Home',device:'en0',native:true,nameHidden:true,bars:4});
+  assert.deepEqual(await mac({rssi:-80,channel:40,name:''}).status(),{available:true,connected:true,ssid:'',device:'en0',native:true,nameHidden:true,bars:1},'connected, name unknown');
+  assert.equal((await mac({rssi:-60,channel:6,name:'FTC-Ab12'},'192.168.43.5').status()).ssid,'FTC-Ab12','a robot’s real name beats the stand-in');});

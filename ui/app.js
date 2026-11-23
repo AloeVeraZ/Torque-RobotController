@@ -13,7 +13,7 @@ function setMenu(open){$('#menu').hidden=!open;$('#more').setAttribute('aria-exp
 function showPage(page){if(page===state.page)window.scrollTo({top:0,behavior:'instant'});void task(()=>api.page(page));setMenu(false);closeWifiPicker();}
 // Drive's robot list and connection: the Drive page itself with no robot open, or over a robot that stays connected.
 function showConnect(){showPage(state.url?'connect':'drive');}
-function network(info){wifi=info||{};robotDiscovery.network(wifi);$('#network-chip span').textContent=wifi.ssid||'Connect Wi-Fi';$('#network-chip').title=wifi.ssid||'Connect Wi-Fi';$('#network-chip').setAttribute('aria-label',wifi.connected?'Wi-Fi connected to '+wifi.ssid:'Wi-Fi disconnected. Open network settings');$('#network-chip .dot').className=`dot${wifi.connected?' live':''}`;$('#wifi-summary').textContent=wifi.ssid?`Connected to ${wifi.ssid}`:wifi.message||'Connect to a robot hotspot or your home network.';$('#robot-network').textContent=wifi.ssid||'No Wi-Fi connected';
+function network(info){wifi=info||{};robotDiscovery.network(wifi);const chipName=wifi.connected?wifi.ssid||'Wi-Fi':'Connect to Wi-Fi',bars=wifi.connected?Math.min(4,Math.max(1,Number(wifi.bars)||4)):0;$('#network-chip span').textContent=chipName;$('#network-chip').title=wifi.connected?`${chipName} · ${bars} of 4 bars`:chipName;$('#network-chip').dataset.bars=String(bars);$('#network-chip').setAttribute('aria-label',wifi.connected?`Wi-Fi connected to ${chipName}, ${bars} of 4 bars. Open the Wi-Fi list`:'Wi-Fi not connected. Open the Wi-Fi list');$('#network-chip .dot').className=`dot${wifi.connected?' live':''}`;$('#wifi-summary').textContent=wifi.connected?`Connected to ${wifi.ssid||'Wi-Fi'}.`:wifi.message||'Connect to a robot hotspot or your home network.';$('#robot-network').textContent=wifi.ssid||'No Wi-Fi connected';
   $('#connect-status').textContent=wifi.ssid?`On ${wifi.ssid}. Pick a robot, or add one by its address.`:'Not on Wi-Fi. Join your robot\u2019s network with the Wi-Fi button, or plug a Control Hub in by USB-C.';renderLibrary();}
 // FTC: Open on Wi-Fi or USB, the address only when it is not the Control Hub's. Other: the address, Wi-Fi and finding.
 function setKind(ftc,showAddress){$('#robot-ftc').checked=ftc;for(const b of document.querySelectorAll('[data-robot-kind]'))b.setAttribute('aria-pressed',String((b.dataset.robotKind==='ftc')===ftc));const url=$('#robot-url').value.trim(),address=!ftc||showAddress||!!url&&url!=='192.168.43.1';$('#robot-address-fields').hidden=!address;$('#robot-address-toggle').hidden=address;$('#robot-url').placeholder=ftc?'192.168.43.1':'192.168.4.1';$('#open-robot').textContent=ftc?'Open on Wi-Fi':'Open robot';$('#open-usb').hidden=!ftc;$('#robot-usb-hint').hidden=!ftc;$('#robot-discovery').hidden=ftc;$('#save-robot').textContent=ftc?'Save robot':'Save address';$('#robot-kind-hint').textContent=ftc?'Join the robot’s Wi-Fi (like 1234-RC) and open it on Wi-Fi, or plug its USB-C into this computer and open it on USB.':'A robot with its own web page. Enter its address, or find it on its hotspot. FTC robots are still detected.';}
@@ -28,7 +28,7 @@ function renderLibrary(force=false){
   const shown=renderLibrary.shown||new Set();renderLibrary.shown=new Set(robots.map(r=>r.id));
   $('#robot-list').replaceChildren(...robots.map((r,i)=>{const row=el('article','saved-row'+(here(r)?' here':'')+(state.robot?.id===r.id&&state.url?' open':'')+(shown.has(r.id)?' stays':'')),kind=el('span','robot-kind-mark'+(r.kind==='ftc'?' ftc':''),r.kind==='ftc'?'FTC':'Web'),name=el('div','saved-name'),meta=el('small','',[hostOf(r.url),here(r)?'on this Wi-Fi':r.ssid?`on ${r.ssid}`:'any Wi-Fi',r.lastOpened?`driven ${since(r.lastOpened)}`:''].filter(Boolean).join(' · '));
     row.style.setProperty('--i',String(Math.min(i,8)));kind.setAttribute('aria-hidden','true');name.append(el('strong','',r.name),meta);name.querySelector('strong').title=r.name;meta.title=r.url;
-    const actions=el('div','saved-actions'),open=el('button',i===0&&!state.url?'primary':'secondary',state.robot?.id===r.id&&state.url?'Back to it':'Connect'),change=el('button','edit text-button','Edit'),remove=el('button','delete text-button','Delete');
+    const actions=el('div','saved-actions'),open=el('button',i===0&&!state.url?'primary':'secondary',state.robot?.id===r.id&&state.url?'Back to it':'Connect'),change=el('button','edit text-button quiet','Edit'),remove=el('button','delete text-button quiet removes','Delete');
     open.onclick=()=>void task(()=>state.robot?.id===r.id&&state.url?showPage('drive'):openRobot({id:r.id}));change.onclick=()=>edit(r);remove.onclick=()=>void task(()=>api.remove(r.id));actions.append(open,change,remove);row.append(kind,name,actions);return row;}));
   $('#library-empty').hidden=robots.length>0;$('#library-empty-title').textContent=all.length?'No robots match your search':'No saved robots yet';$('#library-empty-text').textContent=all.length?'Try part of its name or address.':'Add one with its address. Torque keeps it here, with the Wi-Fi it is on.';
   $('#library-search').hidden=all.length<6;
@@ -41,11 +41,11 @@ const simulation=window.DeckSimulation.create($('#simulation-view'),{calibrate:$
 const robotDiscovery=window.DeckRobotDiscovery.create({api,found:robot=>{$('#robot-id').value='';$('#robot-url').value=robot.url;$('#robot-name').value='';setKind(robot.kind==='ftc');}});
 for(const b of document.querySelectorAll('[data-robot-kind]'))b.onclick=()=>setKind(b.dataset.robotKind==='ftc');$('#robot-address-toggle').onclick=()=>{setKind(true,true);$('#robot-url').focus();};setKind(true);
 document.addEventListener('robot-fullscreen-error',event=>toast(event.detail));
-function render(next){if(next.page!==state.page||next.loading)touchscreen.hide();state=next;robotFullscreen.render(state);if(next.network)network(next.network);const robotUp=!!state.url||!!state.loading||!!state.error,connect=state.page==='connect'||state.page==='drive'&&!robotUp;$('#connect-view').hidden=!connect;$('#drive-view').hidden=!(state.page==='drive'&&robotUp);$('#settings-view').hidden=state.page!=='settings';
+function render(next){if(next.page!==state.page||next.loading)touchscreen.hide();state=next;if(editing&&state.page!=='settings')closeEditor(true,false);robotFullscreen.render(state);if(next.network)network(next.network);const robotUp=!!state.url||!!state.loading||!!state.error,connect=state.page==='connect'||state.page==='drive'&&!robotUp;$('#connect-view').hidden=!connect;$('#drive-view').hidden=!(state.page==='drive'&&robotUp);$('#settings-view').hidden=state.page!=='settings';
   $('#robots-page').hidden=!state.url;$('#connect-back').hidden=!(state.page==='connect'&&state.url&&!state.error);$('#connect-back-text').textContent=`${state.title||'Your robot'} is still connected.`;$('#simulation-view').hidden=state.page!=='simulation';$('#calibrate-view').hidden=state.page!=='calibrate';$('#setup-view').hidden=state.page!=='setup';simulation.activate(state.page==='simulation');simulation.calibrate(state.page==='calibrate');simulation.setup(state.page==='setup');$('#drive-tab').classList.toggle('active',state.page==='drive'||state.page==='connect');$('#simulate-tab').classList.toggle('active',state.page==='simulation');$('#robot-setup-tab').classList.toggle('active',state.page==='setup');$('#robot-setup-tab').setAttribute('aria-current',state.page==='setup'?'page':'false');$('#calibrate-tab').classList.toggle('active',state.page==='calibrate');$('#calibrate-tab').setAttribute('aria-current',state.page==='calibrate'?'page':'false');$('#menu-settings').setAttribute('aria-current',state.page==='settings'?'page':'false');const displayUrl=state.url||'No robot open';if($('#current-url').textContent!==displayUrl)$('#current-url').textContent=displayUrl;$('#drive-tab').setAttribute('aria-current',state.page==='drive'||state.page==='connect'?'page':'false');$('#simulate-tab').setAttribute('aria-current',state.page==='simulation'?'page':'false');$('#page-status').dataset.kind=state.error?'error':'loading';$('#robot-title').textContent=state.title||'Ready to connect';$('#page-dot').className=`dot${state.error?' error':state.robot&&!state.loading?' live':''}`;$('#close-page').hidden=!state.url;$('#manager-close').hidden=!state.manager;$('#view-kind').textContent=state.kind==='ftc'?(state.manager?'Program & Manage · on the robot':'FTC Driver Station'):'Robot web UI';$('#drive-view').classList.toggle('station-view',state.kind==='ftc'&&!state.manager&&!!state.url&&!state.loading&&!state.error);$('#back').disabled=!state.url;$('#reload').disabled=!state.url;$('#page-status').hidden=!state.loading&&!state.error;$('#page-status-title').textContent=state.error?(state.recovering?'Robot connection paused':'Robot page unavailable'):'Opening robot…';$('#page-status-message').textContent=state.error||state.url;$('#retry').hidden=!state.error;$('#error-settings').hidden=!state.error;$('.loader').hidden=!!state.error;renderLibrary();renderExtras();sendStationLook();if(state.page==='settings')renderThemes();void bounds();}
 function bounds(){if(state.page!=='drive'||state.robotFullscreen)return Promise.resolve();const r=$('#robot-mount').getBoundingClientRect();return api.bounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});}
 $('#drive-tab').onclick=()=>showPage('drive');$('#robot-setup-tab').onclick=()=>showPage('setup');$('#calibrate-tab').onclick=()=>showPage('calibrate');$('#simulate-tab').onclick=()=>showPage('simulation');for(const b of document.querySelectorAll('[data-flow]'))b.onclick=()=>{simulation.flow(b.dataset.flow);showPage(simulation.pageOf(b.dataset.flow));};$('#network-chip').onclick=()=>$('#wifi-popover').hidden?openWifiPicker():closeWifiPicker();$('#robots-page').onclick=()=>showPage('connect');$('#connect-back-button').onclick=()=>showPage('drive');
-$('#more').onclick=()=>setMenu($('#menu').hidden);$('#menu-settings').onclick=()=>showPage('settings');$('#menu-updates').onclick=()=>void task(showUpdates);$('#menu-library').onclick=()=>{showConnect();setTimeout(()=>$('#library-panel').scrollIntoView({behavior:'smooth'}),50);};$('#menu-shortcuts').onclick=()=>openInfo('#shortcuts-dialog');$('#menu-credits').onclick=()=>openInfo('#credits-dialog');$('#menu-fullscreen').onclick=()=>void task(async()=>{await api.fullscreen();setMenu(false);});$('#menu-quit').onclick=()=>void api.quit();
+$('#more').onclick=()=>setMenu($('#menu').hidden);$('#menu-settings').onclick=()=>showPage('settings');$('#menu-updates').onclick=()=>void task(showUpdates);$('#menu-library').onclick=()=>{showConnect();setTimeout(()=>$('#library-panel').scrollIntoView({behavior:scrollMotion()}),50);};$('#menu-shortcuts').onclick=()=>openInfo('#shortcuts-dialog');$('#menu-credits').onclick=()=>openInfo('#credits-dialog');$('#menu-fullscreen').onclick=()=>void task(async()=>{await api.fullscreen();setMenu(false);});$('#menu-quit').onclick=()=>void api.quit();
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#menu')&&!e.target.closest('#more'))setMenu(false);});
 // Keyboard shortcuts and the credits: from the menu and from Settings, each in a dialog of its own.
 function openInfo(sel){setMenu(false);$(sel).showModal();syncOverlay();}
@@ -124,9 +124,14 @@ $('#update-testing').onclick=()=>{if(selectedChannel==='testing')return;resetUpd
 $('#testing-confirm').onclick=()=>void switchChannel('testing',true);$('#testing-cancel').onclick=()=>{$('#testing-warning').hidden=true;$('#update-check').disabled=false;$('#update-main').focus();};
 
 // Preferences stay on this device: theme, keep-awake, on-screen keyboard and shortcut labels.
-const prefs={get:(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}},set:(key,value)=>{try{localStorage.setItem(key,value);}catch{}}};
-function applyTheme(theme){if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;const cycle=$('#theme-cycle'),mode=theme==='light'||theme==='dark'?theme:'system',label=`Colour theme: ${mode==='system'?'match the device':mode}`;cycle.dataset.mode=mode;cycle.title=label;cycle.setAttribute('aria-label',label);api.setTheme?.(mode);}
-$('#theme-cycle').onclick=()=>{const next={system:'light',light:'dark',dark:'system'}[$('#theme-cycle').dataset.mode];prefs.set('deck-theme',next);applyTheme(next);};
+const prefs={get:(key,fallback)=>{try{return localStorage.getItem(key)??fallback;}catch{return fallback;}},set:(key,value)=>{try{localStorage.setItem(key,value);}catch{}},remove:key=>{try{localStorage.removeItem(key);}catch{}}};
+// Light or dark: the button in the bar steps through the three, and Settings → App colour picks one (the bar has no room
+// for the button in a narrower window). Both show the same choice.
+function applyTheme(theme){if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme;else delete document.documentElement.dataset.theme;const cycle=$('#theme-cycle'),mode=theme==='light'||theme==='dark'?theme:'system',label=`Light or dark: ${mode==='system'?'match the device':mode}`;cycle.dataset.mode=mode;cycle.title=label;cycle.setAttribute('aria-label',label);
+  for(const b of document.querySelectorAll('#mode-pick [data-mode]'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));api.setTheme?.(mode);}
+const setMode=mode=>{prefs.set('deck-theme',mode);applyTheme(mode);};
+$('#theme-cycle').onclick=()=>setMode({system:'light',light:'dark',dark:'system'}[$('#theme-cycle').dataset.mode]);
+for(const b of document.querySelectorAll('#mode-pick [data-mode]'))b.onclick=()=>setMode(b.dataset.mode);
 applyTheme(prefs.get('deck-theme','system'));
 const sendKeepAwake=()=>void api.keepAwake?.($('#keep-awake').checked).catch(()=>{});
 $('#keep-awake').checked=prefs.get('deck-keep-awake','on')!=='off';$('#keep-awake').onchange=()=>{prefs.set('deck-keep-awake',$('#keep-awake').checked?'on':'off');sendKeepAwake();};sendKeepAwake();
@@ -137,59 +142,198 @@ $('#touch-keyboard-auto').checked=prefs.get('deck-virtual-keyboard','off')==='on
 if(/Mac/i.test(navigator.platform)){for(const key of document.querySelectorAll('kbd.mod'))key.textContent='⌘';for(const k of document.querySelectorAll('.back-key'))k.replaceChildren(el('kbd','','⌘'),' ',el('kbd','','['));}
 $('#zoom-reset').onclick=()=>void task(()=>api.zoom(0));
 
-// Themes (docs/THEMES.md): one for Torque's own screens, one for the FTC Driver Station screen, which a saved robot can
-// override. Built-in themes come with the app; imported ones are folders the user picks, copied into the app's data
-// folder. Fonts work the same way: Inter, OpenDyslexic and the computer's own come with it, and a font file added here
-// is kept too.
-const Themes=window.DeckThemes;let imported=[],fonts=[],lastLook='';
-const robotThemes=()=>{try{return JSON.parse(prefs.get('torque-robot-themes','{}'))||{};}catch{return {};}};
-const themeList=kind=>[...Themes.BUILT_IN,...imported.filter(t=>t.for===kind)];
-const appTheme=()=>Themes.find(themeList('app'),prefs.get('torque-app-theme','torque'))||Themes.BUILT_IN[0];
-const stationThemeId=robot=>(robot&&robotThemes()[robot])||prefs.get('torque-station-theme','same');
-const stationTheme=robot=>{const id=stationThemeId(robot);return id==='same'?appTheme():Themes.find(themeList('station'),id)||appTheme();};
+// Looks (docs/THEMES.md), one set for Torque's own screens ("app") and one for the FTC Driver Station screen ("station"):
+// a colour, the palette, and a theme, how the screens are drawn. Any colour goes with any theme. An imported theme also
+// has colours of its own ("<Theme>’s own" in the colour list), which go on with it; the colour picked before comes back
+// with Torque or DEV. Built-in ones come with the app. A colour the user makes or imports is kept here in prefs; an
+// imported theme is a folder copied into the app's data folder. Every robot wears the Driver Station's. Fonts work the
+// same way: Inter, OpenDyslexic and the computer's own come with it, and a font file added here is kept too.
+const Themes=window.DeckThemes,KINDS=['app','station'];let imported=[],colours=[],fonts=[],lastLook='',draft=null,editing=null,themesReady=false;
+// Theme folders being saved, so two quick imports cannot pass a list's room between them.
+const importing={app:0,station:0};
+// The user's own colours: only what they chose is kept ({id,name,accent,tint,for}); the rest is made again on load.
+function loadColours(){let list=[];try{list=JSON.parse(prefs.get('torque-colours','[]'));}catch{}const room={app:Themes.MAX_COLOURS-Themes.COLOURS.length,station:Themes.MAX_COLOURS-Themes.COLOURS.length};
+  return (Array.isArray(list)?list:[]).map(s=>{try{const c=Themes.colour(s);return c.id===s.id&&Themes.validColour(c)&&room[c.for]-->0?c:null;}catch{return null;}}).filter(Boolean);}
+const saveColours=()=>prefs.set('torque-colours',JSON.stringify(colours.map(c=>({id:c.id,name:c.name,accent:c.accent,tint:c.tint,for:c.for}))));
+colours=loadColours();
+const themeList=kind=>[...Themes.THEMES,...imported.filter(t=>t.for===kind)];
+const colourList=kind=>[...Themes.COLOURS,...colours.filter(c=>c.for===kind)];
+const isImported=t=>/^custom-/.test(String(t?.id));
+// A colour's main colour as it was picked on the colour wheel: an own colour's own accent, not the one moved to read on a
+// ground; a built-in colour's (and a theme's own colours') dark accent. Its dot is drawn in it, here and in the Driver
+// Station's Theme and colour menu.
+const primary=c=>c.custom?c.accent:c.dark.accent;
+// Once, from older Torques. Before colours and themes were apart a theme id was a colour, and a saved robot could have a
+// theme of its own. A colour that was a theme is now that colour with the Torque theme, the Driver Station's too: it was
+// drawn plain, so it must not pick up a theme the app has on (Same as the app would). Blue and Red are gone: one that was
+// picked becomes an own colour of that name, made from the same main colour, and stays on. An imported theme then drew
+// only in its own colours, so it goes on doing that.
+(function migrateLooks(){const was=prefs.get('torque-looks','');if(was==='3')return;
+  if(was!=='2'){const OLD=['torque','blue','orange','purple','red','mono'];
+    for(const kind of KINDS){const old=prefs.get(`torque-${kind}-theme`,null);if(!OLD.includes(old))continue;
+      prefs.set(`torque-${kind}-theme`,'torque');if(prefs.get(`torque-${kind}-colour`,null)==null)prefs.set(`torque-${kind}-colour`,old);}
+    prefs.remove('torque-robot-themes');}
+  const GONE={blue:{name:'Blue',accent:'#87bafe'},red:{name:'Red',accent:'#ff958f'}};
+  for(const kind of KINDS){const key=`torque-${kind}-colour`,old=GONE[prefs.get(key,null)];if(!old)continue;
+    let c=colours.find(x=>x.for===kind&&x.name===old.name&&x.accent===old.accent&&!x.tint);
+    if(!c&&colourList(kind).length<Themes.MAX_COLOURS){c=Themes.colour({...old,for:kind});colours=[...colours,c];saveColours();}
+    prefs.set(key,c?.id||(kind==='app'?'torque':'same'));}
+  for(const kind of KINDS){const key=`torque-${kind}-colour`,picked=prefs.get(key,null);if(!isImported({id:prefs.get(`torque-${kind}-theme`,'')})||picked==='theme')continue;
+    if(picked)prefs.set(key+'-last',picked);prefs.set(key,'theme');}
+  prefs.set('torque-looks','3');})();
+// An imported theme's own colours, as one of its list's colours: "<Theme>’s own", stored as 'theme'.
+const ownOf=t=>isImported(t)?{id:'theme',name:`${t.name}’s own`,dark:t.dark,light:t.light,theme:t}:null;
+// The colour picked before a theme's own went on, which comes back with Torque or DEV.
+function lastColour(kind){const fallback=kind==='app'?'torque':'same',id=prefs.get(`torque-${kind}-colour-last`,fallback);return kind==='station'&&id==='same'||Themes.find(colourList(kind),id)?id:fallback;}
+// What is picked in a list (torque-app-theme, torque-station-colour…): a stored id that is still in it, or the default.
+function pickOf(kind,what){const fallback=kind==='app'?'torque':'same',id=prefs.get(`torque-${kind}-${what}`,fallback);if(kind==='station'&&id==='same')return id;
+  if(what==='colour'&&id==='theme')return ownOf(themeOf(kind))?id:lastColour(kind);
+  return Themes.find(what==='theme'?themeList(kind):colourList(kind),id)?id:fallback;}
+const appTheme=()=>Themes.find(themeList('app'),pickOf('app','theme'))||Themes.THEMES[0];
+const stationTheme=()=>{const id=pickOf('station','theme');return id==='same'?appTheme():Themes.find(themeList('station'),id)||Themes.THEMES[0];};
+const themeOf=kind=>kind==='app'?appTheme():stationTheme();
+// The colour a list shows: one being made in the editor until it is saved or cancelled, the theme's own, or the app's.
+function colourOf(kind){return draft?.kind===kind?draft.colour:colourById(kind,pickOf(kind,'colour'));}
+function colourById(kind,id){return id==='theme'?ownOf(themeOf(kind))||Themes.COLOURS[0]:id==='same'?colourOf('app'):Themes.find(colourList(kind),id)||Themes.COLOURS[0];}
+// What the built-in themes (Torque, DEV, FIRST, NYC FIRST) are drawn in: the colour shown, or, while a theme's own is on, the one that comes back with them.
+const plainColour=kind=>{const c=colourOf(kind);return c.theme?colourById(kind,lastColour(kind)):c;};
+// What is drawn: an imported theme exactly as it came (compose takes null for that), or any other colour over a theme.
+const lookOf=kind=>{const t=themeOf(kind),c=colourOf(kind);return Themes.compose(t,c.theme&&c.theme.id===t.id?null:c);};
+const appLook=()=>lookOf('app'),stationLook=()=>lookOf('station');
 const FONTS=[{id:'inter',name:'Inter',family:'Inter'},{id:'dyslexic',name:'OpenDyslexic',family:'OpenDyslexic'},{id:'system',name:'This computer’s',family:'system-ui'}];
 const fontList=()=>[...FONTS,...fonts];
 const font=()=>fontList().find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0];
-// The Driver Station follows the robot that is open: its own theme, or the default.
-function sendStationLook(force=false){const robot=state.robot?.id||null,theme=stationTheme(robot),key=JSON.stringify([robot,theme.id,font().id,imported.length]);if(key===lastLook&&!force)return;lastLook=key;
-  api.stationLook?.({theme,font:font(),current:stationThemeId(robot),own:(robot&&robotThemes()[robot])||'default',robot:robot?state.robot.name:null,themes:[{id:'same',name:'Same as the app',swatch:Themes.swatch(appTheme())},...themeList('station').map(t=>({id:t.id,name:t.name,swatch:Themes.swatch(t)}))]});}
-function applyLooks(){Themes.apply(document,appTheme(),{font:font()});sendStationLook(true);renderThemes();}
+// The Driver Station's look, and its lists for the Theme and colour menu in its bar. Sent again only when something in it changed.
+function sendStationLook(force=false){const theme=stationLook(),f=font(),current={theme:pickOf('station','theme'),colour:pickOf('station','colour')},own=ownOf(stationTheme());
+  const themes=[{id:'same',name:'Same as the app'},...themeList('station').map(t=>({id:t.id,name:t.name}))];
+  const entry=(c,id=c.id,name=c.name)=>({id,name,swatch:Themes.swatch(c),primary:primary(c)});
+  const list=[entry(colourOf('app'),'same','Same as the app'),...(own?[entry(own)]:[]),...colourList('station').map(c=>entry(c))];
+  const key=JSON.stringify([theme.id,theme.look,theme.motion,Themes.swatch(theme),f.id,themes,list,current]);if(key===lastLook&&!force)return;lastLook=key;
+  api.stationLook?.({theme,font:f,themes,colours:list,current});}
+// A theme's own colours go with it: once it is off (another theme picked, or it is removed), the colour from before is back.
+function settleColours(){for(const kind of KINDS){const key=`torque-${kind}-colour`;if(prefs.get(key,null)==='theme'&&!ownOf(themeOf(kind)))prefs.set(key,lastColour(kind));}}
+function applyLooks(){if(themesReady)settleColours();Themes.apply(document,appLook(),{font:font()});sendStationLook(true);renderThemes();}
+// While a colour is being made: the same, without sending the Driver Station what has not changed.
+function previewLooks(){Themes.apply(document,appLook(),{font:font()});sendStationLook();renderThemes();}
+// Putting a choice on. An imported theme put on brings its own colours with it; the colour from before waits for Torque or DEV.
+function setColour(kind,id){const key=`torque-${kind}-colour`,was=pickOf(kind,'colour');if(id==='theme'&&was!=='theme')prefs.set(key+'-last',was);prefs.set(key,id);}
+function putOn(kind,what,id){if(what==='colour')return setColour(kind,id);const was=pickOf(kind,'theme');prefs.set(`torque-${kind}-theme`,id);if(id!==was&&isImported(Themes.find(themeList(kind),id)))setColour(kind,'theme');}
+const clearStatus=kind=>{for(const id of [`colour-${kind}-status`,`theme-${kind}-status`])$('#'+id).textContent='';};
+// A pick in Settings or in the Driver Station's Theme and colour menu: a colour half made in the editor is dropped, not saved.
+function choose(kind,what,id){if(editing)closeEditor(false,false);clearStatus(kind);putOn(kind,what,id);applyLooks();}
+// After a save, an import or a removal: focus on the card it is about, or on the one picked in its list.
+function focusIn(list,id){((id&&$(`#${list} [data-id="${CSS.escape(id)}"]:not([data-action])`))||$(`#${list} [role=radio][aria-checked=true]`))?.focus();}
 const PLUS='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
-// A card in one of Settings' lists. Something the user added carries Remove under it.
-function choiceCard(cls,{checked,pick,label,remove}){const b=el('button',cls);b.type='button';b.setAttribute('role','radio');b.setAttribute('aria-checked',String(checked));b.onclick=pick;
-  if(!remove)return b;const item=el('div','choice-item'),x=el('button','text-button choice-remove','Remove');x.type='button';x.setAttribute('aria-label',`Remove ${label}`);x.onclick=remove;item.append(b,x);return {item,card:b};}
-function addCard(cls,label,onclick){const b=el('button',`${cls} add-card`);b.type='button';const mark=el('span',cls==='theme-card'?'theme-preview':'font-sample');mark.innerHTML=PLUS;b.append(mark,el('span',cls==='theme-card'?'theme-name':'font-name',label));b.onclick=onclick;return b;}
-function themeCard(t,{checked,pick,label}){const name=label||t.name,made=choiceCard('theme-card',{checked,pick,label:name,remove:t.for?()=>removeTheme(t):null}),b=made.card||made,view=el('span','theme-preview');
-  // Its preview in both modes; the stylesheet shows the one the app is in.
-  for(const [mode,k] of [['dark','d'],['light','l']])for(const part of ['bg','surface','text','accent'])view.style.setProperty(`--p${k}-${part}`,t[mode][part]);
-  if(t.background?.image)view.style.setProperty('--p-image',`url("${t.background.image}")`);view.append(el('i','p-bar'),el('i','p-line'),el('i','p-line short'),el('i','p-button'));
-  b.append(view,el('span','theme-name',name));if(t.author)b.title=`By ${t.author}`;return made.item||b;}
-function fontCard(f){const made=choiceCard('font-card',{checked:f.id===font().id,pick:()=>{prefs.set('torque-font',f.id);applyLooks();},label:f.name,remove:f.custom?()=>removeFont(f):null}),b=made.card||made,sample=el('span','font-sample','Aa');
-  sample.style.setProperty('font-family',f.custom?`"${f.family}", system-ui, sans-serif`:f.family);b.append(sample,el('span','font-name',f.name));return made.item||b;}
+// A card in one of Settings' lists. Something the user added carries what can be done with it under it (Remove last, set
+// apart from the others: it asks first, and cannot be undone).
+function choiceCard(cls,{id,checked,pick,label,actions=[],remove}){const b=el('button',cls);b.type='button';b.dataset.id=id;b.setAttribute('role','radio');b.setAttribute('aria-checked',String(checked));b.onclick=pick;
+  if(remove)actions=[...actions,{act:'remove',text:'Remove',cls:'removes choice-remove',run:remove}];if(!actions.length)return b;
+  const item=el('div','choice-item'),row=el('div','choice-actions');for(const a of actions){const x=el('button',`text-button quiet choice-action ${a.cls||''}`.trim(),a.text);x.type='button';x.dataset.id=id;x.dataset.action=a.act;x.setAttribute('aria-label',`${a.text} ${label}`);x.onclick=a.run;row.append(x);}
+  item.append(b,row);return {item,card:b};}
+function addCard(cls,label,onclick){const b=el('button',`${cls} add-card`);b.type='button';b.dataset.id='add';const mark=el('span',cls==='theme-card'?'theme-preview':'font-sample');mark.setAttribute('aria-hidden','true');mark.innerHTML=PLUS;b.append(mark,el('span',cls==='theme-card'?'theme-name':'font-name',label));b.onclick=onclick;return b;}
+// A moving theme's preview: a few rows of the characters its background is drawn in; FIRST's and NYC FIRST's also show
+// their logo, drawn from the same measurements as their background (DeckAscii.logo), each shape in its own ink (the
+// theme's inks for dark and light, chosen by the stylesheet like the rest of the preview).
+const ASCII=Array.from({length:7},(_,y)=>Array.from({length:30},(_,x)=>' .:-+%#'[Math.round(3+3*Math.sin(x*.55+y*.9)*Math.cos(x*.21-y*.4))]).join('')).join('\n');
+// A look in small, in both modes (the stylesheet shows the one the app is in): its ground, a bar, two lines of words and
+// its accent. A picture only, so a screen reader reads the card's name and not DEV's rows of characters.
+function preview(look,view=el('span','theme-preview')){view.setAttribute('aria-hidden','true');for(const [mode,k] of [['dark','d'],['light','l']])for(const part of ['bg','surface','text','accent'])view.style.setProperty(`--p${k}-${part}`,look[mode][part]);
+  if(look.background?.image)view.style.setProperty('--p-image',`url("${look.background.image}")`);else view.style.removeProperty('--p-image');
+  for(const old of view.querySelectorAll('.p-ascii,.p-inks'))old.remove();const parts=[...(look.motion==='ascii'?[el('i','p-ascii',ASCII)]:[])];
+  view.classList.toggle('has-inks',!!look.inks);if(look.inks){const row=el('i','p-inks');row.innerHTML=window.DeckAscii?.logo?.(look.scene)||'';look.inks.dark.forEach((_,i)=>{row.style.setProperty(`--pd-ink${i}`,look.inks.dark[i]);row.style.setProperty(`--pl-ink${i}`,look.inks.light[i]);});parts.push(row);}
+  if(!view.querySelector('.p-bar'))parts.push(el('i','p-bar'),el('i','p-line'),el('i','p-line short'),el('i','p-button'));view.prepend(...parts);return view;}
+function lookCard(look,{id,name,checked,pick,actions,remove,title,dot}){const made=choiceCard('theme-card',{id,checked,pick,label:name,actions,remove}),b=made.card||made,label=el('span','theme-name',name);
+  if(dot){const d=el('i','colour-dot');d.setAttribute('aria-hidden','true');d.style.setProperty('--dot',dot);label.prepend(d);}
+  b.append(preview(look),label);if(title)b.title=title;return made.item||b;}
+function fontCard(f){const made=choiceCard('font-card',{id:f.id,checked:f.id===font().id,pick:()=>{prefs.set('torque-font',f.id);applyLooks();},label:f.name,remove:f.custom?()=>removeFont(f):null}),b=made.card||made,sample=el('span','font-sample','Aa');
+  sample.setAttribute('aria-hidden','true');sample.style.setProperty('font-family',f.custom?`"${f.family}", system-ui, sans-serif`:f.family);b.append(sample,el('span','font-name',f.name));return made.item||b;}
 function renderThemes(){
-  const app=appTheme().id,station=prefs.get('torque-station-theme','same');
-  $('#themes-app').replaceChildren(...themeList('app').map(t=>themeCard(t,{checked:t.id===app,pick:()=>{prefs.set('torque-app-theme',t.id);applyLooks();}})),addCard('theme-card','Import a theme',()=>importTheme('app')));
-  $('#themes-station').replaceChildren(themeCard({...appTheme(),id:'same',for:undefined,author:''},{label:'Same as the app',checked:station==='same',pick:()=>{prefs.set('torque-station-theme','same');applyLooks();}}),...themeList('station').map(t=>themeCard(t,{checked:t.id===station,pick:()=>{prefs.set('torque-station-theme',t.id);applyLooks();}})),addCard('theme-card','Import a theme',()=>importTheme('station')));
-  // A saved FTC robot can keep a theme of its own on this computer.
-  const map=robotThemes(),robots=(state.robots||[]).filter(r=>r.kind==='ftc');
-  $('#robot-themes').replaceChildren(...(robots.length?[el('h3','','For one robot')]:[]),...robots.map(r=>{const row=el('label','robot-theme-row'),name=el('span'),pick=el('select');name.append(el('b','',r.name),el('small','',[hostOf(r.url),r.ssid?`on ${r.ssid}`:''].filter(Boolean).join(' · ')));
-    pick.append(new Option('The default above','default'),new Option('Same as the app','same'),...themeList('station').map(t=>new Option(t.name,t.id)));pick.value=map[r.id]||'default';
-    pick.onchange=()=>{const m=robotThemes();if(pick.value==='default')delete m[r.id];else m[r.id]=pick.value;prefs.set('torque-robot-themes',JSON.stringify(m));applyLooks();};row.append(name,pick);return row;}));
-  $('#fonts').replaceChildren(...fontList().map(fontCard),addCard('font-card','Add a font',()=>{$('#font-input').value='';$('#font-input').click();}));}
+  // The lists are drawn again whenever something changes: whatever in them had focus has it again afterwards.
+  const at=document.activeElement,grid=at?.closest?.('#settings-view :is(.theme-grid, .font-grid)'),keep=grid&&at.dataset.id?{grid:grid.id,id:at.dataset.id,action:at.dataset.action}:null;
+  for(const kind of KINDS){const station=kind==='station',own=ownOf(themeOf(kind)),plain=plainColour(kind),app=colourOf('app');
+    // Colours: Same as the app (Driver Station), an imported theme's own while it is on, the built-in ones, the user's own
+    // (Edit, Export, Remove), then + while the list has room.
+    const picked=pickOf(kind,'colour'),full=colourList(kind).length>=Themes.MAX_COLOURS;
+    $(`#colours-${kind}`).replaceChildren(...(station?[lookCard(app,{id:'same',name:'Same as the app',dot:primary(app),checked:picked==='same',pick:()=>choose(kind,'colour','same')})]:[]),
+      ...(own?[lookCard(own.theme,{id:'theme',name:own.name,dot:primary(own),checked:picked==='theme',pick:()=>choose(kind,'colour','theme')})]:[]),
+      ...colourList(kind).map(c=>lookCard(c,{id:c.id,name:c.name,dot:primary(c),checked:c.id===picked,pick:()=>choose(kind,'colour',c.id),
+        actions:c.custom?[{act:'edit',text:'Edit',run:()=>openEditor(kind,c)},{act:'export',text:'Export',run:()=>exportColour(c)}]:[],remove:c.custom?()=>removeColour(c):null})),
+      ...(full?[]:[addCard('theme-card','Add a colour',()=>openEditor(kind,null))]));
+    $(`#colours-${kind}-full`).textContent=full?`This list is full at ${Themes.MAX_COLOURS} colours. Remove one of yours to add another.`:'';
+    // Themes: the built-in ones in this list's colour, imported ones in their own, then + while the list has room.
+    const pickedTheme=pickOf(kind,'theme'),fullThemes=themeList(kind).length>=Themes.MAX_THEMES;
+    $(`#themes-${kind}`).replaceChildren(...(station?[lookCard(appLook(),{id:'same',name:'Same as the app',checked:pickedTheme==='same',pick:()=>choose(kind,'theme','same')})]:[]),
+      ...themeList(kind).map(t=>lookCard(Themes.compose(t,isImported(t)?null:plain),{id:t.id,name:t.name,checked:t.id===pickedTheme,pick:()=>choose(kind,'theme',t.id),title:t.author?`By ${t.author}`:'',remove:t.for?()=>removeTheme(t):null})),
+      ...(fullThemes?[]:[addCard('theme-card','Import a theme',()=>importTheme(kind))]));
+    $(`#themes-${kind}-full`).textContent=fullThemes?`This list is full at ${Themes.MAX_THEMES} themes. Remove one you imported to import another.`:'';}
+  $('#fonts').replaceChildren(...fontList().map(fontCard),addCard('font-card','Add a font',()=>{$('#font-input').value='';$('#font-input').click();}));
+  if(keep&&!document.contains(at))$(`#${keep.grid} [data-id="${CSS.escape(keep.id)}"]${keep.action?`[data-action="${keep.action}"]`:':not([data-action])'}`)?.focus({preventScroll:true});}
 async function loadThemes(){try{imported=(await api.themes('list')).filter(Themes.valid);}catch{imported=[];}
-  try{fonts=(await api.fonts('list')).map(f=>({...f,family:'torque-'+f.id,custom:true}));}catch{fonts=[];}applyLooks();}
-function removeTheme(t){void task(async()=>{await api.themes('remove',t.id);imported=imported.filter(x=>x.id!==t.id);if(prefs.get('torque-app-theme','')===t.id)prefs.set('torque-app-theme','torque');if(prefs.get('torque-station-theme','')===t.id)prefs.set('torque-station-theme','same');const m=robotThemes();for(const k of Object.keys(m))if(m[k]===t.id)delete m[k];prefs.set('torque-robot-themes',JSON.stringify(m));applyLooks();toast(`Removed ${t.name}.`);});}
-function removeFont(f){void task(async()=>{await api.fonts('remove',f.id);fonts=fonts.filter(x=>x.id!==f.id);if(prefs.get('torque-font','')===f.id)prefs.set('torque-font','inter');applyLooks();toast(`Removed ${f.name}.`);});}
-// Importing: the + at the end of a list picks a theme's folder; theme.json names its pictures, read from beside it.
+  try{fonts=(await api.fonts('list')).map(f=>({...f,family:'torque-'+f.id,custom:true}));}catch{fonts=[];}themesReady=true;applyLooks();}
+// Removing asks first, as deleting a route does: nothing a person made comes back once it is gone.
+function removeTheme(t){if(!confirm(`Remove ${t.name}? To use it again, import its folder again.`))return;void task(async()=>{await api.themes('remove',t.id);imported=imported.filter(x=>x.id!==t.id);
+  for(const kind of KINDS)if(prefs.get(`torque-${kind}-theme`,'')===t.id)prefs.set(`torque-${kind}-theme`,kind==='app'?'torque':'same');clearStatus(t.for);applyLooks();focusIn(`themes-${t.for}`);toast(`Removed ${t.name}.`);});}
+function removeColour(c){if(!confirm(`Remove ${c.name}? Torque keeps no copy of it. Use Export first if you want one.`))return;if(editing?.id===c.id)closeEditor(false,false);colours=colours.filter(x=>x.id!==c.id);saveColours();
+  if(prefs.get(`torque-${c.for}-colour`,'')===c.id)prefs.set(`torque-${c.for}-colour`,c.for==='app'?'torque':'same');clearStatus(c.for);applyLooks();focusIn(`colours-${c.for}`);toast(`Removed ${c.name}.`);}
+function exportColour(c){const status=$(`#colour-${c.for}-status`);status.textContent='';void task(async()=>{const where=await api.themes('export-colour',{name:c.name,text:Themes.colourText(c)});if(where)status.textContent=`Exported ${c.name} to ${where}.`;});}
+function removeFont(f){if(!confirm(`Remove ${f.name}? To use it again, add its file again.`))return;void task(async()=>{await api.fonts('remove',f.id);fonts=fonts.filter(x=>x.id!==f.id);if(prefs.get('torque-font','')===f.id)prefs.set('torque-font','inter');$('#font-status').textContent='';applyLooks();focusIn('fonts');toast(`Removed ${f.name}.`);});}
+// Making a colour: + (or Edit) opens the editor under that list. What it shows goes on that list's screens while it is open;
+// Save keeps it, Cancel puts back what was there. The colour wells hold what is shown; a hex code typed beside one goes
+// in once it is whole (#rrggbb), and a short one (#e91) or one without # is filled out on leaving the field or Enter.
+const HEX6=/^#[0-9a-f]{6}$/,long=h=>h.length===4?'#'+[...h.slice(1)].map(c=>c+c).join(''):h.toLowerCase();
+const tidyHex=v=>{let h=String(v).trim().toLowerCase();if(h&&!h.startsWith('#'))h='#'+h;if(/^#[0-9a-f]{3}$/.test(h))h=long(h);return HEX6.test(h)?h:null;};
+const scrollMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth';
+function editorSpec(){return {name:$('#colour-name').value.trim(),accent:$('#colour-accent').value,tint:$('#colour-tint-same').checked?null:$('#colour-tint').value,for:editing.kind};}
+function openEditor(kind,c){if(editing)closeEditor(false,false);editing={kind,id:c?.id||null};const editor=$('#colour-editor'),start=colourOf(kind);
+  $('#colour-editor-title').textContent=c?`Edit ${c.name}`:'New colour';$('#colour-import').hidden=!!c;
+  // A new colour starts from the one on, as it was picked.
+  $('#colour-name').value=c?.name||'';const accent=long(c?.accent||primary(start));$('#colour-accent').value=accent;$('#colour-accent-hex').value=accent;
+  $('#colour-tint-same').checked=!c?.tint;const tint=long(c?.tint||accent);$('#colour-tint').value=tint;$('#colour-tint-hex').value=tint;$('#colour-tint-field').hidden=!c?.tint;
+  $('#colour-editor-error').textContent='';$(`#colour-${kind}-status`).textContent='';$(`#colours-${kind}`).after(editor);editor.hidden=false;updateDraft();
+  $('#colour-name').focus({preventScroll:true});editor.scrollIntoView({block:'nearest',behavior:scrollMotion()});}
+// Closing it: focus goes back to where it was opened from (the colour's Edit, or +).
+function closeEditor(apply=true,focus=apply){const was=editing;$('#colour-editor').hidden=true;editing=null;draft=null;if(apply)applyLooks();
+  if(was&&focus)((was.id&&$(`#colours-${was.kind} [data-id="${CSS.escape(was.id)}"][data-action=edit]`))||$(`#colours-${was.kind} .add-card`))?.focus({preventScroll:true});}
+function updateDraft(){if(!editing)return;const s=editorSpec();try{draft={kind:editing.kind,colour:Themes.colour({...s,id:editing.id||'colour-new',name:s.name||'New colour'})};}catch{return;}preview(draft.colour,$('#colour-preview'));previewLooks();}
+for(const which of ['accent','tint']){const well=$(`#colour-${which}`),hex=$(`#colour-${which}-hex`);
+  const tidy=()=>{const h=tidyHex(hex.value);if(!h)return;hex.value=h;if(h!==well.value){well.value=h;updateDraft();}};
+  well.oninput=()=>{hex.value=well.value;updateDraft();};
+  hex.oninput=()=>{const v=hex.value.trim().toLowerCase();if(HEX6.test(v)&&v!==well.value){well.value=v;updateDraft();}};
+  // Enter in a hex field puts the code on (and keeps the editor open); Enter in the name saves.
+  hex.onchange=tidy;hex.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();tidy();}};}
+$('#colour-name').oninput=updateDraft;$('#colour-tint-same').onchange=()=>{$('#colour-tint-field').hidden=$('#colour-tint-same').checked;updateDraft();};
+$('#colour-cancel').onclick=()=>closeEditor();$('#colour-editor').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeEditor();}};
+$('#colour-editor').onsubmit=e=>{e.preventDefault();const {kind,id}=editing,error=$('#colour-editor-error'),same=$('#colour-tint-same').checked;
+  for(const which of ['accent','tint']){const hex=$(`#colour-${which}-hex`),h=tidyHex(hex.value);if(h){hex.value=h;$(`#colour-${which}`).value=h;}}
+  if(!$('#colour-name').value.trim()){error.textContent='Give the colour a name.';$('#colour-name').focus();return;}
+  if(!HEX6.test($('#colour-accent-hex').value)){error.textContent='Write the main colour as a hex code, like #3a7bd5.';$('#colour-accent-hex').focus();return;}
+  if(!same&&!HEX6.test($('#colour-tint-hex').value)){error.textContent='Write the background tint as a hex code, like #3a7bd5.';$('#colour-tint-hex').focus();return;}
+  if(!id&&colourList(kind).length>=Themes.MAX_COLOURS){error.textContent=`This list is full at ${Themes.MAX_COLOURS} colours. Remove one of yours to add another.`;return;}
+  const c=Themes.colour({...editorSpec(),id:id||undefined});colours=id?colours.map(x=>x.id===id?c:x):[...colours,c];saveColours();if(!id)setColour(kind,c.id);
+  // A new colour goes on; an edited one stays as it was, on or not.
+  closeEditor(true,false);$(`#colour-${kind}-status`).textContent=id?`Saved ${c.name}.`:`Saved ${c.name} and put it on.`;focusIn(`colours-${kind}`,c.id);};
+// A colour file someone exported: read, checked, added to the list the editor is under and put on. One already in the list
+// (the same name and colours) is not added twice.
+$('#colour-import').onclick=()=>{$('#colour-file-input').value='';$('#colour-file-input').click();};
+$('#colour-file-input').onchange=()=>void(async()=>{const file=$('#colour-file-input').files[0],kind=editing?.kind,error=$('#colour-editor-error');if(!file||!kind)return;error.textContent='';
+  try{if(file.size>4000)throw Error('A colour file is a few lines; this one is larger than 4 KB.');const c=Themes.colourFile(await file.text(),kind);
+    const have=colours.find(x=>x.for===kind&&x.name===c.name&&x.accent===c.accent&&(x.tint||null)===(c.tint||null));if(have){error.textContent=`${have.name} is already in this list.`;return;}
+    if(colourList(kind).length>=Themes.MAX_COLOURS)throw Error(`This list is full at ${Themes.MAX_COLOURS} colours. Remove one of yours to add another.`);
+    colours=[...colours,c];saveColours();setColour(kind,c.id);closeEditor(true,false);$(`#colour-${kind}-status`).textContent=`Imported ${c.name} and put it on.`;focusIn(`colours-${kind}`,c.id);}
+  catch(e){error.textContent=`Couldn’t import it. ${e.message}`;}})();
+// Importing: the + at the end of a list picks a theme's folder; theme.json names its pictures, read from beside it. The list's
+// room is checked again before it is kept, as another import may have filled it meanwhile.
 let importKind='app';
 function importTheme(kind){importKind=kind;$(`#theme-${kind}-status`).textContent='';$('#theme-import-input').value='';$('#theme-import-input').click();}
 $('#theme-import-input').onchange=()=>void(async()=>{const kind=importKind,files=[...$('#theme-import-input').files],status=$(`#theme-${kind}-status`);if(!files.length)return;
+  const full=()=>themeList(kind).length+importing[kind]>=Themes.MAX_THEMES,FULL=`This list is full at ${Themes.MAX_THEMES} themes. Remove one you imported to import another.`;
   const json=files.filter(f=>f.name==='theme.json').sort((a,b)=>a.webkitRelativePath.split('/').length-b.webkitRelativePath.split('/').length)[0];
   if(!json){status.textContent='That folder has no theme.json in it. Pick the folder the theme came in.';return;}
   const base=json.webkitRelativePath.slice(0,-'theme.json'.length),read=name=>{const f=files.find(x=>x.webkitRelativePath===base+name);return f?new Promise((ok,fail)=>{const r=new FileReader();r.onload=()=>ok(String(r.result));r.onerror=()=>fail(Error(`${name} could not be read.`));r.readAsDataURL(f);}):Promise.resolve(null);};
   status.textContent='Reading the theme…';
-  try{const theme=await Themes.fromPackage(await json.text(),read,kind);await api.themes('save',theme);imported=[...imported,theme];
-    prefs.set(kind==='app'?'torque-app-theme':'torque-station-theme',theme.id);applyLooks();status.textContent=`Imported ${theme.name} and put it on.`;}
+  try{if(full())throw Error(FULL);const theme=await Themes.fromPackage(await json.text(),read,kind);if(full())throw Error(FULL);
+    importing[kind]++;try{await api.themes('save',theme);}finally{importing[kind]--;}imported=[...imported,theme];
+    putOn(kind,'theme',theme.id);applyLooks();status.textContent=`Imported ${theme.name} and put it on.`;focusIn(`themes-${kind}`,theme.id);}
   catch(e){status.textContent=`Couldn’t import it. ${e.message}`;}})();
 // A font file: checked by loading it here first, then kept in the app's data folder.
 const fontName=file=>file.replace(/\.(ttf|otf|woff2?)$/i,'').replace(/[-_ ]*(\[[^\]]*\]|VariableFont.*|Variable|Regular|Book|Roman|Normal)$/i,'').replace(/[-_]+/g,' ').trim().slice(0,40)||'My font';
@@ -199,13 +343,16 @@ $('#font-input').onchange=()=>void(async()=>{const file=$('#font-input').files[0
   try{if(file.size>10e6)throw Error('A font file can be up to 10 MB.');const bytes=new Uint8Array(await file.arrayBuffer());
     try{await new FontFace('torque-font-check',bytes).load();}catch{throw Error('That file isn’t a font Torque can read. Use a TTF, OTF, WOFF or WOFF2 file.');}
     const entry=await api.fonts('save',{name:fontName(file.name),data:bytes,variable:variableFont(bytes)});fonts=[...fonts,{...entry,data:bytes,family:'torque-'+entry.id,custom:true}];
-    prefs.set('torque-font',entry.id);applyLooks();status.textContent=`Added ${entry.name} and switched to it.`;}
+    prefs.set('torque-font',entry.id);applyLooks();status.textContent=`Added ${entry.name} and switched to it.`;focusIn('fonts',entry.id);}
   catch(e){status.textContent=`Couldn’t add it. ${e.message}`;}})();
 $('#theme-make-app').onclick=()=>void task(()=>api.themeGuide('app'));$('#theme-make-station').onclick=()=>void task(()=>api.themeGuide('station'));
 $('#about-updates').onclick=()=>void task(showUpdates);$('#about-shortcuts').onclick=()=>openInfo('#shortcuts-dialog');$('#about-credits').onclick=()=>openInfo('#credits-dialog');
-// The Driver Station's own Settings can pick a theme for the robot it is on.
-api.onStationTheme?.(({robot,id})=>{if(robot){const m=robotThemes();if(id==='default')delete m[robot];else m[robot]=id;prefs.set('torque-robot-themes',JSON.stringify(m));}else prefs.set('torque-station-theme',id);applyLooks();});
-Themes.apply(document,appTheme(),{font:FONTS.find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0]});
+// The Theme and colour menu in the Driver Station's bar picks its theme or colour: the same setting, and the same pick, as in Settings.
+api.onStationTheme?.(({kind,id}={})=>{if(kind!=='theme'&&kind!=='colour')return;
+  const known=id==='same'||(kind==='colour'&&id==='theme'?!!ownOf(stationTheme()):!!Themes.find(kind==='theme'?themeList('station'):colourList('station'),id));if(known)choose('station',kind,id);});
+// DEV's ground stops drawing while nobody can see this window: minimised, hidden, or covered by the Driver Station or a robot's page.
+api.onWindowState?.(s=>window.DeckAscii?.pause?.(document,!!s?.hidden));
+Themes.apply(document,appLook(),{font:FONTS.find(f=>f.id===prefs.get('torque-font','inter'))||FONTS[0]});
 
 // Session clock and zoom badge follow the robot state; reloads keep the clock running.
 let sessionStart=0,sessionUrl='',lastPage='';

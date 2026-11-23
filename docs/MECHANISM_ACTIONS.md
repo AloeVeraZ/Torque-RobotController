@@ -246,7 +246,7 @@ send** (or **Upload and build**) then does steps 5 to 7.
 | Piece | Where |
 | --- | --- |
 | Hardware settings for every part, stored only when they differ from the plain setup, so older saves load unchanged | `ui/sim-mechanisms.js`, Setup → Mechanisms → Robot hardware, `deck-sim mech` flags |
-| Device names and directions for the drive motors and sensors | `ui/sim-config.js`, Setup → Mechanisms → Control Hub → Ports → Device names and motor directions, `deck-sim robot --names --reversed` |
+| Device names and directions for the drive motors and sensors | `ui/sim-config.js`, Setup → Mechanisms → Chassis (motor names), `deck-sim robot --names --reversed` |
 | `Mechanisms.java` written device by device, with every direction set in `init`, PIDF when set, power control without an encoder, pushers that push once per feed cycle, gates, and servo turrets tracked to 2° | `ui/sim-ftc.js` (`mechanismDevices`, `mechanismsSource`) |
 | The check TeleOp for TeamCode, OnBot Java and Pedro (made a guided check in phase 2) | `ui/sim-ftc.js` (`checkOpMode`) |
 | `RobotActions` shows how to replace a built-in action | `ui/sim-ftc.js` (`robotActions`) |

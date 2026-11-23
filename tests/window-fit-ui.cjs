@@ -2,16 +2,31 @@
 // Every screen a student uses fits the window, in the real app: at a laptop's maximized 1280 × 718, the Steam Deck's
 // 1280 × 800 and a small 1024 × 600, the page itself never scrolls (what is long scrolls in its own list, pane or column),
 // and no button, field or tab is cut off where no scrolling reaches it. Drive is not checked here.
+// Every other shape a window takes, from the smallest Torque allows (360 × 480) to 4K, ultrawide, portrait and very
+// short, and the sizes Ctrl + / − and a display's scaling hand the page (1280 × 800 at 150% and 200%, 1920 × 1080 at
+// 125%): no control is cut off, nothing scrolls sideways and no picture is stretched, Drive included. At every size the
+// bar's four places are all in view, a finger's size, and never scroll sideways (a narrow window gives them a row). Below the sizes
+// above a page may scroll down, as its columns stack. They come in an order that grows, shrinks and grows the window.
+// At every size nothing inside a page scrolls sideways either: a row of steps, tabs or parts that does not fit takes
+// another row, so every place in it is in view. Only what is meant to scroll along may (ALONG).
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/window-fit-ui.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/window-fit');fs.mkdirSync(out,{recursive:true});
 const SIZES=[[1280,718],[1280,800],[1024,600]];
+const MORE=[[360,480],[1920,1080],[640,400],[640,480],[3840,2160],[480,640],[1157,733],[853,533],[900,1400],[1920,600],[1536,864],[3440,1440],[800,600],[1366,768]];
+// What may scroll sideways inside a page, and why: each is longer than any window by its nature, not a row that should wrap.
+const ALONG={
+  '.studio-scroll':"the Video editor's timeline is as long as the run it films, so it scrolls along time",
+  'table.cal-elec-slots':"a table of a hub's ports keeps its columns readable and scrolls inside itself in a phone-narrow window",
+  '.pin-view':'the pinout drawing zooms in, so it scrolls both ways',
+  'pre, .cal-java, .cal-cam-code':'program text keeps its lines as they are written',
+};
 
-// In the page: how far the page scrolls, and each control cut off where no scrolling reaches it.
-function check(){
+// In the page: how far the page scrolls, each control cut off where no scrolling reaches it, and what scrolls sideways.
+function check(along){
   const scrolls=v=>v==='auto'||v==='scroll',name=e=>`${e.tagName.toLowerCase()}${e.id?'#'+e.id:''}${e.classList.length?'.'+[...e.classList].slice(0,2).join('.'):''} "${(e.getAttribute('aria-label')||e.textContent||e.value||'').replace(/\s+/g,' ').trim().slice(0,40)}"`;
-  const shown=e=>{if(!e.getClientRects().length||e instanceof SVGElement)return false;const cs=getComputedStyle(e);if(cs.visibility==='hidden'||+cs.opacity===0)return false;if(e.closest('[hidden],[inert],#drive-view,details:not([open])>:not(summary),.sr-only,[aria-hidden=true]'))return false;const r=e.getBoundingClientRect();return r.width>=3&&r.height>=3;};
+  const shown=(e,drive)=>{if(!e.getClientRects().length||e instanceof SVGElement)return false;const cs=getComputedStyle(e);if(cs.visibility==='hidden'||+cs.opacity===0)return false;if(e.closest('[hidden],[inert],details:not([open])>:not(summary),.sr-only,[aria-hidden=true]'+(drive?'':',#drive-view')))return false;const r=e.getBoundingClientRect();return r.width>=3&&r.height>=3;};
   const cut=[],pageScrolls=document.scrollingElement.scrollHeight>innerHeight+1;
   for(const e of document.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary,[role=tab]')){if(!shown(e))continue;
     const r=e.getBoundingClientRect();let x0=r.left,y0=r.top,x1=r.right,y1=r.bottom,by=null;
@@ -22,7 +37,18 @@ function check(){
     if(by==='scrolls')continue;if(!by&&!pageScrolls&&(y1>innerHeight+1||x1>innerWidth+1))by=document.documentElement;if(!by)continue;
     const seen=Math.max(0,Math.min(x1,innerWidth)-Math.max(x0,0))*Math.max(0,Math.min(y1,innerHeight)-Math.max(y0,0))/(r.width*r.height);
     if(seen<.9)cut.push(`${name(e)} ${Math.round(seen*100)}% seen, cut by ${by===document.documentElement?'the window':name(by)}`);}
-  return {down:Math.round(document.scrollingElement.scrollHeight-innerHeight),across:Math.round(document.scrollingElement.scrollWidth-innerWidth),cut};}
+  // A canvas drawn at another shape than its box is stretched. The simulated camera is a 640 × 480 camera's picture, shown as
+  // big as there is room for, as a real one's is.
+  const stretched=[];for(const c of document.querySelectorAll('canvas:not([data-cam-canvas])')){if(!shown(c))continue;const r=c.getBoundingClientRect();if(r.width<20||r.height<20||!c.width||!c.height)continue;if(Math.abs(c.width/c.height/(r.width/r.height)-1)>.03)stretched.push(`${name(c)} drawn ${c.width}×${c.height} in a ${Math.round(r.width)}×${Math.round(r.height)} box`);}
+  // The bar's four places never scroll sideways: each is in the window whole, a finger's size, and on top where it is.
+  const bar=[],nav=document.querySelector('header nav');if(nav.scrollWidth>nav.clientWidth+1)bar.push(`the bar's places scroll sideways (${nav.scrollWidth} in ${nav.clientWidth})`);
+  for(const t of nav.querySelectorAll('.tab')){const r=t.getBoundingClientRect(),label=t.textContent.trim();
+    if(r.left<-.5||r.right>innerWidth+.5||r.top<-.5||r.bottom>innerHeight+.5)bar.push(`${label} is not all in the window`);
+    if(r.width<43.5||r.height<43.5)bar.push(`${label} is ${Math.round(r.width)}×${Math.round(r.height)}, under a finger's 44`);
+    const at=document.elementFromPoint(Math.min(innerWidth-1,Math.max(0,r.left+r.width/2)),Math.min(innerHeight-1,Math.max(0,r.top+r.height/2)));if(!at||!t.contains(at))bar.push(`${label} is covered at its middle`);}
+  // Nothing in the page scrolls sideways, Drive included, but what ALONG lists.
+  const sideways=[...document.querySelectorAll('body *')].filter(e=>scrolls(getComputedStyle(e).overflowX)&&e.scrollWidth>e.clientWidth+1&&!e.matches(along)&&shown(e,true)).map(e=>`${name(e)} scrolls sideways (${e.scrollWidth}px in ${e.clientWidth}px)`);
+  return {stretched,bar,sideways,down:Math.round(document.scrollingElement.scrollHeight-innerHeight),across:Math.round(document.scrollingElement.scrollWidth-innerWidth),cut};}
 
 (async()=>{
   const data=fs.mkdtempSync(path.join(os.tmpdir(),'deck-window-fit-')),env={...process.env,DECK_HEADLESS:'1',DECK_CONTROLLER_TEST:'1',DECK_DATA_DIR:data,ADB:process.platform==='win32'?path.join(process.env.SystemRoot||'C:\\Windows','System32','where.exe'):'/bin/false'};delete env.ELECTRON_RUN_AS_NODE;
@@ -52,13 +78,18 @@ function check(){
       ['Simulate → Video editor',async()=>{await page.waitForFunction(()=>document.querySelector('#sim-tab-video')?.dataset.state==='done',null,{timeout:120000}).catch(()=>{});await simTab('video');await page.waitForTimeout(400);if(await page.locator('#sim-video-run[open]').count())await page.click('#sim-video-run button[value=no]');}],
       ['Settings',()=>go('settings')],
     ];
-    const problems=[];
+    const problems=[],along=Object.keys(ALONG).join(',');
     for(const [W,H] of SIZES){await page.setViewportSize({width:W,height:H});
-      for(const [label,open] of screens){await open();await page.waitForTimeout(700);const r=await page.evaluate(check);
+      for(const [label,open] of screens){await open();await page.waitForTimeout(700);const r=await page.evaluate(check,along);
         if(r.down>2)problems.push(`${W}×${H} ${label}: the page scrolls ${r.down}px`);if(r.across>2)problems.push(`${W}×${H} ${label}: the page scrolls ${r.across}px sideways`);
-        for(const c of r.cut)problems.push(`${W}×${H} ${label}: ${c}`);
+        for(const c of [...r.cut,...r.bar,...r.sideways])problems.push(`${W}×${H} ${label}: ${c}`);
         if(W===1280&&H===718)await page.screenshot({path:path.join(out,`${label.replace(/[^a-z]+/gi,'-').toLowerCase()}.png`)});}}
     assert.deepEqual(problems,[],'every screen fits the window');
+    screens.push(['Drive',()=>go('drive')]);
+    for(const [W,H] of MORE){await page.setViewportSize({width:W,height:H});
+      for(const [label,open] of screens){await open();await page.waitForTimeout(500);const r=await page.evaluate(check,along);
+        if(r.across>2)problems.push(`${W}×${H} ${label}: the page scrolls ${r.across}px sideways`);for(const c of [...r.cut,...r.bar,...r.sideways])problems.push(`${W}×${H} ${label}: ${c}`);for(const c of r.stretched)problems.push(`${W}×${H} ${label}: ${c}`);}}
+    assert.deepEqual(problems,[],'every screen works at every window size');
     // Drive at a laptop's size: Open robot shows without scrolling anything.
     await page.setViewportSize({width:1280,height:718});await go('drive');await page.evaluate(()=>scrollTo(0,0));const open=await page.locator('#open-robot').boundingBox();assert.ok(open&&open.y>=0&&open.y+open.height<=718,'Open robot is in view');
     // Calibrate keeps the robot bar and its steps where they are while a list scrolls.

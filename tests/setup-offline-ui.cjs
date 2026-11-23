@@ -4,7 +4,8 @@
 //     each wheel and the Pinpoint, with + Add to Chassis; motors, encoders and the Pinpoint are all on to start with.
 //  B. Setup has no "Simulated robot" banner (Calibrate keeps it).
 //  C. Right-click the odometry tile → Delete odometry takes it off; Ctrl+Z (⌘Z) puts it back and Ctrl+Shift+Z takes it off again.
-//  D. + Add to Chassis → Odometry & IMU → two odometry pods works with no Control Hub.
+//  D. A new hitbox size leaves the kit's Pinpoint pods where its CAD has them; Reset puts typed ones back there.
+//  E. + Add to Chassis → Odometry & IMU → two odometry pods works with no Control Hub.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/setup-offline-ui.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
@@ -45,7 +46,21 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/setup-o
     await page.waitForSelector('[data-garage="chassis:pinpoint"]');
     await page.keyboard.press(`${mod}+Shift+z`);await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization==='encoders');
     await page.keyboard.press(`${mod}+z`);await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization==='fused');
-    // D. Two odometry pods, offline.
+    // D. A new hitbox size changes the hitbox only: the kit's Pinpoint pods keep the offsets its CAD has them at, offsets the
+    //    team typed stay as typed, and Reset puts them back where the kit has them at any size.
+    {const kit=await page.evaluate(()=>window.DeckMechanisms.PRESETS.startermecanum.robot.odometry.pinpoint),want=[kit.xOffset,kit.yOffset];
+      const pods=async()=>{const o=(await project()).robot.odometry.pinpoint;return [o.xOffset,o.yOffset];};
+      const width=async w=>{await page.click('#sim-setup-step-robot');await page.fill('#sim-width',String(w));await page.press('#sim-width','Tab');await page.waitForFunction(w=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.width===w,w);};
+      assert.deepEqual(await pods(),want,'the demo starts with the kit’s pods');
+      for(const w of [24,12]){await width(w);assert.deepEqual(await pods(),want,`at ${w} in wide the pods stay where the kit has them`);}
+      const pod='#mech-drive-ports [data-pinpoint-pos="xOffset"]';
+      await page.click('#sim-setup-step-mechanisms');await page.click('[data-garage="chassis:pinpoint"]');await page.waitForSelector(pod);
+      await page.fill(pod,'-5');await page.press(pod,'Tab');await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry.pinpoint.xOffset===-5);
+      await width(20);assert.deepEqual(await pods(),[-5,kit.yOffset],'a typed pod stays as typed when the size changes');
+      await page.click('#sim-setup-step-mechanisms');await page.click('[data-garage="chassis:pinpoint"]');await page.click('#mech-drive-ports [data-sense-reset="pods"]');
+      await page.waitForFunction(x=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot.odometry.pinpoint.xOffset===x,kit.xOffset);
+      assert.deepEqual(await pods(),want,'Reset puts them back where the kit has them, at 20 in wide');}
+    // E. Two odometry pods, offline.
     await page.click('[data-garage-add="chassis"]');await page.click('[data-add-kind="odometry"]');await page.click('#mech-add-chassis [data-sensor-card="odometry"]');
     await page.waitForFunction(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).sensors.localization==='odometry');await page.click('#mech-add-chassis [data-dialog-done]');
     await page.waitForSelector('[data-garage^="chassis:pod"]');await page.screenshot({path:path.join(out,'two-pods.png')});

@@ -115,9 +115,12 @@ them.
 
 ### Narrow windows
 
-- A rail longer than its window scrolls sideways and keeps the place you are at in
-  view (`railFit` in `ui/simulation.js`). Calibrate's nine places fit from 1024 px;
-  under about 960 px the last one used to be cut off.
+- Nothing scrolls sideways. A row of steps or tabs longer than its window wraps onto a
+  second row, every step at least 44 px; a list of parts that sits beside the page on a
+  wide window becomes a wrapping grid on a narrow one. Under 640 px the bar takes two
+  rows, its tabs on the second. The only rows that scroll along are the Video editor's
+  timeline, a hub's table of ports, the pinout drawing and program text
+  (`tests/window-fit-ui.cjs` lists them and checks every other row).
 - Two faults that were already there under 900 px are fixed: Simulate's robot and
   route pickers took a 320 px height in the side panel and pushed the run report
   out of sight, and a long pick-list made Calibrate → Electronics scroll sideways
@@ -144,7 +147,7 @@ Looking at the rebuilt app, the user found it right but dull: little colour, not
 it. Three changes answer that without giving up the rules above.
 
 - **One accent, from the theme.** The main action on each screen, the mark under the page you are on, what is picked,
-  ticked boxes, sliders and focus rings take the theme's accent (Torque's is green, #31d78c dark and #037f4e light). Other
+  ticked boxes, sliders and focus rings take the colour's accent, set in Settings → App colour (Torque's is green, #31d78c dark and #037f4e light). Other
   colour is still the robot's state and the alliances. Rule 1 in `ui/tokens.css` says so.
 - **Motion that explains** (rule 5), from what [NN/g](https://www.nngroup.com/articles/animation-duration/), Fluent and
   Emil Kowalski's animation standards agree on: a press gives under the finger (scale .97, 100 ms); a menu, list or popover

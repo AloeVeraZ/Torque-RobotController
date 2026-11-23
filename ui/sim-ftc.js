@@ -38,9 +38,11 @@
     // Every export reads heading through the SDK's IMU interface, which a navX2-Micro does not have.
     const SP=globalThis.DeckSensorPlace||require('./sim-sensor-place.js'),place=SP.of(robot,C);if(SP.KINDS[place.imu.kind].sdkImu===false)throw Error('Torque’s exports read heading through the FTC SDK’s IMU, and the SDK reads a navX2-Micro as a gyroscope, not an IMU. Pick the Control Hub’s IMU in Setup → Mechanisms → Chassis.');
     const imuPlace={kind:place.imu.kind,said:`${SP.KINDS[place.imu.kind].short}: ${SP.words(place.imu)}${place.imu.placed?`, ${SP.where(place.imu)} of the robot’s centre`:''}`};
+    // The Pinpoint as it is mounted. xForward and yLeft only say where a pod is drawn: setOffsets has no place for them.
+    const {xForward,yLeft,...pin}=odo.pinpoint;
     return {localization,imu:sw?.imu?.name||named('imu','imu'),imuPlace,imuScale:odo.imu.scale*(odo.imu.reversed?-1:1),hub:{logo:mount.hubLogo.toUpperCase(),usb:mount.hubUsb.toUpperCase()},...(sw?.imu?.mount?.code?{imuMount:sw.imu.mount}:{}),drive:{kind:sw?'swerve':tank?'tank':'mecanum',...(sw?{steered}:{}),ticksPerInch:robot.driveTicksPerIn>0?robot.driveTicksPerIn:ticksPerRev(rpm)/inches,ticksPerRev:ticksPerRev(rpm),halfLength:robot.length/2,halfWidth:robot.width/2,motors},
       pods:(PODS[localization]||[]).map(p=>{const m=odo.pods[p.name];return {...p,key:p.name,x:m.x,y:m.y,name:named(p.name,p.name),ticksPerInch:POD_TICKS_PER_INCH/(m.scale||1),...(m.reversed?{reversed:true}:{})};}),
-      ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...odo.pinpoint,ticksPerMm:C.POD_TYPES[odo.pinpoint.pods].ticksPerMm}}:{}),
+      ...(localization==='fused'?{pinpoint:named('pinpoint','pinpoint'),pinpointMount:{...pin,ticksPerMm:C.POD_TYPES[pin.pods].ticksPerMm}}:{}),
       // A Pinpoint alone (no pods): it gives the heading; the drive encoders, or time, give the distance.
       ...(robot.pinpointImu===true&&!sw&&['encoders','gyro'].includes(localization)?{pinpoint:named('pinpoint','pinpoint'),pinpointImu:true}:{}),...(localization==='optical'?{otos:named('otos','sensor_otos'),otosMount:odo.otos}:{})};
   }
@@ -737,14 +739,14 @@ ${list.map(a=>`
         if(x.device==='servo')out.push({...base,role:i.kind,field:`${i.kind}${tag}`,constant:`${i.kind.toUpperCase()}_${no}_X${e+1}`,name:x.name,device:'servo',down:i.downPos,up:i.upPos,label:`Intake ${no} ${i.kind} servo ${n}`,setting});
         else out.push({...base,role:'roller',field:`intake${tag}`,constant:`INTAKE_${no}_X${e+1}`,name:x.name,device:x.device,reversed:!!x.reversed,power:i.power,label:`Intake ${no} roller ${word} ${n}`,setting});});
     });
-    m.shooters.forEach((s,k)=>{const no=k+1,base={part:'shooter',index:k};
-      out.push({...base,role:'flywheel',field:`flywheel${no}`,constant:`FLYWHEEL_${no}`,name:s.motor,device:'motor',reversed:!!s.reversed,label:`Shooter ${no} flywheel`,setting:{list:'shooters',index:k,field:'motor'}});
-      if(s.motor2)out.push({...base,role:'flywheel',field:`flywheel${no}b`,constant:`FLYWHEEL_${no}B`,name:s.motor2,device:'motor',reversed:!!s.reversed2,label:`Shooter ${no} second flywheel motor`,setting:{list:'shooters',index:k,field:'motor2'}});
+    m.shooters.forEach((s,k)=>{const no=k+1,base={part:'shooter',index:k},fly=Mech.shoots(s);
+      if(fly)out.push({...base,role:'flywheel',field:`flywheel${no}`,constant:`FLYWHEEL_${no}`,name:s.motor,device:'motor',reversed:!!s.reversed,label:`Shooter ${no} flywheel`,setting:{list:'shooters',index:k,field:'motor'}});
+      if(fly&&s.motor2)out.push({...base,role:'flywheel',field:`flywheel${no}b`,constant:`FLYWHEEL_${no}B`,name:s.motor2,device:'motor',reversed:!!s.reversed2,label:`Shooter ${no} second flywheel motor`,setting:{list:'shooters',index:k,field:'motor2'}});
       const kind=s.indexerKind;
-      out.push({...base,role:'feeder',field:`feeder${no}`,constant:`FEEDER_${no}`,name:s.indexer,device:kind==='motor'||kind==='crservo'?kind:'servo',feeder:kind,reversed:!!s.indexerReversed,feed:s.feedPos,rest:s.restPos,label:`Shooter ${no} feeder`,setting:{list:'shooters',index:k,field:'indexer'}});
+      if(Mech.feeds(s))out.push({...base,role:'feeder',field:`feeder${no}`,constant:`FEEDER_${no}`,name:s.indexer,device:kind==='motor'||kind==='crservo'?kind:'servo',feeder:kind,reversed:!!s.indexerReversed,feed:s.feedPos,rest:s.restPos,label:`Shooter ${no} feeder`,setting:{list:'shooters',index:k,field:'indexer'}});
       if(s.type==='turret'&&!s.sharesTurret)out.push({...base,role:'turret',field:`turret${no}`,constant:`TURRET_${no}`,name:s.turretMotor,device:m.turret.kind==='servo'||m.turret.kind==='crservo'?m.turret.kind:'motor',reversed:!!s.turretReversed,offset:Mech.mountOffset(s.mount,robot),label:`Shooter ${no} turret`,setting:{list:'shooters',index:k,field:'turretMotor'}});
       if(s.type==='turret'&&!s.sharesTurret&&s.turretMotor2)out.push({...base,role:'turret2',field:`turret${no}b`,constant:`TURRET_${no}B`,name:s.turretMotor2,device:m.turret.kind==='servo'||m.turret.kind==='crservo'?m.turret.kind:'motor',reversed:!!s.turretReversed,label:`Shooter ${no} turret, second ${m.turret.kind==='motor'?'motor':'servo'}`,setting:{list:'shooters',index:k,field:'turretMotor2'}});
-      if(s.hood)out.push({...base,role:'hood',field:`hood${no}`,constant:`HOOD_${no}`,name:s.hood,device:'servo',...hoodPositions(m,k,robot,kin),label:`Shooter ${no} hood`,setting:{list:'shooters',index:k,field:'hood'}});
+      if(fly&&s.hood)out.push({...base,role:'hood',field:`hood${no}`,constant:`HOOD_${no}`,name:s.hood,device:'servo',...hoodPositions(m,k,robot,kin),label:`Shooter ${no} hood`,setting:{list:'shooters',index:k,field:'hood'}});
     });
     return out;
   }
@@ -762,7 +764,7 @@ ${list.map(a=>`
     for(const role of ['kicker','ramp']){const list=d.filter(x=>x.role===role);if(list.length)out[role+'s']=list.map(x=>({name:x.name,down:x.down,up:x.up}));}
     if(m.shooters.length)out.shooters=m.shooters.map((s,k)=>{const mine=d.filter(x=>x.part==='shooter'&&x.index===k),f=mine.find(x=>x.role==='feeder'),t=mine.find(x=>x.role==='turret'),hd=mine.find(x=>x.role==='hood');
       return {...(hd?{hood:{name:hd.name}}:{}),flywheels:mine.filter(x=>x.role==='flywheel').map(x=>({name:x.name,mount:mount(x)})),ticksPerSecond:m.shooter.rpm*m.shooter.ticksPerRev/60,
-        indexer:{name:f.name,kind:f.feeder,mount:mount(f),...(Mech.servoFeeder(f.feeder)?{feed:f.feed,rest:f.rest}:{})},
+        ...(f?{indexer:{name:f.name,kind:f.feeder,mount:mount(f),...(Mech.servoFeeder(f.feeder)?{feed:f.feed,rest:f.rest}:{})}}:{}),
         ...(t?{turret:t.device==='servo'?{name:t.name,kind:'servo',center:m.turret.servoCenter,degrees:m.turret.servoDegrees,mount:mount(t)}:{name:t.name,kind:'motor',ticksPerDegree:m.turret.ticksPerDegree,mount:mount(t)}}:{})};});
     return out;
   }
@@ -971,7 +973,7 @@ ${stops.filter(Boolean).join('\n')}
       return ` *  - Intake ${k+1} (${i.sides.join(' + ')} ${Mech.INTAKES[i.kind].toLowerCase()}): ${mine.map(x=>x.role==='roller'?`${x.device==='crservo'?'continuous servo':'motor'} ${q(x.name)}${turns(x)}`:`${x.role} servo ${q(x.name)}`).join(', ')}.`;};
     const shooterText=(s,k)=>{const mine=d.filter(x=>x.part==='shooter'&&x.index===k),f=mine.find(x=>x.role==='feeder'),t=mine.find(x=>x.role==='turret'),fw=mine.filter(x=>x.role==='flywheel');
       const kind=s.sharesTurret?`on shooter 1's turret`:s.type==='turret'?`turret at the ${where(s.mount)}`:`fixed at the ${where(s.mount)}, firing toward the ${s.facing}`;
-      return ` *  - Shooter ${k+1} (${Mech.PIECES[s.pieces].toLowerCase()}): ${kind}; flywheel motor${fw.length>1?'s':''} ${fw.map(x=>q(x.name)+turns(x)).join(' and ')}, feeder ${FEEDERS[f.feeder]} ${q(f.name)}${Mech.servoFeeder(f.feeder)?'':turns(f)}${t?`, turret ${t.device==='crservo'?'continuous servo':t.device} ${q(t.name)}${turns(t)}`:''}.`;};
+      return ` *  - Shooter ${k+1} (${Mech.PIECES[s.pieces].toLowerCase()}): ${kind}${fw.length?`; flywheel motor${fw.length>1?'s':''} ${fw.map(x=>q(x.name)+turns(x)).join(' and ')}`:'; no flywheel'}${f?`, feeder ${FEEDERS[f.feeder]} ${q(f.name)}${Mech.servoFeeder(f.feeder)?'':turns(f)}`:fw.length?', no feeder (the intake pushes pieces in)':''}${t?`, turret ${t.device==='crservo'?'continuous servo':t.device} ${q(t.name)}${turns(t)}`:''}.`;};
     // Constants, one block per part, then the shared timing.
     const C=[];
     m.intakes.forEach((i,k)=>{const mine=d.filter(x=>x.part==='intake'&&x.index===k);C.push(`    // ---- Intake ${k+1}: ${i.sides.join(' + ')} ${Mech.INTAKES[i.kind].toLowerCase()}.`);
@@ -983,9 +985,9 @@ ${stops.filter(Boolean).join('\n')}
     for(const {x,s,down,up} of sensed)C.push(`    /** ${comment(s.name)} tells where intake ${x.index+1}'s ramp is: volts where the CAD has it, volts per degree, and the ramp's angle down and up. */`,`    public static final String ${x.constant}_SENSOR = ${javaString(s.name)};`,`    public static final double ${x.constant}_ZERO_VOLTS = ${n(s.zeroVolts)}, ${x.constant}_VOLTS_PER_DEGREE = ${s.voltsPerUnit.toPrecision(6)}, ${x.constant}_DOWN_DEGREES = ${n(down)}, ${x.constant}_UP_DEGREES = ${n(up)};`);
     if(sensed.length)C.push('    /** A part with a sensor is there within SWING_TOLERANCE_DEGREES; one that never gets there carries on SENSOR_TIMEOUT_SECONDS after its time. */','    public static final double SWING_TOLERANCE_DEGREES = 3.0, SENSOR_TIMEOUT_SECONDS = 0.5;','');
     m.shooters.forEach((s,k)=>{const mine=d.filter(x=>x.part==='shooter'&&x.index===k);C.push(`    // ---- Shooter ${k+1}: ${Mech.PIECES[s.pieces].toLowerCase()}.`);
-      const fw=mine.filter(x=>x.role==='flywheel');C.push(`    /** Flywheel motor${fw.length>1?'s (both spin the flywheel; set each one\'s direction so they push the same way)':''}. */`,`    public static final String ${fw.map(x=>`${x.constant} = ${javaString(x.name)}`).join(', ')};`,`    public static final boolean ${fw.map(x=>`${x.constant}_REVERSED = ${x.reversed}`).join(', ')};`);
+      const fw=mine.filter(x=>x.role==='flywheel');if(fw.length)C.push(`    /** Flywheel motor${fw.length>1?'s (both spin the flywheel; set each one\'s direction so they push the same way)':''}. */`,`    public static final String ${fw.map(x=>`${x.constant} = ${javaString(x.name)}`).join(', ')};`,`    public static final boolean ${fw.map(x=>`${x.constant}_REVERSED = ${x.reversed}`).join(', ')};`);
       const f=mine.find(x=>x.role==='feeder');
-      if(Mech.servoFeeder(f.feeder))C.push(`    /** Feeder: a ${FEEDERS[f.feeder]}. ${f.feeder==='pusher'?'FEED pushes a piece into the flywheel; REST lets the next one drop in.':'FEED is open (pieces pass); REST is closed.'} */`,`    public static final String ${f.constant} = ${javaString(f.name)};`,`    public static final double ${f.constant}_FEED = ${n(f.feed)}, ${f.constant}_REST = ${n(f.rest)};`);
+      if(!f);else if(Mech.servoFeeder(f.feeder))C.push(`    /** Feeder: a ${FEEDERS[f.feeder]}. ${f.feeder==='pusher'?'FEED pushes a piece into the flywheel; REST lets the next one drop in.':'FEED is open (pieces pass); REST is closed.'} */`,`    public static final String ${f.constant} = ${javaString(f.name)};`,`    public static final double ${f.constant}_FEED = ${n(f.feed)}, ${f.constant}_REST = ${n(f.rest)};`);
       else C.push(`    /** Feeder: a ${FEEDERS[f.feeder]} that runs at FEEDER_POWER while shooting. */`,`    public static final String ${f.constant} = ${javaString(f.name)};`,`    public static final boolean ${f.constant}_REVERSED = ${f.reversed};`);
       const t=mine.find(x=>x.role==='turret');
       const hd=mine.find(x=>x.role==='hood');

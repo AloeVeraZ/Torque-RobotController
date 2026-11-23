@@ -8,19 +8,24 @@
     "stepSha256": "4f617af5259bc311f0b1ae5a62eb08db5f05554e8ee257e1e61beeaaa0c73deb",
     "orientation": "Source +Y is front, +Z is up; exported in the app robot frame. The shown wheel set touches the floor.",
     "assetSha256": [
-      "233d2c5f3c8c44c647a3414413d9a3e27362d729661993aa91a95b1cc99565a3"
+      "233d2c5f3c8c44c647a3414413d9a3e27362d729661993aa91a95b1cc99565a3",
+      "7cecf1232fa16bfc2e429c908c708c98ccebbac7705d4c3809dd6e3be420239a",
+      "0b8f8d87a0b71189b8074369385b4a44cd877ebe76e07e5be5c560561042976d",
+      "8803aad4da9087fca206d9328c4f17de64c392735fdd45871bec58bd73015953",
+      "bc64ed9c580c7e9b6eba6418581b0e79386f9a96f7724a36e29ff23e78fac083",
+      "b71bebbefeb95659e82b698eee884022d168fd7f6588dd53f9b42643c46164fb"
     ],
     "assetNote": "Open CASCADE meshes the same STEP slightly differently on each operating system, so each prepared build's hash is listed. The kit with three wheel sets has been prepared on Apple Silicon macOS only so far; preparing it on Windows adds its hash here.",
     "wheelSources": {
-      "140": {
-        "source": "https://www.gobilda.com/strafer-chassis-kit-140mm-mecanum-wheels/",
-        "stepUrl": "https://www.gobilda.com/content/step_files/3209-0012-0002.zip",
-        "zipSha256": "5c12e12ab89ec070ece651a9b8d17a8db01f046e52784840c6aba752bc1b4fea"
-      },
       "96": {
         "source": "https://www.gobilda.com/96mm-mecanum-wheel-set-70a-durometer-bearing-supported-rollers/",
         "stepUrl": "https://www.gobilda.com/content/step_files/3213-3606-0002.zip",
         "zipSha256": "a48e182d6c8c0811ef7036dbd84b6467fb99e2260116fef796190849bb26fb3e"
+      },
+      "140": {
+        "source": "https://www.gobilda.com/strafer-chassis-kit-140mm-mecanum-wheels/",
+        "stepUrl": "https://www.gobilda.com/content/step_files/3209-0012-0002.zip",
+        "zipSha256": "5c12e12ab89ec070ece651a9b8d17a8db01f046e52784840c6aba752bc1b4fea"
       }
     },
     "kitStepSha256": "29dea1aadddb5b15fe800b185cbfb2e9f9078e6959f57dff5212e35832d36e4b"

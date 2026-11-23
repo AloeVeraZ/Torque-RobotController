@@ -17,7 +17,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechani
     const project=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')));
     await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);await page.setViewportSize({width:1280,height:900});
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');
-    await page.waitForFunction(()=>/Deck test robot.*fitted/.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
+    await page.waitForFunction(()=>/Deck test robot: [0-9.]+ × /.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
     // Mechanisms is Setup's step 2 now.
     await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');
     await page.click('#sim-setup-step-mechanisms');await page.waitForTimeout(800);
@@ -128,6 +128,16 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/mechani
       for(let n=0;n<2;n++){await menu('kin:'+lift);await page.click('#mech-tile-menu button:has-text("Another motor")');await page.waitForTimeout(300);}
       const a=(await project()).kinematics.actuators.find(x=>x.joint===lift);assert.ok(a.device2&&a.more?.length===1,'a second and a third motor');
       }
+    // Right-click Delete on a part takes what rides on it. A shooter on a turret comes off and leaves the turret, which takes
+    // a shooter again from right-click Add; the feeder comes off every shooter; the turret goes with its shooter.
+    {const menu=async k=>{await page.click(`[data-garage="${k}"]`,{button:'right'});await page.waitForSelector('#mech-tile-menu:not([hidden])');},del=async k=>{await menu(k);assert.equal(await page.locator('#mech-tile-menu [data-tile-act=delete]').isDisabled(),false,k+' can be deleted');await page.click('#mech-tile-menu [data-tile-act=delete]');await page.waitForTimeout(400);},keys=()=>page.locator('#mech-rail [data-garage]').evaluateAll(l=>l.map(b=>b.dataset.garage));
+      const had=(await project()).mechanisms.shooters.length;assert.ok((await keys()).includes('shooter:0')&&(await keys()).includes('turret:0'),'a turret with its shooter');
+      await del('shooter:0');{const k=await keys();assert.ok(!k.includes('shooter:0'),'the shooter is gone');assert.ok(k.includes('turret:0'),'the turret stays');assert.equal((await project()).mechanisms.shooters[0].flywheel,false);}
+      await menu('turret:0');await page.click('#mech-tile-menu button:has-text("A shooter on it")');await page.waitForTimeout(400);assert.ok((await keys()).includes('shooter:0'),'a shooter on the turret again');
+      await del('feeder');assert.ok(!(await keys()).includes('feeder'),'the feeder is gone');assert.ok((await project()).mechanisms.shooters.every(s=>s.feeder===false));
+      await menu('turret:0');await page.click('#mech-tile-menu button:has-text("A feeder")');await page.waitForTimeout(400);assert.ok((await keys()).includes('feeder'),'the feeder is back');
+      const carried=await page.evaluate(()=>document.querySelectorAll('#mech-rail [data-garage^="shooter:"].sim-tile-sub').length);
+      await del('turret:0');{const k=await keys();assert.ok(!k.includes('turret:0')&&(await project()).mechanisms.shooters.length===had-carried,'the turret and the shooters on it are gone');}}
     // A vendor's kit: goBILDA's 2-stage Viper-Slide, with goBILDA's travel, pulley and motor already in.
     await page.click('#mech-add');await page.waitForSelector('#mech-add-dialog[open] .sim-mech-cat');await page.click('#mech-picker button[data-pick-cat="lift"]');await page.click('#mech-picker button[data-pick-src="gobilda"]');
     assert.equal(await page.locator('#mech-picker [data-v="lift"]').isVisible(),false,'only goBILDA now');await page.screenshot({path:path.join(out,'add-vendor.png')});

@@ -11,8 +11,11 @@ contextBridge.exposeInMainWorld('ftcHost',{
   onTheme:fn=>listen('ftc-theme',fn),
   onLook:fn=>listen('ftc-look',fn),pickTheme:id=>ipcRenderer.invoke('ftc-station-theme',id),
   onFullscreen:fn=>listen('ftc-fullscreen',on=>fn(!!on)),
+  // {hidden}: true while the window is minimised or hidden, or the station's view is put away (DEV's ground rests then).
+  onWindowState:fn=>listen('ftc-window-state',state=>fn({hidden:!!state?.hidden})),
   closeRobot:()=>ipcRenderer.invoke('ftc-close'),
   fullscreen:()=>ipcRenderer.invoke('ftc-fullscreen'),
+  menuOpen:open=>ipcRenderer.send('ftc-menu',!!open),
   programAndManage:()=>ipcRenderer.invoke('ftc-manage'),
   openSettings:()=>ipcRenderer.invoke('ftc-settings'),
   devicePhoto:tag=>ipcRenderer.invoke('ftc-device-photo',tag),

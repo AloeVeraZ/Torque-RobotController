@@ -107,9 +107,11 @@
     if(key==='pinpoint'&&(patch?.a||patch?.b)){const f=faces('pinpoint',patch.a||cur.a,patch.b||cur.b);cur.a=f.a;cur.b=f.b;}
     if(key==='otos'){const odo=structuredClone(C.odometryOf(r));let touched=false;for(const k of ['x','y'])if(finite(cur[k])){odo.otos[k]=cur[k];delete cur[k];touched=true;}
       if(patch?.b){odo.otos.heading=otosHeading(faces('otos','up',patch.b).b);touched=true;}if(touched)r.odometry=C.odometry(odo);}
-    // Turned, or changed for another kind, without being moved: its middle stays where it is, so its chip goes round it.
+    // Turned, or changed for another kind, without being moved: it stays over the same spot and still rests on what it
+    // was screwed to (its bottom stays, so a hub stood on its edge rises instead of sinking into the frame), and its chip goes round it.
     if(key!=='otos'&&(patch?.a||patch?.b||patch?.kind)&&!['x','y','z'].some(k=>patch[k]!==undefined)&&finite(cur.x)&&finite(cur.y)){const was=of(robot,C)[key],now=of({...r,sensorPlace:{...all,[key]:cur}},C)[key],o0=chipOffset(was),o1=chipOffset(now);
-      ['x','y','z'].forEach((k,i)=>{if(finite(cur[k]))cur[k]=round(cur[k]-o0[i]+o1[i]);});}
+      const tall=p=>{const K=KINDS[p.kind]||KINDS.controlHub;return Math.abs(apply(matrix(p.a,p.b),K.size.map(v=>v*MM))[2]);},rise=(tall(now)-tall(was))/2;
+      ['x','y','z'].forEach((k,i)=>{if(finite(cur[k]))cur[k]=round(cur[k]-o0[i]+o1[i]+(i===2?rise:0));});}
     all[key]=cur;r.sensorPlace=sanitize(all);if(!Object.keys(r.sensorPlace).length)delete r.sensorPlace;return r;}
   // A part clicked on the CAD: its box (robot inches, {lo:[x,y,z], hi:[x,y,z]}) gives where the device is: the box's middle,
   // and for an IMU inside a box the chip's place in it turned the way the team says the box faces.

@@ -319,16 +319,10 @@ function settings(){
   rows.push(el('h3','set-group','Driver Station'));
   row('Driver Station name',`${ctx.dsName()}. Torque takes this from the robot’s network name, the way a Driver Hub named ####-DS pairs with a robot named ####-RC.`);
   row('Pair with Robot Controller','Choose the robot, its address and its Wi-Fi on Torque’s Drive page. The robot stays connected while you are there.',button('Open','cfg-btn secondary',()=>Promise.resolve(ctx.host.openSettings?.()).catch(e=>ctx.toast(e.message))));
-  // The Driver Hub's colour scheme, here a theme for this robot: Torque keeps it on this computer and puts it on whenever
-  // this robot connects. docs/THEMES.md says how to make one.
-  {const l=ctx.look?.();if(l?.themes?.length&&ctx.host.pickTheme){const pick=el('select','cfg-type');pick.setAttribute('aria-label','Colour scheme for this robot');
-    pick.append(new Option('Torque’s default','default'),...l.themes.map(t=>new Option(t.name,t.id)));pick.value=l.own||'default';
-    pick.onchange=()=>Promise.resolve(ctx.host.pickTheme(pick.value)).then(()=>ctx.toast(pick.value==='default'?'This robot follows Torque’s default theme.':`${pick.selectedOptions[0].textContent} is this robot’s colour scheme.`,3000)).catch(e=>ctx.toast(e.message));
-    row('Colour scheme',`Used for ${l.robot||'this robot'} on this computer. Torque’s Settings lists every theme and can import new ones.`,pick);}}
   const pad=el('select','cfg-type');pad.setAttribute('aria-label','Gamepad type');for(const [v,l] of [['auto','Detect from the controller'],['XBOX_360','Xbox 360 / Xbox'],['SONY_PS4','Sony PS4 / PS5'],['LOGITECH_F310','Logitech F310']])pad.append(new Option(l,v));
   pad.value=p.gamepadType||'auto';pad.onchange=()=>{p.gamepadType=pad.value;ctx.savePrefs();};
   row('Gamepad type','Tells the robot which kind of controller each one is. Code that reads gamepad1.type, or uses PlayStation button names, sees this.',pad);
-  row('Gamepad assignment','Click User 1 in the header, then press a button on that controller. A second controller you plug in is User 2.');
+  row('Gamepad assignment','Click User 1 in the Driver Station’s bar, then press a button on the gamepad to assign it. A second gamepad you plug in is User 2.');
   row('Show Robot Controller battery','Shows the Control Hub’s or phone’s battery level next to the robot battery.',toggle('showRcBattery','Show Robot Controller battery'));
   row('Autonomous timer on by default','Stops an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
   rows.push(el('h3','set-group','Robot Controller'));

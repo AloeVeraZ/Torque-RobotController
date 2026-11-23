@@ -2,6 +2,7 @@
 <body>
 <header class="bar">
   <div class="brand"><span id="ds-name">Driver Station</span><div id="link-banner" class="banner searching"><span id="link-text">Searching for Robot</span></div></div>
+  <div id="ds-looks" class="looks" hidden><button id="looks-button" class="bar-icon looks-button" aria-haspopup="menu" aria-expanded="false" aria-controls="looks-menu" aria-label="Theme and colour" title="Theme and colour"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2s-.5-.7-.5-1.2c0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-7.2-9-7.2Z"/><circle cx="7.5" cy="11.5" r="1.2"/><circle cx="10" cy="7.5" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg><span>Theme and colour</span></button></div>
   <div class="net" aria-label="Link to the robot">
     <div class="net-item"><span>Network</span><b id="network">—</b></div>
     <div class="net-item"><span>Ping</span><b id="ping" class="reading">No Heartbeat</b></div>
@@ -11,12 +12,13 @@
   <button id="pad-2" class="pad" title="Click, then press a button to assign controller 2"><svg viewBox="0 0 48 30" aria-hidden="true"><path d="M13 3h22c6 0 10 5 11 12l1 7c.4 4-2 6-5 6-2.4 0-4-1.6-5.5-3.8L34 20H14l-2.5 4.2C10 26.4 8.4 28 6 28c-3 0-5.4-2-5-6l1-7C3 8 7 3 13 3Z"/></svg><span>User 2</span></button></div>
   <div class="bar-end">
     <button id="ds-close" class="bar-btn">Close robot</button>
-    <button id="ds-fullscreen" class="bar-icon" title="Fullscreen robot view" aria-label="Fullscreen robot view"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg></button>
+    <button id="ds-fullscreen" class="bar-icon" title="Fullscreen robot view" aria-label="Fullscreen robot view"><svg class="ui-icon fs-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg><svg class="ui-icon fs-leave" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h5V4m6 0v5h5M4 15h5v5m11-5h-5v5"/></svg></button>
     <button id="ds-more" class="bar-icon more" aria-label="Driver Station menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg></button>
   </div>
   <div id="ds-menu" class="menu" hidden>
     <button id="menu-settings">Settings</button><button id="menu-restart">Restart Robot</button><button id="menu-configure">Configure Robot</button><button id="menu-manage">Program &amp; Manage</button><button id="menu-inspect">Self Inspect</button><button id="menu-camera">Camera Stream</button><button id="menu-gamepads">Gamepad assignment</button><button id="menu-update-rc">Update Robot Controller</button><button id="menu-about">About</button>
   </div>
+  <div id="looks-menu" class="menu looks-menu" role="menu" aria-label="Theme and colour" hidden></div>
 </header>
 <main class="grid">
   <section class="left" aria-label="Op mode controls">
@@ -51,15 +53,15 @@
     </div>
   </section>
 </main>
-<section id="assign-hint" class="assign" hidden><b>Controller 1</b><span>Click the Controller 1 icon in the app header, then press a button to assign it.</span></section>
+<section id="assign-hint" class="assign" hidden><b>No gamepad for User 1</b><span>Click User 1 in the bar, then press a button on the gamepad to assign it.</span></section>
 <div id="picker" class="picker" hidden><div class="picker-card" role="dialog" aria-labelledby="picker-title"><div class="picker-head"><h2 id="picker-title">Op Modes</h2><button id="picker-close" class="link text-button">Close</button></div><div id="picker-list" class="picker-list" role="listbox"></div></div></div>
 <dialog id="ds-dialog"><h2 id="dialog-title"></h2><pre id="dialog-text"></pre><div class="dialog-actions"><button id="dialog-cancel" class="cfg-btn secondary" hidden>Cancel</button><button id="dialog-ok" class="ok primary">OK</button></div></dialog>
 <div id="progress" class="progress" hidden><span id="progress-text"></span><progress id="progress-bar"></progress></div>
 <section id="ds-page" class="ds-page" hidden aria-labelledby="page-title">
-  <div class="page-head"><button id="page-back" class="page-back" aria-label="Back"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12"/></svg></button><h2 id="page-title"></h2><div id="page-actions" class="page-actions"></div></div>
+  <div class="page-head"><button id="page-back" class="page-back" aria-label="Back"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12"/></svg></button><h2 id="page-title"></h2><div id="page-actions" class="page-actions"></div><button id="page-fullscreen" class="bar-icon page-fullscreen" title="Leave fullscreen" aria-label="Leave fullscreen" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h5V4m6 0v5h5M4 15h5v5m11-5h-5v5"/></svg></button></div>
   <p id="page-status" class="page-status" role="status" hidden></p>
   <div id="page-body" class="page-body"></div>
 </section>
 <dialog id="page-ask"><h2 id="page-ask-title"></h2><p id="page-ask-text"></p><input id="page-ask-input" maxlength="40" spellcheck="false" aria-labelledby="page-ask-title"><p id="page-ask-error" class="page-ask-error" role="alert"></p><div class="dialog-actions"><button id="page-ask-cancel" class="cfg-btn secondary">Cancel</button><button id="page-ask-ok" class="ok primary">OK</button></div></dialog>
 <div id="ds-toast" class="toast" role="status" hidden></div>
-<script src="../themes.js"></script><script src="../controllers.js"></script><script src="robocol.js"></script><script src="robot-config.js"></script><script src="device-art.js"></script><script src="pinout.js"></script><script src="inspection.js"></script><script src="pages.js"></script><script src="trip-run.js"></script><script src="ds.js"></script></body></html>
+<script src="../theme-ascii.js"></script><script src="../themes.js"></script><script src="../controllers.js"></script><script src="robocol.js"></script><script src="robot-config.js"></script><script src="device-art.js"></script><script src="pinout.js"></script><script src="inspection.js"></script><script src="pages.js"></script><script src="trip-run.js"></script><script src="ds.js"></script></body></html>

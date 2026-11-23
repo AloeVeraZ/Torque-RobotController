@@ -5,6 +5,8 @@
   body.driver-station > header { position: sticky; top: 0; z-index: var(--z-bar); display: flex; align-items: center; gap: 20px; height: var(--bar-height); padding: 0 max(12px, calc((100vw - var(--page-max)) / 2 + 12px)) 0 max(var(--page-gutter), calc((100vw - var(--page-max)) / 2 + var(--page-gutter))); background: var(--bg); border-bottom: 1px solid var(--line); }
   .brand { flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: var(--h-lg); color: var(--text); font: 700 22px/1 var(--font-display); letter-spacing: .01em; text-decoration: none; }
   /* An app theme's logo (docs/THEMES.md) sits before the name, 24 px tall. */
+  /* The DEV theme (ui/themes.js) types its name at a prompt: a cursor that blinks after it. Reduced motion holds it on. */
+  :root[data-look=dev] .brand::after { content: "_" / ""; margin-left: -6px; color: var(--accent); animation: caret-blink 1.06s steps(1) infinite; }
   :root[data-theme-logo] .brand::before { content: ""; width: 72px; height: 24px; background: var(--theme-logo) left center / contain no-repeat; }
   header nav { display: flex; align-self: stretch; flex-shrink: 0; gap: 2px; }
   .tab { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: var(--text-md); font-weight: 500; transition: color var(--dur-1) var(--ease); }
@@ -25,8 +27,11 @@
   .network-chip:hover:not(:where([data-touch] *)):not(:disabled), :is(button.controller, .more):hover:not(:where([data-touch] *)):not(:disabled), .network-chip[aria-expanded=true] { background: var(--control); }
   .network-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .network-chip .dot { display: none; }
+  /* Its bars show signal: lit ones in the robot-state green, the rest faint. Not on a network, it is all grey. */
   .network-icon { width: 16px; height: 16px; color: var(--quiet); }
-  .network-chip:has(.dot.live) .network-icon { color: var(--ok); }
+  .network-icon .bar-1 { fill: currentColor; stroke: none; }
+  .network-chip[data-bars]:not([data-bars="0"]) .network-icon .bar { color: var(--ok); }
+  .network-chip[data-bars="1"] .network-icon :is(.bar-2, .bar-3, .bar-4), .network-chip[data-bars="2"] .network-icon :is(.bar-3, .bar-4), .network-chip[data-bars="3"] .network-icon .bar-4 { color: var(--quiet); opacity: .45; }
   .network-chip:not(:has(.dot.live)) span { color: var(--muted); }
   .wifi-popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); width: 340px; max-width: calc(100vw - 16px); padding: 6px; border: 1px solid var(--line-strong); border-radius: var(--r-float); background: var(--surface); box-shadow: var(--shadow); transform-origin: top right; animation: pop-in var(--dur-2) var(--ease-out); }
   .wifi-head { display: flex; align-items: flex-start; gap: 8px; padding: 8px 6px 10px 10px; }
@@ -156,8 +161,7 @@
   .saved-row.here small { color: var(--muted); }
   .saved-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; }
   .saved-actions > :first-child { margin-right: 6px; }
-  .saved-row :is(.edit, .delete) { min-height: var(--h-lg); padding-inline: 8px; color: var(--muted); font-weight: 400; }
-  .saved-row .delete:hover:not(:where([data-touch] *)) { color: var(--bad); }
+  .saved-row :is(.edit, .delete) { min-height: var(--h-lg); padding-inline: 8px; font-size: var(--text-md); }
   .saved-row.open { background: var(--ok-bg); }
   /* No robots yet: what a robot looks like to Torque, and what to do. */
   .connect-empty { display: flex; align-items: center; gap: 20px; padding: 20px 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
@@ -201,10 +205,17 @@
   .settings-group-body { display: grid; align-content: start; gap: 14px; min-width: 0; }
   .settings-status { margin: 0; }
   .settings-status:empty { display: none; }
+  /* Light or dark, at the top of App colour: its name, then the three to pick from. The bar's button picks the same. */
+  .mode-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+  .mode-pick .setting-label { margin: 0; }
+  /* Each of the three as wide as its words, so Match the device stays on one line wherever the row has room for it. */
+  .mode-pick > .segmented > button { flex: 1 1 auto; }
   .about-version { margin: 0; color: var(--muted); }
   /* A theme is a small window in its own colours: its ground, a line of text and its accent. A font shows its letters.
      Picking one rings it; the last card in each list adds one of your own. */
-  :is(.theme-grid, .font-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); align-items: start; gap: 12px; }
+  /* A card is never narrower than its Edit, Export and Remove on one line, each a finger wide, so they never take two
+     lines under it. */
+  :is(.theme-grid, .font-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); align-items: start; gap: 12px; }
   :is(.theme-card, .font-card) { display: grid; gap: 8px; align-content: start; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-box); background: none; color: var(--text); text-align: left; font-weight: 500; }
   :is(.theme-card, .font-card):hover:not(:where([data-touch] *)):not(:disabled) { border-color: var(--line-strong); background: none; }
   :is(.theme-card, .font-card)[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -218,7 +229,6 @@
   .theme-preview .p-line { top: 22px; left: 10px; width: 56%; height: 5px; background: var(--p-text); opacity: .85; }
   .theme-preview .p-line.short { top: 32px; width: 34%; opacity: .45; }
   .theme-preview .p-button { right: 10px; bottom: 9px; width: 34px; height: 12px; border-radius: 3px; background: var(--p-accent); }
-  .theme-card[aria-checked=true] .p-button { animation: breathe 2.4s var(--ease) infinite; }
   :is(.theme-name, .font-name) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; overflow: hidden; font-size: var(--text-md); overflow-wrap: break-word; }
   .theme-name { padding: 0 4px; }
   .font-sample { display: flex; align-items: center; height: 44px; font-size: 32px; font-weight: 400; line-height: 1; }
@@ -227,17 +237,50 @@
   .add-card .theme-preview { display: grid; place-items: center; background: none; box-shadow: none; }
   .add-card .ui-icon { width: 24px; height: 24px; }
   .choice-item { display: grid; align-content: start; justify-items: start; min-width: 0; }
+  /* What you added starts a row of its own after the built-in ones, so its Edit, Export and Remove never leave a gap
+     under a built-in card in the same row. */
+  :is(.theme-grid, .font-grid) > :not(.choice-item) + .choice-item { grid-column-start: 1; }
   .choice-item > :is(.theme-card, .font-card) { justify-self: stretch; }
-  .choice-remove { min-height: var(--h-lg); padding-inline: 4px; color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
-  .choice-remove:hover:not(:where([data-touch] *)):not(:disabled) { color: var(--bad); }
-  .robot-themes { display: grid; margin-top: 4px; }
-  .robot-themes:empty { display: none; }
-  .robot-themes h3 { margin: 0 0 6px; color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
-  .robot-theme-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 8px 0; border-top: 1px solid var(--line); }
-  .robot-theme-row > span { min-width: 0; }
-  .robot-theme-row b { display: block; font-weight: 500; overflow-wrap: anywhere; }
-  .robot-theme-row small { color: var(--quiet); font-size: var(--text-sm); }
-  .robot-theme-row select { width: auto; min-width: 200px; }
+  /* Under a card of your own: Edit, Export, then Remove at the far end, each a whole finger wide. */
+  .choice-item > .choice-actions { justify-self: stretch; }
+  .choice-actions { display: flex; flex-wrap: wrap; padding-inline: 2px; }
+  .choice-action { min-width: var(--h-lg); min-height: var(--h-lg); padding: 0 4px; text-align: center; }
+  .choice-action + .choice-remove { margin-left: auto; }
+  /* A colour's dot (ui/base.css) sits before its name, and a name that wraps carries on under its first word, not under
+     the dot (4 px of the name's own inset, then the dot's 12 and its 7). */
+  .theme-name > .colour-dot { margin-right: 7px; vertical-align: -1px; }
+  .theme-name:has(> .colour-dot) { padding-left: 23px; text-indent: -19px; }
+  /* DEV's preview: rows of the characters its background is drawn in, faint in the accent, under the bar and words. */
+  /* FIRST's and NYC FIRST's cards: their logo in their own inks, at the right of the preview, with its grey depth in the
+     preview's own text colour; the preview's accent button moves to the left to make room. */
+  .theme-preview .p-inks { inset: 7px 8px auto auto; width: 84px; height: 50px; border-radius: 0; background: none; --p-ink0: var(--pd-ink0); --p-ink1: var(--pd-ink1); --p-ink2: var(--pd-ink2); }
+  :root[data-theme=light] .theme-preview .p-inks { --p-ink0: var(--pl-ink0); --p-ink1: var(--pl-ink1); --p-ink2: var(--pl-ink2); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme=dark]) .theme-preview .p-inks { --p-ink0: var(--pl-ink0); --p-ink1: var(--pl-ink1); --p-ink2: var(--pl-ink2); } }
+  .theme-preview .p-inks svg { display: block; width: 100%; height: 100%; }
+  .theme-preview .p-inks .stroke { fill: none; stroke-linejoin: miter; }
+  .theme-preview .p-inks .ink0.stroke { stroke: var(--p-ink0); } .theme-preview .p-inks .ink0.fill { fill: var(--p-ink0); }
+  .theme-preview .p-inks .ink1.stroke { stroke: var(--p-ink1); } .theme-preview .p-inks .ink1.fill { fill: var(--p-ink1); }
+  .theme-preview .p-inks .ink2.stroke { stroke: var(--p-ink2); } .theme-preview .p-inks .ink2.fill { fill: var(--p-ink2); }
+  .theme-preview .p-inks .shade.stroke { stroke: var(--p-text); opacity: .35; } .theme-preview .p-inks .shade.fill { fill: var(--p-text); opacity: .35; }
+  .theme-preview.has-inks .p-line { width: 34%; }
+  .theme-preview.has-inks .p-line.short { width: 22%; }
+  .theme-preview.has-inks .p-button { right: auto; left: 10px; }
+  .theme-preview .p-ascii { inset: 0; overflow: hidden; border-radius: 0; color: var(--p-accent); font: 400 8px/9px var(--mono); letter-spacing: 1px; white-space: pre; opacity: .5; }
+  /* Making a colour: its fields, and beside them how it looks, under the list it goes in. */
+  .colour-editor { display: grid; padding: 16px 20px 20px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); animation: rise-in var(--dur-2) var(--ease-out) both; }
+  .colour-editor[hidden] { display: none; }
+  .colour-editor h3 { margin: 0; }
+  .colour-editor-grid { display: grid; grid-template-columns: minmax(0, 360px) minmax(160px, 240px); gap: 0 40px; align-items: start; }
+  .colour-editor-fields { display: grid; min-width: 0; }
+  .colour-editor-fields .check-row { margin-top: 0; }
+  .colour-field { display: flex; align-items: center; gap: 8px; }
+  .colour-field input[type=color] { flex: none; }
+  .colour-field input:not([type=color]) { flex: 1; min-width: 0; }
+  /* An edge round it, so its bar does not run into the editor's own ground. */
+  .colour-preview { height: 120px; margin-top: var(--space-4); outline: 1px solid var(--line-strong); outline-offset: 0; }
+  .colour-editor .error { margin: 12px 0 0; }
+  .colour-editor .button-row { margin-top: 16px; }
+  .colour-editor #colour-import { margin-left: auto; }
   @media (max-width: 860px) { .settings-group { grid-template-columns: minmax(0, 1fr); } }
   .shortcut-list { margin: 0 0 8px; }
   .shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid var(--line); font-size: var(--text-md); }
@@ -333,6 +376,7 @@
   /* ---- Narrow windows --------------------------------------------------------------------------------------------- */
   @media (max-width: 1100px) {
     body.driver-station > header { gap: 12px; padding-left: 16px; }
+    /* Light or dark gives its place in the bar to the others: Settings → App colour has the same choice. */
     #theme-cycle { display: none; }
     .controller small { max-width: 96px; }
     .network-chip { max-width: 160px; }
@@ -341,12 +385,10 @@
     :root[data-font-wide] .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
   }
   @media (max-width: 860px) {
-    /* A wide face runs out of bar sooner: the network shows as its icon and the tabs scroll, as on a phone. */
+    /* A wide face runs out of bar sooner: the network shows as its icon and the places have a row of their own, as on a
+       phone (--bar-rows, at the end of this file). */
     :root[data-font-wide] .network-chip { justify-content: center; max-width: var(--h-lg); padding: 0; }
     :root[data-font-wide] .network-chip span { display: none; }
-    :root[data-font-wide] header nav { flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-    :root[data-font-wide] .tab { flex: none; padding: 0 10px; }
-    :root[data-font-wide] .tab.active::before { inset-inline: 10px; }
     .controller small { display: none; }
     .controller:has(.dot.live, .dot.error) .dot { display: inline-block; }
     .connect-grid { grid-template-columns: minmax(0, 1fr); }
@@ -367,27 +409,23 @@
     .network-chip span { display: none; }
   }
   @media (max-width: 640px) {
-    body.driver-station > header { gap: 4px; padding: 0 4px 0 8px; }
-    .brand { display: none; }
-    /* Four tabs on a phone: the row scrolls sideways when the screen is too narrow. */
-    header nav { flex: 1 1 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-    .tab { flex: none; padding: 0 10px; }
-    .tab.active::before { inset-inline: 10px; }
     button.controller { gap: 4px; padding: 0 4px; }
     header > .menu { right: 4px; }
     #connect-view { padding: 20px 16px 32px; }
     .connect-head h1 { font-size: var(--display-md); }
     .connect-back { width: 100%; }
     .settings-page { padding: 16px 16px 32px; }
-    .robot-theme-row { flex-direction: column; align-items: stretch; }
-    .robot-theme-row select { min-width: 0; width: 100%; }
+    .colour-editor { padding: 14px; }
+    .colour-editor-grid { grid-template-columns: minmax(0, 1fr); }
+    .colour-preview { height: 72px; }
+    .colour-editor #colour-import { margin-left: 0; }
     .settings-heading h1 { font-size: var(--display-md); }
     .connect-title { flex-wrap: wrap; }
     .connect-title input { max-width: none; }
     .saved-row { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; }
     .saved-actions { grid-column: 1 / -1; justify-content: flex-start; }
     .connect-empty { flex-direction: column; align-items: flex-start; }
-    .wifi-popover { position: fixed; top: calc(var(--bar-height) + 4px); right: 8px; left: 8px; width: auto; }
+    .wifi-popover { position: fixed; top: calc(var(--bar-height) - var(--h-lg) + 4px); right: 8px; left: 8px; width: auto; }
     .menu-sub { right: 0; left: auto; top: calc(100% + 4px); width: min(300px, calc(100vw - 24px)); }
     #drive-view > footer > #device { display: none; }
     #drive-view > footer > span { max-width: 100%; }
@@ -402,14 +440,30 @@
     .calibration-plots { grid-template-columns: minmax(0, 1fr); }
     dialog { padding: 20px; }
   }
-  /* Very narrow windows (phones): the tabs show only their icons, so all of them, the status and the menu fit.
-     The label text stays as each tab's accessible name. */
   @media (max-width: 430px) {
-    .tab { justify-content: center; min-width: var(--h-lg); padding: 0; font-size: 0; gap: 0; }
-    .tab .ui-icon { display: block; width: 20px; height: 20px; }
-    .tab.active::before { inset-inline: 8px; }
     .header-right { gap: 0; }
-    /* The theme button gives its place to the tabs (Settings has the themes); Report a bug keeps its own. */
-    #theme-cycle { display: none; }
+    /* A theme's logo gives the name the room it would take from the bar's buttons. */
+    :root[data-theme-logo] .brand::before { display: none; }
+    /* A wide face's words for the places would not fit a quarter of a phone: they show their icons, and the words stay
+       as each one's name for a screen reader. */
+    :root[data-font-wide] .tab { font-size: 0; gap: 0; }
+    :root[data-font-wide] .tab .ui-icon { display: block; width: 20px; height: 20px; }
+  }
+
+  /* A narrow window's bar has two rows (--bar-rows, set below with its height): the name and what the station is
+     connected to, then the four places across the whole width, each a quarter of it, so none is ever out of sight or
+     needs scrolling to. Menus open under the first row. */
+  @container style(--bar-rows: 2) {
+    body.driver-station > header { display: grid; grid-template: "brand right" minmax(0, 1fr) "nav nav" var(--h-lg) / minmax(0, 1fr) auto; gap: 0 8px; padding: 0 4px 0 12px; }
+    .brand { grid-area: brand; justify-self: start; min-width: 0; overflow: hidden; }
+    .header-right { grid-area: right; }
+    header nav { grid-area: nav; gap: 0; margin: 0 -4px 0 -12px; }
+    .tab { flex: 1 1 0; justify-content: center; padding: 0 4px; text-align: center; }
+    header > .menu { top: calc(var(--bar-height) - var(--h-lg) - 4px); right: 4px; }
   }
 }
+
+/* The bar's height, which every page sizes itself by (ui/tokens.css), with a second row for the places where one row has
+   no room for them (above). Outside the layers, as the token is, so it wins over it. */
+@media (max-width: 640px) { :root { --bar-rows: 2; --bar-height: 96px; --debug-bar-top: calc(var(--bar-height) + 8px); } }
+@media (max-width: 860px) { :root[data-font-wide] { --bar-rows: 2; --bar-height: 96px; --debug-bar-top: calc(var(--bar-height) + 8px); } }

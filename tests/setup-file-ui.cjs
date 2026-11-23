@@ -67,7 +67,7 @@ async function launch(data){
     await session.openFrom(cadFile);let p=await project();
     assert.equal(p.model?.id,before.model.id,'the same bytes are stored under the same id');assert.equal(p.kinematics.model,p.model.id,'its joints stay on it');
     assert.deepEqual(p.kinematics.joints.map(j=>j.id),['arm']);assert.ok(fs.existsSync(path.join(dataB,'simulation/models',p.model.id)),'the model is in B’s models folder');
-    await page.waitForFunction(()=>/fitted/.test(document.querySelector('#sim-mesh-size')?.textContent||''),null,{timeout:120000});
+    await page.waitForFunction(()=>/ in tall\./.test(document.querySelector('#sim-mesh-size')?.textContent||''),null,{timeout:120000});
     console.log('  B imported robot:',await session.showRobot('b-imported'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('torque-debug-checks')),checks,'the device checks came along');
     assert.equal(await page.evaluate(()=>localStorage.getItem('torque-camera')),camera,'the camera settings came along');
@@ -77,7 +77,7 @@ async function launch(data){
       await session.openFrom(kitFile);p=await project();assert.equal(p.robot.appearance,'strafer');
       for(const f of ['strafer.glb','strafer.json'])assert.ok(fs.existsSync(path.join(dataB,'simulation/kit-robots',f)),`kit-robots/${f} is kept`);
       assert.deepEqual((await page.evaluate(()=>deck.simFile('assets'))).robots,['strafer']);
-      await page.waitForFunction(()=>/Strafer|fitted/.test(document.querySelector('#sim-mesh-size')?.textContent||''),null,{timeout:120000});
+      await page.waitForFunction(()=>/Strafer| in tall\./.test(document.querySelector('#sim-mesh-size')?.textContent||''),null,{timeout:120000});
       console.log('  B kit robot:',await session.showRobot('b-kit'));await app.close();
       session=await launch(dataB);({page}=session);
       assert.deepEqual((await page.evaluate(()=>deck.simFile('assets'))).robots,['strafer'],'still there after a restart');

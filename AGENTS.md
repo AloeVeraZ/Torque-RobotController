@@ -8,8 +8,8 @@
 
 # Design
 
-- The rules of the UI's look are at the top of `ui/tokens.css`; read them before changing a screen. The theme's accent (`ui/themes.js`) marks the main action, where you are and what is picked; other colour means the robot's state or an alliance. Motion uses the shared keyframes and durations in `tokens.css` and stops under reduced motion.
-- Themes: an app theme changes Torque's own screens, a Driver Station theme the FTC Driver Station screen. Draw with the theme tokens (`--accent`, `--bg`, `--surface`, `--text`, `--muted`, `--line`), never a fixed colour, so every theme and `docs/THEMES.md` keep working.
+- The rules of the UI's look are at the top of `ui/tokens.css`; read them before changing a screen. The colour's accent (Settings → App colour, `ui/themes.js`) marks the main action, where you are and what is picked; other colour means the robot's state or an alliance. Motion uses the shared keyframes and durations in `tokens.css` and stops under reduced motion.
+- Colours and themes: a colour (Settings → App colour, Driver Station colour) sets the palette; a theme (Torque, DEV, or one imported from a folder) sets how the screens are drawn. Draw with the theme tokens (`--accent`, `--bg`, `--surface`, `--text`, `--muted`, `--line`), never a fixed colour, so every colour and theme and `docs/THEMES.md` keep working.
 - `ui/base.css` draws every shared control (`.primary`, `.secondary`, `.text-button`, `.segmented`, `.tag`, `.notice`, fields, tick boxes, sliders). A screen's stylesheet sizes and places them; it never gives them a look of its own.
 - Stylesheets are layered (`base`, `features`, `system`, declared in `ui/tokens.css`): a screen's own file goes in `features`; `ui/shell.css` and `ui/workspace.css` are `system` and win over it.
 - A new part is a title and rows before it is a box: one level of boxes, no capsules, no tracked capitals, no arrows on buttons, no badge that is not a state, no helper line that repeats its label. Numbers that matter are set in the display face (`.reading`).

@@ -2,7 +2,7 @@
 // Setup in the real app, on the first run's Test setup (a generated robot attached like a CAD import): where the IMU and
 // odometry sit and which way they face (ui/sim-sensor-place.js).
 //  A. Mechanisms → Chassis → Control Hub: which IMU, typed inches, a part clicked on the model, the logo/USB pickers (the
-//     same setting as the hub's mounting), and the marker on the model;
+//     same setting as the hub's mounting, and either pair turns the hub the same way), and the marker on the model;
 //  B. a Pinpoint: its sticker side and the warning when it is down; an OTOS: its Y arrow is its odometry heading;
 //  C. Configure: an IMU on an I2C bus marked as the robot's IMU names it in Setup.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/sensor-place-ui.cjs
@@ -16,7 +16,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/sensor-
     const page=await app.firstWindow(),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);await page.setViewportSize({width:1280,height:800});
     await page.evaluate(()=>window.deck.page('simulation'));await page.waitForFunction(()=>state.page==='simulation');
-    await page.waitForFunction(()=>/Deck test robot.*fitted/.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
+    await page.waitForFunction(()=>/Deck test robot: [0-9.]+ × /.test(document.querySelector('#sim-mesh-size').textContent),null,{timeout:90000});
     const project=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')));
     await page.evaluate(()=>window.deck.page('setup'));await page.waitForFunction(()=>state.page==='setup');
     await page.click('#sim-setup-step-robot');await page.click('#rs-control-card [data-controller="ftc"]');await page.waitForTimeout(250);
@@ -40,6 +40,19 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/sensor-
     {const r=(await project()).robot;assert.equal(r.sensorPlace.imu.from,'cad');assert.equal(r.hubLogo,'left','found, not turned');assert.match(await page.textContent(`${imu} .sim-chassis-find [role=status]`),/^Found the IMU in “Control Hub”/);
       // The Test robot's hub stands on edge at the back left: its chip is inside that box.
       const p=r.sensorPlace.imu;assert.ok(p.x<-2&&p.x>-8.2&&p.y>5&&p.y<6.8,JSON.stringify(p));assert.equal(r.sensorPlace.pinpoint?.part,'Pinpoint');}
+    // Either pair of pickers turns the hub the same way: the hub's mounting (Control Hub logo faces, Its USB ports face) and the
+    // IMU card's (Logo faces, USB ports face) both keep it over the same spot, resting on what it sat on, its chip going round it.
+    {const P=require('../ui/sim-sensor-place.js'),C=require('../ui/sim-config.js'),chip=r=>['x','y','z'].map(k=>r.sensorPlace.imu[k]),near=(p,q)=>p.every((v,i)=>Math.abs(v-q[i])<.003);
+      const box=r=>{const m=P.marker(P.of(r,C).imu);return [m.origin[0],m.origin[1],m.origin[2]-m.size[2]/2];};
+      const turn=async(sel,v,key)=>{await page.selectOption(sel,v);await page.waitForFunction(([k,v])=>JSON.parse(localStorage.getItem('deck-simulation-project-v2')).robot[k]===v,[key,v]);await page.waitForTimeout(150);return (await project()).robot;};
+      const was=(await project()).robot;assert.deepEqual([was.hubLogo,was.hubUsb],['left','forward']);
+      for(const [top,low,key,to,from] of [['#sim-hub-logo','#sense-face-imu-a','hubLogo','up','left'],['#sim-hub-usb','#sense-face-imu-b','hubUsb','up','forward']]){
+        const byTop=await turn(top,to,key);assert.equal(await page.inputValue(low),to,'the IMU card shows the same');
+        assert.ok(near(box(byTop),box(was)),`turned by ${top}, it stays over the same spot on the same plate: ${JSON.stringify([box(was),box(byTop)])}`);
+        const back=await turn(low,from,key);assert.equal(await page.inputValue(top),from,'the mounting shows the same');assert.ok(near(chip(back),chip(was)),`turned back by ${low}, it is where it was: ${JSON.stringify([chip(was),chip(back)])}`);
+        const byLow=await turn(low,to,key);assert.ok(near(chip(byLow),chip(byTop)),`${top} and ${low} turn it the same way: ${JSON.stringify([chip(byTop),chip(byLow)])}`);
+        await turn(top,from,key);}
+      assert.ok(near(chip((await project()).robot),chip(was)),'and it is back where it was');}
     // B. A Pinpoint and an OTOS on the chassis.
     await page.evaluate(()=>{const s=document.querySelector('#sim-localization');s.value='fused';s.dispatchEvent(new Event('change'));});await page.waitForTimeout(400);
     await page.click('[data-garage="chassis:pinpoint"]');await page.waitForSelector('#mech-drive-ports [data-sense-board="pinpoint"]');

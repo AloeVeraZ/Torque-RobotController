@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('deck',{
   setTheme:theme=>ipcRenderer.send('app-theme',theme),
   // Themes (docs/THEMES.md): imported ones are kept in the app's data folder; the Driver Station's goes to its screen.
   themes:(action,data)=>call('themes',action,data),fonts:(action,data)=>call('fonts',action,data),themeGuide:which=>call('theme-guide',which),stationLook:look=>ipcRenderer.send('station-look',look),onStationTheme:fn=>listen('station-theme',fn),
+  // Whether this window can be seen ({hidden}: minimised, hidden, or covered by the Driver Station or a robot's page), so
+  // DEV's moving ground stops drawing while it cannot.
+  onWindowState:fn=>listen('window-state',fn),
   robotFocus:()=>call('robot-focus'),
   devicePhoto:tag=>call('device-photo',tag),openExternal:url=>call('open-reference',url),savePinout:file=>call('save-pinout',file),
   robotFullscreen:enabled=>call('robot-fullscreen',enabled),

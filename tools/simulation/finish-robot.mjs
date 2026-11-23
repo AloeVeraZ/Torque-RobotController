@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as T from '../../.cache/simulation-deps/node_modules/three/build/three.module.js';
 import {GLTFLoader} from '../../.cache/simulation-deps/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
-import {mergeGeometries,mergeVertices} from '../../.cache/simulation-deps/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js';
+import {mergeGeometries,mergeVertices,toCreasedNormals} from '../../.cache/simulation-deps/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js';
 import {MeshoptSimplifier as S} from '../../.cache/cad-build-deps/node_modules/meshoptimizer/meshopt_simplifier.module.js';
 import {gzipSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
@@ -13,10 +13,16 @@ const root=fileURLToPath(new URL('../..',import.meta.url)),id=process.argv[2];if
 const output=path.join(root,'ui/assets/robots',id+'.glb'),raw=path.join(root,'.cache/simulation-cad',id+'-native.glb');if(!fs.existsSync(raw))fs.copyFileSync(output,raw);
 const bytes=fs.readFileSync(raw),gltf=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');await S.ready;gltf.scene.updateMatrixWorld(true);
 const report=[],groups=new Map(),simplified=new Map(),orientation=id==='strafer'?new T.Matrix4().set(0,-1,0,0,1,0,0,0,0,0,1,0,0,0,0,1):new T.Matrix4().set(0,1,0,0,1,0,0,0,0,0,-1,0,0,0,0,1);
-function simplify(source){let g=simplified.get(source);if(!g){g=source.clone();for(const attr of Object.keys(g.attributes))if(attr!=='position')g.deleteAttribute(attr);g=mergeVertices(g,1e-5);const indices=new Uint32Array(g.index.array),p=g.attributes.position.array;
-    const target=Math.min(indices.length,Math.max(12,Math.floor(indices.length*.1/3)*3)),[next]=S.simplify(indices,p,3,target,.02,['Prune']),copy=new Uint32Array(next),[remap,count]=S.compactMesh(copy),positions=new Float32Array(count*3);
+// A mesh with fewer triangles. detail 'full': the kit's Control Hub, Pinpoint and pod mounts, small and looked at up close,
+// kept as the CAD has them; 'fine': the frame (channels, plates, brackets) and the pods' carriages (their wheels' knurling alone is
+// nearly a million triangles), kept at a fifth of its triangles and a third of
+// the error so its hole pattern stays crisp; otherwise (wheel rollers, mostly, which are round) a tenth. 'full' and 'fine'
+// have their normals creased at 30°: smoothed across square edges and hole rims, they shaded the part as if it were blurred.
+const caches={full:new Map(),fine:new Map()};
+function simplify(source,detail){const cache=caches[detail]||simplified,fine=!!caches[detail];let g=cache.get(source);if(!g){g=source.clone();for(const attr of Object.keys(g.attributes))if(attr!=='position')g.deleteAttribute(attr);g=mergeVertices(g,1e-5);const indices=new Uint32Array(g.index.array),p=g.attributes.position.array;
+    const ratio=detail==='full'?1:detail==='fine'?.2:.1,target=Math.min(indices.length,Math.max(12,Math.floor(indices.length*ratio/3)*3)),[next]=ratio<1?S.simplify(indices,p,3,target,detail==='fine'?.006:.02,['Prune']):[indices],copy=new Uint32Array(next),[remap,count]=S.compactMesh(copy),positions=new Float32Array(count*3);
     for(let i=0;i<remap.length;i++)if(remap[i]!==0xffffffff)positions.set(p.subarray(i*3,i*3+3),remap[i]*3);
-    g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(positions,3));g.setIndex(new T.BufferAttribute(copy,1));g.computeVertexNormals();simplified.set(source,g);}return g;}
+    g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(positions,3));g.setIndex(new T.BufferAttribute(copy,1));if(fine)g=mergeVertices(toCreasedNormals(g,Math.PI/6),1e-6);else g.computeVertexNormals();cache.set(source,g);}return g;}
 // ---- The Strafer kit (id strafer) ---------------------------------------------------------------------------------
 // Its STEP is the team's own assembly of goBILDA's Strafer (3209-0001-0007) with a REV Control Hub (REV-31-1595), a
 // goBILDA Pinpoint (3110-0002-0002) and two 4-Bar Odometry Pods (3110-0001-0002) on it. Source frame: millimetres, the
@@ -59,7 +65,7 @@ gltf.scene.traverse(o=>{if(!o.isMesh)return;const names=[];for(let p=o;p;p=p.par
   const pod=names.find(n=>/^A301_Ratchet/.test(n));
   if(id==='swechanum'&&pod&&!joined.includes('/=>')){const bounds=new T.Box3().setFromObject(o);if(bounds.min.z>=6.05){key='Steer '+pod;kind='steer';}}
   if(!groups.has(key))groups.set(key,{name:key,kind,parts:[]});
-  const g=simplify(o.geometry);
+  const g=simplify(o.geometry,id!=='strafer'?'':key==='Body'||groups.get(key)?.extras?.deckPart?.carriage?'fine':groups.get(key)?.extras?.deckPart?'full':'');
   const placed=g.clone();placed.applyMatrix4(o.matrixWorld);placed.applyMatrix4(orientation);const color=(Array.isArray(o.material)?o.material[0]:o.material)?.color||new T.Color(.65,.68,.72),colors=new Float32Array(placed.attributes.position.count*3);for(let i=0;i<colors.length;i+=3){colors[i]=color.r;colors[i+1]=color.g;colors[i+2]=color.b;}placed.setAttribute('color',new T.BufferAttribute(colors,3));
   if(id==='swechanum'&&names.includes('Swerve1')&&joined.includes('/=>')){
     // These four named CAD compounds contain the wheel bodies; one mirrored pod exports its

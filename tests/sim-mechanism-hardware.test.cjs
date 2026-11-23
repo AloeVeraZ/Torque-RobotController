@@ -141,3 +141,14 @@ test('BIOBUZZ on the virtual Control Hub: every hardware variant shoots what the
   // The second roller turns the other way on this robot. Code that forgets it pushes pieces back out, so nothing is picked up.
   const wrong=await run(VARIANTS.rollers,'onbot',s=>s.replace('INTAKE_1B_REVERSED = true','INTAKE_1B_REVERSED = false'));assert.equal(wrong.pickedUp,0);
 });
+
+test('a turret whose shooter was deleted, and shooters whose feeder was deleted, export without those devices',()=>{
+  const base={enabled:true,intakes:[{kind:'sweeper',sides:['front']}],shooters:[{type:'turret',pieces:'pollen',mount:'center',hood:'hood',motor2:'shooter2'}]};
+  const bare=Mech.sanitize({...base,shooters:[{...base.shooters[0],flywheel:false}]}),unfed=Mech.sanitize({...base,shooters:[{...base.shooters[0],feeder:false}]});
+  assert.equal(bare.shooters[0].flywheel,false);assert.equal(Mech.sanitize({...base,shooters:[{type:'fixed',flywheel:false}]}).shooters[0].flywheel,undefined,'a fixed shooter is its flywheel');
+  assert.deepEqual(F.mechanismDevices(bare).filter(x=>x.part==='shooter').map(x=>x.role),['turret']);
+  assert.deepEqual(F.mechanismDevices(unfed).filter(x=>x.part==='shooter').map(x=>x.role).sort(),['flywheel','flywheel','hood','turret']);
+  assert.deepEqual(Mech.actions(bare),['Intake','Aim']);
+  for(const m of [bare,unfed]){const files=exportFor(m).files;for(const [name,text] of Object.entries(files))assert.doesNotMatch(String(text),/undefined/,name);
+    assert.doesNotMatch(files[dir+'Mechanisms.java'],m===bare?/FLYWHEEL_1|FEEDER_1/:/FEEDER_1/);}
+});

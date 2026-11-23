@@ -29,6 +29,8 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
     const problems=[],visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',rect=e=>e.getBoundingClientRect(),cross=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
     const dialog=document.querySelector('dialog[open]'),scope=dialog||document;
     if(document.documentElement.scrollWidth>document.documentElement.clientWidth+1)problems.push('document horizontal overflow');
+    // The bar's four places never scroll sideways: a narrow window gives them a row of their own.
+    const nav=document.querySelector('header nav');if(nav.scrollWidth>nav.clientWidth+1)problems.push('the bar\'s places scroll sideways');
     if(dialog&&(dialog.scrollWidth>dialog.clientWidth+1||rect(dialog).left<0||rect(dialog).right>innerWidth+1))problems.push('dialog horizontal overflow');
     const groups=dialog?['.dialog-heading','.controller-identity','.controller-tabs','.controller-test-grid','.axis-readings','.stick-plots','.calibration-plots','.update-channels','.button-row','.dialog-actions']:['header','nav','.header-right','.browser-toolbar','.browser-actions','.settings-group-head','.settings-heading','.network-binding','.pad-tile','.connect-title','.connect-head','.robot-card-head','.robot-card-actions','.saved-row','.saved-actions','.button-row','.wifi-row'];
     for(const selector of groups)for(const group of scope.querySelectorAll(selector)){

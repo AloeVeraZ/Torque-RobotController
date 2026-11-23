@@ -189,14 +189,34 @@
     // An older Strafer build has one wheel set and no parts of its own: only the stand-ins drawn for its odometry move.
     if(sets.size){const want=Number.isFinite(kit.wheel)?kit.wheel:104,set=[...sets].sort((a,b)=>Math.abs(a-want)-Math.abs(b-want)||a-b)[0];
       for(const o of all){const w=o.userData.deckWheel;if(!w?.set)continue;if(w.set!==set)o.removeFromParent();else if(o.isMesh)floor=Math.min(floor,low(o));}}
+    let hub=null;
     for(const o of all){const p=o.userData.deckPart;if(!p)continue;const d=kit[p.key];if(d===null){o.removeFromParent();continue;}
       if(p.carriage&&o.isMesh&&Number.isFinite(floor))o.position.z+=floor-low(o);
+      if(p.key==='hub'&&o.isMesh){hub=o;o.geometry.computeBoundingBox();o.userData.restZ=o.geometry.boundingBox.min.z+o.position.z;}
       if(p.key==='hub'&&o.isMesh&&kit.hubFaces&&KIT_DIR[kit.hubFaces[0]]&&KIT_DIR[kit.hubFaces[1]]&&kit.hubFaces.join()!=='up,forward'){
         // Turned about its own middle: its logo (the CAD's up) and USB side (the CAD's front) to where the team says they face.
         const basis=(a,b)=>{const Z=new T.Vector3(...KIT_DIR[a]),Y=new T.Vector3(...KIT_DIR[b]);return new T.Matrix4().makeBasis(Y.clone().cross(Z),Y,Z);};
-        const turn=basis(...kit.hubFaces).multiply(basis('up','forward').invert());o.geometry.computeBoundingBox();const c=o.geometry.boundingBox.getCenter(new T.Vector3());
+        const turn=basis(...kit.hubFaces).multiply(basis('up','forward').invert());const c=o.geometry.boundingBox.getCenter(new T.Vector3());
         if(Math.abs(turn.determinant()-1)<1e-6){o.quaternion.setFromRotationMatrix(turn);o.position.add(c.clone().sub(c.clone().applyMatrix4(turn)));}}
       if(Array.isArray(d)){const [f,l,u]=d.map(v=>Number.isFinite(v)?v:0);o.position.x-=f;o.position.y-=l;o.position.z+=u;}}
+    if(hub)kitHubRest(scene,hub,kit);
+  }
+  // The hub stands on what it was screwed to: turned on its side or end it rests on the same plate, not half through it,
+  // and moved over a channel it sits on top of the channel. No part of the frame ends up inside it.
+  function kitHubRest(scene,hub,kit){
+    const {THREE:T}=three();scene.updateMatrixWorld(true);const box=new T.Box3().setFromObject(hub),u=Number.isFinite(kit.hub?.[2])?kit.hub[2]:0;
+    let lift=hub.userData.restZ+u-box.min.z;box.min.z+=lift;box.max.z+=lift;
+    // Anything of the frame (not the hub, not a wheel, which turns) that reaches into its box from below lifts it clear.
+    const e=.04,inside=(v)=>v.x>box.min.x+e&&v.x<box.max.x-e&&v.y>box.min.y+e&&v.y<box.max.y-e&&v.z>box.min.z+e&&v.z<box.max.z;
+    let top=-Infinity;const v=new T.Vector3(),a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3();
+    scene.traverse(o=>{if(!o.isMesh||o===hub||o.userData.deckWheel)return;for(let q=o.parent;q;q=q.parent)if(q.userData.deckWheel)return;
+      const pos=o.geometry.attributes.position,idx=o.geometry.index;if(!pos)return;const ob=new T.Box3().setFromObject(o);if(!ob.intersectsBox(box))return;
+      const m=o.matrixWorld,n=idx?idx.count:pos.count;
+      for(let i=0;i+2<n;i+=3){const k=j=>idx?idx.getX(i+j):i+j;a.fromBufferAttribute(pos,k(0)).applyMatrix4(m);b.fromBufferAttribute(pos,k(1)).applyMatrix4(m);c.fromBufferAttribute(pos,k(2)).applyMatrix4(m);
+        // A triangle's corners and middle: a big flat face of a channel has none of its corners inside.
+        for(const p of [a,b,c,v.copy(a).add(b).add(c).divideScalar(3)])if(inside(p))top=Math.max(top,p.z);}});
+    if(top>-Infinity)lift+=top-box.min.z;
+    if(Math.abs(lift)>1e-6){const w=new T.Vector3(0,0,lift),o=new T.Vector3();hub.parent.worldToLocal(w);hub.parent.worldToLocal(o);hub.position.add(w.sub(o));}
   }
   // The body in the robot frame: scaled to inches, oriented, bottom on the floor, centred on the footprint
   // (on its chassis part when the CAD names one, so intakes that stick out stay where they are).
@@ -209,11 +229,11 @@
     holder.updateMatrixWorld(true);
     const box=new T.Box3().setFromObject(holder),c=box.getCenter(new T.Vector3()),f=footprint||{front:9,rear:9,half:9};
     const size=box.getSize(new T.Vector3()),pb=partBoxes(m),chassis=pb?.chassis,fit=chassis||{x:c.x,y:c.y,length:size.x,width:size.y};
-    // A robot file with joints (URDF, SDFormat, MuJoCo, USD) is drawn at its true size: stretching it to the footprint
-    // would shear every link that turns.
-    const exact=!!m.source,sx=exact?1:2*f.rear/Math.max(fit.length,.001),sy=exact?1:2*f.half/Math.max(fit.width,.001);
+    // Every model is drawn at its true size. The chassis size typed in Setup → Robot is the hitbox, drawn around the model:
+    // stretching the model to it bent rails, wheels and parts out of shape (and would shear every link a robot file turns).
+    const sx=1,sy=1;
     inner.scale.set(sx,sy,1);inner.position.set(-fit.x*sx,-fit.y*sy,-(box.min.z+(Number.isFinite(pb?.lift)?pb.lift:0)));holder.updateMatrixWorld(true);
-    holder.userData.modelScale={x:sx,y:sy,F,L,c:{x:fit.x,y:fit.y}};holder.userData.nativeSize={length:size.x,width:size.y,height:size.z};holder.userData.size={length:2*f.rear,width:2*f.half,height:size.z};return holder;
+    holder.userData.modelScale={x:sx,y:sy,F,L,c:{x:fit.x,y:fit.y}};holder.userData.nativeSize={length:size.x,width:size.y,height:size.z};holder.userData.size={length:size.x,width:size.y,height:size.z};return holder;
   }
   async function builtin(bytes,meta){
     const {THREE:T}=three(),scene=await parseMesh('glb',bytes),wheels=[],podParts=[];scene.traverse(o=>{if(o.userData.deckWheel)wheels.push(o);if(o.userData.deckSteerBody)podParts.push(o);if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.material.roughness=.52;o.material.metalness=.28;}});
@@ -405,7 +425,7 @@
     pose(rigged,values);
   }
   // Top-down picture of the placed body for the 2D field, with its extent in robot inches. A `previous` picture of
-  // the same model and orientation is reused: a new chassis size only stretches it, so it is not drawn again.
+  // the same model and orientation is reused: a new chassis size does not change the model, so it is not drawn again.
   function silhouette(holder,previous){
     // A top-down render of the model (the 2D field shows it in place of the plain robot shape).
     const {THREE:T}=three(),box=new T.Box3().setFromObject(holder);if(previous?.url)return {url:previous.url,x0:box.min.x,x1:box.max.x,y0:box.min.y,y1:box.max.y};

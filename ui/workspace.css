@@ -34,14 +34,13 @@
   .flow-steps { display: flex; justify-content: flex-start; gap: 20px; margin: 0 0 12px; }
   .flow-arrow { display: none; }
   .sim-tabs { gap: 20px; }
-  /* A rail longer than its window scrolls sideways instead of cutting off its last places (Calibrate has nine); the
-     page keeps the current one in view. The mark under where you are sits on the rail's rule, inside the scrolling
-     edge, so it is never clipped. */
-  :is(.flow-steps, .sim-tabs) { min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-bottom: 1px solid var(--line); box-shadow: none; }
+  /* A rail too long for its row takes another row rather than hiding its last places past the edge (Calibrate has
+     nine), at any window size and in any font: it only wraps when it would not fit, so nothing scrolls sideways. The
+     mark under where you are sits inside the place's own box, so it is never clipped. A page that runs longer than its
+     window scrolls; it never squashes the rail above it (its clipped overflow would otherwise let a page's column shrink
+     it to nothing, under the page's title). */
+  :is(.flow-steps, .sim-tabs) { flex-shrink: 0; min-width: 0; max-width: 100%; flex-wrap: wrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-bottom: 1px solid var(--line); box-shadow: none; }
   :is(.flow-steps, .sim-tabs) > button { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; min-height: var(--h-lg); margin-bottom: 0; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; box-shadow: none; color: var(--muted); font: 500 var(--text-md) var(--font); white-space: nowrap; }
-  /* In a full window a rail too long for its row takes a second row rather than hiding its last steps past the edge
-     (any font: it only wraps when it would not fit). A phone-narrow window still scrolls it. */
-  @media (min-width: 861px) { :is(.flow-steps, .sim-tabs) { flex-wrap: wrap; } }
   :is(.flow-steps, .sim-tabs) > button:focus-visible { outline-offset: -2px; }
   :is(.flow-steps, .sim-tabs) > button:hover:not(:where([data-touch] *)):not(:disabled), :is(.flow-steps, .sim-tabs) > button:active:not(:disabled) { background: none; color: var(--text); }
   .flow-steps > button[data-here], .sim-tabs > button[aria-selected=true] { border-bottom-color: var(--accent); background: none; box-shadow: none; color: var(--text); }
@@ -56,7 +55,13 @@
   .flow-new { order: 2; display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 0; border-radius: var(--r-tag); background: var(--control); color: var(--muted); font: 500 var(--text-xs)/1 var(--font); }
   @media (max-width: 860px) {
     .sim-navigation { min-width: 0; max-width: 100%; }
-    :is(.flow-steps, .sim-tabs) { gap: 12px; }
+    /* A wrapped rail's rows sit edge to edge, as each place is already a finger's height. A place's name breaks onto
+       a second line only if it is wider than the whole window. */
+    :is(.flow-steps, .sim-tabs) { gap: 0 12px; }
+    :is(.flow-steps, .sim-tabs) > button { min-width: var(--h-lg); max-width: 100%; white-space: normal; }
+    /* Calibrate's tools (Debug and the programmers) start their own row under the five steps. */
+    .flow-steps.cal-flow::after { content: ""; order: 1; flex-basis: 100%; }
+    .flow-steps.cal-flow > .flow-tool { order: 2; margin-inline: 0; }
   }
 
   /* ---- Pick one of a few, inside a screen. -------------------------------------------------------------------------- */
@@ -129,8 +134,10 @@
   .sim-mech-cat[aria-selected=true], .sim-mech-src[aria-pressed=true] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
   .cal-switch[aria-checked=true] .cal-switch-track, .axon-toggle input:checked { background: var(--ok-fill); }
 
-  /* ---- Notices: read these first. The ground says what kind; no outline in a hue, no stripe. ----------------------- */
-  .sample-banner { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--well); color: var(--muted); font-size: var(--text-sm); }
+  /* ---- Notices: read these first. ------------------------------------------------------------------------------------
+     The ground says what kind; no outline in a hue, no stripe. The Simulated robot banner alone has an accent edge (the
+     user asked for it): the whole page is pretend. */
+  .sample-banner { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: var(--r-ctl); background: var(--well); color: var(--muted); font-size: var(--text-sm); }
   .sample-banner > b { color: var(--text); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0; text-transform: none; }
   .sim-reliable, .sim-setup-flag { border: 1px solid var(--warn-line); border-radius: var(--r-ctl); background: var(--warn-bg); }
   .sim-reliable > button { background: none; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }

@@ -52,11 +52,13 @@
     return out;}
   // Odometry on the robot: where each pod or sensor sits, in inches from the robot's centre (x forward, y left), and
   // which way it counts. The Pinpoint's X pod is its forward pod (xOffset: inches left of centre) and its Y pod the
-  // strafe pod (yOffset: inches forward of centre), as goBILDA's setOffsets takes them. The OTOS is where its chip sits,
+  // strafe pod (yOffset: inches forward of centre), as goBILDA's setOffsets takes them. Each pod's other coordinate
+  // (xForward: the X pod's inches forward, yLeft: the Y pod's inches left) does not change what the Pinpoint reads, so
+  // setOffsets leaves it out; it says where the pod is drawn. null: where the robot's CAD has it. The OTOS is where its chip sits,
   // and heading is where its X axis points, degrees counterclockwise from the robot's front (SparkFun's offset; -90: its
   // Y arrow points forward). Scalars correct the OTOS's distance and turn readings. Only what differs is kept.
   const ODOMETRY={pods:{par:{x:0,y:4},perp:{x:-3,y:0},par_left:{x:0,y:6},par_right:{x:0,y:-6}},
-    pinpoint:{pods:'4bar',xOffset:4,yOffset:-3,xReversed:false,yReversed:false},otos:{x:0,y:0,heading:-90,linearScalar:1,angularScalar:1}};
+    pinpoint:{pods:'4bar',xOffset:4,yOffset:-3,xForward:null,yLeft:null,xReversed:false,yReversed:false},otos:{x:0,y:0,heading:-90,linearScalar:1,angularScalar:1}};
   // goBILDA's pods, in encoder ticks per millimetre (FTC SDK 12.0's setEncoderResolution).
   const POD_TYPES={'4bar':{name:'goBILDA 4-bar pod',ticksPerMm:19.894367218017578},swingarm:{name:'goBILDA swingarm pod',ticksPerMm:13.262911796569824}};
   // The OTOS takes scalars from 0.872 to 1.127 (SparkFunOTOS.MIN_SCALAR and MAX_SCALAR).
@@ -70,7 +72,7 @@
     // reversed: a quarter turn to the left read as a turn to the right (Calibrate → Mechanisms, the chassis' quarter turn), so its heading is taken the other way round.
     const im=raw.imu;if(im&&typeof im==='object'){const e={};if(finite(im.scale)&&im.scale>=.95&&im.scale<=1.05&&Math.abs(im.scale-1)>1e-6)e.scale=+im.scale.toFixed(6);if(im.reversed===true)e.reversed=true;if(Object.keys(e).length)out.imu=e;}
     const p=raw.pinpoint,pd=ODOMETRY.pinpoint;if(p&&typeof p==='object'){const e={};if(Object.hasOwn(POD_TYPES,p.pods)&&p.pods!==pd.pods)e.pods=p.pods;
-      for(const k of ['xOffset','yOffset']){const n=inch(p[k]);if(n!==undefined&&n!==pd[k])e[k]=n;}for(const k of ['xReversed','yReversed'])if(p[k]===true)e[k]=true;if(Object.keys(e).length)out.pinpoint=e;}
+      for(const k of ['xOffset','yOffset','xForward','yLeft']){const n=inch(p[k]);if(n!==undefined&&n!==pd[k])e[k]=n;}for(const k of ['xReversed','yReversed'])if(p[k]===true)e[k]=true;if(Object.keys(e).length)out.pinpoint=e;}
     const o=raw.otos,od=ODOMETRY.otos;if(o&&typeof o==='object'){const e={};for(const k of ['x','y']){const n=inch(o[k]);if(n!==undefined&&n!==od[k])e[k]=n;}
       if(finite(o.heading)){const h=+((((o.heading+180)%360)+360)%360-180).toFixed(2);if(h!==od.heading)e.heading=h;}
       for(const k of ['linearScalar','angularScalar'])if(finite(o[k])&&o[k]>=OTOS_SCALARS[0]&&o[k]<=OTOS_SCALARS[1]&&Math.abs(o[k]-1)>1e-6)e[k]=+o[k].toFixed(4);

@@ -2,9 +2,10 @@
    Program & Manage keep their own styles.
 
    The rules the tokens stand for:
-   1. Ink and one accent. Structure is type, space and hairlines. The theme's accent (ui/themes.js) marks the main
-      action, where you are and what is picked; other colour is the robot's state (green live, amber look here, red
-      stop) and the two alliances on a field.
+   1. Ink and one accent. Structure is type, space and hairlines. The colour's accent (Settings → App colour,
+      ui/themes.js) marks the main action, where you are and what is picked. Two looks the user asked for also use it:
+      the Simulated robot banner's edge, and DEV's caret and text-character background. Other colour is the robot's
+      state (green live, amber look here, red stop) and the two alliances on a field.
    2. One level of boxes. A surface holds rows; nothing boxed sits inside another box.
    3. Shape follows the job: 2 marks, 4 tags and keys, 6 controls, 10 surfaces, 14 what floats. Only round things
       are round (a dot, a knob, STOP).
@@ -45,7 +46,7 @@
   --quiet: #8d9490;
   --placeholder: #8d9490;
   /* Ink: strong text and lines. The accent: the main action, where you are and what is picked. These are the default
-     theme's, Torque's green; another theme (ui/themes.js) replaces them and the neutrals above. */
+     theme's, Torque's green; another colour (ui/themes.js) replaces them and the neutrals above. */
   --ink: #ebf0ed;
   --ink-hover: #fafcfb;
   --ink-active: #cdd3cf;
@@ -236,6 +237,8 @@
 /* A rail's mark is its bottom border: it arrives as a colour, from the line's own. */
 @keyframes rail-in { from { border-bottom-color: transparent; } }
 @keyframes breathe { 50% { opacity: .55; } }
+/* The DEV theme's cursor after the wordmark: on, then off, with no fade, as a terminal's does. */
+@keyframes caret-blink { 50% { opacity: 0; } }
 @keyframes ring-out { from { opacity: .7; scale: 1; } to { opacity: 0; scale: 2.6; } }
 @keyframes wheel-turn { 0%, 70% { rotate: 0deg; } 85% { rotate: -4deg; } 100% { rotate: 0deg; } }
 @keyframes view-in { from { opacity: 0; } }
@@ -248,4 +251,4 @@
 /* Its own spaces are three times as wide as Inter's and its letters stand further apart: this brings the spaces to
    Inter's and the letters closer, over any tracking a screen sets, but never so close that a decimal point or a colon
    runs into the digits beside it. */
-:root[data-font=dyslexic] :is(body, body *) { letter-spacing: -.06em !important; word-spacing: -.36em !important; }
+:root[data-font=dyslexic] :is(body, body *:not(canvas.theme-ascii)) { letter-spacing: -.06em !important; word-spacing: -.36em !important; }

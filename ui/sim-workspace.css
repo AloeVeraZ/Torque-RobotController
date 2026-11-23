@@ -63,7 +63,7 @@
 }
 @media(max-height:600px){.sim-popover .hint{display:none}.sim-popover label{margin-top:3px}.sim-popover{max-height:calc(100dvh - 110px)}}
 body.sim-workspace{overflow:hidden}
-.sim-workspace #simulation-view{height:calc(100dvh - 76px);padding:4px 16px 12px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
+.sim-workspace #simulation-view{height:calc(100dvh - var(--bar-height));padding:4px 16px 12px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
 .sim-workspace .simulation-heading,.sim-workspace .sim-setup-bar{display:none}
 .sim-workspace .sim-navigation{flex:none;margin-bottom:8px}
 .sim-workspace .sim-tabs>button{min-height:38px;padding-block:6px}
@@ -209,7 +209,10 @@ body.sim-workspace{overflow:hidden}
  .sim-workspace .sim-field-footer{height:auto}
  .sim-run-timing{width:auto;align-self:stretch;overflow:visible}
  .sim-run-controls{grid-template-columns:auto minmax(0,1.5fr) minmax(0,1fr);align-items:center;gap:6px 10px;padding:6px 10px;border-bottom:0}
- .sim-run-controls>[role=status],.sim-run-controls>.sim-error{grid-column:1/-1}
+ /* The clock, the modes and Run share the first row; everything under them (the period lengths, notes, errors and the
+    buttons that open checks) takes the whole width, so a long line never widens the clock's column and pushes the
+    modes out past the edge. */
+ .sim-run-controls>:not(.sim-practice-clock,.sim-seg,.sim-run-row){grid-column:1/-1}
  .sim-run-details{overflow:visible;padding:0 10px 6px}
  .sim-run-details>.hint,.driver-station .sim-run-details>h3{display:none}
  .sim-workspace .sim-run-timing .sim-practice-clock>strong{font-size:20px}
