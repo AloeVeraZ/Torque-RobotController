@@ -60,7 +60,7 @@ const longSsid='Robot_Laboratory_ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0,32),longNam
    await page.evaluate(()=>document.fonts.ready.then(()=>undefined));
    await page.evaluate(()=>{for(const d of document.querySelectorAll('dialog[open]'))d.close();setMenu(false);render({...state,page:'drive',url:'',robot:null,error:'',loading:false,robotFullscreen:false});});await inspect(name,'Drive / saved robots / long names');
    await page.evaluate(()=>{document.querySelector('#library-search').value='no matching robot';renderLibrary(true);});await inspect(name,'Settings / empty search');await page.evaluate(()=>{document.querySelector('#library-search').value='';renderLibrary(true);});
-   await tap('#robot-url');await page.waitForFunction(()=>document.body.dataset.touchKeyboard==='open');await inspect(name,'Settings / touch keyboard');await page.locator('.touch-keyboard-title button').click();
+   await tap('#robot-name');await page.waitForFunction(()=>document.body.dataset.touchKeyboard==='open');await inspect(name,'Settings / touch keyboard');await page.locator('.touch-keyboard-title button').click();
    await page.locator('#network-chip').click();await page.locator('.wifi-row').first().waitFor();await inspect(name,'Wi-Fi / long SSIDs');await page.keyboard.press('Escape');
    await page.evaluate(()=>{render({...state,page:'drive',url:'',robot:null,error:'',loading:false});});await inspect(name,'Drive / welcome / saved shortcuts');
    await page.evaluate(url=>render({...state,page:'drive',url,title:'Loading',loading:true,error:'',kind:'web'}),longUrl);await inspect(name,'Drive / loading / long URL');

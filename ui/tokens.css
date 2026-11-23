@@ -14,12 +14,12 @@
    6. Say a thing once. No subtitle that repeats its heading, no arrows on buttons. */
 @font-face{font-family:Inter;font-style:normal;font-weight:300 700;font-display:swap;src:url('fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Barlow Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/barlow-condensed-700-latin.woff2') format('woff2')}
-/* OpenDyslexic's own line is 1.82 em for letters 1.15 em tall; these hold its line to what its letters use. */
-@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:400;font-display:swap;src:url('fonts/opendyslexic-regular.woff2') format('woff2');ascent-override:100%;descent-override:30%;line-gap-override:0%}
-@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:700;font-display:swap;src:url('fonts/opendyslexic-bold.woff2') format('woff2');ascent-override:100%;descent-override:30%;line-gap-override:0%}
-/* For titles and readings it is drawn with the capitals as tall as Barlow Condensed's, so a heading keeps its size. */
-@font-face{font-family:'OpenDyslexic Display';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/opendyslexic-regular.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
-@font-face{font-family:'OpenDyslexic Display';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/opendyslexic-bold.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
+/* OpenDyslexic is drawn at Inter's size, so changing the font changes no screen: at 82% its capitals stand about as
+   tall as Inter's, and the letter and word spacing below (:root[data-font=dyslexic]) brings its gaps close to Inter's,
+   so a line takes about the same room. Its own line metrics are 1.82 em for letters 1.15 em tall; these hold the line
+   to its letters. */
+@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:400;font-display:swap;src:url('fonts/opendyslexic-regular.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
+@font-face{font-family:OpenDyslexic;font-style:normal;font-weight:700;font-display:swap;src:url('fonts/opendyslexic-bold.woff2') format('woff2');size-adjust:82%;ascent-override:100%;descent-override:30%;line-gap-override:0%}
 
 /* Later layers win whatever their selectors: base is each element's default look, features is each screen's own layout,
    system is the shared components and the screens drawn with them. */
@@ -171,7 +171,9 @@
   --disabled-opacity: .45;
   --bar-height: 52px;
   --page-gutter: 24px;
-  --page-max: 1360px;
+  /* Pages use the whole window; only past a 2560 px window does the page stop growing, so a line never runs a whole
+     4K screen wide. */
+  --page-max: 2560px;
   --shadow: 0 0 0 1px #393f3b, 0 14px 40px #000000a6;
   --backdrop: #000000a6;
   --grid-major: transparent;
@@ -241,5 +243,9 @@
 
 /* Settings → Text: the computer's own face instead of Inter. Barlow Condensed stays for titles and readings. */
 :root[data-font=system] { --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto, sans-serif; }
-/* OpenDyslexic, for readers with dyslexia, is every face: words, titles and readings. */
-:root[data-font=dyslexic] { --font: OpenDyslexic, system-ui, sans-serif; --font-display: 'OpenDyslexic Display', OpenDyslexic, system-ui, sans-serif; }
+/* OpenDyslexic, for readers with dyslexia, is every face: words, titles and readings, at Inter's size (above). */
+:root[data-font=dyslexic] { --font: OpenDyslexic, system-ui, sans-serif; --font-display: OpenDyslexic, system-ui, sans-serif; }
+/* Its own spaces are three times as wide as Inter's and its letters stand further apart: this brings the spaces to
+   Inter's and the letters closer, over any tracking a screen sets, but never so close that a decimal point or a colon
+   runs into the digits beside it. */
+:root[data-font=dyslexic] :is(body, body *) { letter-spacing: -.06em !important; word-spacing: -.36em !important; }

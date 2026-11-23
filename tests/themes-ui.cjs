@@ -3,8 +3,8 @@
 // (docs/THEMES.md), and Text ends in + to add a font file. What comes in goes into the list whose + was used, is put on,
 // is kept in the app's data folder, and Remove takes it out again. The Driver Station, on an FTC robot (one simulated in
 // memory), wears the Driver Station theme and the font. A folder without theme.json, or a file that is not a font, says
-// so and changes nothing. OpenDyslexic is built in: picked like Inter, it is every face on both pages, it marks them as
-// setting words wide (data-font-wide, which the few columns sized for Inter's words widen for), and it stays on.
+// so and changes nothing. Every font is drawn at Inter's size, so a line of words takes the same room in any of them:
+// OpenDyslexic, built in, is every face on both pages and stays on, and a font added here is measured and scaled.
 // DECK_ELECTRON=path/to/electron DECK_PLAYWRIGHT=path/to/playwright node tests/themes-ui.cjs
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
 const {_electron}=require(process.env.DECK_PLAYWRIGHT||'playwright');
@@ -59,8 +59,7 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/themes'
     const added=await checked('#fonts');assert.equal(added,'Barlow Condensed Bold');
     const look=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return {font:s.getPropertyValue('--font'),display:s.getPropertyValue('--font-display'),body:getComputedStyle(document.body).fontFamily};});
     assert.match(look.font,/^"torque-font-barlow-condensed-bold-[0-9a-f]{6}", system-ui/);assert.equal(look.display,look.font);assert.match(look.body,/torque-font-barlow-condensed-bold/);
-    await page.evaluate(()=>document.fonts.ready);
-    assert.ok(await page.evaluate(f=>[...document.fonts].some(face=>face.family.replace(/"/g,'')===f&&face.status==='loaded'),look.font.split(',')[0].replace(/"/g,'')),'the added font is loaded');
+    await page.waitForFunction(f=>[...document.fonts].some(face=>face.family.replace(/"/g,'')===f&&face.status==='loaded'),look.font.split(',')[0].replace(/"/g,''));
     assert.equal(kept('fonts').length,2,'the font file and its name are kept');
     await page.screenshot({path:path.join(out,'settings-font.png')});
 
@@ -72,14 +71,14 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/themes'
     let ds=null;for(let i=0;i<50&&!ds;i++){ds=app.context().pages().find(p=>p.url().includes('ui/ftc/index.html'));if(!ds)await page.waitForTimeout(100);}assert.ok(ds,'the Driver Station opened');
     ds.on('pageerror',e=>errors.push('Driver Station: '+e.message));
     await ds.waitForFunction(()=>document.documentElement.dataset.font==='custom'&&(document.documentElement.dataset.look||'').startsWith('custom-field-day-'),null,{timeout:15000});
-    const dsFont=await ds.evaluate(()=>{const f=getComputedStyle(document.documentElement).getPropertyValue('--font');return {font:f,loaded:[...document.fonts].some(face=>f.includes(face.family.replace(/"/g,''))&&face.status==='loaded')};});
-    assert.equal(dsFont.font,look.font,'the Driver Station uses the added font');assert.ok(dsFont.loaded,'and has it loaded');
+    assert.equal(await ds.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--font')),look.font,'the Driver Station uses the added font');
+    await ds.waitForFunction(f=>[...document.fonts].some(face=>f.includes(face.family.replace(/"/g,''))&&face.status==='loaded'),look.font,{timeout:15000});
     assert.equal(await ds.evaluate(()=>'fontWide' in document.documentElement.dataset),false,'Barlow Condensed is not a wide face');
     await ds.screenshot({path:path.join(out,'driver-station.png')});
-    // OpenDyslexic reaches the Driver Station too, as a wide face, and the added font comes back after it.
+    // OpenDyslexic reaches the Driver Station too, at Inter's size, and the added font comes back after it.
     const addedId=await page.evaluate(()=>prefs.get('torque-font',''));
     await page.evaluate(()=>{prefs.set('torque-font','dyslexic');applyLooks();});
-    await ds.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&'fontWide' in document.documentElement.dataset,null,{timeout:15000});
+    await ds.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&!('fontWide' in document.documentElement.dataset),null,{timeout:15000});
     await ds.waitForFunction(()=>[...document.fonts].some(f=>f.family==='OpenDyslexic'&&f.status==='loaded'),null,{timeout:15000});
     await ds.screenshot({path:path.join(out,'driver-station-dyslexic.png')});
     await page.evaluate(id=>{prefs.set('torque-font',id);applyLooks();},addedId);
@@ -92,13 +91,16 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/themes'
     assert.equal(await checked('#fonts'),'Inter');assert.deepEqual(kept('fonts'),[]);
     assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--font').trim().startsWith('Inter')),true);
 
-    // OpenDyslexic, built in: words in it, titles and readings in its title cut, wide layouts on, and still on after a reload.
+    // OpenDyslexic, built in: words, titles and readings in it, a line as long as Inter's, and still on after a reload.
+    const line=()=>page.evaluate(async()=>{await document.fonts.ready;const s=document.createElement('span');s.textContent='Plug the Control Hub into this computer with a USB-C cable.';s.style.cssText='position:absolute;white-space:nowrap;font-size:15px';document.body.append(s);const w=s.getBoundingClientRect().width;s.remove();return w;});
+    const interLine=await line();
     await page.locator('#fonts .font-card',{hasText:'OpenDyslexic'}).click();
-    await page.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&'fontWide' in document.documentElement.dataset);
+    await page.waitForFunction(()=>document.documentElement.dataset.font==='dyslexic'&&!('fontWide' in document.documentElement.dataset));
     assert.equal(await checked('#fonts'),'OpenDyslexic');
     const dys=await page.evaluate(async()=>{await document.fonts.ready;const s=getComputedStyle(document.documentElement);return {font:s.getPropertyValue('--font').trim(),display:s.getPropertyValue('--font-display').trim(),body:getComputedStyle(document.body).fontFamily,faces:[...document.fonts].filter(f=>f.status==='loaded').map(f=>f.family)};});
-    assert.match(dys.font,/^OpenDyslexic,/);assert.match(dys.display,/^['"]OpenDyslexic Display['"],/);assert.match(dys.body,/^OpenDyslexic/);
-    assert.ok(dys.faces.includes('OpenDyslexic')&&dys.faces.includes('OpenDyslexic Display'),'both cuts load from the app: '+dys.faces.join(', '));
+    assert.match(dys.font,/^OpenDyslexic,/);assert.match(dys.display,/^OpenDyslexic,/);assert.match(dys.body,/^OpenDyslexic/);
+    assert.ok(dys.faces.includes('OpenDyslexic'),'it loads from the app: '+dys.faces.join(', '));
+    const ratio=(await line())/interLine;assert.ok(ratio>.9&&ratio<1.12,`a line in OpenDyslexic is as long as in Inter (${ratio.toFixed(2)} times)`);
     await page.screenshot({path:path.join(out,'settings-dyslexic.png')});
     await page.reload();await page.waitForFunction(()=>typeof state==='object'&&!!hardware.model);
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.font),'dyslexic','it is still on after the page loads again');

@@ -4,8 +4,10 @@ const {axes:calibratedAxes}=require('../ui/controller-calibration.js');
 const key=p=>p?`${p.index}:${p.id}`:'';
 const normalizeValues=(items,max,min=0)=>Array.isArray(items)?items.slice(0,max).map(v=>Number.isFinite(v)?Math.max(min,Math.min(1,v)):0):[];
 const flags=(values,buttons,threshold)=>buttons.map((value,i)=>Array.isArray(values)&&i<values.length?values[i]===true:value>threshold);
+// Every robot takes both controllers: Controller 2 is whatever second controller is plugged in, so there is nothing to
+// choose per robot. setCount stays for anything that still asks for one.
 class ControllerHub{
-  constructor({hardware={},preferred=[],persist=()=>{},zoneFor=()=>0}={}){this.hardware=hardware;this.preferred=preferred;this.persist=persist;this.zoneFor=zoneFor;this.assignments=new Assignments();this.pads=[];this.count=1;this.capture=null;this.blocked=new Set();this.assignment=null;}
+  constructor({hardware={},preferred=[],persist=()=>{},zoneFor=()=>0}={}){this.hardware=hardware;this.preferred=preferred;this.persist=persist;this.zoneFor=zoneFor;this.assignments=new Assignments();this.pads=[];this.count=2;this.capture=null;this.blocked=new Set();this.assignment=null;}
   axesActive(p){const zone=this.zoneFor(p.id);return zone>0&&p.mapping==='standard'&&p.axes.length>=2?calibratedAxes(p.axes,zone).some(v=>Math.abs(v)>0.08):p.axesActive;}
   setCount(count){if(![1,2].includes(count))throw Error('Choose one or two controllers.');this.count=count;}
   begin(slot,now=Date.now()){if(![1,2].includes(slot))throw Error('Choose controller 1 or controller 2.');this.capture={slot,deadline:now+15000,waiting:new Set(this.pads.filter(p=>p.pressed||this.axesActive(p)).map(key))};}

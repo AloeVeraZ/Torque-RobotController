@@ -134,7 +134,7 @@ async function closeRobot({retain=false}={}){
   // An FTC station sends STOP for an active op mode before its socket closes; the robot also stops on its own after 2 s.
   if(robotView&&bridge instanceof FtcSocket){try{await Promise.race([robotView.webContents.executeJavaScript('window.deckShutdown?.()'),delay(300)]);await delay(80);}catch{}}
   const view=robotView,proxy=bridge;robotView=null;bridge=null;active=null;
-  controllerHub?.cancel();if(!retain)controllerHub?.setCount(1);sendControllers(true);
+  controllerHub?.cancel();sendControllers(true);
   if(view){try{win.contentView.removeChildView(view);view.webContents.close();}catch{}}
   if(proxy)await proxy.close();update({loading:false,robot:null,url:'',title:'',error:'',kind:'',recovering:false,...selection,...(retain?{recovering:true}:{})});
 }
@@ -234,7 +234,7 @@ async function openRobot(input){
     robotView=view;active={...target,ssid};win.contentView.addChildView(view);
     const contents=view.webContents,session=contents.session;
     robotEscape(contents);
-    controllerSession(session);controllerHub.setCount(target.controllerCount===2?2:1);
+    controllerSession(session);
     session.setPermissionRequestHandler((_w,_p,cb)=>cb(false));session.setPermissionCheckHandler(()=>false);
     session.webRequest.onBeforeRequest((details,cb)=>{
       try{const u=new URL(details.url);
@@ -274,7 +274,7 @@ async function openFtc(target,ssid,epoch){
   const page=path.join(__dirname,'../ui/ftc/index.html'),pageUrl=require('node:url').pathToFileURL(page).href;
   robotView=view;bridge=socket;active=robot;win.contentView.addChildView(view);lockDown(view.webContents,url=>url===pageUrl);
   robotEscape(view.webContents);
-  controllerSession(view.webContents.session);controllerHub.setCount(robot.controllerCount);
+  controllerSession(view.webContents.session);
   socket.onPacket(bytes=>{if(robotView===view)view.webContents.send('ftc-packet',bytes);});
   if(usb){socket.onClose(()=>void usbRelink(socket,view));void usbRelink(socket,view,0);}
   view.webContents.on('render-process-gone',()=>{if(robotView===view)void interruptRobot('The Driver Station closed unexpectedly. Your robot address is saved. Choose Try again to reconnect.');});
@@ -313,7 +313,7 @@ async function openManager(){
 ipcMain.on('ftc-send',(e,bytes)=>{if(robotView&&e.sender===robotView.webContents&&bridge instanceof FtcSocket&&bytes instanceof Uint8Array)bridge.send(bytes);});
 ipcMain.handle('ftc-info',e=>{if(!robotView||e.sender!==robotView.webContents||!(bridge instanceof FtcSocket))throw Error('No FTC robot is open.');
   const select=sentOpMode?.host===bridge.host&&Date.now()-sentOpMode.at<3600e3?sentOpMode.name:null;if(select)sentOpMode=null;const open=dsOpenPage;dsOpenPage=null;
-  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:active?.controllerCount||1,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,look:stationLook,fullscreen:!!state.robotFullscreen};});
+  return {name:active?.name||bridge.host,host:bridge.host,address:bridge.address,ssid:bridge instanceof UsbFtcSocket?usbName:active?.ssid||currentNetwork?.ssid||'',controllerCount:2,...device,steamDeck:device.controllerFamily==='steamdeck',...(select?{select}:{}),...(open?{open}:{}),theme:appTheme,look:stationLook,fullscreen:!!state.robotFullscreen};});
 // The Driver Station's own bar closes the robot and goes fullscreen, and it follows the app's colour theme.
 ipcMain.handle('ftc-close',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');auto.dismissed=true;if(bridge instanceof UsbFtcSocket)auto.usbDismissed='pending';await closeRobot();return true;});
 ipcMain.handle('ftc-fullscreen',async e=>{if(!robotView||e.sender!==robotView.webContents)throw Error('No FTC robot is open.');await setRobotFullscreen(true);return true;});
@@ -652,7 +652,7 @@ handle('robot-link',async(action,data)=>{
   if(action==='send')return robotLink.send(data?.host,data?.files,{keep:Array.isArray(data?.keep)?data.keep:[],backupDir:path.join(app.getPath('userData'),'robot-backups'),onProgress:(stage,file)=>emit('robot-link-progress',{stage,file})});
   throw Error('Unknown robot action.');
 });
-handle('save',async input=>{const wifi=await refreshNetwork();const robot=library.upsert({...input,ssid:wifi.ssid||''});if(active?.id===robot.id){active=robot;controllerHub.setCount(robot.controllerCount);update({robot});sendControllers(true);}else update();return robot;});handle('remove',id=>{library.remove(id);update();});
+handle('save',async input=>{const wifi=await refreshNetwork();const robot=library.upsert({...input,ssid:wifi.ssid||''});if(active?.id===robot.id){active=robot;update({robot});sendControllers(true);}else update();return robot;});handle('remove',id=>{library.remove(id);update();});
 handle('network',refreshNetwork);handle('scan',()=>network.scan());
 handle('discovery-info',async()=>{const context=await network.context();return {...context,reason:discovery.eligibility(context)};});
 handle('discover-robot',async input=>{if(finding)throw Error('Already finding a robot.');if(robotView||opening)throw Error('Close the current robot before finding another.');const controller=new AbortController();finding=controller;try{return await discovery.discover({network,ssid:input?.ssid,confirmed:input?.confirmed,signal:controller.signal});}finally{if(finding===controller)finding=null;}});

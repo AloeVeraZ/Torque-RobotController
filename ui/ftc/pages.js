@@ -328,7 +328,7 @@ function settings(){
   const pad=el('select','cfg-type');pad.setAttribute('aria-label','Gamepad type');for(const [v,l] of [['auto','Detect from the controller'],['XBOX_360','Xbox 360 / Xbox'],['SONY_PS4','Sony PS4 / PS5'],['LOGITECH_F310','Logitech F310']])pad.append(new Option(l,v));
   pad.value=p.gamepadType||'auto';pad.onchange=()=>{p.gamepadType=pad.value;ctx.savePrefs();};
   row('Gamepad type','Tells the robot which kind of controller each one is. Code that reads gamepad1.type, or uses PlayStation button names, sees this.',pad);
-  row('Gamepad assignment','Click User 1 in the header, then press a button on that controller. For User 2, choose Two controllers for this robot on Torque’s Drive page.');
+  row('Gamepad assignment','Click User 1 in the header, then press a button on that controller. A second controller you plug in is User 2.');
   row('Show Robot Controller battery','Shows the Control Hub’s or phone’s battery level next to the robot battery.',toggle('showRcBattery','Show Robot Controller battery'));
   row('Autonomous timer on by default','Stops an Autonomous op mode after 30 seconds unless you turn the timer off.',toggle('autoTimer','Autonomous timer on by default'));
   rows.push(el('h3','set-group','Robot Controller'));

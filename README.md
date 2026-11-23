@@ -43,7 +43,7 @@ Connect to your robot and drive it.
 - **Gamepads:** Xbox, PlayStation, Nintendo, Logitech and Steam Deck controls. A live test screen shows every stick and button, and measures stick drift.
 - **Touch friendly:** every screen works by touch, with an optional on-screen keyboard.
 
-**To connect:** join the robot's Wi-Fi with the Wi-Fi button in the bar, then on **Drive** enter its address under **Add a robot** and press **Open robot**. Next time it is one tap under **Your robots**.
+**To connect:** join the robot's Wi-Fi with the Wi-Fi button in the bar, then on **Drive**, under **Add a robot**, press **Open on Wi-Fi** for an FTC Control Hub, or **Open on USB** with its USB-C cable plugged in. For any other robot pick **Other robot**, enter its address and press **Open robot**. Next time it is one tap under **Your robots**.
 
 ![The controller test screen showing every stick and button](docs/media/controller-test.jpg)
 

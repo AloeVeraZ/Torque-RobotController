@@ -10,7 +10,7 @@ address on it: a Control Hub is `192.168.43.1`, and a Robot Controller phone usi
 Direct is `192.168.49.1`.
 
 1. Join the robot's Wi-Fi with the Wi-Fi button in the bar, then go to **Drive** (**Add a robot**).
-2. Under **Robot type**, choose **FTC Control Hub**. The address is `192.168.43.1`; for a
+2. **Robot type** starts on **FTC Control Hub**. The address is `192.168.43.1`; for a
    Robot Controller phone press **Use a different address** and enter `192.168.49.1`.
 3. Press **Open on Wi-Fi**, or plug the Control Hub's USB-C into this computer and press
    **Open on USB**. Drive shows the Driver Station; the banner turns green:
@@ -59,9 +59,8 @@ desktops, stacked on narrow windows like the phone app.
   computers and unknown handhelds. Both header slots stay visible. Click a slot to
   test its sticks, triggers and buttons; choose **Assign/Reassign**, then press a button
   to select a pad. The test screen stays open until **Done**. Manual choices are saved.
-  Each saved robot defaults to one controller. Select **Two controllers** in its
-  Settings to send Controller 2 (`gamepad2`) to the robot; it can be assigned on standby
-  beforehand. Choosing the other slot's pad swaps the two. Assignment presses stay
+  A second controller plugged in is Controller 2 (`gamepad2`) for every robot, so
+  there is nothing to choose per robot. Choosing the other slot's pad swaps the two. Assignment presses stay
   neutral until buttons are released and sticks centered.
   Inputs are sent only while the Driver Station is visible and
   focused. Opening Settings, a dialog, or another window sends the gamepads back to rest.

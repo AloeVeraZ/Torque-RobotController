@@ -62,11 +62,12 @@ Local-network access may require macOS's normal permission prompt.
 
 ## Daily workflow
 
-**Wi-Fi button in the bar → Drive → Add a robot → robot address → Open robot.** Enter an IP such as
-`192.168.4.1`, a hostname such as `pushbot.local`, or a full URL including a port
-or path. No robot protocol or type is selected: an FTC Control Hub (usually
-`192.168.43.1`) is recognized and opens the [FTC Driver Station](FTC.md); any other
-address opens the robot's website. Names can be left blank; desktop builds take the
+**Wi-Fi button in the bar → Drive → Add a robot.** It starts on **FTC Control Hub**:
+press **Open on Wi-Fi**, or **Open on USB** with the hub's USB-C cable plugged in, and the
+[FTC Driver Station](FTC.md) opens. For any other robot pick **Other robot**, then enter an
+IP such as `192.168.4.1`, a hostname such as `pushbot.local`, or a full URL including a
+port or path, and press **Open robot**. An FTC Control Hub opened there is still
+recognized; any other address opens the robot's website. Names can be left blank; desktop builds take the
 robot website's title after it opens. A name you type always overrides that title.
 
 The app caches the robot name, final address, associated Wi-Fi, and last-opened
@@ -128,9 +129,9 @@ close the page, or open the three-dot settings menu.
 Controller 1 defaults to recognized built-in handheld controls, with the first
 standard gamepad as a fallback on other devices. Both slots stay visible. Click an
 icon for the live test screen, then use **Assign/Reassign** to choose a pad. The test
-screen stays open after assignment, and **Done** returns to Drive. Saved robots default to one controller;
-select **Two controllers** in that robot's Settings for a second operator. Controller 2
-can be assigned on standby before it is needed. Choosing the other assigned pad swaps slots. The assignment
+screen stays open after assignment, and **Done** returns to Drive. A second controller
+plugged in is Controller 2 for every robot, so there is nothing to choose per robot.
+Choosing the other assigned pad swaps slots. The assignment
 press is consumed until buttons are released and sticks centered. Manual preferences
 are saved in `controller-settings.json` in the user-data directory.
 Bluetooth/USB pairing is handled by the OS. Standard Gamepad API websites receive

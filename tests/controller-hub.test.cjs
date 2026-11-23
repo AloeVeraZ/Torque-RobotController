@@ -4,7 +4,7 @@ const {ControllerHub}=require('../src/controller-hub.cjs');
 const pad=(id,index,extra={})=>({id,index,mapping:'standard',connected:true,pressed:false,axesActive:false,...extra});
 const external=pad('Xbox Wireless',0),builtin=pad('Steam Deck Controller',3),hardware={builtInController:true,controllerFamily:'steamdeck'};
 test('both controller slots are assigned independently of the robot’s one/two input limit',()=>{
- const h=new ControllerHub({hardware});h.ingest([external,builtin]);assert.deepEqual(h.state().slots.map(p=>p?.index),[3,0]);assert.equal(h.state().count,1);
+ const h=new ControllerHub({hardware});h.ingest([external,builtin]);assert.deepEqual(h.state().slots.map(p=>p?.index),[3,0]);assert.equal(h.state().count,2,'every robot takes both controllers');
  h.begin(2);assert.equal(h.state().capture.slot,2);h.cancel();h.setCount(2);assert.equal(h.state().count,2);
  h.setCount(1);assert.deepEqual(h.state().slots.map(p=>p.index),[3,0]);assert.throws(()=>h.setCount(3));assert.throws(()=>h.begin(3));
 });

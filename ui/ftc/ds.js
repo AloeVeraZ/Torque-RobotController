@@ -185,7 +185,6 @@ function inputsLive(){return inputsOn&&!document.hidden&&document.hasFocus();}
 function pollGamepads(){
   if(!session)return;const pads=Array.from(navigator.getGamepads?.()||[]),count=window.__deckControllerInput?.state().count||info.controllerCount||1;
   $('#pad-2').hidden=false;$('#pad-2').classList.toggle('standby',count<2);
-  if(count<2)$('#pad-2').title='Controller 2 is on standby. To use it, choose Two controllers for this robot on Torque’s Drive page.';
   for(const u of [1,2]){
     const p=u<=count?pads[u-1]:null,button=$('#pad-'+u),previous=users[u];users[u]=p?.connected?u-1:null;
     button.classList.toggle('assigned',users[u]!==null);
@@ -221,7 +220,7 @@ $('#menu-camera').onclick=()=>menu(openCamera);
 $('#system-action').onclick=()=>void updateRobotController();
 $('#menu-update-rc').hidden=!host?.updateRobotController;$('#menu-update-rc').onclick=()=>menu(()=>void updateRobotController());
 $('#menu-about').onclick=()=>menu(()=>{aboutQuiet=false;session.requestAbout();const r=session.state.robot;showDialog('About',`Robot: ${info.name}\nAddress: ${info.host}\nRobocol: ${session.identity.version}${r?.sdk?`\nRobot Controller SDK: ${r.sdk}`:''}\n\nWaiting for the Robot Controller’s details…`);});
-$('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 at the top of Torque’s window, then press any button on the controller you want to use.\n\nTo drive with two controllers, choose Two controllers for this robot on Torque’s Drive page. Then click Controller 2 and press a button on the second controller.\n\nOn a handheld such as a Steam Deck, its own controls are Controller 1 to begin with. Otherwise Controller 1 is the first controller Torque finds.'));
+$('#menu-gamepads').onclick=()=>menu(()=>showDialog('Gamepad assignment','Click Controller 1 at the top of Torque’s window, then press any button on the controller you want to use.\n\nPlug in a second controller and it becomes Controller 2. To pick which one, click Controller 2 and press a button on it.\n\nOn a handheld such as a Steam Deck, its own controls are Controller 1 to begin with. Otherwise Controller 1 is the first controller Torque finds.'));
 $('#ds-close').hidden=!host?.closeRobot;$('#ds-fullscreen').hidden=!host?.fullscreen;
 $('#ds-close').onclick=()=>Promise.resolve(host.closeRobot()).catch(e=>toast(e.message));$('#ds-fullscreen').onclick=()=>Promise.resolve(host.fullscreen()).catch(e=>toast(e.message));
 $('#camera-image').onclick=()=>session.requestFrame();$('#camera-close').onclick=closeCamera;

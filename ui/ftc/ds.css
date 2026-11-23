@@ -216,10 +216,10 @@
   .value small { min-width: 0; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
   /* The configuration is a name, not a number: the same face a size down. */
   #config { font-size: var(--display-md); line-height: 1.3; }
-  /* A wide face (OpenDyslexic, or a wide font of the user's): the op mode's name takes two lines and the configuration's
-     a size down before either is cut short. */
-  :root[data-font-wide] .opname :is(span, small) { white-space: normal; overflow-wrap: anywhere; }
-  :root[data-font-wide] .opname.chosen span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.1; }
+  /* The op mode's name and its hint take a second line before either is cut short, in any font. A wide face (a font of
+     the user's much wider than Inter) also sets the configuration's name a size down. */
+  .opname :is(span, small) { white-space: normal; overflow-wrap: anywhere; }
+  .opname.chosen span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.1; }
   :root[data-font-wide] #config { font-size: var(--display-sm); }
   .volts.caution .value b { color: var(--warn); }
   .volts.danger .value b { color: var(--bad); }

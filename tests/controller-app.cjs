@@ -24,7 +24,7 @@ class Cdp{
   await L.eval('window.deck.open('+JSON.stringify({url:`http://127.0.0.2:${server.address().port}`,name:'Web robot'})+')');
   await until(async()=>{const t=(await targets()).find(t=>t.url.startsWith('http://127.0.0.1:'));if(t){W=new Cdp(t.webSocketDebuggerUrl);await W.ready;return true;}},'robot view');
   await until(()=>W.eval('!!window.__deckGamepadTest'),'shared preload');await feed();
-  await until(()=>W.eval('sample?.[0]?.y===-0.5&&sample[1]===null'),'built-in physical 3 mapped to logical 0');
+  await until(()=>W.eval('sample?.[0]?.y===-0.5&&sample[1]?.y===0.25'),'built-in physical 3 mapped to logical 0, and the USB controller plugged in beside it to logical 1 with nothing to choose');
   assert.equal(await W.eval('typeof require'), 'undefined');assert.equal(await W.eval('typeof window.deck'), 'undefined');
   assert.equal(await W.eval('typeof window.__deckControllerInput.state().readings'),'undefined','robot page received app-only raw diagnostics');
   assert.equal(await W.eval('sample[0].index'),0);assert.ok((await W.eval('connected')).includes(0));
@@ -45,15 +45,14 @@ class Cdp{
   await until(()=>W.eval('sample[0]?.id==="USB Xbox Controller"&&!sample[0].a&&sample[0].y===0'),'assignment press consumed by website');
   pads[0]=make(pads[0].id,0,0.5,true);await feed();await wait(100);assert.equal(await W.eval('sample[0].y'),0,'held controls leaked before neutral');
   pads[0]=make(pads[0].id,0);await feed();pads[0].axes[1]=0.25;await feed();await until(()=>W.eval('sample[0].y===0.25'),'manual C1 drives website');
-  await L.eval('window.deck.save({...state.robot,controllerCount:2})');await feed();
-  await until(()=>W.eval('sample[1]?.index===1'),'second logical slot enabled');
+  await until(()=>W.eval('sample[1]?.index===1'),'second logical slot there for the second controller');
   await L.eval('document.querySelector("#controller-2").click()');await until(()=>L.eval('document.querySelector("#controller-dialog").open'),'C2 capture');
   await L.eval('document.querySelector("#controller-assign").click()');
   pads[0]=make(pads[0].id,0);await feed();pads[0]=make(pads[0].id,0,0,true);await feed();await until(()=>L.eval('window.deck.controllerInfo().then(s=>!s.capture&&s.slots[1].index===0)'),'C2 swap');
   await L.eval('document.querySelector("#controller-done").click()');
   pads[0]=make(pads[0].id,0);await feed();pads[0].axes[1]=0.25;pads[3].axes[1]=-0.5;await feed();
   await until(()=>W.eval('sample[0]?.y===-0.5&&sample[1]?.y===0.25'),'header swap affects actual website input');
-  await L.eval('window.deck.save({...state.robot,controllerCount:1})');await feed();await until(()=>W.eval('sample[1]===null'),'single-controller mode hides User 2');
+  {const usb=pads[0];pads[0]=null;await feed();await until(()=>W.eval('sample[1]===null'),'unplugging the second controller takes User 2 away');pads[0]=usb;await feed();await until(()=>W.eval('sample[1]?.y===0.25'),'plugging it back brings User 2 back');}
   const saved=JSON.parse(fs.readFileSync(path.join(data,'controller-settings.json')));assert.equal(saved[0].id,builtinName);assert.equal(saved[1].id,'USB Xbox Controller');
   await L.eval('window.deck.page("settings")');await L.eval('window.deck.controllerCalibration(1,0.1)');
   assert.equal(JSON.parse(fs.readFileSync(path.join(data,'controller-calibration.json')))[builtinName],.1);

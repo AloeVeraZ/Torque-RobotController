@@ -52,8 +52,8 @@ outputs stay neutral. Use a supported gamepad mode (Logitech **X**, or Steam Inp
 See [controller support and limitations](CONTROLLERS.md) and the
 [100-profile software regression catalog](CONTROLLER-PROFILES.md).
 
-Saved robots default to **one controller**. Choose **Two controllers** in that robot's Settings
-when it needs a second operator. Slot assignment applies to the FTC station and websites
+Every robot takes both controllers: a second one plugged in is Controller 2, with nothing to
+choose per robot. Slot assignment applies to the FTC station and websites
 using the standard Gamepad API; a custom USB, Bluetooth, or proprietary robot protocol needs
 its own compatible integration. Browser gamepad visibility may require pressing a button first.
 Two identical controllers without distinct OS identities may need reassignment after reconnecting.

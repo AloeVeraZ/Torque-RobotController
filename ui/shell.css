@@ -146,6 +146,7 @@
   .robot-list { display: grid; }
   .saved-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; padding: 12px 4px; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background-color var(--dur-1) var(--ease); }
   .saved-row:last-child { border-bottom: 1px solid var(--line); }
+  .saved-row.stays { animation: none; }
   .saved-row:hover { background: var(--hover-soft, transparent); }
   .robot-kind-mark { display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 6px; box-sizing: border-box; border-radius: var(--r-box); background: var(--control); color: var(--muted); font: 700 15px/1 var(--font-display); }
   .robot-kind-mark.ftc { background: var(--accent-soft); color: var(--accent-text); }

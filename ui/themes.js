@@ -40,18 +40,23 @@
   // Puts a theme on a page (null, or Torque, takes it off). A constructed stylesheet, so the pages' content security
   // policy, which allows no inline styles, still holds. Pictures go in as custom properties the stylesheets draw with.
   const sheets=new WeakMap();
-  // A font added in Settings → Text arrives as its file's bytes; each page loads it once, under its own family name.
-  const fontsIn=new WeakMap();
-  function addFont(doc,f){if(!f||!f.data||!f.family)return;let have=fontsIn.get(doc);if(!have){have=new Set();fontsIn.set(doc,have);}if(have.has(f.family))return;have.add(f.family);
-    try{const face=new doc.defaultView.FontFace(f.family,f.data,f.variable?{weight:'100 900'}:{});doc.fonts.add(face);face.load().catch(()=>{});}catch{}}
-  // A face that sets words much wider than Inter marks the page data-font-wide, and the few columns sized for Inter's
-  // words widen for it. OpenDyslexic sets a line half as long again; a font added here is measured once it has loaded.
-  const SAMPLE='The quick brown fox jumps over the lazy dog 0123456789',INTER_WIDTH=27.44,WIDE={dyslexic:true,system:false},measuring=new WeakMap();
-  function markWide(doc,f){const root=doc.documentElement,turn=(measuring.get(doc)||0)+1;measuring.set(doc,turn);
+  // A font added in Settings → Text arrives as its file's bytes; each page loads it once, under its own family name. It is
+  // drawn at the size that sets a line as long as Inter does (80% to 125% of its own), so changing the font changes no
+  // screen: it is measured once under a name of its own, then added at that size.
+  const SAMPLE='The quick brown fox jumps over the lazy dog 0123456789',INTER_WIDTH=27.44,fontsIn=new WeakMap(),width=(doc,family)=>{const c=doc.createElement('canvas').getContext('2d');if(!c)return INTER_WIDTH;c.font=`400 100px ${family}`;return c.measureText(SAMPLE).width/100;};
+  function addFont(doc,f){if(!f||!f.data||!f.family)return null;let have=fontsIn.get(doc);if(!have){have=new Map();fontsIn.set(doc,have);}if(have.has(f.family))return have.get(f.family);
+    const W=doc.defaultView,base=f.variable?{weight:'100 900'}:{};
+    const ready=(async()=>{try{const probe=new W.FontFace(`${f.family} measure`,f.data,base);doc.fonts.add(probe);await probe.load();const own=width(doc,`"${f.family} measure"`);doc.fonts.delete(probe);
+      const adjust=Math.min(125,Math.max(80,100*INTER_WIDTH/own)),face=new W.FontFace(f.family,f.data,{...base,sizeAdjust:`${adjust.toFixed(1)}%`});doc.fonts.add(face);await face.load();}catch{}})();
+    have.set(f.family,ready);return ready;}
+  // A face that still sets words much wider than Inter (a font added here more than a quarter wider, even at 80%) marks the
+  // page data-font-wide, and the few places sized for Inter's words give way for it. The built-in faces are drawn at
+  // Inter's size; a font added here is measured once it has loaded at its size.
+  const measuring=new WeakMap();
+  function markWide(doc,f,ready){const root=doc.documentElement,turn=(measuring.get(doc)||0)+1;measuring.set(doc,turn);
     const set=wide=>{if(measuring.get(doc)!==turn)return;if(wide)root.dataset.fontWide='';else delete root.dataset.fontWide;};
-    if(!f.custom||!f.family){set(!!WIDE[f.id]);return;}
-    const face=`400 100px "${f.family}"`;set(false);
-    Promise.resolve(doc.fonts?.load(face)).catch(()=>{}).then(()=>{const c=doc.createElement('canvas').getContext('2d');if(!c)return;c.font=face;set(c.measureText(SAMPLE).width/100/INTER_WIDTH>1.15);});}
+    set(false);if(!f.custom||!f.family||!ready)return;
+    ready.then(()=>set(width(doc,`"${f.family}"`)/INTER_WIDTH>1.15));}
   function apply(doc,theme,{font}={}){
     const root=doc.documentElement;let sheet=sheets.get(doc);
     if(!sheet&&typeof CSSStyleSheet==='function'){sheet=new CSSStyleSheet();sheets.set(doc,sheet);doc.adoptedStyleSheets=[...doc.adoptedStyleSheets,sheet];}
@@ -63,11 +68,11 @@
     else{root.style.removeProperty('--theme-image');delete root.dataset.themeImage;}
     if(logo&&custom)root.dataset.themeLogo='';else delete root.dataset.themeLogo;
     // The font: Inter (none set), a built-in one by name (tokens.css), or one added here, which sets the faces itself.
-    const f=typeof font==='string'?{id:font}:font||{id:'inter'};addFont(doc,f);
+    const f=typeof font==='string'?{id:font}:font||{id:'inter'},ready=addFont(doc,f);
     if(f.id&&f.id!=='inter')root.dataset.font=f.custom?'custom':f.id;else delete root.dataset.font;
     if(f.custom&&f.family){const stack=`"${f.family}", system-ui, sans-serif`;root.style.setProperty('--font',stack);root.style.setProperty('--font-display',stack);}
     else{root.style.removeProperty('--font');root.style.removeProperty('--font-display');}
-    markWide(doc,f);
+    markWide(doc,f,ready);
   }
   // Two colours that say what a theme looks like, for its swatch: its ground and its accent, dark.
   const swatch=t=>[t.dark.bg,t.dark.accent,t.light.bg,t.light.accent];

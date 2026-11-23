@@ -8,7 +8,7 @@ test('100 documented device/mode reports use brand-independent assignments on al
  assert.equal(profiles.length,100);assert.equal(new Set(profiles.map(p=>p.vendor+':'+p.product)).size,100);
  for(const platform of ['linux','win32','darwin'])for(const profile of profiles){
   const h=new ControllerHub({hardware:{platform}}),primary=pad(profile.id,3),second=pad('External generic gamepad',5);h.ingest([primary,second]);
-  assert.deepEqual(h.state().slots.map(p=>p.index),[3,5],profile.name+' '+platform);assert.equal(h.state().count,1);
+  assert.deepEqual(h.state().slots.map(p=>p.index),[3,5],profile.name+' '+platform);assert.equal(h.state().count,2);
   h.setCount(2);assert.deepEqual(h.state().readings[0].axes,primary.axes);assert.equal(h.state().readings[0].buttons[6],.65);
   h.ingest([]);assert.deepEqual(h.state().slots,[null,null]);h.ingest([pad(profile.id,7)]);assert.equal(h.state().slots[0].index,7);
  }

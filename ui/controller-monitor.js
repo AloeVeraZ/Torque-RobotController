@@ -48,7 +48,7 @@ window.DeckControllerMonitor={create({api,hardware,robot,syncOverlay,toast}){
     for(const [side,index] of [['left',6],['right',7]]){const fill=$('#trigger-'+side+'-fill');fill.setAttribute('height',String(buttons[index]*triggerHeight));fill.setAttribute('y',String(triggerBottom-buttons[index]*triggerHeight));}
     $('#controller-assign').hidden=keyboard;$('#controller-assign').textContent=capturing?'Cancel assignment':pad?'Reassign controller '+slot:'Assign controller '+slot;
     $('#controller-auto').hidden=slot!==1||!api.controllerAutomatic||keyboard;
-    $('#controller-robot-note').textContent=(optional?'This robot uses one controller. Controller 2 is available on standby; select Two controllers in the robot’s Settings when it needs a second operator. ':'')+'The robot defines each control’s action. Gamepad outputs to the robot stay neutral while this test is open.';
+    $('#controller-robot-note').textContent='The robot defines each control’s action. Gamepad outputs to the robot stay neutral while this test is open.';
     const deck=h.controllerFamily==='steamdeck';
     $('#steamdeck-controls').hidden=!deck||keyboard;$('#controller-mode-help').hidden=keyboard;calibration.render();
     $('#controller-mode-title').textContent=deck&&!h.launchedThroughSteam?'Steam Deck · Desktop shortcut':'Gamepad input · built-in or external';

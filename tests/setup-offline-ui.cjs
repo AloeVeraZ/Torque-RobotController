@@ -28,8 +28,12 @@ const root=path.resolve(__dirname,'..'),out=path.join(root,'test-results/setup-o
     assert.equal(await loc(),'fused','the Pinpoint is on');
     await page.click('[data-garage="chassis:frontLeft"]');await page.waitForTimeout(300);
     assert.equal(await page.locator('#mech-drive-ports [data-wire-encoder="robot.frontLeft"]').isChecked(),true,'its encoder is ticked');assert.equal(await page.locator('#mech-drive-ports [data-wire-encoder="robot.frontLeft"]').isEnabled(),true,'and the tick is the team’s to take off');
-    // B. No banner in Setup.
-    assert.equal(await page.locator('#setup-view [data-sample-banner]').count(),0,'Setup says nothing about a missing robot');
+    // B. Mechanisms needs no robot, so Setup says nothing about one here; Hubs and Configure, which show the hubs Torque
+    // simulates, say Simulated robot as Calibrate does.
+    assert.equal(await page.locator('#setup-view [data-sample-banner]').isVisible(),false,'Mechanisms says nothing about a missing robot');
+    for(const step of ['setup','configure']){await page.click(`#setup-view .setup-flow [data-flow="${step}"]`);await page.waitForTimeout(300);
+      assert.match(await page.locator('#setup-view [data-sample-banner]').innerText(),/^Simulated robot\s+No Control Hub is connected, so Torque simulates this robot’s hubs from Setup\./,`${step} says the robot is simulated`);}
+    await page.click('#setup-view .setup-flow [data-flow="mechanisms"]');await page.waitForTimeout(300);await page.click('[data-garage="chassis:frontLeft"]');await page.waitForTimeout(300);
     await page.screenshot({path:path.join(out,'demo-mechanisms.png')});
     // C. Delete odometry, then undo and redo it.
     await page.click('[data-garage="chassis:pinpoint"]',{button:'right'});await page.waitForSelector('#mech-tile-menu:not([hidden]) [data-tile-act=delete]');
