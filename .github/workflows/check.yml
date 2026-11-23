@@ -230,6 +230,8 @@ jobs:
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/robot-fullscreen.cjs
           echo "== tests/touch-ui.cjs"
           DECK_TEST_WINDOW_MANAGER=openbox xvfb-run -a node tests/touch-ui.cjs
+          echo "== tests/touch-hover-ui.cjs"
+          xvfb-run -a node tests/touch-hover-ui.cjs
           echo "== tests/controller-compatibility.cjs"
           xvfb-run -a node tests/controller-compatibility.cjs
           } 2>&1 | tee test-results/ci/linux-ui.log

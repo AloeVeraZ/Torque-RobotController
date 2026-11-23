@@ -8,7 +8,7 @@
   :root[data-theme-logo] .brand::before { content: ""; width: 72px; height: 24px; background: var(--theme-logo) left center / contain no-repeat; }
   header nav { display: flex; align-self: stretch; flex-shrink: 0; gap: 2px; }
   .tab { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 12px; border: 0; border-radius: 0; background: none; color: var(--muted); font-size: var(--text-md); font-weight: 500; transition: color var(--dur-1) var(--ease); }
-  .tab:hover:not(:disabled), .tab:active:not(:disabled) { background: none; color: var(--text); }
+  .tab:hover:not(:where([data-touch] *)):not(:disabled), .tab:active:not(:disabled) { background: none; color: var(--text); }
   .tab:active:not(:disabled) { transform: none; }
   .tab.active { color: var(--text); }
   /* The rule under the place you are in is ::before, and it grows from its middle when you arrive; ::after is the mark a
@@ -22,7 +22,7 @@
   /* Wi-Fi: the network's name. Its glyph is green while the station is on it, and it opens the list of networks. */
   .wifi-anchor { position: relative; display: flex; flex-shrink: 1; min-width: 0; }
   .network-chip { display: flex; align-items: center; gap: 8px; max-width: 220px; min-width: 0; padding: 0 10px; border: 0; background: none; color: var(--text); font-weight: 500; }
-  .network-chip:hover:not(:disabled), :is(button.controller, .more):hover:not(:disabled), .network-chip[aria-expanded=true] { background: var(--control); }
+  .network-chip:hover:not(:where([data-touch] *)):not(:disabled), :is(button.controller, .more):hover:not(:where([data-touch] *)):not(:disabled), .network-chip[aria-expanded=true] { background: var(--control); }
   .network-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .network-chip .dot { display: none; }
   .network-icon { width: 16px; height: 16px; color: var(--quiet); }
@@ -39,7 +39,7 @@
   .wifi-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; background: none; text-align: left; animation: rise-in var(--dur-3) var(--ease-out) both; }
   .wifi-row > div { min-width: 0; }
   .wifi-row > span { flex-shrink: 0; color: var(--quiet); font-size: var(--text-sm); }
-  .wifi-row:hover:not(:disabled) { background: var(--control); }
+  .wifi-row:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .wifi-row.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
   .wifi-row strong { font-size: var(--text-md); font-weight: 500; overflow-wrap: anywhere; }
   .wifi-row.selected strong { font-weight: 600; }
@@ -63,7 +63,7 @@
   .controller:has(.dot.live) small { color: var(--text); }
   .controller .dot { display: none; }
   .more { display: inline-grid; place-items: center; min-width: var(--h-lg); height: var(--h-lg); padding: 0; border: 0; background: none; color: var(--muted); }
-  .more:hover:not(:disabled) { color: var(--text); }
+  .more:hover:not(:where([data-touch] *)):not(:disabled) { color: var(--text); }
   #more .ui-icon { stroke-width: 2.6; }
   #theme-cycle svg { display: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
   #theme-cycle[data-mode=system] [data-for=system], #theme-cycle[data-mode=light] [data-for=light], #theme-cycle[data-mode=dark] [data-for=dark] { display: block; }
@@ -71,12 +71,12 @@
 
   /* The update icon (ui/app.js offerUpdate): quiet until there is a version to take, then it carries an amber mark. */
   .update-icon { position: relative; }
-  .update-icon[data-state=current]:is(:hover, :focus-visible) { color: var(--ok); }
+  .update-icon[data-state=current]:is(:hover:not(:where([data-touch] *)), :focus-visible) { color: var(--ok); }
   .update-icon[data-state=available] { color: var(--warn); }
   .update-dot { position: absolute; top: 9px; right: 9px; display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn-fill); box-shadow: 0 0 0 2px var(--bg); }
   .update-icon.has-update .update-dot { display: block; animation: breathe 2.4s var(--ease) infinite; }
   .update-icon::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); width: max-content; max-width: 280px; padding: 6px 10px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--text-sm); font-weight: 500; line-height: 1.35; text-align: left; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(-2px); transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease-out); transition-delay: 0s; }
-  .update-icon:is(:hover, :focus-visible)::after { opacity: 1; transform: none; transition-delay: .3s; }
+  .update-icon:is(:hover:not(:where([data-touch] *)), :focus-visible)::after { opacity: 1; transform: none; transition-delay: .3s; }
   body:has(dialog[open]) .update-icon::after { opacity: 0; }
 
   /* The three-dot menu, and the shortcut list that opens beside it. */
@@ -103,7 +103,7 @@
   .browser-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px 0 calc(var(--page-gutter) - 12px); border-bottom: 1px solid var(--line); }
   .browser-actions { display: flex; flex-shrink: 0; }
   .browser-actions button, #robot-fullscreen { display: inline-grid; place-items: center; padding: 0; border: 0; background: none; color: var(--muted); }
-  :is(.browser-actions button, #robot-fullscreen):hover:not(:disabled) { background: var(--control); color: var(--text); }
+  :is(.browser-actions button, #robot-fullscreen):hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); color: var(--text); }
   .url-display { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--text-md); }
   .url-display span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mini { color: var(--quiet); font-size: var(--text-sm); white-space: nowrap; }
@@ -147,7 +147,7 @@
   .saved-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; padding: 12px 4px; border-top: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); transition: background-color var(--dur-1) var(--ease); }
   .saved-row:last-child { border-bottom: 1px solid var(--line); }
   .saved-row.stays { animation: none; }
-  .saved-row:hover { background: var(--hover-soft, transparent); }
+  .saved-row:hover:not(:where([data-touch] *)) { background: var(--hover-soft, transparent); }
   .robot-kind-mark { display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 6px; box-sizing: border-box; border-radius: var(--r-box); background: var(--control); color: var(--muted); font: 700 15px/1 var(--font-display); }
   .robot-kind-mark.ftc { background: var(--accent-soft); color: var(--accent-text); }
   .saved-name { min-width: 0; }
@@ -157,7 +157,7 @@
   .saved-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; }
   .saved-actions > :first-child { margin-right: 6px; }
   .saved-row :is(.edit, .delete) { min-height: var(--h-lg); padding-inline: 8px; color: var(--muted); font-weight: 400; }
-  .saved-row .delete:hover { color: var(--bad); }
+  .saved-row .delete:hover:not(:where([data-touch] *)) { color: var(--bad); }
   .saved-row.open { background: var(--ok-bg); }
   /* No robots yet: what a robot looks like to Torque, and what to do. */
   .connect-empty { display: flex; align-items: center; gap: 20px; padding: 20px 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); animation: rise-in var(--dur-3) var(--ease-out) both; }
@@ -206,7 +206,7 @@
      Picking one rings it; the last card in each list adds one of your own. */
   :is(.theme-grid, .font-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); align-items: start; gap: 12px; }
   :is(.theme-card, .font-card) { display: grid; gap: 8px; align-content: start; min-width: 0; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-box); background: none; color: var(--text); text-align: left; font-weight: 500; }
-  :is(.theme-card, .font-card):hover:not(:disabled) { border-color: var(--line-strong); background: none; }
+  :is(.theme-card, .font-card):hover:not(:where([data-touch] *)):not(:disabled) { border-color: var(--line-strong); background: none; }
   :is(.theme-card, .font-card)[aria-checked=true] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .theme-card { padding: 6px 6px 8px; }
   .font-card { padding: 10px 12px 12px; }
@@ -223,13 +223,13 @@
   .theme-name { padding: 0 4px; }
   .font-sample { display: flex; align-items: center; height: 44px; font-size: 32px; font-weight: 400; line-height: 1; }
   :is(.theme-card, .font-card).add-card { border-style: dashed; color: var(--muted); }
-  :is(.theme-card, .font-card).add-card:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+  :is(.theme-card, .font-card).add-card:hover:not(:where([data-touch] *)):not(:disabled) { border-color: var(--accent); color: var(--text); }
   .add-card .theme-preview { display: grid; place-items: center; background: none; box-shadow: none; }
   .add-card .ui-icon { width: 24px; height: 24px; }
   .choice-item { display: grid; align-content: start; justify-items: start; min-width: 0; }
   .choice-item > :is(.theme-card, .font-card) { justify-self: stretch; }
   .choice-remove { min-height: var(--h-lg); padding-inline: 4px; color: var(--muted); font-size: var(--text-sm); font-weight: 400; }
-  .choice-remove:hover:not(:disabled) { color: var(--bad); }
+  .choice-remove:hover:not(:where([data-touch] *)):not(:disabled) { color: var(--bad); }
   .robot-themes { display: grid; margin-top: 4px; }
   .robot-themes:empty { display: none; }
   .robot-themes h3 { margin: 0 0 6px; color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
@@ -267,7 +267,7 @@
   #update-channel-label { margin: 16px 0 6px; color: var(--text); font-weight: 500; }
   .update-channels { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: 8px; background: var(--control); }
   .update-channels > button { flex: 1 1 160px; background: none; color: var(--muted); }
-  .update-channels > button:hover:not(:disabled, [aria-pressed=true]) { background: none; color: var(--text); }
+  .update-channels > button:hover:not(:where([data-touch] *)):not(:disabled, [aria-pressed=true]) { background: none; color: var(--text); }
   .update-channels > button[aria-pressed=true] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--line-strong); }
   .testing-warning { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--warn-line); border-radius: var(--r-ctl); background: var(--warn-bg); }
   .testing-warning h3 { color: var(--warn); }
@@ -296,7 +296,7 @@
   .capture-status { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--text-md); font-weight: 500; }
   .controller-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 16px; padding: 2px; border-radius: 8px; background: var(--control); }
   .controller-tabs > button { flex: 1; background: none; color: var(--muted); }
-  .controller-tabs > button:hover:not(:disabled, [aria-pressed=true]) { background: none; color: var(--text); }
+  .controller-tabs > button:hover:not(:where([data-touch] *)):not(:disabled, [aria-pressed=true]) { background: none; color: var(--text); }
   .controller-tabs > button[aria-pressed=true] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--line-strong); }
   /* The pad and its sticks on the left; every button's reading on the right, as rows. */
   .controller-test-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; }

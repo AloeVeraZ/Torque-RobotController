@@ -48,7 +48,7 @@
   /* A controller slot: the pad and whose it is. Green when a pad is in it, a green ground while it is being used. */
   .pads { flex: none; display: flex; gap: 2px; }
   .pad { display: flex; align-items: center; gap: var(--space-2); padding: 0 10px; border: 0; background: none; color: var(--muted); white-space: nowrap; }
-  .pad:hover:not(:disabled) { background: var(--control); color: var(--text); }
+  .pad:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); color: var(--text); }
   .pad svg { width: 22px; height: 14px; fill: currentColor; color: var(--quiet); }
   .pad.assigned { color: var(--text); }
   .pad.assigned svg { color: var(--ok); }
@@ -60,7 +60,7 @@
   .bar-btn { flex: none; margin-right: 2px; padding: 0 10px; border: 4px solid transparent; border-radius: 10px; background-clip: padding-box; white-space: nowrap; }
   .bar-btn:focus-visible { outline-offset: -2px; }
   .bar-icon, .page-back { flex: none; display: inline-grid; place-items: center; padding: 0; border: 0; background: none; color: var(--muted); }
-  :is(.bar-icon, .page-back):hover:not(:disabled), .bar-icon[aria-expanded=true] { background: var(--control); color: var(--text); }
+  :is(.bar-icon, .page-back):hover:not(:where([data-touch] *)):not(:disabled), .bar-icon[aria-expanded=true] { background: var(--control); color: var(--text); }
   .more svg { width: 18px; height: 18px; fill: currentColor; }
   /* Robot fullscreen: the app's exit button sits over this corner. */
   body.fullscreen :is(.bar, .page-head) { padding-right: 72px; }
@@ -85,7 +85,7 @@
   .tri:disabled { opacity: 1; background: none; color: var(--quiet); }
   .tri:disabled .ui-icon { color: var(--line-strong); }
   .opname { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 0 var(--space-2); border: 0; background: none; text-align: center; }
-  .opname:hover:not(:disabled) { background: var(--control); }
+  .opname:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .opname:disabled { opacity: 1; }
   .opname span { max-width: 100%; overflow: hidden; color: var(--muted); font-size: var(--text-base); text-overflow: ellipsis; white-space: nowrap; }
   .opname small { max-width: 100%; overflow: hidden; color: var(--quiet); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
@@ -113,16 +113,16 @@
   .go::before { content: ""; position: absolute; inset: -10px; border: 1.5px solid var(--line-strong); border-radius: 50%; pointer-events: none; }
   .go b { font-weight: inherit; }
   .go i { display: none; background: currentColor; }
-  .go:hover:not(:disabled) { background: var(--ink-hover); }
+  .go:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--ink-hover); }
   .go:active:not(:disabled) { background: var(--ink-active); }
   .go.start { background: var(--go); color: var(--on-go); }
   .go.stop { background: var(--stop); color: var(--on-stop); }
   .go.start::before { border-color: var(--go); }
   .go.stop::before { border-color: var(--stop); }
-  .go:is(.start, .stop):hover:not(:disabled) { filter: brightness(1.07); }
+  .go:is(.start, .stop):hover:not(:where([data-touch] *)):not(:disabled) { filter: brightness(1.07); }
   .go:is(.start, .stop):active:not(:disabled) { filter: brightness(.93); }
-  .go.start:is(:hover, :active):not(:disabled) { background: var(--go); }
-  .go.stop:is(:hover, :active):not(:disabled) { background: var(--stop); }
+  .go.start:is(:hover:not(:where([data-touch] *)), :active):not(:disabled) { background: var(--go); }
+  .go.stop:is(:hover:not(:where([data-touch] *)), :active):not(:disabled) { background: var(--stop); }
   /* The label element always says INIT (ds.js); START and STOP are drawn here, each under its own shape. */
   .go:is(.start, .stop) b { display: none; }
   .go.start::after { content: "START"; }
@@ -136,7 +136,7 @@
   .go:focus-visible { outline-offset: 3px; }
   /* Stop an op mode that is initialized but not started. Beside the button, so START stays where INIT was. */
   .abort { position: absolute; top: calc(var(--top) + var(--size) / 2); left: calc(var(--left) + var(--size) + 28px); translate: 0 -50%; display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 14px; border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad); font-weight: 600; white-space: nowrap; }
-  .abort:hover:not(:disabled), .abort:active:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); }
+  .abort:hover:not(:where([data-touch] *)):not(:disabled), .abort:active:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); }
   .abort i { width: 10px; height: 10px; border-radius: var(--r-mark); background: currentColor; }
   .abort::after { content: "Stop"; }
   /* A narrow half: the small Stop stands its square over its word, and the lane is that much slimmer. */
@@ -153,7 +153,7 @@
   /* Under the button, two rows: the 30 second stop for Autonomous, then the practice match clock. */
   .side { flex: none; display: flex; align-items: center; gap: var(--space-1); min-height: 52px; border-top: 1px solid var(--line); }
   .stopwatch { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-left: -12px; padding: 0 12px; border: 0; background: none; color: var(--text); }
-  .stopwatch:hover:not(:disabled) { background: var(--control); }
+  .stopwatch:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .stopwatch .ui-icon { width: 20px; height: 20px; }
   .stopwatch.off { color: var(--quiet); }
   .stopwatch.counting { color: var(--warn); }
@@ -272,7 +272,7 @@
   .picker-list { min-height: 0; padding: 0 var(--space-2) var(--space-2); overflow: auto; }
   .picker-list h3 { margin: var(--space-3) var(--space-4) var(--space-1); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
   .picker-list button { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; min-height: 48px; padding: var(--space-2) var(--space-4); border: 0; background: none; font-size: var(--text-base); font-weight: 400; text-align: left; }
-  .picker-list button:hover:not(:disabled) { background: var(--control); }
+  .picker-list button:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .picker-list button.selected { background: var(--selected); font-weight: 600; }
   .picker-list button span { min-width: 0; overflow-wrap: anywhere; }
   .picker-list small { flex: none; color: var(--quiet); font-weight: 400; }
@@ -318,9 +318,9 @@
   .cfg-buttons { display: flex; flex-wrap: wrap; gap: 2px; margin-right: -12px; }
   /* A row's actions are words until they are wanted; Delete turns red under the pointer or the finger. */
   .cfg-buttons .cfg-btn { background: none; }
-  .cfg-buttons .cfg-btn:hover:not(:disabled) { background: var(--control); }
+  .cfg-buttons .cfg-btn:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .cfg-buttons .cfg-btn:active:not(:disabled) { background: var(--hover); }
-  .cfg-btn.danger:is(:hover, :active, :focus-visible):not(:disabled) { background: var(--bad-bg); color: var(--bad); }
+  .cfg-btn.danger:is(:hover:not(:where([data-touch] *)), :active, :focus-visible):not(:disabled) { background: var(--bad-bg); color: var(--bad); }
   .cfg-empty { margin: 0; padding: var(--space-5) 0; color: var(--quiet); }
   .cfg-none { margin: 0; color: var(--quiet); font-size: var(--text-sm); }
   p.cfg-none { margin-top: var(--space-3); }
@@ -332,7 +332,7 @@
   /* Inside a portal the page's title already says whose hubs these are. */
   .page-body:has(> .cfg-add) > .cfg-trail + .cfg-heading { display: none; }
   .cfg-entry, .inspect-choice { display: flex; align-items: center; gap: var(--space-3); min-height: 60px; padding: var(--space-2) var(--space-1); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; text-align: left; }
-  :is(.cfg-entry, .inspect-choice):hover:not(:disabled) { background: var(--control); }
+  :is(.cfg-entry, .inspect-choice):hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   :is(.cfg-entry, .inspect-choice):focus-visible { outline-offset: -2px; }
   :is(.cfg-trail, .cfg-heading) + .cfg-entry { border-top: 1px solid var(--line); }
   .cfg-entry-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -366,7 +366,7 @@
   .dev-fig.small { width: 48px; height: 36px; }
   .dev-fig.big { width: 100%; max-height: 260px; aspect-ratio: 4 / 3; border-radius: var(--r-ctl); }
   .dev-pick { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 3px var(--space-2) 3px 3px; border-color: var(--field); background: var(--surface); font-weight: 400; text-align: left; }
-  .dev-pick:hover:not(:disabled), .dev-pick:active:not(:disabled) { border-color: var(--input-hover); background: var(--surface); }
+  .dev-pick:hover:not(:where([data-touch] *)):not(:disabled), .dev-pick:active:not(:disabled) { border-color: var(--input-hover); background: var(--surface); }
   .dev-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dev-caret { flex: none; width: 18px; height: 18px; background: var(--chevron) center / 18px 18px no-repeat; }
   .dev-backdrop { position: fixed; inset: 0; z-index: var(--z-popover); background: var(--backdrop); }
@@ -379,9 +379,9 @@
   .dev-group { margin: var(--space-3) var(--space-2) var(--space-1); color: var(--quiet); font: 500 var(--text-sm)/1.35 var(--font); }
   .dev-group:first-child { margin-top: var(--space-1); }
   .dev-option { flex: none; display: flex; align-items: center; gap: 10px; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); border: 0; background: none; font-weight: 400; text-align: left; }
-  .dev-option:is(:hover, :focus-visible):not(:disabled) { background: var(--control); }
+  .dev-option:is(:hover:not(:where([data-touch] *)), :focus-visible):not(:disabled) { background: var(--control); }
   .dev-option:focus-visible { outline-offset: -2px; }
-  .dev-option.chosen, .dev-option.chosen:is(:hover, :focus-visible) { background: var(--selected); }
+  .dev-option.chosen, .dev-option.chosen:is(:hover:not(:where([data-touch] *)), :focus-visible) { background: var(--selected); }
   .dev-option-text { display: flex; flex-direction: column; min-width: 0; }
   .dev-option-text b { font-weight: 500; }
   .dev-option.chosen .dev-option-text b { font-weight: 600; }

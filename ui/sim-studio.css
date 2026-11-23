@@ -74,9 +74,9 @@
   .studio-cam::before { content: ""; order: 1; flex: none; width: 10px; height: 10px; border-radius: var(--r-mark); background: var(--c); box-shadow: inset 0 0 0 1px var(--studio-edge); }
   .studio-cam > kbd { order: 0; flex: none; }
   .studio-cam > span { order: 2; min-width: 0; overflow-wrap: anywhere; }
-  .studio-cam:hover:not(:disabled) { background: var(--control); }
+  .studio-cam:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--control); }
   .studio-cam:active:not(:disabled) { background: var(--hover); }
-  .studio-cam[aria-pressed=true], .studio-cam[aria-pressed=true]:hover:not(:disabled) { background: var(--selected); box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 600; }
+  .studio-cam[aria-pressed=true], .studio-cam[aria-pressed=true]:hover:not(:where([data-touch] *)):not(:disabled) { background: var(--selected); box-shadow: inset 0 0 0 1.5px var(--accent); font-weight: 600; }
   .studio-cam-hint { min-height: calc(2 * 1.45em); }
   .studio-pane .studio-cam-hint { margin-bottom: 12px; }
   .studio-row-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -164,7 +164,7 @@
   .studio-trim.l { justify-items: end; }
   .studio-trim.r { justify-items: start; }
   .studio-trim::after { content: ""; width: 2px; height: 10px; border-radius: var(--r-mark); background: var(--studio-ink); opacity: 0; }
-  .studio-clip.selected .studio-trim::after, .studio-trim:hover::after { opacity: .6; }
+  .studio-clip.selected .studio-trim::after, .studio-trim:hover:not(:where([data-touch] *))::after { opacity: .6; }
   /* A clip that fades or dips in starts with a ramp. */
   .studio-fx { position: absolute; inset: 0 auto 0 0; width: 14px; background: color-mix(in srgb, var(--studio-ink) 40%, transparent); clip-path: polygon(0 0, 100% 0, 0 100%); pointer-events: none; }
   /* Now: the one red line, with a hair of the page either side so it shows over a clip of any colour. */

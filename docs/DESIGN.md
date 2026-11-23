@@ -99,6 +99,20 @@ fails on a capsule, a box in a box, small capitals, a shadow on something that d
 not float, blur, a decorative gradient, a side stripe, an arrow on a button, code
 type on plain words, a face or weight outside the two families, or faint text.
 
+### Hover and a finger
+
+A finger leaves `:hover` on whatever it last tapped, so a tapped button would keep its
+hover look until the next tap somewhere else. `ui/pointer.js` marks the page
+`data-touch` while the last pointer was a finger, and every hover look in the
+stylesheets carries `:not(:where([data-touch] *))`, which adds nothing to a
+selector's weight. The next mouse or trackpad move takes the mark off again.
+`@media (hover: hover)` can't do this on a Steam Deck, whose trackpads make the
+main pointer a mouse even while the screen is being touched. A new `:hover` rule
+takes the same guard. A hover that opens something (the menu's sub-menu) or that
+styles a scrollbar does not. `tests/touch-hover-ui.cjs` taps and moves the mouse
+through the DevTools input events, the same way a touchscreen and a trackpad send
+them.
+
 ### Narrow windows
 
 - A rail longer than its window scrolls sideways and keeps the place you are at in
